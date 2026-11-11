@@ -56,6 +56,9 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
   width:min(var(--wmax),94vw,calc(92vh / 1.4142));width:min(var(--wmax),94vw,calc(92dvh / 1.4142));aspect-ratio:1 / 1.4142;
   scrollbar-color:var(--parch2) transparent}
 #sheet.a4{--wmax:560px}
+/* kartka obrócona na poziom (przycisk #obr, tylko na komputerze z szerokim ekranem) */
+#sheet.poziom{aspect-ratio:1.4142 / 1;width:min(calc(var(--wmax) * 1.4142),94vw,calc(92vh * 1.4142));width:min(calc(var(--wmax) * 1.4142),94vw,calc(92dvh * 1.4142))}
+#sheet.poziom #view{left:5.5%;right:5.5%;top:8%;bottom:15%}
 #sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:6px;background:radial-gradient(circle at var(--gx,30%) var(--gy,20%),var(--parch),var(--parch2)),radial-gradient(circle at var(--s1x,78%) var(--s1y,82%),#7a4a1a44,transparent 40%);box-shadow:inset 0 0 28px #5a3c14dd,0 0 40px #000;filter:var(--rough,url(#rough0))}
 #view{position:absolute;left:7%;right:7%;top:6%;bottom:11%;overflow:hidden}
 #w{width:100%;height:100%;box-sizing:border-box;column-count:1;column-gap:0;column-fill:auto;color:var(--ink);text-align:center;transition:transform .35s ease}
@@ -73,6 +76,13 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
 #zam svg,#pager svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #zam{position:absolute;top:2.2%;right:3%;width:28px;height:28px}
 #zam svg{width:18px;height:18px}
+#obr{position:absolute;top:2.2%;left:3%;width:28px;height:28px;display:none;background:none;border:0;padding:0;cursor:pointer;color:var(--ink);opacity:.5;transition:opacity .25s,transform .5s}
+#obr svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#obr .gw{fill:currentColor;stroke:none}
+#obr:hover{opacity:1;transform:rotate(-25deg)}
+#sheet.poziom #obr:hover{transform:rotate(25deg)}
+@media (orientation:landscape) and (hover:hover) and (pointer:fine){#obr{display:flex;align-items:center;justify-content:center}}
+.iskra{position:fixed;z-index:11;pointer-events:none;color:#f6e7b4;text-shadow:0 0 6px #ffe9a0,0 0 14px #c9a24a;line-height:1}
 #pager{position:absolute;left:7%;right:7%;bottom:3.2%;height:34px;display:flex;align-items:center;justify-content:space-between;color:var(--ink);font-style:italic;font-size:14px}
 #pager[hidden]{display:none}
 #pager button{width:44px;height:34px}

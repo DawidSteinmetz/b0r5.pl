@@ -28,11 +28,12 @@
 #w .dim{opacity:.7;font-size:.85em}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
 #w .kasa{font-size:18px;font-style:italic;margin:10px 0 4px}
-/* plan działki */
 /* plan działki: atrament na pergaminie (kształty rysuje pokoj.js). Działka jest wysoka (40×80 m),
-   więc plan zajmuje prawie całą stronę kartki, a szerokość wynika z proporcji. */
+   więc plan zajmuje prawie całą stronę kartki, a szerokość wynika z proporcji. Na kartce obróconej
+   na poziom (#sheet.poziom) plan leży i wysokość liczy się z niższej kartki. */
 #w svg.plan{display:block;width:auto;max-width:100%;height:calc(min(792px,132.9vw,92vh) * .72);height:calc(min(792px,132.9vw,92dvh) * .72);
   margin:4px auto;cursor:pointer;fill:none;stroke:none;stroke-linecap:round;stroke-linejoin:round}
+#sheet.poziom #w svg.plan{height:calc(min(560px,66.5vw,92vh) * .62);height:calc(min(560px,66.5vw,92dvh) * .62)}
 #w .plan .tusz,#w .plan .cienki,#w .plan .olowek,#w .plan .obrys,#w .plan .detal{fill:none;stroke:#2b1d10}
 #w .plan .tusz{stroke-width:.11;stroke-opacity:.9}
 #w .plan .cienki{stroke-width:.05;stroke-opacity:.55}

@@ -63,8 +63,11 @@
       odswiez();
     };
     rysuj(true);
+    // kartka obrócona na poziom albo z powrotem: przerysuj od razu (plan zmienia ułożenie)
+    const obrot = () => { if (modal.classList.contains('on') && okno === o && ostatni) { ost = JSON.stringify(wybierzSig(ostatni)); rysujStan(ostatni, $('#tr'), akcja); } };
+    document.addEventListener('mysl:obrot', obrot);
     const id = setInterval(() => {
-      if (!modal.classList.contains('on') || okno !== o) return clearInterval(id);
+      if (!modal.classList.contains('on') || okno !== o) { document.removeEventListener('mysl:obrot', obrot); return clearInterval(id); }
       rysuj(false);
     }, 4000);
   }
@@ -156,7 +159,15 @@
     const D = s.dzialka, zaj = {}, ob = D.obszar || { x: 0, y: 0, dl: D.dl, szer: D.szer };
     s.grzadki.forEach(g => { zaj[g.miejsce] = g; });
     const dom = D.zabudowa[0], furtkaX = dom ? dom.x + dom.dl / 2 : D.dl / 2;
-    const vb = [-2.2, -3, D.dl + 4.4, D.szer + 5];
+    // Kartka obrócona na poziom (przycisk w rogu kartki na komputerze): plan obraca się o ćwierć obrotu w lewo,
+    // napisy zostają proste. P() przelicza punkt planu na miejsce na obróconej kartce.
+    const poziom = !!(window.Mysl.poziom && window.Mysl.poziom());
+    const P = (x, y) => poziom ? [y, D.dl - x] : [x, y];
+    const napis = (x, y, k, t, wzdluz) => {
+      const [X, Y] = P(x, y);
+      return '<text x="' + n2(X) + '" y="' + n2(Y) + '" class="' + k + '"' + (poziom && wzdluz ? ' transform="rotate(-90 ' + n2(X) + ' ' + n2(Y) + ')"' : '') + '>' + esc(t) + '</text>';
+    };
+    const vb = poziom ? [-3, -2.2, D.szer + 5, D.dl + 4.4] : [-2.2, -3, D.dl + 4.4, D.szer + 5];
     let tlo = '', tusz = '', cienki = '', grz = '', napisy = '', zazn = '';
     // płot z furtką: obrys w czterech pociągnięciach, z przerwą na furtkę, i sztachety co półtora metra
     let q = ziarno('plot');
@@ -166,7 +177,7 @@
     for (let y = 1.5; y < D.szer; y += 1.5) cienki += kres(q, 0, y, -.4, y + (q() - .5) * .1, .02) + kres(q, D.dl, y, D.dl + .4, y + (q() - .5) * .1, .02);
     tusz += 'M' + n2(furtkaX - 1.1) + ' 0' + 'a2.2 2.2 0 0 1 2.2 0';     // skrzydło furtki
     cienki += 'M' + n2(furtkaX - 1.1) + ' 0q1.1 1.4 2.2 0';
-    napisy += '<text x="' + n2(furtkaX) + '" y="-1.1" class="maly">furtka</text>';
+    napisy += napis(furtkaX, -1.1, 'maly', 'furtka', true);
     // dom: kreskowany, z liniami dachu
     D.zabudowa.forEach(z => {
       q = ziarno('dom:' + z.nazwa);
@@ -176,7 +187,7 @@
       cienki += kres(q, z.x, z.y, cx - (z.dl / 2 - r), cy, .08) + kres(q, z.x, z.y + z.szer, cx - (z.dl / 2 - r), cy, .08) +
         kres(q, z.x + z.dl, z.y, cx + (z.dl / 2 - r), cy, .08) + kres(q, z.x + z.dl, z.y + z.szer, cx + (z.dl / 2 - r), cy, .08) +
         kres(q, cx - (z.dl / 2 - r), cy, cx + (z.dl / 2 - r), cy, .06);
-      napisy += '<text x="' + n2(cx) + '" y="' + n2(z.y - .8) + '" class="sredni">' + esc(z.nazwa) + '</text>';
+      napisy += napis(cx, z.y - .8, 'sredni', z.nazwa, true);
       // ścieżki: od furtki do domu i od domu do grządek
       q = ziarno('sciezki');
       cienki += kres(q, furtkaX - .7, .3, furtkaX - .7, z.y - .2, .12) + kres(q, furtkaX + .7, .3, furtkaX + .7, z.y - .2, .12);
@@ -237,21 +248,19 @@
     });
     // tytuł, podziałka i róża wiatrów w pustym rogu przy płocie
     const tx = Math.min(10, ob.x > 0 ? ob.x / 2 : D.dl / 2), ty = D.szer - 11;
-    napisy += '<text x="' + n2(tx) + '" y="' + n2(ty) + '" class="duzy">Ogród</text>' +
-      '<text x="' + n2(tx) + '" y="' + n2(ty + 1.9) + '" class="maly">' + D.dl + ' × ' + D.szer + ' m</text>' +
-      '<text x="' + n2(tx - 5) + '" y="' + n2(ty + 7.2) + '" class="maly">10 m</text>' +
-      '<text x="' + n2(tx + 5.5) + '" y="' + n2(ty + 3.9) + '" class="sredni">N</text>';
+    napisy += napis(tx, ty, 'duzy', 'Ogród') + napis(tx, ty + 1.9, 'maly', D.dl + ' × ' + D.szer + ' m') +
+      napis(tx - 5, ty + 7.2, 'maly', '10 m') + napis(tx + 5.5, ty + 3.9, 'sredni', 'N');
     q = ziarno('podzialka');
     tusz += kres(q, tx - 10 + 0, ty + 5.3, tx, ty + 5.3, .04);
     for (let k = 0; k <= 10; k += 5) cienki += kres(q, tx - 10 + k, ty + 4.9, tx - 10 + k, ty + 5.7, .02);
     tusz += kres(q, tx + 5.5, ty + 9, tx + 5.5, ty + 4.6, .05) + 'M' + n2(tx + 5) + ' ' + n2(ty + 5.4) + 'L' + n2(tx + 5.5) + ' ' + n2(ty + 4.4) + 'L' + n2(tx + 6) + ' ' + n2(ty + 5.4);
-    if (s.oslona_do) napisy += '<text x="' + n2(ob.x + ob.dl / 2) + '" y="-1.1" class="maly">nad grządkami osłona przed przymrozkiem</text>';
+    if (s.oslona_do) napisy += napis(ob.x + ob.dl / 2, -1.1, 'maly', 'nad grządkami osłona przed przymrozkiem', true);
     return '<svg class="plan" viewBox="' + vb.join(' ') + '" style="aspect-ratio:' + vb[2] + '/' + vb[3] + '" role="img" aria-label="Plan działki">' +
       '<defs><filter id="ogr-pioro" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="' + (hash('pioro') % 97) + '" result="n"/>' +
       '<feDisplacementMap in="SourceGraphic" in2="n" scale=".14" xChannelSelector="R" yChannelSelector="G"/></filter>' +
       '<pattern id="ogr-kreski" width=".55" height=".55" patternUnits="userSpaceOnUse" patternTransform="rotate(38)"><path d="M0 .27h.55" stroke="#2b1d10" stroke-width=".05" stroke-opacity=".55"/></pattern></defs>' +
-      '<g filter="url(#ogr-pioro)">' + tlo + '<path class="cienki" d="' + cienki + '"/><path class="tusz" d="' + tusz + '"/>' + grz +
-      (zazn ? '<path class="zazn" d="' + zazn + '"/>' : '') + '</g>' + napisy + '</svg>';
+      (poziom ? '<g transform="matrix(0 -1 1 0 0 ' + D.dl + ')">' : '<g>') + '<g filter="url(#ogr-pioro)">' + tlo + '<path class="cienki" d="' + cienki + '"/><path class="tusz" d="' + tusz + '"/>' + grz +
+      (zazn ? '<path class="zazn" d="' + zazn + '"/>' : '') + '</g></g>' + napisy + '</svg>';
   }
   const przycisk = (a, t, d, wyl) => '<button type="button" data-a="' + a + '"' + (d ? " data-d='" + esc(JSON.stringify(d)) + "'" : '') + (wyl ? ' disabled' : '') + '>' + t + '</button>';
   function szczegoly(s) {

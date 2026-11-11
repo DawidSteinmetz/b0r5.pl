@@ -79,6 +79,8 @@
     '<div class="corner r" id="cal"><small id="cw"></small><b id="cd"></b><small id="cm"></small></div>' +
     '<div id="modal"><div id="sheet" class="a5"><div id="view"><div id="w"></div></div>' +
     '<button id="zam" type="button" aria-label="Zamknij"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
+    '<button id="obr" type="button" aria-label="Obróć kartkę" title="Obróć kartkę"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M18.2 2.8v4.3h-4.3"/>' +
+    '<path class="gw" d="M11 8.6l.75 2.15 2.15.75-2.15.75L11 14.4l-.75-2.15-2.15-.75 2.15-.75zM15.6 13.6l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4z"/></svg></button>' +
     '<div id="pager" hidden>' +
     '<button id="prev" type="button" aria-label="Poprzednia strona"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<span id="pnr"></span>' +
@@ -141,6 +143,7 @@
   function arkusz(klasa) {
     auto = klasa !== 'ks';                    // krótkie: zacznij od A5, a gdy się nie mieści, przejdź na A4
     sheet.className = klasa === 'ks' ? 'a4' : 'a5';
+    if (moznaObrocic() && wolePoziom()) sheet.classList.add('poziom');
     ziarnoKartki(sheet, ziarnoArk);          // każda kartka w oknie ma własne ziarno
     strona = 0; stron = 1;
     paginuj();
@@ -149,7 +152,7 @@
     const cw = w.clientWidth;
     if (!cw) return;
     stron = Math.max(1, Math.ceil((w.scrollWidth - 2) / cw));
-    if (auto && stron > 1 && sheet.className === 'a5') { auto = false; sheet.className = 'a4'; return paginuj(); }
+    if (auto && stron > 1 && sheet.classList.contains('a5')) { auto = false; sheet.classList.replace('a5', 'a4'); return paginuj(); }
     strona = Math.min(strona, stron - 1);
     w.style.transform = 'translateX(' + (-strona * 100) + '%)';
     pager.hidden = stron < 2;
@@ -164,10 +167,52 @@
   let ramka = 0;
   new MutationObserver(() => { cancelAnimationFrame(ramka); ramka = requestAnimationFrame(paginuj); })
     .observe(w, { childList: true, subtree: true, characterData: true });
-  addEventListener('resize', paginuj);
+  addEventListener('resize', () => {
+    if (sheet.classList.contains('poziom') && !moznaObrocic()) { sheet.classList.remove('poziom'); document.dispatchEvent(new CustomEvent('mysl:obrot')); }
+    paginuj();
+  });
   bPrev.onclick = () => przewroc(-1);
   bNext.onclick = () => przewroc(1);
   $('#zam').onclick = () => zamknij();
+
+  /* Magiczny obrót kartki: na komputerze z szerokim ekranem pionową kartkę można przepisać na poziom (i z powrotem).
+     Wybór zapamiętuje przeglądarka gościa, więc następne kartki otwierają się tak samo. Pokój, który rysuje coś
+     zależnego od ułożenia (plan ogrodu), słucha zdarzenia 'mysl:obrot' i pyta Mysl.poziom(). */
+  const EKRAN_POZIOMY = matchMedia('(orientation: landscape) and (hover: hover) and (pointer: fine)');
+  function moznaObrocic() { return EKRAN_POZIOMY.matches; }
+  function wolePoziom() { try { return localStorage.getItem('mpoziom') === '1'; } catch (e) { return false; } }
+  let obraca = false;
+  async function obroc() {
+    if (obraca) return;
+    obraca = true;
+    const naPoziom = !sheet.classList.contains('poziom'), ruch = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try { localStorage.setItem('mpoziom', naPoziom ? '1' : '0'); } catch (e) { /* tryb prywatny */ }
+    const kat = naPoziom ? -90 : 90;
+    if (ruch) {
+      gwiazdki();
+      await sheet.animate([{ transform: 'none', opacity: 1, filter: 'none' }, { transform: 'rotate(' + kat / 2 + 'deg) scale(.82)', opacity: .15, filter: 'blur(2px)' }],
+        { duration: 320, easing: 'ease-in' }).finished.catch(() => { });
+    }
+    sheet.classList.toggle('poziom', naPoziom);
+    strona = 0; paginuj();
+    document.dispatchEvent(new CustomEvent('mysl:obrot'));
+    if (ruch) await sheet.animate([{ transform: 'rotate(' + -kat / 2 + 'deg) scale(.82)', opacity: .15, filter: 'blur(2px)' }, { transform: 'none', opacity: 1, filter: 'none' }],
+      { duration: 380, easing: 'ease-out' }).finished.catch(() => { });
+    obraca = false;
+  }
+  function gwiazdki() {                      // iskierki rozsypujące się spod kartki
+    const r = sheet.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    for (let i = 0; i < 14; i++) {
+      const g = document.createElement('span'), a = Math.random() * 6.283, d = Math.max(r.width, r.height) * (.45 + Math.random() * .3);
+      g.className = 'iskra'; g.textContent = i % 3 ? '✦' : '✧';
+      g.style.left = cx + 'px'; g.style.top = cy + 'px'; g.style.fontSize = (10 + Math.random() * 12) + 'px';
+      modal.appendChild(g);
+      g.animate([{ transform: 'translate(-50%,-50%) scale(.3)', opacity: 0 }, { opacity: 1, offset: .25 },
+        { transform: 'translate(calc(-50% + ' + Math.cos(a) * d + 'px),calc(-50% + ' + Math.sin(a) * d + 'px)) scale(1) rotate(' + (Math.random() * 180) + 'deg)', opacity: 0 }],
+        { duration: 700 + Math.random() * 400, easing: 'ease-out' }).finished.then(() => g.remove(), () => g.remove());
+    }
+  }
+  $('#obr').onclick = obroc;
   addEventListener('keydown', e => {
     if (!modal.classList.contains('on') || /^(INPUT|SELECT|TEXTAREA)$/.test((e.target || {}).tagName)) return;
     if (e.key === 'ArrowRight' || e.key === 'PageDown') przewroc(1);
@@ -579,6 +624,7 @@
   window.Mysl = {
     BASE, POKOJ, URL_POKOJU, gracz, $, esc, md, w, modal, elementy: items,
     arkusz, zamknij, tresc, odswiez, przenoszenie,
+    poziom: () => sheet.classList.contains('poziom'),
     rodzaj(nazwa, opis) { RODZAJE[nazwa] = Object.assign({ v: .3, bob: .25 }, opis); }
   };
 

@@ -1,0 +1,13 @@
+{
+ "_opis": "Skopiuj jako <pokoj>/_logika/poczta_odbior.json w myślodsiewni, która ma ODBIERAĆ listy (np. Henryka pod b0r5.pl/_/), i ustaw klucz taki sam jak w poczta.json nadawcy. Listy lądują jako zwykłe pliki .md w <pokoj>/<folder>/.",
+ "pokoj": "gabinet",
+ "folder": "przedmioty",
+ "limit_dzienny": 10,
+ "nadawcy": {
+  "artemida": {
+   "nazwa": "Artemida Steinmetz",
+   "klucz": "zmien-mnie",
+   "tytul": "List od Artemidy Steinmetz"
+  }
+ }
+}

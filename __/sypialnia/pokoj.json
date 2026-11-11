@@ -1,0 +1,14 @@
+{
+ "nazwa": "Sypialnia",
+ "opis": "Zmięta pościel. Na stoliku kubek z zimnym naparem.",
+ "gdzie": "w sypialni",
+ "do": "do sypialni",
+ "ikona": "<path d=\"M15 85V45M85 85V60M15 70h70M15 60h25v10M40 60h45\"/><path d=\"M22 50h12\"/>",
+ "kolejnosc": 6,
+ "foldery": [
+  {
+   "nazwa": "przedmioty",
+   "rodzaj": "przedmiot"
+  }
+ ]
+}

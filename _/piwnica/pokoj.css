@@ -1,0 +1,69 @@
+/* Wygląd elementów piwnicy (pokoj.json: styl) */
+.p.kot{width:150px;height:184px}
+/* wiersz, tabela i przyciski nie mogą rozdzielać się między strony kartki */
+#w .rzad,#w .poz,#w .zamow,#w table.mole,#w #scena{break-inside:avoid}
+/* wiersz: opis zawija się w razie potrzeby, a przyciski zawsze zostają w jednym rzędzie po prawej */
+#w .rzad{display:flex;justify-content:space-between;align-items:center;gap:.6em;text-align:left;margin:.3em 0}
+#w .rzad>span:first-child{flex:1 1 0;min-width:0;line-height:1.25}
+#w .rzad>span:last-child{flex:none;white-space:nowrap}
+#w .rzad button{margin:0 0 0 4px;padding:3px 9px;font-size:13px}
+#w .rzad input{width:4.2em;margin:0;padding:.1em .2em;font:inherit;vertical-align:middle}
+/* komunikat zawsze widoczny, na wysokości numeru strony, między strzałkami */
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 Georgia,serif;text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost.on{opacity:1}
+@media (max-width:360px),(max-height:520px){
+  #w .rzad{gap:.3em}
+  #w .rzad button{margin-left:2px;padding:2px 5px;font-size:12px}
+  #w .rzad input{width:3.4em}
+}
+#w .dim{opacity:.7;font-size:.85em;text-align:left}
+#w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
+/* księga rachunkowa: wiersze jak w rejestrze, ilość zmienia się przyciskami − i + */
+#w .kasa{font-size:18px;font-style:italic;margin:10px 0 4px}
+#w table.cennik{width:100%;border-collapse:collapse;font-size:14px}
+#w .cennik td{padding:2px 3px;vertical-align:middle}
+#w .cennik td:first-child{padding-left:0}
+#w .cennik td:last-child{padding-right:0}
+#w .poz.wybrany{background:#7a4a1a22}
+#w .cennik .naz{width:100%;text-align:left;line-height:1.2}
+#w .cennik .naz i{opacity:.7;font-size:.9em}
+#w .cennik .cena{white-space:nowrap;text-align:right;font-style:italic;padding-left:.6em}
+#w .cennik .krok{white-space:nowrap;text-align:right;padding-left:.5em}
+#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 Georgia,serif;border-color:#2b1d1099;vertical-align:middle}
+#w .krok output{display:inline-block;width:1.9em;text-align:center;font-variant-numeric:tabular-nums;vertical-align:middle}
+@media (max-width:360px),(max-height:520px){
+  #w table.cennik{font-size:12px}
+  #w .cennik td{padding:1px}
+  #w .cennik .cena,#w .cennik .krok{padding-left:.3em}
+  #w .krok button{width:19px;height:19px;font-size:14px}
+  #w .krok output{width:1.5em}
+}
+#w .zamow{display:flex;justify-content:space-between;align-items:center;gap:.6em;margin-top:8px;font-style:italic}
+#w .zamow button{margin:0}
+#w input[type=range]{width:100%;max-width:100%;padding:0;margin:8px 0 0}
+#w table.mole{border-collapse:collapse;margin:8px auto;font-size:14px;text-align:left}
+#w table.mole th,#w table.mole td{border-bottom:1px solid #0003;padding:3px 10px}
+#w .proporcja{font-style:italic}
+/* karta czaru-przepisu */
+.p.m.czar{border:1px solid #8a6b3a;box-shadow:inset 0 0 20px #5a3c14dd,0 0 14px #e8b84a66}
+#w .zazn{white-space:nowrap}
+#w table.przepis{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0;break-inside:avoid}
+#w table.przepis th,#w table.przepis td{padding:2px 3px;text-align:right;border-bottom:1px solid #0003;font-weight:normal}
+#w table.przepis th{font-style:italic;font-size:12px}
+#w table.przepis th:first-child,#w table.przepis td:first-child{text-align:left;padding-left:0}
+#w table.przepis td:last-child,#w table.przepis th:last-child{padding-right:0}
+#w table.przepis .brak{font-weight:bold}
+#w .jednostka{display:flex;align-items:center;justify-content:space-between;gap:.5em;margin-top:4px;text-align:left;break-inside:avoid}
+#w .jednostka input[type=text]{flex:0 0 6em;width:6em;margin:0}
+#w .jednostka select{flex:none;margin:0}
+#w .jednostka button{flex:none;margin:0;padding:3px 9px;font-size:13px}
+/* zakładki Składu */
+#w .zakladki{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 6px;break-inside:avoid}
+#w .zakladki button{margin:0;padding:3px 8px;font-size:13px}
+#w .zakladki button.on{font-weight:bold;background:#2b1d1026;box-shadow:inset 0 -2px 0 #2b1d10aa}
+#w #scena{position:relative;width:96px;height:96px;margin:4px auto}
+#w #scena svg{width:100%}
+#w #scena .probka{fill:#c28a3b88;stroke:#8a5a1a}
+#w #scena.trzesie svg{animation:trzes .12s linear infinite}
+@keyframes trzes{0%{transform:translate(-2px,1px) rotate(-1.5deg)}25%{transform:translate(2px,-1px) rotate(1.5deg)}50%{transform:translate(-1px,-2px) rotate(-1deg)}75%{transform:translate(1px,2px) rotate(1deg)}100%{transform:translate(-2px,1px) rotate(-1.5deg)}}
+@media (prefers-reduced-motion:reduce){#w #scena.trzesie svg{animation:none}}

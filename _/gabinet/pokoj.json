@@ -1,0 +1,14 @@
+{
+ "nazwa": "Gabinet",
+ "opis": "Biurko, listy, kalendarz z zakreślonymi datami.",
+ "gdzie": "w gabinecie",
+ "ikona": "<path d=\"M15 55h70M20 55v32M80 55v32M30 55v14h40V55\"/><path d=\"M50 50V32M45 32h10M50 24c-4 4 4 4 0 8\"/>",
+ "kolejnosc": 3,
+ "foldery": [
+  {
+   "nazwa": "przedmioty",
+   "rodzaj": "przedmiot"
+  },
+  { "nazwa": "korespondencja", "rodzaj": "przedmiot" }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "_opis": "Katalizator decyduje, co powstanie w kociołku. 'wzor' to atomy produktu, 'rodzaj' to m albo f (odmiana nazwy), 'cena_10g' to punkty za 10 g przy dobrym skupie. 'ukryty' to nazwa przedmiotu przenośnego: katalizator działa dopiero, gdy ten przedmiot leży w tym pokoju. 'wymaga' to surowiec, który musi być w piwnicy: nie zużywa się i nie dodaje atomów. 'ciecz': true podaje produkt w litrach (1 g liczy się jak 1 ml, tak samo jak pojemność kociołka).",
+ "cukier": {
+  "nazwa": "Katalizator cukrowy",
+  "produkt": "Cukier",
+  "rodzaj": "m",
+  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor_tekst": "C₆H₁₂O₆",
+  "cena_10g": 10
+ },
+ "olanzapina": {
+  "nazwa": "Katalizator preparatu Z.",
+  "produkt": "Olanzapina",
+  "rodzaj": "f",
+  "wzor": { "C": 17, "H": 20, "N": 4, "S": 1 },
+  "wzor_tekst": "C₁₇H₂₀N₄S",
+  "cena_10g": 300
+ },
+ "fruktoza": {
+  "nazwa": "Zakurzony flakon",
+  "produkt": "Fruktoza",
+  "rodzaj": "f",
+  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor_tekst": "C₆H₁₂O₆",
+  "cena_10g": 16,
+  "ukryty": "zakurzony-flakon"
+ },
+ "drozdze": {
+  "nazwa": "Drożdże gorzelnicze",
+  "produkt": "Elixir Betae",
+  "rodzaj": "m",
+  "wzor": { "C": 2, "H": 6, "O": 1 },
+  "wzor_tekst": "C₂H₆O",
+  "cena_10g": 14,
+  "ciecz": true,
+  "wymaga": "drozdze-gorzelnicze"
+ }
+}

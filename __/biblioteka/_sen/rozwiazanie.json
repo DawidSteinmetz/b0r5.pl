@@ -1,0 +1,45 @@
+{
+ "ksiazka": "biblioteka/ksiazki/017-o-przedmiotach-ktore-przychodza-we-snie",
+ "wymagane": [
+  {
+   "nazwa": "stan",
+   "zrodla": [
+    "buduar/przedmioty/001-list-do-samej-siebie",
+    "buduar/przedmioty/002-kartoteka-przepisow",
+    "salon/przedmioty/001-notatka-po-rozmowie",
+    "sypialnia/przedmioty/002-notes-spod-poduszki"
+   ]
+  },
+  {
+   "nazwa": "sklad",
+   "zrodla": [
+    "kuchnia/przedmioty/001-kartka-przy-garnku",
+    "kuchnia/przedmioty/002-osad-na-dnie-garnka",
+    "sypialnia/przedmioty/001-kubek-z-zimnym-naparem",
+    "ogrod/przedmioty/001-grzadka-z-ziolami",
+    "gabinet/przedmioty/003-rachunek-od-zielarza"
+   ]
+  },
+  {
+   "nazwa": "data",
+   "zrodla": [
+    "gabinet/przedmioty/002-kalendarz-urzedowy-z-zakreslonymi-datami",
+    "ogrod/przedmioty/002-kartka-przy-furtce",
+    "salon/przedmioty/001-notatka-po-rozmowie"
+   ]
+  },
+  {
+   "nazwa": "cel",
+   "zrodla": [
+    "buduar/przedmioty/001-list-do-samej-siebie",
+    "sypialnia/przedmioty/002-notes-spod-poduszki"
+   ]
+  }
+ ],
+ "tryb": "auto",
+ "limit_prob": 3,
+ "nagroda": [
+  "sypialnia/przedmioty/900-przepis-ze-snu"
+ ],
+ "wymaga_wywaru": true
+}

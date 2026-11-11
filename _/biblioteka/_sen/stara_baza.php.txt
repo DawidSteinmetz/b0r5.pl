@@ -1,0 +1,200 @@
+<?php
+// Wspólne funkcje: konfiguracja, baza SQLite ze stanem gry, obliczanie stanu.
+// Stan to dziennik zdarzeń (tabela zdarzenia); wszystko inne wylicza się z niego,
+// dzięki czemu mistrz gry może cofnąć dowolne zdarzenie albo wyzerować grę.
+define('KORZEN', dirname(__DIR__));
+
+function bezpieczne($s) { return is_string($s) && preg_match('/^[a-z0-9_-]+$/', $s); }
+
+function wczytaj_json($p) {
+    $t = @file_get_contents($p);
+    if ($t === false) return null;
+    $j = json_decode($t, true);
+    return is_array($j) ? $j : null;
+}
+
+function swiat() {
+    static $s = null;
+    if ($s !== null) return $s;
+    return $s = array_merge(['rok' => 1914, 'strefa' => 'Europe/Warsaw', 'okno' => null],
+        wczytaj_json(KORZEN . '/data/swiat.json') ?: []);
+}
+
+function konfiguracja() {
+    return array_merge(['haslo' => 'zmien-mnie'], wczytaj_json(KORZEN . '/MISTRZ_GRY/konfiguracja.json') ?: []);
+}
+
+function rozwiazanie() { return wczytaj_json(KORZEN . '/MISTRZ_GRY/rozwiazanie.json'); }
+
+// --- Przenośne przedmioty (data/przenosne.json) ---------------------------------------------------
+// Ten sam przedmiot ma osobny plik w każdym pokoju, w którym może leżeć, a "on" ma tylko jeden z nich
+// (tam, gdzie przedmiot leży teraz). Przeniesienie przełącza on/off. Bieżące miejsce wylicza się
+// z dziennika zdarzeń, więc "Cofnij" i "Wyzeruj grę" w panelu MG działają też na przenoszenie.
+function przenosne_grupy() {
+    static $g = null;
+    if ($g !== null) return $g;
+    $g = [];
+    $cfg = wczytaj_json(KORZEN . '/data/przenosne.json') ?: [];
+    foreach ($cfg as $nazwa => $def) {
+        if (!bezpieczne((string)$nazwa) || !is_array($def) || empty($def['miejsca']) || !is_array($def['miejsca'])) continue;
+        $m = []; $start = null;
+        foreach ($def['miejsca'] as $kid => $st) {
+            if (!preg_match('#^[a-z0-9_-]+/[a-z0-9_-]+/[a-z0-9_-]+$#', (string)$kid)) continue;
+            $m[$kid] = ($st === 'on' || $st === true);
+            if ($m[$kid] && $start === null) $start = $kid;
+        }
+        if (count($m) < 2) continue;                       // jedno miejsce to zwykły przedmiot
+        $ks = array_keys($m);
+        $g[$nazwa] = [
+            'miejsca' => $ks, 'start' => $start !== null ? $start : $ks[0],
+            'kanon' => (isset($def['kanon']) && isset($m[$def['kanon']])) ? $def['kanon'] : $ks[0],
+        ];
+    }
+    return $g;
+}
+function przenosne_grupa($kid) {
+    foreach (przenosne_grupy() as $n => $g) if (in_array($kid, $g['miejsca'], true)) return $n;
+    return null;
+}
+// Wspólny identyfikator (np. do wywar.json) dla dowolnego pliku z grupy; zwykły kid zostaje bez zmian.
+function przenosne_kanon($kid) {
+    $n = przenosne_grupa($kid);
+    return $n === null ? $kid : przenosne_grupy()[$n]['kanon'];
+}
+function przenosne_start() {
+    $a = [];
+    foreach (przenosne_grupy() as $n => $g) $a[$n] = $g['start'];
+    return $a;
+}
+// Nakłada jedno zdarzenie z dziennika na mapę [grupa => kid pliku, który jest teraz "on"].
+function przenosne_zastosuj(&$akt, $typ, $cel, $d) {
+    $gr = przenosne_grupy();
+    if ($typ === 'przeniesiono') {
+        $n = (string)$cel; $do = (string)(is_array($d) ? ($d['do'] ?? '') : '');
+        if (isset($gr[$n]) && in_array($do, $gr[$n]['miejsca'], true)) $akt[$n] = $do;
+    } elseif ($typ === 'zabrano') {                        // starsze zdarzenie "zabierz do piwnicy"
+        $n = przenosne_grupa((string)$cel);
+        if ($n === null) return;
+        foreach ($gr[$n]['miejsca'] as $kid) if (strpos($kid, 'piwnica/') === 0) { $akt[$n] = $kid; return; }
+    }
+}
+function pokoj_dane($id) { return bezpieczne($id) ? (wczytaj_json(KORZEN . '/' . $id . '/pokoj.json') ?: []) : []; }
+function pokoj_nazwa($id) { $p = pokoj_dane($id); return !empty($p['nazwa']) ? $p['nazwa'] : $id; }
+// "w piwnicy", "na strychu": pole "gdzie" w pokoj.json; bez niego "w pokoju „Nazwa”"
+function pokoj_gdzie($id) { $p = pokoj_dane($id); return !empty($p['gdzie']) ? $p['gdzie'] : 'w pokoju „' . pokoj_nazwa($id) . '”'; }
+
+// 'bez-okna' (brak ograniczeń), 'przed', 'trwa' albo 'po' (wg "okno" w data/swiat.json, czas serwera)
+function status_gry() {
+    $o = swiat()['okno'] ?? null;
+    if (!is_array($o) || empty($o['od']) || empty($o['do'])) return 'bez-okna';
+    try {
+        $tz = new DateTimeZone(swiat()['strefa']);
+        $teraz = new DateTime('now', $tz);
+        $od = new DateTime($o['od'], $tz);
+        $do = new DateTime($o['do'], $tz);
+    } catch (Exception $e) { return 'bez-okna'; }
+    return $teraz < $od ? 'przed' : ($teraz > $do ? 'po' : 'trwa');
+}
+
+function baza() {
+    static $db = null;
+    if ($db) return $db;
+    $dir = KORZEN . '/MISTRZ_GRY/dane';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $db = new PDO('sqlite:' . $dir . '/stan.sqlite');
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $db->exec('PRAGMA busy_timeout=3000');
+    $db->exec('CREATE TABLE IF NOT EXISTS zdarzenia(id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,'
+        . ' typ TEXT NOT NULL, cel TEXT, gracz TEXT, ip TEXT, dane TEXT, cofniete INTEGER NOT NULL DEFAULT 0)');
+    return $db;
+}
+
+function ip_hash() { return substr(sha1(($_SERVER['REMOTE_ADDR'] ?? '') . 'myslodsiewnia'), 0, 10); }
+
+function dodaj_zdarzenie($typ, $cel = '', $gracz = '', $dane = null) {
+    $db = baza();
+    $st = $db->prepare('INSERT INTO zdarzenia(ts,typ,cel,gracz,ip,dane) VALUES(?,?,?,?,?,?)');
+    $st->execute([time(), $typ, $cel, $gracz, ip_hash(),
+        $dane === null ? null : json_encode($dane, JSON_UNESCAPED_UNICODE)]);
+    return (int)$db->lastInsertId();
+}
+
+// ochrona przed zalewaniem: najwyżej 60 zdarzeń na minutę z jednego adresu
+function za_szybko() {
+    $st = baza()->prepare('SELECT COUNT(*) FROM zdarzenia WHERE ip=? AND ts>?');
+    $st->execute([ip_hash(), time() - 60]);
+    return (int)$st->fetchColumn() >= 60;
+}
+
+function stan() {
+    $db = baza();
+    $r = (int)$db->query("SELECT COALESCE(MAX(id),0) FROM zdarzenia WHERE typ='reset' AND cofniete=0")->fetchColumn();
+    $st = $db->prepare('SELECT * FROM zdarzenia WHERE id>? AND cofniete=0 ORDER BY id');
+    $st->execute([$r]);
+    $przecz = []; $odbl = []; $proby = []; $przywrocono = 0; $wywar = false; $miejsca = przenosne_start();
+    foreach ($st as $z) {
+        $d = $z['dane'] ? json_decode($z['dane'], true) : [];
+        if (!is_array($d)) $d = [];
+        $id = (int)$z['id'];
+        switch ($z['typ']) {
+            case 'otwarto': $przecz[$z['cel']] = true; break;
+            case 'proba':
+                $proby[$id] = ['id' => $id, 'ksiazka' => $z['cel'], 'wynik' => $d['wynik'] ?? 'pusty',
+                    'trafiona' => !empty($d['trafiona']), 'spelnione' => !empty($d['spelnione']),
+                    'gracz' => $z['gracz'], 'ts' => (int)$z['ts']];
+                break;
+            case 'zatwierdzono': if (isset($proby[(int)$z['cel']])) $proby[(int)$z['cel']]['wynik'] = 'zatwierdzony'; break;
+            case 'odrzucono': if (isset($proby[(int)$z['cel']])) $proby[(int)$z['cel']]['wynik'] = 'odrzucony'; break;
+            case 'odblokowano': $odbl[$z['cel']] = true; break;
+            case 'przywrocono_proby': $przywrocono = $id; break;
+            case 'wywar_gotowy': $wywar = true; break;
+            case 'przeniesiono': case 'zabrano': przenosne_zastosuj($miejsca, $z['typ'], $z['cel'], $d); break;
+        }
+    }
+    $wyblakle = []; $bledy = 0; $sen = false; $czeka = false;
+    foreach ($proby as $p) {
+        if ($p['wynik'] === 'pusty' || $p['wynik'] === 'odrzucony') {
+            // "Przywróć próby" (panel MG) zdejmuje blaknięcie i zeruje licznik błędów
+            if ($p['id'] > $przywrocono) { $wyblakle[$p['ksiazka']] = true; $bledy++; }
+        } elseif ($p['wynik'] === 'czeka') $czeka = true;
+        elseif ($p['wynik'] === 'zatwierdzony') $sen = true;
+    }
+    $rz = rozwiazanie() ?: [];
+    if ($sen) foreach (($rz['nagroda'] ?? []) as $k) $odbl[$k] = true;
+    $limit = (int)($rz['limit_prob'] ?? 0);
+    return [
+        'przeczytane' => array_keys($przecz), 'odblokowane' => array_keys($odbl),
+        'wyblakle' => array_keys($wyblakle), 'sen' => $sen, 'czeka' => $czeka, 'wywar' => $wywar, 'miejsca' => $miejsca,
+        'bledy' => $bledy, 'limit' => $limit,
+        'zablokowane' => (!$sen && $limit > 0 && $bledy >= $limit),
+        'proby' => array_values($proby),
+    ];
+}
+
+// Ścieżka pliku elementu o identyfikatorze "pokoj/folder/nazwa" albo null.
+// Elementy ukryte (MISTRZ_GRY/ukryte/...) są dostępne tylko po odblokowaniu.
+function sciezka_elementu($kid, $odblokowane, $tylko_ukryte = false) {
+    if (!preg_match('#^([a-z0-9_-]+)/([a-z0-9_-]+)/([a-z0-9_-]+)$#', (string)$kid, $m)) return null;
+    foreach (['md', 'txt'] as $e) {
+        $p = KORZEN . "/$m[1]/$m[2]/$m[3].$e";
+        if (!$tylko_ukryte && $m[1][0] !== '_' && is_file($p)) return $p;
+    }
+    if (in_array($kid, $odblokowane, true)) {
+        foreach (['md', 'txt'] as $e) {
+            $p = KORZEN . "/MISTRZ_GRY/ukryte/$m[1]/$m[2]/$m[3].$e";
+            if (is_file($p)) return $p;
+        }
+    }
+    return null;
+}
+
+// Liczba listów w skrzynce (pliki zapisane przez api/poczta_odbierz.php). Klient po zmianie liczby przeładowuje pokoje,
+// więc nowy list pojawia się bez odświeżania strony.
+function skrzynka_licznik() {
+    $c = wczytaj_json(KORZEN . '/MISTRZ_GRY/poczta_odbior.json');
+    if (!is_array($c)) return 0;
+    $pokoj = (string)($c['pokoj'] ?? 'gabinet'); $folder = (string)($c['folder'] ?? 'przedmioty');
+    if (!preg_match('/^[a-z0-9_-]+$/', $pokoj) || !preg_match('/^[a-z0-9_-]+$/', $folder)) return 0;
+    return count(glob(KORZEN . "/$pokoj/$folder/8??-list-od-*.md") ?: []);
+}

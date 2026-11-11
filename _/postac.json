@@ -1,0 +1,10 @@
+{
+ "nazwa": "Myśloodsiewnia Henryka Alamansusa",
+ "rok": 1914,
+ "strefa": "Europe/Warsaw",
+ "radio": {
+  "wlaczone": true,
+  "tytul": true,
+  "glosnosc": 0.6
+ }
+}

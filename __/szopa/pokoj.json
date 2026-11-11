@@ -1,0 +1,15 @@
+{
+ "nazwa": "Szopa ogrodowa",
+ "opis": "Narzędzia, wiadro soli i słoik z siarką.",
+ "gdzie": "w szopie",
+ "do": "do szopy",
+ "ikona": "<path d=\"M15 85V45l35-20 35 20v40zM40 85V60h20v25\"/>",
+ "kolejnosc": 8,
+ "przenosne": { "zakurzony-flakon": { "plik": "przedmioty/002-zakurzony-flakon", "istnienie": "on" } },
+ "foldery": [
+  {
+   "nazwa": "przedmioty",
+   "rodzaj": "przedmiot"
+  }
+ ]
+}

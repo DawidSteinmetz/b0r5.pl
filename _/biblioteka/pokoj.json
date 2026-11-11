@@ -1,0 +1,13 @@
+{
+ "nazwa": "Biblioteka",
+ "opis": "Półki pełne ksiąg. Ktoś siedzi w fotelu i próbuje sobie coś przypomnieć.",
+ "gdzie": "w bibliotece",
+ "ikona": "<rect x=\"15\" y=\"15\" width=\"70\" height=\"75\"/><path d=\"M15 40h70M15 65h70M28 15v25M40 15v25M52 40v25M64 40v25M30 65v25M46 65v25\"/>",
+ "kolejnosc": 2,
+ "foldery": [
+  {
+   "nazwa": "ksiazki",
+   "rodzaj": "ksiazka"
+  }
+ ]
+}

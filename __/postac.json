@@ -1,0 +1,11 @@
+{
+ "nazwa": "Myśloodsiewnia Artemidy Steinmetz",
+ "rok": 1914,
+ "strefa": "Europe/Warsaw",
+ "radio": {
+  "wlaczone": true,
+  "tytul": true,
+  "glosnosc": 0.6,
+  "folder": "../_/radio"
+ }
+}

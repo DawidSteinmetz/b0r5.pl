@@ -1,0 +1,20 @@
+{
+ "nazwa": "Kuchnia",
+ "opis": "Piec, wielki garnek i zapach czekolady.",
+ "gdzie": "w kuchni",
+ "do": "do kuchni",
+ "ikona": "<path d=\"M25 50h50l-6 28a10 10 0 0 1-10 8H41a10 10 0 0 1-10-8z\"/><path d=\"M22 50h56M35 90h30M42 40c-6-8 6-12 0-20M58 40c-6-8 6-12 0-20\"/>",
+ "kolejnosc": 3,
+ "skrypt": "pokoj.js",
+ "styl": "pokoj.css",
+ "przenosne": { "zakurzony-flakon": { "plik": "przedmioty/010-zakurzony-flakon", "istnienie": "off" } },
+ "foldery": [
+  { "nazwa": "przedmioty", "rodzaj": "przedmiot" },
+  { "nazwa": "sklad", "rodzaj": "sklad" },
+  { "nazwa": "stol", "rodzaj": "stol" },
+  { "nazwa": "waga", "rodzaj": "waga" },
+  { "nazwa": "urzadzenia", "rodzaj": "kociolek" },
+  { "nazwa": "ksiega", "rodzaj": "ksiega" },
+  { "nazwa": "przepisy", "rodzaj": "przepis" }
+ ]
+}

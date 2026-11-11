@@ -1,0 +1,79 @@
+{
+ "_opis": "Ustawienia alchemii kuchni Artemidy. Pliki pierwiastki.json i surowce.json nadpisuje import z arkusza, dlatego wszystko ręczne jest tutaj.",
+ "czas_czaru_s": 5,
+ "czas_wagi_s": 4,
+ "czas_gotowania_s": 5,
+ "pojemnosc_g": 12000,
+ "czar_wagi": "Revelio Ponderis",
+ "start": [
+  { "surowiec": "kakao-ziarna", "ile": 4 },
+  { "surowiec": "maslo-swieze", "ile": 4 },
+  { "surowiec": "miod-pszczeli", "ile": 2 },
+  { "surowiec": "woda", "ile": 4 },
+  { "surowiec": "wegiel-aktywny", "ile": 2 },
+  { "surowiec": "cebula-swieza", "ile": 2 }
+ ],
+ "kategorie": [
+  { "id": "rosliny", "nazwa": "Rośliny", "surowce": ["kakao-ziarna", "cebula-swieza", "cebula-luska-suszona", "czosnek-glowka", "bylica-pospolita-ziele-suszone", "koper-ogrodowy-ziele-swieze", "mak-lekarski-nasiona", "ruta-zwyczajna-ziele", "kozlek-lekarski-korzen"] },
+  { "id": "mineraly", "nazwa": "Minerały", "surowce": ["wegiel-aktywny", "kwiat-siarczany-siarka", "sol-kamienna-halit", "witriol-zielony-siarczan-zelaza-ii", "saletra-potasowa-kno3", "kreda-malarska-wapien-caco3", "popiol-bukowy-potaz"] },
+  { "id": "plyny", "nazwa": "Płyny i reszta", "surowce": ["woda", "maslo-swieze", "olej-lniany", "spirytus-winny-90", "miod-pszczeli", "jad-wezowy-zasuszony", "rtec-zywe-srebro"] }
+ ],
+ "surowce_reczne": {
+  "woda": {
+   "nazwa": "Woda",
+   "stan": "Ciecz",
+   "masa_od": 18.015,
+   "masa_do": 18.015,
+   "masowo": { "H": 11.19, "O": 88.81 },
+   "opis": "Jeden kubek to dokładnie jeden mol."
+  },
+  "kakao-ziarna": {
+   "nazwa": "Kakao (ziarna)",
+   "stan": "Suszone ziarna",
+   "masa_od": 20.0,
+   "masa_do": 50.0,
+   "masowo": { "C": 57.0, "O": 28.0, "H": 8.5, "N": 3.6, "K": 1.5, "P": 0.6, "Ca": 0.3, "S": 0.2 },
+   "opis": "Gorzkie ziarna z dalekiego portu."
+  },
+  "maslo-swieze": {
+   "nazwa": "Masło (świeże)",
+   "stan": "Tłuszcz",
+   "masa_od": 30.0,
+   "masa_do": 80.0,
+   "masowo": { "C": 73.5, "H": 12.2, "O": 13.2, "N": 0.6, "Ca": 0.3, "P": 0.2 },
+   "opis": "Prosto od mleczarki."
+  }
+ },
+ "masa_stala": { "wegiel-aktywny": 13.42 },
+ "przymiotniki": {
+  "cebula-swieza": { "m": "cebulowy", "f": "cebulowa", "z": "z cebuli" },
+  "cebula-luska-suszona": { "m": "cebulowy", "f": "cebulowa", "z": "z łuski cebuli" },
+  "czosnek-glowka": { "m": "czosnkowy", "f": "czosnkowa", "z": "z czosnku" },
+  "bylica-pospolita-ziele-suszone": { "m": "bylicowy", "f": "bylicowa", "z": "z bylicy" },
+  "koper-ogrodowy-ziele-swieze": { "m": "koperkowy", "f": "koperkowa", "z": "z kopru" },
+  "mak-lekarski-nasiona": { "m": "makowy", "f": "makowa", "z": "z maku" },
+  "ruta-zwyczajna-ziele": { "m": "rutowy", "f": "rutowa", "z": "z ruty" },
+  "kozlek-lekarski-korzen": { "m": "kozłkowy", "f": "kozłkowa", "z": "z kozłka" },
+  "olej-lniany": { "m": "lniany", "f": "lniana", "z": "z oleju lnianego" },
+  "spirytus-winny-90": { "m": "winny", "f": "winna", "z": "ze spirytusu" },
+  "miod-pszczeli": { "m": "miodowy", "f": "miodowa", "z": "z miodu" },
+  "jad-wezowy-zasuszony": { "m": "jadowity", "f": "jadowita", "z": "z jadu" }
+ },
+ "zrodla_neutralne": {
+  "woda": "z wody",
+  "wegiel-aktywny": "z węgla aktywnego",
+  "kakao-ziarna": "z kakao",
+  "maslo-swieze": "z masła",
+  "kwiat-siarczany-siarka": "z kwiatu siarczanego",
+  "saletra-potasowa-kno3": "z saletry",
+  "kreda-malarska-wapien-caco3": "z kredy",
+  "popiol-bukowy-potaz": "z potażu",
+  "sol-kamienna-halit": "z soli",
+  "witriol-zielony-siarczan-zelaza-ii": "z witriolu"
+ },
+ "progi_czystosci": [
+  { "od": 0.99, "m": "czysty", "f": "czysta" },
+  { "od": 0.85, "m": "brudny", "f": "brudna" },
+  { "od": 0, "m": "bardzo brudny", "f": "bardzo brudna" }
+ ]
+}

@@ -1,0 +1,3 @@
+# Zaklęcia polerujące srebra
+
+Strony są sklejone wilgocią i nie dają się teraz otworzyć.

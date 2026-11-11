@@ -1,0 +1,13 @@
+{
+ "nazwa": "Ogród",
+ "opis": "Mokra ziemia, grządki z ziołami i furtka.",
+ "gdzie": "w ogrodzie",
+ "ikona": "<path d=\"M50 90V55M50 55c-20-5-28-25-10-35 6-10 28-8 28 6 10 8 4 26-18 29z\"/><path d=\"M20 90h60\"/>",
+ "kolejnosc": 7,
+ "foldery": [
+  {
+   "nazwa": "przedmioty",
+   "rodzaj": "przedmiot"
+  }
+ ]
+}

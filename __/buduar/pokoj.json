@@ -1,0 +1,24 @@
+{
+ "nazwa": "Buduar pani domu",
+ "opis": "Sekretarzyk, pamiętniki i kartoteka z przepisami.",
+ "gdzie": "w buduarze",
+ "do": "do buduaru",
+ "ikona": "<path d=\"M15 55h70M20 55v32M80 55v32M30 55v14h40V55\"/><path d=\"M50 50V32M45 32h10M50 24c-4 4 4 4 0 8\"/>",
+ "kolejnosc": 5,
+ "skrypt": "pokoj.js",
+ "styl": "pokoj.css",
+ "foldery": [
+  {
+   "nazwa": "przedmioty",
+   "rodzaj": "przedmiot"
+  },
+  {
+   "nazwa": "pamietniki",
+   "rodzaj": "przedmiot"
+  },
+  {
+   "nazwa": "poczta",
+   "rodzaj": "poczta"
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+{
+ "nazwa": "Strych",
+ "opis": "Kurz, skrzynie i rzeczy, o których Henryk mógł zapomnieć.",
+ "gdzie": "na strychu",
+ "ikona": "<path d=\"M12 85L50 20l38 65zM12 85h76M50 20v65M30 55h40\"/>",
+ "kolejnosc": 6,
+ "przenosne": { "zakurzony-flakon": { "plik": "przedmioty/002-zakurzony-flakon", "istnienie": "on" } },
+ "foldery": [
+  { "nazwa": "przedmioty", "rodzaj": "przedmiot" }
+ ]
+}

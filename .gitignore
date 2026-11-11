@@ -1,0 +1,23 @@
+# Co NIE trafia do repozytorium (GitHub). Te pliki przenosi się na drugi komputer ręcznie albo pobiera z serwera.
+
+# Kopie zapasowe: tylko na tym komputerze (historię zmian trzyma teraz git)
+/_kopia*/
+
+# Muzyka radia (ok. 1,9 GB, za dużo dla GitHuba)
+/_/radio/
+
+# Tajne klucze poczty i rynku między postaciami
+/_/gabinet/_logika/poczta_odbior.json
+/__/buduar/_logika/poczta.json
+/_/piwnica/_logika/rynek.json
+
+# Stan gry i baza: prawdziwe są na serwerze
+**/_logika/stan/*
+!**/_logika/stan/.keep
+**/_dane/*
+!**/_dane/.htaccess
+
+# Śmieci systemowe
+__pycache__/
+Thumbs.db
+desktop.ini

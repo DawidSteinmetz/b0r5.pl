@@ -1,0 +1,19 @@
+{
+ "_opis": "Czary-przepisy projektowane ręcznie. Klucz to nazwa pliku kartki w folderze przepisy/ (bez .md). 'skladniki' to gramy na jedną porcję, a czar sam liczy mnożnik z zapasów i pojemności kociołka. Dopisanie wpisu i kartki oznacza, że właściciel myśloodsiewni zna ten czar. Składnik z 'cel' trzeba najpierw odessać na stole do proporcji atomów z 'cel': 'g' to masa samych atomów z 'cel' na porcję (czar sam dolicza śladowe domieszki konkretnych sztuk), 'cel_nazwa' to nazwa gotowego składnika.",
+ "001-cantus-sacchari": {
+  "nazwa": "Cantus Sacchari",
+  "katalizator": "cukier",
+  "skladniki": [
+   { "surowiec": "woda", "g": 18.015 },
+   { "surowiec": "wegiel-aktywny", "g": 13.42 }
+  ]
+ },
+ "002-cantus-betae": {
+  "nazwa": "Cantus Betae",
+  "katalizator": "drozdze",
+  "skladniki": [
+   { "surowiec": "burak-cukrowy", "g": 142.706, "cel": { "C": 4, "H": 10, "O": 1 }, "cel_nazwa": "Burak alchemiczny" },
+   { "surowiec": "woda", "g": 34.683 }
+  ]
+ }
+}

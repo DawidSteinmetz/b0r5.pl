@@ -1,0 +1,82 @@
+<?php
+// Wspólny stan gry. GET: stan widoczny dla wszystkich graczy (odpytywany co kilka sekund).
+// POST: {akcja: "otworz" | "zasnij", id: "pokoj/folder/nazwa", gracz: "krotki-id"}.
+// Rozwiązanie (która książka) leży tylko w MISTRZ_GRY/rozwiazanie.json i nigdy nie trafia do przeglądarki.
+require __DIR__ . '/_baza.php';
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+
+function wyjscie($d, $kod = 200) {
+    http_response_code($kod);
+    echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+try {
+    $s = stan();
+} catch (Throwable $e) {
+    wyjscie(['blad' => 'brak bazy'], 503);
+}
+$sw = swiat();
+$status = status_gry();
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    wyjscie([
+        'czas' => (int)round(microtime(true) * 1000), 'strefa' => $sw['strefa'], 'status' => $status,
+        'przeczytane' => $s['przeczytane'], 'odblokowane' => $s['odblokowane'], 'wyblakle' => $s['wyblakle'],
+        'sen' => $s['sen'], 'czeka' => $s['czeka'], 'zablokowane' => $s['zablokowane'], 'wywar' => $s['wywar'], 'miejsca' => $s['miejsca'], 'listy' => skrzynka_licznik(),
+    ]);
+}
+
+$in = json_decode(file_get_contents('php://input'), true);
+if (!is_array($in)) wyjscie(['blad' => 'zle zadanie'], 400);
+$akcja = $in['akcja'] ?? '';
+$gracz = substr(preg_replace('/[^a-z0-9]/', '', strtolower((string)($in['gracz'] ?? ''))), 0, 12);
+$kid = (string)($in['id'] ?? '');
+try {
+    if (za_szybko()) wyjscie(['blad' => 'zbyt szybko'], 429);
+
+    if ($akcja === 'otworz') {
+        if (sciezka_elementu($kid, $s['odblokowane']) && !in_array($kid, $s['przeczytane'], true)) {
+            dodaj_zdarzenie('otwarto', $kid, $gracz);
+        }
+        wyjscie(['ok' => true]);
+    }
+
+    if ($akcja === 'zasnij') {
+        $rz = rozwiazanie() ?: [];
+        $tek = array_merge([
+            'pusty' => 'Sen nie przychodzi.',
+            'czeka' => 'Coś porusza się na granicy snu…',
+            'udany' => 'Budzisz się z czymś w dłoni.',
+            'zamkniete' => 'To wspomnienie już się nie obudzi.',
+            'zablokowane' => 'Sen zamknął się na dziś.',
+            'brak_wywaru' => 'Nie masz czym otworzyć snu. W kociołku nie ma wywaru, który by cię do niego zaprowadził.',
+        ], $rz['teksty'] ?? []);
+        $odp = function ($w) use ($tek) { wyjscie(['wynik' => $w, 'tekst' => $tek[$w]]); };
+
+        if ($status === 'przed' || $status === 'po') $odp('zamkniete');
+        if ($s['sen']) $odp('udany');
+        if ($s['zablokowane']) $odp('zablokowane');
+        if (!empty($rz['wymaga_wywaru']) && !$s['wywar']) $odp('brak_wywaru');
+        if (!sciezka_elementu($kid, $s['odblokowane']) || empty($rz['ksiazka'])) $odp('pusty');
+        if (in_array($kid, $s['wyblakle'], true)) $odp('pusty');
+        foreach ($s['proby'] as $p) if ($p['wynik'] === 'czeka') $odp('czeka');
+
+        $trafiona = ($kid === $rz['ksiazka']);
+        $przecz = array_flip($s['przeczytane']);
+        $spelnione = true;
+        foreach (($rz['wymagane'] ?? []) as $g) {
+            $ok = false;
+            foreach (($g['zrodla'] ?? []) as $z) if (isset($przecz[$z])) { $ok = true; break; }
+            if (!$ok) { $spelnione = false; break; }
+        }
+        if (!$trafiona || !$spelnione) $wynik = 'pusty';
+        else $wynik = (($rz['tryb'] ?? 'auto') === 'auto') ? 'zatwierdzony' : 'czeka';
+        dodaj_zdarzenie('proba', $kid, $gracz, ['wynik' => $wynik, 'trafiona' => $trafiona, 'spelnione' => $spelnione]);
+        $odp($wynik === 'zatwierdzony' ? 'udany' : $wynik);
+    }
+    wyjscie(['blad' => 'nieznana akcja'], 400);
+} catch (Throwable $e) {
+    wyjscie(['blad' => 'blad serwera'], 500);
+}

@@ -1,0 +1,14 @@
+/* Wygląd elementów buduaru (pokoj.json: styl) */
+.p.kot{width:150px;height:184px}
+#w textarea{display:block;width:100%;box-sizing:border-box;margin:6px 0 0;padding:8px;background:#e6d3a3aa;border:1px solid var(--ink);border-radius:3px;color:var(--ink);font:15px/1.45 Georgia,serif;resize:vertical;break-inside:avoid}
+#w .pasek{display:flex;justify-content:space-between;align-items:center;gap:.6em;margin-top:6px;break-inside:avoid}
+#w .pasek button{margin:0;flex:none}
+#w .pasek input{flex:1 1 0;min-width:0;max-width:none;margin:0}
+#w #nowy{text-align:left;font-size:14px}
+#w #nowy button{margin:2px 0 0 6px;padding:2px 8px;font-size:13px}
+#w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
+#w .wyslany{text-align:left;font-size:14px;margin:6px 0;break-inside:avoid}
+#w .wyslany small{opacity:.7}
+#w .wyslany p{margin:2px 0;font-size:14px}
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 Georgia,serif;text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost.on{opacity:1}

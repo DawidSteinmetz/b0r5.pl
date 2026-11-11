@@ -1,0 +1,323 @@
+{
+ "cebula-swieza": {
+  "nazwa": "Cebula (świeża)",
+  "stan": "Świeża (warzywo)",
+  "masa_od": 50.0,
+  "masa_do": 120.0,
+  "masowo": {
+   "O": 83.5,
+   "H": 10.7,
+   "C": 4.8,
+   "N": 0.4,
+   "S": 0.3,
+   "K": 0.2,
+   "Ca": 0.1
+  },
+  "opis": "Wysoka zawartość wody i lotnej siarki; silna esencja łzotwórcza o działaniu oczyszczającym."
+ },
+ "cebula-luska-suszona": {
+  "nazwa": "Cebula (łuska/suszona)",
+  "stan": "Suszona (łuska)",
+  "masa_od": 5.0,
+  "masa_do": 15.0,
+  "masowo": {
+   "C": 44.0,
+   "O": 42.0,
+   "H": 6.2,
+   "N": 3.5,
+   "S": 2.5,
+   "K": 1.2,
+   "Ca": 0.6
+  },
+  "opis": "Zagęszczenie węgla i siarki po odwodnieniu; barwnik flawonoidowy (kwercetyna)."
+ },
+ "czosnek-glowka": {
+  "nazwa": "Czosnek (główka)",
+  "stan": "Świeża (główka)",
+  "masa_od": 30.0,
+  "masa_do": 70.0,
+  "masowo": {
+   "O": 65.0,
+   "C": 20.5,
+   "H": 8.8,
+   "N": 2.1,
+   "S": 1.8,
+   "K": 1.1,
+   "P": 0.4,
+   "Ca": 0.3
+  },
+  "opis": "Wysoka siarka organiczna (allicyna); roślina solarno-marsowa, silny antymiazmat."
+ },
+ "bylica-pospolita-ziele-suszone": {
+  "nazwa": "Bylica pospolita (ziele suszone)",
+  "stan": "Suszone (ziele)",
+  "masa_od": 10.0,
+  "masa_do": 30.0,
+  "masowo": {
+   "C": 46.5,
+   "O": 39.0,
+   "H": 6.3,
+   "N": 2.8,
+   "K": 2.2,
+   "Ca": 1.5,
+   "S": 0.5,
+   "Fe": 0.4,
+   "Mg": 0.3
+  },
+  "opis": "Ziele Artemidy (Księżyc); obecność żelaza, gorzki ekstrakt w procesach transmutacyjnych."
+ },
+ "koper-ogrodowy-ziele-swieze": {
+  "nazwa": "Koper ogrodowy (ziele świeże)",
+  "stan": "Świeże (ziele)",
+  "masa_od": 15.0,
+  "masa_do": 35.0,
+  "masowo": {
+   "O": 78.0,
+   "H": 10.1,
+   "C": 8.2,
+   "N": 1.5,
+   "K": 1.2,
+   "Ca": 0.6,
+   "P": 0.2,
+   "Fe": 0.2
+  },
+  "opis": "Pod patronatem Merkurego; lotne olejki (karwon), uspokaja i łagodzi procesy fermentacji."
+ },
+ "mak-lekarski-nasiona": {
+  "nazwa": "Mak lekarski (nasiona)",
+  "stan": "Suche (nasiona)",
+  "masa_od": 20.0,
+  "masa_do": 50.0,
+  "masowo": {
+   "C": 52.0,
+   "O": 24.5,
+   "H": 7.8,
+   "N": 3.8,
+   "P": 1.4,
+   "Ca": 1.4,
+   "K": 0.8,
+   "Mg": 0.4,
+   "S": 0.3,
+   "Fe": 0.1
+  },
+  "opis": "Patronat bóstwa Somnus; bogaty w lipidy i fosfor, surowiec do eliksirów nasennych."
+ },
+ "ruta-zwyczajna-ziele": {
+  "nazwa": "Ruta zwyczajna (ziele)",
+  "stan": "Suszone (ziele)",
+  "masa_od": 15.0,
+  "masa_do": 40.0,
+  "masowo": {
+   "C": 45.0,
+   "O": 41.2,
+   "H": 6.1,
+   "N": 2.6,
+   "K": 2.1,
+   "Ca": 1.8,
+   "S": 0.4,
+   "Mg": 0.4,
+   "Fe": 0.4
+  },
+  "opis": "Herba gratia (ziele łaski); silny destylat ochronny i odtruwający, gorzki eliksir solarny."
+ },
+ "kozlek-lekarski-korzen": {
+  "nazwa": "Kozłek lekarski (korzeń)",
+  "stan": "Suszony (korzeń)",
+  "masa_od": 15.0,
+  "masa_do": 45.0,
+  "masowo": {
+   "C": 43.8,
+   "O": 42.5,
+   "H": 6.0,
+   "K": 2.5,
+   "N": 2.2,
+   "Ca": 1.2,
+   "Fe": 0.8,
+   "S": 0.4,
+   "P": 0.3,
+   "Mg": 0.3
+  },
+  "opis": "Kwas walerianowy; surowiec o ziemistej naturze, uspokajający wzburzone fluidy i nerwy."
+ },
+ "wegiel-aktywny": {
+  "nazwa": "Węgiel aktywny",
+  "stan": "Sproszkowany (porowaty)",
+  "masa_od": 5.0,
+  "masa_do": 20.0,
+  "masowo": {
+   "C": 89.5,
+   "O": 6.5,
+   "H": 1.2,
+   "Fe": 0.8,
+   "Ca": 0.8,
+   "N": 0.5,
+   "S": 0.4,
+   "P": 0.3
+  },
+  "opis": "Prima Materia absorpcji; czysty węgiel elementarny, filtr do klarowania roztworów."
+ },
+ "kwiat-siarczany-siarka": {
+  "nazwa": "Kwiat siarczany (Siarka)",
+  "stan": "Sublimowany (proszek)",
+  "masa_od": 10.0,
+  "masa_do": 50.0,
+  "masowo": {
+   "S": 99.8,
+   "O": 0.1,
+   "Fe": 0.1
+  },
+  "opis": "Sulfur – zasada ognia i duszy w Tria Prima Paracelsusa; nośnik palności i ciepła."
+ },
+ "sol-kamienna-halit": {
+  "nazwa": "Sól kamienna (Halit)",
+  "stan": "Krystaliczna (sól)",
+  "masa_od": 10.0,
+  "masa_do": 100.0,
+  "masowo": {
+   "Cl": 60.6,
+   "Na": 39.3,
+   "Ca": 0.05,
+   "Mg": 0.05
+  },
+  "opis": "Sal – zasada ciała i stałości w Tria Prima; zabezpiecza materię przed rozkładem."
+ },
+ "witriol-zielony-siarczan-zelaza-ii": {
+  "nazwa": "Witriol zielony (Siarczan żelaza II)",
+  "stan": "Krystaliczny (heptahydrat)",
+  "masa_od": 20.0,
+  "masa_do": 80.0,
+  "masowo": {
+   "O": 57.5,
+   "Fe": 20.1,
+   "S": 11.5,
+   "H": 5.1,
+   "Ca": 4.5,
+   "Mg": 1.3
+  },
+  "opis": "Kluczowy odczynnik kwasowy; destylacja daje olej witriolowy (kwas siarkowy)."
+ },
+ "saletra-potasowa-kno3": {
+  "nazwa": "Saletra potasowa (KNO3)",
+  "stan": "Krystaliczna (proszek)",
+  "masa_od": 15.0,
+  "masa_do": 60.0,
+  "masowo": {
+   "O": 47.5,
+   "K": 38.7,
+   "N": 13.8
+  },
+  "opis": "Sal nitri; potężny utleniacz alchemiczny, nośnik azotu do syntezy wody królewskiej."
+ },
+ "rtec-zywe-srebro": {
+  "nazwa": "Rtęć (Żywe Srebro)",
+  "stan": "Płynna (metaliczna)",
+  "masa_od": 50.0,
+  "masa_do": 200.0,
+  "masowo": {
+   "Hg": 99.9,
+   "Pb": 0.05,
+   "Ag": 0.05
+  },
+  "opis": "Mercurius – zasada lotności i umysłu w Tria Prima; rozpuszcza metale w amalgamaty."
+ },
+ "kreda-malarska-wapien-caco3": {
+  "nazwa": "Kreda malarska (Wapień CaCO3)",
+  "stan": "Sproszkowana (skała)",
+  "masa_od": 25.0,
+  "masa_do": 100.0,
+  "masowo": {
+   "O": 48.0,
+   "Ca": 40.0,
+   "C": 12.0
+  },
+  "opis": "Ziemia wapienna (Calx); operacje kalcynacji, wiązanie wilgoci i neutralizacja kwasów."
+ },
+ "olej-lniany": {
+  "nazwa": "Olej lniany",
+  "stan": "Płynna (olej tłusty)",
+  "masa_od": 30.0,
+  "masa_do": 100.0,
+  "masowo": {
+   "C": 77.5,
+   "H": 11.6,
+   "O": 10.9
+  },
+  "opis": "Tłuste medium ochronne; olej schnący wiążący pigmenty mineralne i zamykający naczynia."
+ },
+ "spirytus-winny-90": {
+  "nazwa": "Spirytus winny (90%)",
+  "stan": "Płynna (destylat)",
+  "masa_od": 50.0,
+  "masa_do": 200.0,
+  "masowo": {
+   "C": 46.9,
+   "O": 42.5,
+   "H": 10.6
+  },
+  "opis": "Aqua vitae (Woda Życia); lotny rozpuszczalnik organiczny ekstrahujący esencje i sole."
+ },
+ "popiol-bukowy-potaz": {
+  "nazwa": "Popiół bukowy (Potaż)",
+  "stan": "Proszek mineralny",
+  "masa_od": 20.0,
+  "masa_do": 80.0,
+  "masowo": {
+   "O": 44.0,
+   "K": 25.0,
+   "Ca": 18.0,
+   "C": 6.0,
+   "P": 2.5,
+   "Mg": 2.0,
+   "Si": 1.5,
+   "Fe": 1.0
+  },
+  "opis": "Sal tartari; źródło węglanu potasu, podstawa ługów oraz topnik do wytopu szkła."
+ },
+ "miod-pszczeli": {
+  "nazwa": "Miód pszczeli",
+  "stan": "Płynna / gęsta",
+  "masa_od": 40.0,
+  "masa_do": 150.0,
+  "masowo": {
+   "O": 58.5,
+   "C": 33.2,
+   "H": 7.8,
+   "N": 0.2,
+   "K": 0.1,
+   "P": 0.1
+  },
+  "opis": "Złoty eliksir słoneczny; naturalne podłoże fermentacyjne i nośnik w nalewkach."
+ },
+ "jad-wezowy-zasuszony": {
+  "nazwa": "Jad wężowy (zasuszony)",
+  "stan": "Krystaliczny / suchy",
+  "masa_od": 1.0,
+  "masa_do": 5.0,
+  "masowo": {
+   "C": 51.5,
+   "O": 22.0,
+   "N": 15.5,
+   "H": 7.0,
+   "S": 3.0,
+   "Zn": 0.5,
+   "Fe": 0.5
+  },
+  "opis": "Toksyna białkowa (peptydy); składnik dawnych uniwersalnych odtrutek (teriaków)."
+ },
+ "katalizator-alamansusa": {
+  "nazwa": "Katalizator Alamansusa",
+  "stan": "Krystaliczny pył syntetyczny (Złoty podział / Fibonacci)",
+  "masa_od": 10.0,
+  "masa_do": 30.0,
+  "masowo": {
+   "Fe": 22.6,
+   "C": 20.6,
+   "Si": 18.4,
+   "Au": 12.3,
+   "Ag": 10.1,
+   "Cu": 9.9,
+   "Hg": 6.2
+  },
+  "opis": "Magiczny katalizator uniwersalny. Rozbija wiązania cząsteczkowe na swobodne mole pierwiastkowe pod wpływem ciepła."
+ }
+}

@@ -1,0 +1,13 @@
+{
+ "_opis": "Czary wyssania. 'usuwa' to pierwiastki, 'przyrzad' to miejsce, które czar sam wybiera (id z przyrzady.json). 'znany': false oznacza czar, którego Henryk jeszcze nie umie: nie pokazuje się w grze.",
+ "extractio-carbonis": { "nazwa": "Extractio Carbonis Nigrum", "pl": "wyssanie węgla", "usuwa": ["C"], "przyrzad": "stol", "znany": true },
+ "dispersio-hydrogenii": { "nazwa": "Dispersio Hydrogenii Volatilis", "pl": "wyssanie wodoru", "usuwa": ["H"], "przyrzad": "rozdzielacz", "znany": true },
+ "reductio-oxygenii": { "nazwa": "Reductio Oxygenii Absoluta", "pl": "wyssanie tlenu", "usuwa": ["O"], "przyrzad": "klosz", "znany": true },
+ "evaporatio-azoti": { "nazwa": "Evaporatio Azoti Insubstantia", "pl": "wyssanie azotu", "usuwa": ["N"], "przyrzad": "retorta", "znany": false },
+ "extractio-sulphuris": { "nazwa": "Extractio Sulphuris Transmutatio", "pl": "wyssanie siarki", "usuwa": ["S"], "przyrzad": "alembik", "znany": false },
+ "extractio-kalii": { "nazwa": "Extractio Kalii Cinerea", "pl": "wyssanie potasu", "usuwa": ["K"], "przyrzad": "krystalizator", "znany": false },
+ "decalcificatio-metallica": { "nazwa": "Decalcificatio Calcium Forma", "pl": "wyssanie wapnia", "usuwa": ["Ca"], "przyrzad": "krystalizator", "znany": false },
+ "precipitatio-ferraria": { "nazwa": "Precipitatio Ferrum Magnetica", "pl": "wyssanie żelaza", "usuwa": ["Fe"], "przyrzad": "magnes", "znany": false },
+ "isolatio-mercurialis": { "nazwa": "Isolatio Hydrargyrum Spiritus", "pl": "wyssanie rtęci", "usuwa": ["Hg"], "przyrzad": "sublimator", "znany": false },
+ "separatio-salis": { "nazwa": "Separatio Salis Crystallinum", "pl": "wyssanie soli (sód i chlor)", "usuwa": ["Na", "Cl"], "przyrzad": "krystalizator", "znany": false }
+}

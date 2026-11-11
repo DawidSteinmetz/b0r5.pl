@@ -1,0 +1,28 @@
+{
+ "_opis": "Katalizator decyduje, co powstanie w garnku. 'wzor' to atomy produktu, 'rodzaj' to m albo f (odmiana nazwy), 'cena_10g' to punkty za 10 g przy dobrym skupie. 'ukryty' to nazwa przedmiotu przenośnego: katalizator działa dopiero, gdy ten przedmiot leży w tym pokoju.",
+ "cukier": {
+  "nazwa": "Katalizator cukrowy",
+  "produkt": "Cukier",
+  "rodzaj": "m",
+  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor_tekst": "C₆H₁₂O₆",
+  "cena_10g": 10
+ },
+ "czekolada": {
+  "nazwa": "Katalizator magicznej czekolady",
+  "produkt": "Magiczna czekolada",
+  "rodzaj": "f",
+  "wzor": { "C": 55, "H": 104, "O": 6 },
+  "wzor_tekst": "C₅₅H₁₀₄O₆",
+  "cena_10g": 40
+ },
+ "fruktoza": {
+  "nazwa": "Zakurzony flakon",
+  "produkt": "Fruktoza",
+  "rodzaj": "f",
+  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor_tekst": "C₆H₁₂O₆",
+  "cena_10g": 16,
+  "ukryty": "zakurzony-flakon"
+ }
+}

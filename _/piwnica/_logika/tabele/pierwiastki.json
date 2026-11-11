@@ -1,0 +1,512 @@
+{
+ "H": {
+  "z": 1,
+  "nazwa": "Wodór",
+  "lac": "Hydrogenium",
+  "masa": 1.008
+ },
+ "He": {
+  "z": 2,
+  "nazwa": "Hel",
+  "lac": "Helium",
+  "masa": 4.003
+ },
+ "Li": {
+  "z": 3,
+  "nazwa": "Lit",
+  "lac": "Lithium",
+  "masa": 6.941
+ },
+ "Be": {
+  "z": 4,
+  "nazwa": "Beryl",
+  "lac": "Beryllium",
+  "masa": 9.012
+ },
+ "B": {
+  "z": 5,
+  "nazwa": "Bor",
+  "lac": "Borum",
+  "masa": 10.81
+ },
+ "C": {
+  "z": 6,
+  "nazwa": "Węgiel",
+  "lac": "Carbonium",
+  "masa": 12.011
+ },
+ "N": {
+  "z": 7,
+  "nazwa": "Azot",
+  "lac": "Nitrogenium",
+  "masa": 14.007
+ },
+ "O": {
+  "z": 8,
+  "nazwa": "Tlen",
+  "lac": "Oxygenium",
+  "masa": 15.999
+ },
+ "F": {
+  "z": 9,
+  "nazwa": "Fluor",
+  "lac": "Fluorum",
+  "masa": 18.998
+ },
+ "Ne": {
+  "z": 10,
+  "nazwa": "Neon",
+  "lac": "Neon",
+  "masa": 20.18
+ },
+ "Na": {
+  "z": 11,
+  "nazwa": "Sód",
+  "lac": "Natrium",
+  "masa": 22.99
+ },
+ "Mg": {
+  "z": 12,
+  "nazwa": "Magnez",
+  "lac": "Magnesium",
+  "masa": 24.305
+ },
+ "Al": {
+  "z": 13,
+  "nazwa": "Glin",
+  "lac": "Aluminium",
+  "masa": 26.982
+ },
+ "Si": {
+  "z": 14,
+  "nazwa": "Krzem",
+  "lac": "Silicium",
+  "masa": 28.085
+ },
+ "P": {
+  "z": 15,
+  "nazwa": "Fosfor",
+  "lac": "Phosphorus",
+  "masa": 30.974
+ },
+ "S": {
+  "z": 16,
+  "nazwa": "Siarka",
+  "lac": "Sulphur",
+  "masa": 32.06
+ },
+ "Cl": {
+  "z": 17,
+  "nazwa": "Chlor",
+  "lac": "Chlorum",
+  "masa": 35.45
+ },
+ "Ar": {
+  "z": 18,
+  "nazwa": "Argon",
+  "lac": "Argon",
+  "masa": 39.948
+ },
+ "K": {
+  "z": 19,
+  "nazwa": "Potas",
+  "lac": "Kalium",
+  "masa": 39.098
+ },
+ "Ca": {
+  "z": 20,
+  "nazwa": "Wapń",
+  "lac": "Calcium",
+  "masa": 40.078
+ },
+ "Sc": {
+  "z": 21,
+  "nazwa": "Skand",
+  "lac": "Scandium",
+  "masa": 44.956
+ },
+ "Ti": {
+  "z": 22,
+  "nazwa": "Tytan",
+  "lac": "Titanium",
+  "masa": 47.867
+ },
+ "V": {
+  "z": 23,
+  "nazwa": "Wanad",
+  "lac": "Vanadium",
+  "masa": 50.942
+ },
+ "Cr": {
+  "z": 24,
+  "nazwa": "Chrom",
+  "lac": "Chromium",
+  "masa": 51.996
+ },
+ "Mn": {
+  "z": 25,
+  "nazwa": "Mangan",
+  "lac": "Manganum",
+  "masa": 54.938
+ },
+ "Fe": {
+  "z": 26,
+  "nazwa": "Żelazo",
+  "lac": "Ferrum",
+  "masa": 55.845
+ },
+ "Co": {
+  "z": 27,
+  "nazwa": "Kobalt",
+  "lac": "Cobaltum",
+  "masa": 58.933
+ },
+ "Ni": {
+  "z": 28,
+  "nazwa": "Nikiel",
+  "lac": "Niccolum",
+  "masa": 58.693
+ },
+ "Cu": {
+  "z": 29,
+  "nazwa": "Miedź",
+  "lac": "Cuprum",
+  "masa": 63.546
+ },
+ "Zn": {
+  "z": 30,
+  "nazwa": "Cynk",
+  "lac": "Zincum",
+  "masa": 65.38
+ },
+ "Ga": {
+  "z": 31,
+  "nazwa": "Gal",
+  "lac": "Gallium",
+  "masa": 69.723
+ },
+ "Ge": {
+  "z": 32,
+  "nazwa": "German",
+  "lac": "Germanium",
+  "masa": 72.63
+ },
+ "As": {
+  "z": 33,
+  "nazwa": "Arsen / Arszenik",
+  "lac": "Arsenicum",
+  "masa": 74.922
+ },
+ "Se": {
+  "z": 34,
+  "nazwa": "Selen",
+  "lac": "Selenium",
+  "masa": 78.971
+ },
+ "Br": {
+  "z": 35,
+  "nazwa": "Brom",
+  "lac": "Bromum",
+  "masa": 79.904
+ },
+ "Kr": {
+  "z": 36,
+  "nazwa": "Krypton",
+  "lac": "Krypton",
+  "masa": 83.798
+ },
+ "Rb": {
+  "z": 37,
+  "nazwa": "Rubid",
+  "lac": "Rubidium",
+  "masa": 85.468
+ },
+ "Sr": {
+  "z": 38,
+  "nazwa": "Stront",
+  "lac": "Strontium",
+  "masa": 87.62
+ },
+ "Y": {
+  "z": 39,
+  "nazwa": "Itr",
+  "lac": "Yttrium",
+  "masa": 88.906
+ },
+ "Zr": {
+  "z": 40,
+  "nazwa": "Cyrkon",
+  "lac": "Zirconium",
+  "masa": 91.224
+ },
+ "Nb": {
+  "z": 41,
+  "nazwa": "Niob",
+  "lac": "Niobium",
+  "masa": 92.906
+ },
+ "Mo": {
+  "z": 42,
+  "nazwa": "Molibden",
+  "lac": "Molybdaenum",
+  "masa": 95.95
+ },
+ "Ru": {
+  "z": 44,
+  "nazwa": "Ruten",
+  "lac": "Ruthenium",
+  "masa": 101.07
+ },
+ "Rh": {
+  "z": 45,
+  "nazwa": "Rod",
+  "lac": "Rhodium",
+  "masa": 102.906
+ },
+ "Pd": {
+  "z": 46,
+  "nazwa": "Palad",
+  "lac": "Palladium",
+  "masa": 106.42
+ },
+ "Ag": {
+  "z": 47,
+  "nazwa": "Srebro",
+  "lac": "Argentum",
+  "masa": 107.868
+ },
+ "Cd": {
+  "z": 48,
+  "nazwa": "Kadm",
+  "lac": "Cadmium",
+  "masa": 112.414
+ },
+ "In": {
+  "z": 49,
+  "nazwa": "Ind",
+  "lac": "Indium",
+  "masa": 114.818
+ },
+ "Sn": {
+  "z": 50,
+  "nazwa": "Cyna",
+  "lac": "Stannum",
+  "masa": 118.71
+ },
+ "Sb": {
+  "z": 51,
+  "nazwa": "Antymon",
+  "lac": "Stibium",
+  "masa": 121.76
+ },
+ "Te": {
+  "z": 52,
+  "nazwa": "Tellur",
+  "lac": "Tellurium",
+  "masa": 127.6
+ },
+ "I": {
+  "z": 53,
+  "nazwa": "Jod",
+  "lac": "Iodium",
+  "masa": 126.904
+ },
+ "Xe": {
+  "z": 54,
+  "nazwa": "Ksenon",
+  "lac": "Xenon",
+  "masa": 131.293
+ },
+ "Cs": {
+  "z": 55,
+  "nazwa": "Cez",
+  "lac": "Caesium",
+  "masa": 132.905
+ },
+ "Ba": {
+  "z": 56,
+  "nazwa": "Bar",
+  "lac": "Barium",
+  "masa": 137.327
+ },
+ "La": {
+  "z": 57,
+  "nazwa": "Lantan",
+  "lac": "Lanthanum",
+  "masa": 138.905
+ },
+ "Ce": {
+  "z": 58,
+  "nazwa": "Cer",
+  "lac": "Cerium",
+  "masa": 140.116
+ },
+ "Pr": {
+  "z": 59,
+  "nazwa": "Prazeodym",
+  "lac": "Praseodymium",
+  "masa": 140.908
+ },
+ "Nd": {
+  "z": 60,
+  "nazwa": "Neodym",
+  "lac": "Neodymium",
+  "masa": 144.242
+ },
+ "Sm": {
+  "z": 62,
+  "nazwa": "Samar",
+  "lac": "Samarium",
+  "masa": 150.36
+ },
+ "Eu": {
+  "z": 63,
+  "nazwa": "Europ",
+  "lac": "Europium",
+  "masa": 151.964
+ },
+ "Gd": {
+  "z": 64,
+  "nazwa": "Gadolin",
+  "lac": "Gadolinium",
+  "masa": 157.25
+ },
+ "Tb": {
+  "z": 65,
+  "nazwa": "Terb",
+  "lac": "Terbium",
+  "masa": 158.925
+ },
+ "Dy": {
+  "z": 66,
+  "nazwa": "Dysproz",
+  "lac": "Dysprosium",
+  "masa": 162.5
+ },
+ "Ho": {
+  "z": 67,
+  "nazwa": "Holm",
+  "lac": "Holmium",
+  "masa": 164.93
+ },
+ "Er": {
+  "z": 68,
+  "nazwa": "Erb",
+  "lac": "Erbium",
+  "masa": 167.259
+ },
+ "Tm": {
+  "z": 69,
+  "nazwa": "Tul",
+  "lac": "Thulium",
+  "masa": 168.934
+ },
+ "Yb": {
+  "z": 70,
+  "nazwa": "Iterb",
+  "lac": "Ytterbium",
+  "masa": 173.054
+ },
+ "Lu": {
+  "z": 71,
+  "nazwa": "Lutety",
+  "lac": "Lutetium",
+  "masa": 174.967
+ },
+ "Ta": {
+  "z": 73,
+  "nazwa": "Tantal",
+  "lac": "Tantalum",
+  "masa": 180.948
+ },
+ "W": {
+  "z": 74,
+  "nazwa": "Wolfram",
+  "lac": "Wolframium",
+  "masa": 183.84
+ },
+ "Os": {
+  "z": 76,
+  "nazwa": "Osm",
+  "lac": "Osmium",
+  "masa": 190.23
+ },
+ "Ir": {
+  "z": 77,
+  "nazwa": "Iryd",
+  "lac": "Iridium",
+  "masa": 192.217
+ },
+ "Pt": {
+  "z": 78,
+  "nazwa": "Platyna",
+  "lac": "Platinum",
+  "masa": 195.084
+ },
+ "Au": {
+  "z": 79,
+  "nazwa": "Złoto",
+  "lac": "Aurum",
+  "masa": 196.967
+ },
+ "Hg": {
+  "z": 80,
+  "nazwa": "Rtęć",
+  "lac": "Hydrargyrum",
+  "masa": 200.592
+ },
+ "Tl": {
+  "z": 81,
+  "nazwa": "Tal",
+  "lac": "Thallium",
+  "masa": 204.383
+ },
+ "Pb": {
+  "z": 82,
+  "nazwa": "Ołów",
+  "lac": "Plumbum",
+  "masa": 207.2
+ },
+ "Bi": {
+  "z": 83,
+  "nazwa": "Bizmut",
+  "lac": "Bismuthum",
+  "masa": 208.98
+ },
+ "Po": {
+  "z": 84,
+  "nazwa": "Polon",
+  "lac": "Polonium",
+  "masa": 209.0
+ },
+ "Rn": {
+  "z": 86,
+  "nazwa": "Radon (Emanacja radu)",
+  "lac": "Radonum / Radium Emanatio",
+  "masa": 222.0
+ },
+ "Ra": {
+  "z": 88,
+  "nazwa": "Rad",
+  "lac": "Radium",
+  "masa": 226.025
+ },
+ "Ac": {
+  "z": 89,
+  "nazwa": "Aktyn",
+  "lac": "Actinium",
+  "masa": 227.0
+ },
+ "Th": {
+  "z": 90,
+  "nazwa": "Tor",
+  "lac": "Thorium",
+  "masa": 232.038
+ },
+ "U": {
+  "z": 92,
+  "nazwa": "Uran",
+  "lac": "Uranium",
+  "masa": 238.029
+ }
+}

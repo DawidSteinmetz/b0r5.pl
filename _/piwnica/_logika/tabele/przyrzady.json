@@ -1,0 +1,11 @@
+{
+ "_opis": "Przyrządy są tylko wizualizacją: czar sam wybiera swój przyrząd. 'opis' mówi, do czego służy, a listę wytrącanych pierwiastków gra bierze z czary.json. 'ikona' to wnętrze SVG 100×100.",
+ "stol": { "nazwa": "Stół z dębu", "opis": "Na gołym blacie węgiel oddziela się od reszty i osiada czarnym pyłem.", "ikona": "<path d=\"M14 44h72M22 44v42M78 44v42M14 44l8-10h56l8 10\"/>" },
+ "rozdzielacz": { "nazwa": "Magiczny rozdzielacz gazów", "opis": "Miedź złocona, kwarc i runy. Chwyta lekki gaz i wyprowadza go do osobnej bańki.", "ikona": "<circle cx=\"50\" cy=\"52\" r=\"22\"/><path d=\"M50 30V12M42 12h16M28 52H12v26M72 52h16v26\"/>" },
+ "klosz": { "nazwa": "Klosz próżniowy z pompą", "opis": "Szklany klosz, spod którego pompa wyciąga powietrze razem z tym, co w próbce nim oddycha.", "ikona": "<path d=\"M24 78V46a26 26 0 0 1 52 0v32M14 78h72M86 78v-22h-10\"/>" },
+ "retorta": { "nazwa": "Retorta szklana", "opis": "Wyprowadza wypędzony gaz na zewnątrz.", "ikona": "<path d=\"M26 50a22 22 0 1 0 44 0c0-10-8-18-22-18\"/><path d=\"M48 32c10-10 24-14 40-6\"/>" },
+ "alembik": { "nazwa": "Alembik miedziany", "opis": "Skrapla opary z powrotem w krople.", "ikona": "<path d=\"M30 78h40M36 78c-8-6-10-22 2-30 6-4 6-8 6-14h12c0 6 0 10 6 14 12 8 10 24 2 30z\"/>" },
+ "krystalizator": { "nazwa": "Krystalizator płaski", "opis": "Powoli odparowuje roztwory, aż zostaną kryształy.", "ikona": "<path d=\"M16 56h68l-8 22H24z\"/>" },
+ "magnes": { "nazwa": "Magnes alchemiczny", "opis": "Wyrywa z próbki pył żelazny.", "ikona": "<path d=\"M30 24v30a20 20 0 0 0 40 0V24\"/>" },
+ "sublimator": { "nazwa": "Sublimator żelazny", "opis": "Sublimuje metale ciężkie.", "ikona": "<path d=\"M34 84V30h32v54M26 84h48\"/>" }
+}

@@ -1,0 +1,19 @@
+{
+ "_opis": "Czary-przepisy projektowane ręcznie. Klucz to nazwa pliku kartki w folderze przepisy/ (bez .md). 'skladniki' to gramy na jedną porcję, a czar sam liczy mnożnik z zapasów i pojemności garnka. Dopisanie wpisu i kartki oznacza, że właścicielka myśloodsiewni zna ten czar.",
+ "001-cantus-sacchari": {
+  "nazwa": "Cantus Sacchari",
+  "katalizator": "cukier",
+  "skladniki": [
+   { "surowiec": "woda", "g": 18.015 },
+   { "surowiec": "wegiel-aktywny", "g": 13.42 }
+  ]
+ },
+ "002-cantus-chocolatae": {
+  "nazwa": "Cantus Chocolatae",
+  "katalizator": "czekolada",
+  "skladniki": [
+   { "surowiec": "maslo-swieze", "g": 100 },
+   { "surowiec": "wegiel-aktywny", "g": 3.8 }
+  ]
+ }
+}

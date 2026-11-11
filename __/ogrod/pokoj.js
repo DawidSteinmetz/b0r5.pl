@@ -300,6 +300,21 @@
     }
     return h;
   }
+  /* Plan jest wysoki (40×80 m), więc jego rozmiar liczy się z miejsca na kartce, a nie z góry:
+     jeśli pod tekstem zostało co najmniej 55% strony, plan wypełnia resztę pierwszej strony,
+     a jeśli nie, dostaje całą następną stronę. Nigdy nie jest szerszy niż kolumna. */
+  function dopasujPlan() {
+    const svg = w.querySelector('svg.plan'); if (!svg) return;
+    const vb = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
+    svg.style.height = '8px';                                  // mały plan wskakuje tuż pod tekst
+    const H = w.clientHeight, cw = w.clientWidth;
+    if (!H || !cw || vb.length < 4) { svg.style.height = ''; return; }
+    const reszta = H - (svg.getBoundingClientRect().top - w.getBoundingClientRect().top) - 12;
+    let h = reszta >= 0.55 * H ? reszta : H - 12;
+    h = Math.min(h, (cw - 2) * vb[3] / vb[2]);
+    svg.style.height = Math.max(120, Math.floor(h)) + 'px';
+  }
+  addEventListener('resize', () => requestAnimationFrame(dopasujPlan));
   function otworzGrzadki(o) {
     const rysuj = (s, el, akcja) => {
       const D = s.dzialka, t = s.pogoda.teraz, zajete = D.grzadek * D.m2_grzadki;
@@ -310,6 +325,7 @@
         '<div id="szcz">' + szczegoly(s) + '</div>' +
         (zbiorcze.length ? '<p class="grupa">Czary na cały ogród</p><div class="akcje">' + zbiorcze.map(c => przycisk('czar', c.nazwa + ' <small>(' + esc(c.pl) + ')</small>', { czar: c.id })).join('') + '</div>' : '') +
         (s.suszy_sie.length ? '<p class="grupa">Schnie w szopie</p>' + s.suszy_sie.map(x => '<div class="dim">' + esc(x.nazwa) + ' ×' + x.n + ', do spiżarni ' + esc(x.za) + '</div>').join('') : '');
+      dopasujPlan();
       el.querySelector('.plan').onclick = e => {
         const r = e.target.closest('[data-g],[data-m]'); if (!r) return;
         wybor = r.dataset.g ? { g: r.dataset.g } : { m: Number(r.dataset.m) };
@@ -332,6 +348,8 @@
       if (!wybor) { const g = s.grzadki.find(x => x.stan === 'do_zbioru') || s.grzadki[0]; if (g) wybor = { g: g.id }; }
       rysuj(s, el, akcja);
     }, s => [s.grzadki, s.skrzynka, s.zmarznieta, s.suszy_sie.length, s.pogoda.teraz.temp_t, s.pogoda.teraz.opis]);
+    const opis = w.querySelector('.tekst');                 // opis wczytuje się osobno i przesuwa plan w dół
+    if (opis) new MutationObserver(dopasujPlan).observe(opis, { childList: true });
   }
 
   /* --- Skrzynka z nasionami i zakupy ------------------------------------------------------- */

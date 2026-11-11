@@ -1,0 +1,17 @@
+{
+ "_opis": "Działka i ogród. Wymiary w metrach; plan rysuje się z góry: 'dl' w poziomie, 'szer' w pionie, (0,0) to lewy górny róg. 'zabudowa' to miejsca, gdzie grządki nie mogą powstać (dom). 'obszar_grzadek' to część działki, na której w ogóle mogą być grządki (bez niego: cała działka). Grządki stoją w rzędach: 'grzadka' to ich wymiar, 'odstep' to ścieżka między grządkami w rzędzie, 'miedzy_rzedami' to ścieżka między rzędami, 'margines' to pas przy płocie i przy granicy obszaru. Z tego wynika, ile grządek w ogóle się zmieści. 'pojemnosc_mm': ile wody gleba trzyma (więcej spływa), 'podlewanie_mm': ile daje jedno podlanie konewką. 'kasa': pokój, z którego księgi idą pieniądze, 'do_skladu': pokój, do którego spiżarni trafiają zbiory. 'start' wysypuje się tylko przy pierwszym uruchomieniu; 'miejsce' to numer miejsca na grządkę, licząc rzędami od lewego górnego rogu obszaru.",
+ "dzialka": { "dl": 40, "szer": 80 },
+ "zabudowa": [ { "nazwa": "Dom", "x": 5, "y": 15, "dl": 10, "szer": 10 } ],
+ "obszar_grzadek": { "x": 20, "y": 0, "dl": 20, "szer": 80 },
+ "grzadka": { "dl": 1.2, "szer": 5, "odstep": 0.5, "miedzy_rzedami": 1.0, "margines": 0.5 },
+ "pojemnosc_mm": 120,
+ "podlewanie_mm": 15,
+ "kasa": "kuchnia",
+ "do_skladu": "kuchnia",
+ "start": [
+  { "miejsce": 0, "gatunek": "bylica", "wiek": 3, "zebrane": true, "chwasty": 0.1 },
+  { "miejsce": 1, "gatunek": "kozlek", "wiek": 1, "chwasty": 0.1 },
+  { "miejsce": 2, "gatunek": "ruta", "wiek": 2, "zebrane": true, "chwasty": 0.1 },
+  { "miejsce": 3, "gatunek": "", "chwasty": 0.95, "notatka": "tu rósł mak; zarosło" }
+ ]
+}

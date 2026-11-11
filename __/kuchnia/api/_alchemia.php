@@ -332,11 +332,34 @@ function alch_dostawy() {
     }
     if ($nowy !== $ost) alch_zapisz('dostawy', ['id' => $nowy]);
 }
+// Dostawy z innych pokoi (np. zbiory z ogrodu): zdarzenia 'do_skladu' z celem w tym pokoju, każde ze swoim czasem 'gotowe'
+// (ogród suszy zioła różnie długo), więc 'kursor' to ostatnie zdarzenie, do którego wszystko jest odebrane, a 'ids' to odebrane później.
+function alch_dostawy_obce() {
+    $st = alch_czytaj('dostawy_obce') ?: ['kursor' => 0, 'ids' => []];
+    $kur = (int)$st['kursor']; $ids = array_map('intval', $st['ids']); $zm = false; $ciagle = true;
+    $q = baza()->prepare("SELECT id,dane FROM zdarzenia WHERE typ='do_skladu' AND cel=? AND id>? ORDER BY id");
+    $q->execute([basename(KAT_POKOJU), $kur]);
+    foreach ($q->fetchAll() as $z) {
+        $id = (int)$z['id'];
+        if (!in_array($id, $ids, true)) {
+            $d = json_decode((string)$z['dane'], true) ?: [];
+            if ((int)($d['gotowe'] ?? 0) > time()) { $ciagle = false; continue; }
+            foreach (($d['porcje'] ?? []) as $g) {
+                if (count(alch_rzeczy()) >= ALCH_MAX_RZECZY) break;
+                alch_nowy_surowiec((string)($d['surowiec'] ?? ''), (float)$g, isset($d['nazwa']) ? (string)$d['nazwa'] : null);
+            }
+            $ids[] = $id; $zm = true;
+        }
+        if ($ciagle) { $kur = $id; $ids = array_values(array_diff($ids, [$id])); $zm = true; }
+    }
+    if ($zm) alch_zapisz('dostawy_obce', ['kursor' => $kur, 'ids' => $ids]);
+}
 function alch_dokoncz() {
     alch_start();
     alch_dosypki();
     alch_rozloz_stosy();
     alch_dostawy();
+    alch_dostawy_obce();
     alch_zaznaczenie_sprawdz();
     $teraz = microtime(true);
 

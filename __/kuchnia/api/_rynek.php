@@ -3,6 +3,7 @@
 //   zakup {cel: towar, dane: {n, koszt, dom}}  : popyt rośnie; jeśli dom = henryk, kosztuje budżet, a po zwłoce towar trafia do spiżarni
 //   sprzedano {cel: nazwa produktu, dane: {cena}} : przychód, a kolejne sprzedaże są tańsze (podaż)
 //   budzet_miesiac {cel: "RRRR-MM", dane: {kwota}} : miesięczne dopełnienie do poziomu 'baza' (nie kumuluje się)
+//   wydatek {cel: pokój, dane: {koszt, opis}}      : zakup z innego pokoju (np. nasiona do ogrodu) płacony z tej samej kasy
 require_once dirname(__DIR__, 2) . '/api/_baza.php';
 if (!defined('KAT_POKOJU')) define('KAT_POKOJU', dirname(__DIR__));
 
@@ -53,7 +54,7 @@ function rynek_miesiac() {
 // Czyste odczytanie stanu z dziennika (bez zapisów).
 function rynek_odczytaj() {
     $c = rynek_cfg(); $teraz = time();
-    $st = baza()->query("SELECT id,ts,typ,cel,gracz,dane FROM zdarzenia WHERE typ IN ('zakup','sprzedano','budzet_miesiac') ORDER BY id");
+    $st = baza()->query("SELECT id,ts,typ,cel,gracz,dane FROM zdarzenia WHERE typ IN ('zakup','sprzedano','budzet_miesiac','wydatek') ORDER BY id");
     $popyt = []; $podaz = 0.0; $saldo = 0; $hist = [];
     foreach ($st as $z) {
         $d = $z['dane'] ? json_decode($z['dane'], true) : [];
@@ -70,6 +71,10 @@ function rynek_odczytaj() {
                 $k = (int)($d['cena'] ?? 0); $saldo += $k;
                 $podaz += rynek_zanik($teraz - $ts, $c['skup']['polokres_h']);
                 $hist[] = ['ts' => $ts, 'typ' => 'sprzedaz', 'cel' => (string)$z['cel'], 'n' => 1, 'kwota' => $k, 'gracz' => (string)$z['gracz']];
+                break;
+            case 'wydatek':
+                $k = (int)($d['koszt'] ?? 0); $saldo -= $k;
+                $hist[] = ['ts' => $ts, 'typ' => 'wydatek', 'cel' => (string)$z['cel'], 'n' => 0, 'kwota' => -$k, 'opis' => (string)($d['opis'] ?? ''), 'gracz' => (string)$z['gracz']];
                 break;
             case 'budzet_miesiac':
                 $k = (int)($d['kwota'] ?? 0); $saldo += $k;

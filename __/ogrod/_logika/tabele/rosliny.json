@@ -1,0 +1,59 @@
+{
+ "_opis": "Gatunki, które można hodować w ogrodzie. Roślina rośnie, gdy średnia dobowa przekracza 'baza' (°C); każdy taki stopień dnia dodaje się do sumy ciepła. 'kielki': suma ciepła ziemi, po której nasiona wschodzą. 'zbior': suma ciepła, od której można zbierać, a 'okno': ile jeszcze po tym zbiór jest dobry (potem plon słabnie, a roślina jednoroczna przekwita). Rośliny wieloletnie liczą sumę ciepła od nowa co roku. 'mroz': przy jakiej temperaturze rosnąca roślina zaczyna marznąć, 'mroz_mlode': to samo dla siewek, 'mroz_spoczynek': w zimowym spoczynku (pod śniegiem jest o 8°C bezpieczniej). 'miesiace_zbioru' i 'min_wiek' (lata w ziemi) ograniczają zbiór, np. korzenia kozłka. 'plon_g_m2': plon z metra kwadratowego zdrowej, odchwaszczonej grządki. Zbiór idzie do Składu w porcjach 'porcja_g' jako surowiec 'surowiec', po 'suszenie_h' godzinach suszenia. 'po_zbiorze': 'zostaje' (roślina odrasta w przyszłym roku) albo 'koniec'. 'siew' to tylko podpowiedź dla gracza.",
+ "bylica": {
+  "nazwa": "Bylica pospolita", "dopelniacz": "bylicy", "wieloletnia": true,
+  "baza": 5, "kielki": 120, "zbior": 950, "okno": 450,
+  "mroz": -3, "mroz_mlode": -2, "mroz_spoczynek": -30,
+  "plon_g_m2": 70, "surowiec": "bylica-pospolita-ziele-suszone", "porcja_g": 60, "porcja": ["pęczek", "pęczki", "pęczków"], "suszenie_h": 48, "po_zbiorze": "zostaje",
+  "siew": "sadzonki w kwietniu i maju albo we wrześniu; ziele zbiera się w lipcu i sierpniu, w czasie kwitnienia"
+ },
+ "ruta": {
+  "nazwa": "Ruta zwyczajna", "dopelniacz": "ruty", "wieloletnia": true,
+  "baza": 6, "kielki": 150, "zbior": 650, "okno": 400,
+  "mroz": -4, "mroz_mlode": -2, "mroz_spoczynek": -18,
+  "plon_g_m2": 60, "surowiec": "ruta-zwyczajna-ziele", "porcja_g": 50, "porcja": ["pęczek", "pęczki", "pęczków"], "suszenie_h": 48, "po_zbiorze": "zostaje",
+  "siew": "sadzonki od kwietnia do czerwca; ziele zbiera się w czerwcu, przed kwitnieniem; bez śniegu w ostrą zimę potrafi przemarznąć"
+ },
+ "kozlek": {
+  "nazwa": "Kozłek lekarski", "dopelniacz": "kozłka", "wieloletnia": true,
+  "baza": 5, "kielki": 140, "zbior": 1400, "okno": 99999, "miesiace_zbioru": [9, 10, 11], "min_wiek": 1,
+  "mroz": -5, "mroz_mlode": -3, "mroz_spoczynek": -30,
+  "plon_g_m2": 120, "surowiec": "kozlek-lekarski-korzen", "porcja_g": 100, "porcja": ["wiązka korzeni", "wiązki korzeni", "wiązek korzeni"], "suszenie_h": 96, "po_zbiorze": "koniec",
+  "siew": "sadzonki wiosną albo we wrześniu; korzeń wykopuje się jesienią, najwcześniej w drugim roku"
+ },
+ "mak": {
+  "nazwa": "Mak lekarski", "dopelniacz": "maku", "wieloletnia": false,
+  "baza": 4, "kielki": 80, "zbior": 1250, "okno": 250,
+  "mroz": -3, "mroz_mlode": -5, "mroz_spoczynek": -5,
+  "plon_g_m2": 60, "surowiec": "mak-lekarski-nasiona", "porcja_g": 100, "porcja": ["woreczek", "woreczki", "woreczków"], "suszenie_h": 72, "po_zbiorze": "koniec",
+  "siew": "nasiona wcześnie, w marcu i kwietniu; makówki zbiera się w lipcu i sierpniu"
+ },
+ "koper": {
+  "nazwa": "Koper ogrodowy", "dopelniacz": "kopru", "wieloletnia": false,
+  "baza": 6, "kielki": 90, "zbior": 450, "okno": 300,
+  "mroz": -1, "mroz_mlode": -1, "mroz_spoczynek": -1,
+  "plon_g_m2": 250, "surowiec": "koper-ogrodowy-ziele-swieze", "porcja_g": 150, "porcja": ["pęczek", "pęczki", "pęczków"], "suszenie_h": 0, "po_zbiorze": "koniec",
+  "siew": "nasiona od kwietnia do lipca; ziele po sześciu do ośmiu tygodniach; nie znosi przymrozków"
+ },
+ "czosnek": {
+  "nazwa": "Czosnek", "dopelniacz": "czosnku", "wieloletnia": false,
+  "baza": 3, "kielki": 60, "zbior": 1250, "okno": 300,
+  "mroz": -6, "mroz_mlode": -10, "mroz_spoczynek": -22,
+  "plon_g_m2": 350, "surowiec": "czosnek-glowka", "porcja_g": 500, "porcja": ["warkocz", "warkocze", "warkoczy"], "suszenie_h": 72, "po_zbiorze": "koniec",
+  "siew": "ząbki jesienią (wrzesień–październik) albo wczesną wiosną; główki zbiera się w lipcu"
+ },
+ "cebula": {
+  "nazwa": "Cebula", "dopelniacz": "cebuli", "wieloletnia": false,
+  "baza": 4, "kielki": 50, "zbior": 1250, "okno": 300,
+  "mroz": -4, "mroz_mlode": -4, "mroz_spoczynek": -4,
+  "plon_g_m2": 2000, "surowiec": "cebula-swieza", "porcja_g": 2000, "porcja": ["kosz", "kosze", "koszy"], "suszenie_h": 48, "po_zbiorze": "koniec",
+  "siew": "dymkę sadzi się w kwietniu; cebulę zbiera się w sierpniu, gdy szczypior się położy"
+ },
+ "burak": {
+  "nazwa": "Burak cukrowy", "dopelniacz": "buraków", "wieloletnia": false,
+  "baza": 5, "kielki": 100, "zbior": 1600, "okno": 900,
+  "mroz": -3, "mroz_mlode": -2, "mroz_spoczynek": -3,
+  "plon_g_m2": 4000, "surowiec": "burak-cukrowy", "porcja_g": 4000, "porcja": ["kosz", "kosze", "koszy"], "suszenie_h": 0, "po_zbiorze": "koniec",
+  "siew": "nasiona w kwietniu i maju; buraki wykopuje się od września do pierwszych mrozów"
+ }
+}

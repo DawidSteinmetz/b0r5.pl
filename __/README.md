@@ -64,4 +64,4 @@ Muzyka: pliki `.mp3` z `radio/` tworzą wspólną playlistę same. Pliki `.wav` 
 
 ## Artemida
 
-Kuchnia ma tę samą alchemię co piwnica Henryka (opis w `kuchnia/README.md`), a buduar ma sekretarzyk do listów (`buduar/api/`, ustawienia w `buduar/_logika/poczta.json`). Radio gra muzykę z folderu Henryka (`postac.json`: `radio.folder`), więc Artemida nie ma własnego `radio/`. Sen jest zawieszony: jego dane leżą w `biblioteka/_sen/`.
+Kuchnia ma tę samą alchemię co piwnica Henryka (opis w `kuchnia/README.md`). Ogród ma tę samą mechanikę co ogród Henryka, ale działkę 40×80 m i plan rysowany piórem (`ogrod/README.md`). Buduar ma sekretarzyk do listów (`buduar/api/`, ustawienia w `buduar/_logika/poczta.json`). Radio gra muzykę z folderu Henryka (`postac.json`: `radio.folder`), więc Artemida nie ma własnego `radio/`. Sen jest zawieszony: jego dane leżą w `biblioteka/_sen/`.

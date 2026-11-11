@@ -49,13 +49,15 @@ function ogr_pod_blokada($f) {
 function ogr_skrzynka() { return ogr_czytaj('skrzynka') ?: ['paczki' => [], 'odebrane' => ['kursor' => 0, 'ids' => []]]; }
 
 // --- działka -------------------------------------------------------------------------------------
-// Miejsca na grządki: rzędy grządek na całej działce, bez tych, które wchodzą na zabudowę (z pół metra zapasu).
+// Miejsca na grządki: rzędy grządek na działce albo tylko w jej części (ogrod.json: "obszar_grzadek"),
+// bez tych, które wchodzą na zabudowę (z pół metra zapasu).
 function ogr_miejsca() {
     static $m = null;
     if ($m !== null) return $m;
-    $c = ogr_cfg(); $D = $c['dzialka']; $g = $c['grzadka']; $mg = (float)$g['margines']; $zap = 0.5; $m = [];
-    for ($y = $mg; $y + $g['szer'] <= $D['szer'] - $mg + 1e-9; $y += $g['szer'] + $g['miedzy_rzedami']) {
-        for ($x = $mg; $x + $g['dl'] <= $D['dl'] - $mg + 1e-9; $x += $g['dl'] + $g['odstep']) {
+    $c = ogr_cfg(); $g = $c['grzadka']; $mg = (float)$g['margines']; $zap = 0.5; $m = [];
+    $D = $c['obszar_grzadek'] ?? ['x' => 0, 'y' => 0, 'dl' => $c['dzialka']['dl'], 'szer' => $c['dzialka']['szer']];
+    for ($y = $D['y'] + $mg; $y + $g['szer'] <= $D['y'] + $D['szer'] - $mg + 1e-9; $y += $g['szer'] + $g['miedzy_rzedami']) {
+        for ($x = $D['x'] + $mg; $x + $g['dl'] <= $D['x'] + $D['dl'] - $mg + 1e-9; $x += $g['dl'] + $g['odstep']) {
             $wolne = true;
             foreach ($c['zabudowa'] ?? [] as $z) {
                 if ($x < $z['x'] + $z['dl'] + $zap && $x + $g['dl'] > $z['x'] - $zap && $y < $z['y'] + $z['szer'] + $zap && $y + $g['szer'] > $z['y'] - $zap) { $wolne = false; break; }
@@ -482,7 +484,7 @@ function ogr_widok() {
         'pogoda' => pog_widok(),
         'oslona_do' => (!empty($o['oslona_do']) && $o['oslona_do'] >= pog_dzis()) ? $o['oslona_do'] : null,
         'zmarznieta' => $zmarzl,
-        'dzialka' => ['dl' => $c['dzialka']['dl'], 'szer' => $c['dzialka']['szer'], 'zabudowa' => $c['zabudowa'] ?? [], 'miejsca' => ogr_miejsca(),
+        'dzialka' => ['dl' => $c['dzialka']['dl'], 'szer' => $c['dzialka']['szer'], 'zabudowa' => $c['zabudowa'] ?? [], 'obszar' => $c['obszar_grzadek'] ?? null, 'miejsca' => ogr_miejsca(),
             'm2_grzadki' => $m2, 'grzadek' => count($grz), 'miejsc' => $mz],
         'grzadki' => $grz,
         'skrzynka' => $paczki, 'w_drodze' => $wdrodze, 'suszy_sie' => $suszy,

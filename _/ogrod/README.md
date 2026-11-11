@@ -4,6 +4,8 @@ Pokój z własną mechaniką, zbudowany jak piwnica: `pokoj.js` i `pokoj.css` (p
 
 Na pergaminach są: Grządki (plan działki), Skrzynka z nasionami (zapasy i zakupy) oraz Termometr i barometr.
 
+Część działki można wyłączyć z grządek polem `obszar_grzadek` w `tabele/ogrod.json` (x, y, dl, szer w metrach); bez niego grządki mogą być na całej działce. Tak jest zrobiony ogród Artemidy.
+
 ## Pogoda
 
 Pogodę liczy `api/_pogoda.php` z klimatu Bydgoszczy (`tabele/klimat.json`: miesięczne normy temperatury, opadu, zachmurzenia i wiatru). Każdy dzień wynika z daty i z poprzednich dni (ciepło i deszcz mają pamięć), więc pogoda jest wspólna dla wszystkich gości i nic nie trzeba zapisywać. Z tego samego wynikają: przymrozki, śnieg (narasta i topnieje), temperatura ziemi, mgła o świcie, wschód i zachód słońca oraz przepowiednia barometru na jutro (myli się mniej więcej raz na pięć dni). Średnie z wielu lat zgadzają się z normami. Zmiana `ziarno` losuje całą pogodę od nowa.

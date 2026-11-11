@@ -1,0 +1,93 @@
+/* Wygląd elementów ogrodu (pokoj.json: styl). U Artemidy cały ogród jest pisany piórem:
+   tytuły gotykiem (Pirata One), reszta pismem odręcznym (Dancing Script). Obie czcionki mają polskie znaki;
+   bez internetu zostaje Georgia. */
+@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600&family=Pirata+One&display=swap');
+:root{--pismo:'Dancing Script',Georgia,serif;--gotyk:'Pirata One',Georgia,serif}
+#w,#w button,#w input,#w select,#tost,.p span{font-family:var(--pismo);font-style:normal}
+#w{font-size:1.08em}
+#w p,#w .tekst p{font-size:17px;line-height:1.35}
+#w .tekst{font-size:17px}
+#w button{font:600 16px var(--pismo)}
+#w h2,#w h3{font-family:var(--gotyk);letter-spacing:.02em}
+#w h2{font-size:28px}
+#w .grupa{font-family:var(--gotyk);font-size:18px;font-style:normal;letter-spacing:.02em}
+#w .dim{font-size:.92em}
+.p span{font-size:17px}
+.p.kot{width:150px;height:184px}
+#w .rzad,#w .poz,#w .zamow,#w .akcje,#w .termo,#w svg.plan,#w table.dni tr{break-inside:avoid}
+#w .rzad{display:flex;justify-content:space-between;align-items:center;gap:.6em;text-align:left;margin:.3em 0}
+#w .rzad>span:first-child{flex:1 1 0;min-width:0;line-height:1.25}
+#w .rzad>span:last-child{flex:none;white-space:nowrap}
+#w .rzad button{margin:0 0 0 4px;padding:3px 9px;font-size:13px}
+#w .akcje{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;margin:4px 0}
+#w .akcje button{margin:0;padding:3px 10px;font-size:13px}
+#w button small{font-size:.8em;opacity:.8}
+#w button:disabled{opacity:.35;cursor:default}
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:16px/1.3 var(--pismo);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost.on{opacity:1}
+#w .dim{opacity:.7;font-size:.85em}
+#w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
+#w .kasa{font-size:18px;font-style:italic;margin:10px 0 4px}
+/* plan działki */
+/* plan działki: atrament na pergaminie (kształty rysuje pokoj.js). Działka jest wysoka (40×80 m),
+   więc plan zajmuje prawie całą stronę kartki, a szerokość wynika z proporcji. */
+#w svg.plan{display:block;width:auto;max-width:100%;height:calc(min(792px,132.9vw,92vh) * .72);height:calc(min(792px,132.9vw,92dvh) * .72);
+  margin:4px auto;cursor:pointer;fill:none;stroke:none;stroke-linecap:round;stroke-linejoin:round}
+#w .plan .tusz,#w .plan .cienki,#w .plan .olowek,#w .plan .obrys,#w .plan .detal{fill:none;stroke:#2b1d10}
+#w .plan .tusz{stroke-width:.11;stroke-opacity:.9}
+#w .plan .cienki{stroke-width:.05;stroke-opacity:.55}
+#w .plan .olowek{stroke-width:.05;stroke-opacity:.28;stroke-dasharray:.35 .25}
+#w .plan .miejsce:hover .olowek{stroke-opacity:.6}
+#w .plan .plama{stroke:none}
+#w .plan .obrys{stroke-width:.08;stroke-opacity:.85}
+#w .plan .detal{stroke-width:.05;stroke-opacity:.75}
+#w .plan .grz.rosnie .detal,#w .plan .grz.do_zbioru .detal{stroke:#2f4a14}
+#w .plan .kropki{fill:none;stroke:#7a1f12;stroke-width:.28}
+#w .plan .nasiona{fill:none;stroke:#3a2412;stroke-width:.17}
+#w .plan .grz:hover .obrys{stroke-width:.14}
+#w .plan .zazn{fill:none;stroke:#8b2a1a;stroke-width:.13;stroke-opacity:.9}
+#w .plan text{font-family:var(--gotyk);fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
+#w .plan text.duzy{font-size:3.2px}
+#w .plan text.sredni{font-size:1.8px}
+#w .plan text.maly{font-family:var(--pismo);font-size:1.3px}
+#w .plan .grz.czar .plama{animation:czaruje 1.2s ease-in-out infinite alternate}
+@keyframes czaruje{from{fill-opacity:.15}to{fill-opacity:.6}}
+/* termometr */
+#w .termo{display:flex;align-items:baseline;justify-content:center;gap:.5em;margin:4px 0}
+#w .termo b{font-size:40px;font-weight:normal}
+#w .termo span{font-style:italic;font-size:18px}
+#w .baro{margin-top:10px}
+#w table.dni{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+#w table.dni td{padding:2px 4px;border-bottom:1px solid #0002;vertical-align:top}
+#w table.dni td:nth-child(2){white-space:nowrap}
+/* sklep: jak księga rachunkowa w piwnicy */
+#w table.cennik{width:100%;border-collapse:collapse;font-size:14px}
+#w .cennik td{padding:2px 3px;vertical-align:middle}
+#w .cennik td:first-child{padding-left:0}
+#w .cennik td:last-child{padding-right:0}
+#w .poz.wybrany{background:#7a4a1a22}
+#w .cennik .naz{width:100%;text-align:left;line-height:1.2}
+#w .cennik .naz i{opacity:.7;font-size:.9em}
+#w .cennik .cena{white-space:nowrap;text-align:right;font-style:italic;padding-left:.6em}
+#w .cennik .krok{white-space:nowrap;text-align:right;padding-left:.5em}
+#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 Georgia,serif;border-color:#2b1d1099;vertical-align:middle}
+#w .krok output{display:inline-block;width:1.9em;text-align:center;font-variant-numeric:tabular-nums;vertical-align:middle}
+#w .zamow{display:flex;justify-content:space-between;align-items:center;gap:.6em;margin-top:8px;font-style:italic}
+#w .zamow button{margin:0}
+@media (max-width:360px),(max-height:520px){
+  #w .rzad{gap:.3em}
+  #w .rzad button,#w .akcje button{padding:2px 6px;font-size:12px}
+  #w table.cennik{font-size:12px}
+  #w .krok button{width:19px;height:19px;font-size:14px}
+  #w .krok output{width:1.5em}
+}
+/* niebo nad ogrodem: deszcz, śnieg, mgła i noc (klasy na body ustawia pokoj.js) */
+body.o-deszcz::after,body.o-snieg::after{content:"";position:fixed;inset:-10% 0 0;pointer-events:none;z-index:3}
+body.o-deszcz::after{background:repeating-linear-gradient(105deg,transparent 0 22px,#c8d6e633 22px 23px);background-size:120px 160px;animation:deszcz .45s linear infinite}
+body.o-deszcz.o-mzawka::after{opacity:.45;animation-duration:.9s}
+body.o-snieg::after{background-image:radial-gradient(circle,#fffe 1.2px,transparent 1.6px),radial-gradient(circle,#fffb 1px,transparent 1.4px);background-size:90px 90px,140px 140px;background-position:0 0,40px 60px;animation:snieg 9s linear infinite}
+@keyframes deszcz{to{background-position:-40px 160px}}
+@keyframes snieg{to{background-position:30px 90px,10px 200px}}
+body.o-mgla .fog{opacity:.95;filter:blur(28px)}
+body.o-noc #sky{background:#05081588}
+@media (prefers-reduced-motion:reduce){body.o-deszcz::after,body.o-snieg::after,#w .plan .grz.czar .plama{animation:none}}

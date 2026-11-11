@@ -5,10 +5,12 @@
  "do": "do ogrodu",
  "ikona": "<path d=\"M50 90V55M50 55c-20-5-28-25-10-35 6-10 28-8 28 6 10 8 4 26-18 29z\"/><path d=\"M20 90h60\"/>",
  "kolejnosc": 7,
+ "skrypt": "pokoj.js",
+ "styl": "pokoj.css",
  "foldery": [
-  {
-   "nazwa": "przedmioty",
-   "rodzaj": "przedmiot"
-  }
+  { "nazwa": "przedmioty", "rodzaj": "przedmiot" },
+  { "nazwa": "grzadki", "rodzaj": "grzadki" },
+  { "nazwa": "skrzynka", "rodzaj": "skrzynka" },
+  { "nazwa": "pogoda", "rodzaj": "pogoda" }
  ]
 }

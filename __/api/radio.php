@@ -5,13 +5,13 @@ require __DIR__ . '/_radio.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-$ust = array_merge(['wlaczone' => true, 'tytul' => true, 'glosnosc' => 0.6], is_array(postac()['radio'] ?? null) ? postac()['radio'] : []);
+$ust = array_merge(['wlaczone' => true, 'tytul' => true, 'glosnosc' => 0.6, 'stacja' => 'Radio Bromberek'], is_array(postac()['radio'] ?? null) ? postac()['radio'] : []);
 try {
     $s = $ust['wlaczone'] ? radio_szufla() : null;
 } catch (Throwable $e) {
     $s = null;
 }
-$wyj = ['czas' => (int)round(microtime(true) * 1000), 'ustawienia' => ['tytul' => (bool)$ust['tytul'], 'glosnosc' => (float)$ust['glosnosc']]];
+$wyj = ['czas' => (int)round(microtime(true) * 1000), 'ustawienia' => ['tytul' => (bool)$ust['tytul'], 'glosnosc' => (float)$ust['glosnosc'], 'stacja' => (string)$ust['stacja']]];
 if (!$s || empty($s['utwory'])) {
     echo json_encode($wyj + ['utwory' => [], 'kolejnosc' => []]);
     exit;

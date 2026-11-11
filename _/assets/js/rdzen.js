@@ -452,6 +452,25 @@
       '</svg><div id="rtyt"></div></div>');
     const el = $('#radio'), wl = $('#rwl'), gl = $('#rgl'), tyt = $('#rtyt');
     if (!R.ustawienia.tytul) tyt.hidden = true;
+    /* Napis z tytułem: gdy jest dłuższy niż okienko radia, przesuwa się powoli w pętli. Za tekstem idzie jego kopia,
+       a między ostatnią literą a pierwszą zostaje przerwa (padding w styl.css). Napis zmienia się tylko przy zmianie utworu,
+       więc pasek nie zaczyna od nowa przy każdej synchronizacji. */
+    const stacja = R.ustawienia.stacja || '';
+    let tytTekst = null;
+    function napis(t) {
+      if (t === tytTekst) return;
+      tytTekst = t;
+      tyt.classList.remove('jedzie'); tyt.textContent = '';
+      if (!t) return;
+      const pas = document.createElement('span'), a = document.createElement('span');
+      pas.className = 'pas'; a.textContent = t; pas.appendChild(a); tyt.appendChild(pas);
+      if (a.offsetWidth <= tyt.clientWidth) return;
+      const b = a.cloneNode(true); b.setAttribute('aria-hidden', 'true'); pas.appendChild(b);
+      const d = b.getBoundingClientRect().left - a.getBoundingClientRect().left;
+      pas.style.setProperty('--d', -d + 'px');
+      pas.style.setProperty('--t', (d / 22).toFixed(1) + 's');      // około 22 pikseli na sekundę
+      tyt.classList.add('jedzie');
+    }
 
     const audio = new Audio();
     audio.preload = 'auto';
@@ -506,7 +525,7 @@
       // wskazówka na skali stroi się na miejsce utworu w szufli, a po wyłączeniu wraca na początek
       const poz = g ? (g.wyd ? .5 : (R.kolejnosc[g.nr] + .5) / R.utwory.length) : 0;
       $('#rig').style.transform = 'translate(' + (58 + poz * 54) + 'px,0)';
-      tyt.textContent = g && gra ? '♪ ' + g.u.tytul : '';
+      napis(g && gra ? '♪ ' + (stacja ? stacja + ', teraz gramy: ' : '') + g.u.tytul : '');
     }
     let czekaNaGest = false, odlicza = 0, naGodzine = 0;
     /* utwór na godzinę ma ruszyć punktualnie, a nie przy najbliższej korekcie co 4 s */

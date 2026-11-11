@@ -1,0 +1,8 @@
+{
+ "_opis": "Czary ogrodowe. 'znany': false to czar, którego ta postać nie umie: nie pokazuje się w grze, a włączenie to zmiana na true. 'efekt' mówi, co czar robi: 'nowa_grzadka' (na wolnym miejscu powstaje grządka, po 'czas_s' sekundach), 'likwidacja' (grządka znika i zarasta trawą), 'podlewa' (wszystkie grządki dostają 'mm' wody), 'pleje' (wszystkie grządki bez chwastów), 'oslona' (przez 'dni' dni rośliny znoszą o 'stopnie' °C mocniejszy mróz). Inna myśloodsiewnia ma własną kopię tej tabeli i może znać inne czary.",
+ "praeparatio-terrae": { "nazwa": "Praeparatio Terrae", "pl": "przygotowanie grządki", "efekt": "nowa_grzadka", "czas_s": 120, "znany": true },
+ "complanatio-terrae": { "nazwa": "Complanatio Terrae", "pl": "zrównanie grządki z trawnikiem", "efekt": "likwidacja", "czas_s": 0, "znany": true },
+ "irrigatio-caelestis": { "nazwa": "Irrigatio Caelestis", "pl": "deszcz nad grządkami", "efekt": "podlewa", "mm": 12, "znany": false },
+ "extirpatio-zizaniorum": { "nazwa": "Extirpatio Zizaniorum", "pl": "wyrwanie chwastów", "efekt": "pleje", "znany": false },
+ "tegumen-pruinae": { "nazwa": "Tegumen Pruinae", "pl": "osłona przed przymrozkiem", "efekt": "oslona", "dni": 3, "stopnie": 5, "znany": false }
+}

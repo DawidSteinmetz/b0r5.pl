@@ -1,0 +1,16 @@
+{
+ "_opis": "Działka i ogród. Wymiary w metrach; plan rysuje się z góry: 'dl' w poziomie, 'szer' w pionie, (0,0) to róg przy furtce. 'zabudowa' to miejsca, gdzie grządki nie mogą powstać (dom). Grządki stoją w rzędach: 'grzadka' to ich wymiar, 'odstep' to ścieżka między grządkami w rzędzie, 'miedzy_rzedami' to ścieżka między rzędami, 'margines' to pas przy płocie. Z tego wynika, ile grządek w ogóle się zmieści. 'pojemnosc_mm': ile wody gleba trzyma (więcej spływa), 'podlewanie_mm': ile daje jedno podlanie konewką. 'kasa': pokój, z którego księgi idą pieniądze, 'do_skladu': pokój, do którego Składu trafiają zbiory. 'start' wysypuje się tylko przy pierwszym uruchomieniu.",
+ "dzialka": { "dl": 40, "szer": 20 },
+ "zabudowa": [ { "nazwa": "Dom", "x": 0, "y": 0, "dl": 10, "szer": 10 } ],
+ "grzadka": { "dl": 1.2, "szer": 5, "odstep": 0.5, "miedzy_rzedami": 1.0, "margines": 0.5 },
+ "pojemnosc_mm": 120,
+ "podlewanie_mm": 15,
+ "kasa": "piwnica",
+ "do_skladu": "piwnica",
+ "start": [
+  { "miejsce": 0, "gatunek": "bylica", "wiek": 3, "zebrane": true, "chwasty": 0.1 },
+  { "miejsce": 1, "gatunek": "kozlek", "wiek": 1, "chwasty": 0.1 },
+  { "miejsce": 2, "gatunek": "ruta", "wiek": 2, "zebrane": true, "chwasty": 0.1 },
+  { "miejsce": 3, "gatunek": "", "chwasty": 0.95, "notatka": "tu rósł mak; zarosło" }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+ "_opis": "Klimat Bydgoszczy (Bromberg) dla symulacji pogody w ogrodzie. Wartości miesięczne są przybliżonymi normami: 't' średnia temperatura dobowa (°C), 'amp' średnia różnica dzień–noc (°C), 'sd' rozrzut temperatury z dnia na dzień (°C), 'opad' suma opadu w miesiącu (mm), 'dni' liczba dni z opadem, 'chmury' średnie zachmurzenie (0–1), 'wiatr' średni wiatr (m/s). Każdy dzień liczy się z daty i z poprzednich dni, więc pogoda jest taka sama dla wszystkich i nic nie trzeba zapisywać. Zmiana 'ziarno' losuje całą pogodę od nowa.",
+ "miejsce": "Bydgoszcz",
+ "szerokosc": 53.12,
+ "dlugosc": 18.0,
+ "ziarno": "bromberg",
+ "pamiec_temp": 0.72,
+ "pamiec_opadu": 0.3,
+ "miesiace": [
+  { "t": -2.0, "amp": 5.0, "sd": 5.0, "opad": 27, "dni": 9, "chmury": 0.82, "wiatr": 4.0 },
+  { "t": -1.2, "amp": 6.0, "sd": 5.0, "opad": 23, "dni": 8, "chmury": 0.77, "wiatr": 4.0 },
+  { "t": 2.3, "amp": 8.0, "sd": 4.0, "opad": 27, "dni": 8, "chmury": 0.70, "wiatr": 4.1 },
+  { "t": 7.6, "amp": 10.5, "sd": 3.5, "opad": 30, "dni": 7, "chmury": 0.62, "wiatr": 3.8 },
+  { "t": 13.0, "amp": 11.5, "sd": 3.2, "opad": 48, "dni": 9, "chmury": 0.58, "wiatr": 3.4 },
+  { "t": 16.4, "amp": 11.0, "sd": 3.0, "opad": 58, "dni": 9, "chmury": 0.58, "wiatr": 3.2 },
+  { "t": 18.2, "amp": 10.8, "sd": 2.8, "opad": 72, "dni": 10, "chmury": 0.57, "wiatr": 3.1 },
+  { "t": 17.5, "amp": 10.8, "sd": 2.8, "opad": 58, "dni": 9, "chmury": 0.55, "wiatr": 3.0 },
+  { "t": 13.3, "amp": 10.0, "sd": 3.0, "opad": 43, "dni": 8, "chmury": 0.60, "wiatr": 3.2 },
+  { "t": 8.3, "amp": 8.0, "sd": 3.5, "opad": 34, "dni": 8, "chmury": 0.70, "wiatr": 3.5 },
+  { "t": 3.2, "amp": 5.0, "sd": 4.0, "opad": 35, "dni": 9, "chmury": 0.83, "wiatr": 3.8 },
+  { "t": -0.6, "amp": 4.0, "sd": 4.5, "opad": 33, "dni": 10, "chmury": 0.86, "wiatr": 4.0 }
+ ]
+}

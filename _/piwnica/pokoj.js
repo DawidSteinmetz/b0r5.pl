@@ -116,6 +116,7 @@
         const t = h.typ === 'zakup' ? 'kupiłem ' + nl + ' ×' + h.n + ', zapłacone ' + kw :
           h.typ === 'sprzedaz' ? 'sprzedałem ' + nl + ' za ' + kw :
           h.typ === 'popyt' ? 'zielarz mówi, że ktoś jeszcze brał ' + nl + ' ×' + h.n :
+          h.typ === 'wydatek' ? esc(h.opis || 'wydatek') + ', zapłacone ' + kw :
           'miesięczny dodatek: ' + kw;
         return '<div class="dim">' + CZAS(h.ts) + ' · ' + t + '</div>';
       }).join('') : '';

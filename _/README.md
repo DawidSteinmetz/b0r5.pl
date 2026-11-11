@@ -64,4 +64,4 @@ Muzyka: pliki `.mp3` z `radio/` tworzą wspólną playlistę same. Pliki `.wav` 
 
 ## Henryk
 
-Mechanikę piwnicy opisuje `piwnica/README.md`. Sen jest zawieszony: jego dane i stary kod leżą w `biblioteka/_sen/` (patrz tamtejszy `README.txt`).
+Mechanikę piwnicy opisuje `piwnica/README.md`, a ogrodu (pogoda, grządki, zakupy nasion) `ogrod/README.md`. Zbiory z ogrodu trafiają do Składu w piwnicy, a nasiona płaci się z tej samej kasy. Sen jest zawieszony: jego dane i stary kod leżą w `biblioteka/_sen/` (patrz tamtejszy `README.txt`).

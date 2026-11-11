@@ -1,0 +1,44 @@
+{
+ "_opis": "Skąd Henryk bierze nasiona i sadzonki. Płaci z kasy z księgi rachunkowej w piwnicy (ogrod.json: 'kasa'). Każdy dostawca ma własną zwłokę dostawy ('zwloka_s'), a targ działa tylko w podane dni tygodnia ('dni': 1 = poniedziałek … 7 = niedziela) i godziny ('godziny': od, do). Towar: 'gatunek' z rosliny.json, 'forma' ('nasiona' albo 'sadzonki'; sadzonki ruszają od razu, nasiona muszą wzejść), 'baza' to cena w punktach budżetu, 'miesiace' to pora, kiedy towar w ogóle jest, a 'jakosc' (0–1) to, jak dobrze się przyjmie. Jedna porcja obsadza jedną grządkę. Popyt podnosi ceny jak na rynku w piwnicy ('cena').",
+ "cena": { "min": 0.8, "max": 1.8, "K": 4, "polokres_h": 120 },
+ "zakup": { "max_pozycja": 4, "max_razem": 8 },
+ "dostawcy": {
+  "zielarz": {
+   "nazwa": "Zielarz z Gdańskiej",
+   "opis": "Ten sam zielarz, od którego idą surowce do piwnicy. Sadzonki ma z własnego ogrodu za miastem; chłopak przynosi je jeszcze tego samego dnia.",
+   "zwloka_s": 900,
+   "towary": {
+    "bylica-sadzonki": { "gatunek": "bylica", "forma": "sadzonki", "nazwa": "Sadzonki bylicy", "baza": 3, "miesiace": [4, 5, 9, 10], "jakosc": 0.9 },
+    "ruta-sadzonki": { "gatunek": "ruta", "forma": "sadzonki", "nazwa": "Sadzonki ruty", "baza": 4, "miesiace": [4, 5, 6, 9], "jakosc": 0.9 },
+    "kozlek-sadzonki": { "gatunek": "kozlek", "forma": "sadzonki", "nazwa": "Sadzonki kozłka", "baza": 4, "miesiace": [4, 5, 9, 10], "jakosc": 0.88 },
+    "mak-nasiona": { "gatunek": "mak", "forma": "nasiona", "nazwa": "Nasiona maku", "baza": 2, "miesiace": [2, 3, 4], "jakosc": 0.85 },
+    "koper-nasiona": { "gatunek": "koper", "forma": "nasiona", "nazwa": "Nasiona kopru", "baza": 1, "miesiace": [3, 4, 5, 6, 7, 8], "jakosc": 0.85 }
+   }
+  },
+  "nasiennik": {
+   "nazwa": "Katalog nasion z Erfurtu",
+   "opis": "Gruby katalog z kolorowymi tablicami. Zamówienie idzie pocztą, a paczka wraca po dwóch dniach. Drożej, ale nasiona prawie zawsze wschodzą.",
+   "zwloka_s": 172800,
+   "towary": {
+    "mak-nasiona": { "gatunek": "mak", "forma": "nasiona", "nazwa": "Mak lekarski, odmiana niebieska", "baza": 3, "miesiace": [1, 2, 3, 4], "jakosc": 0.97 },
+    "koper-nasiona": { "gatunek": "koper", "forma": "nasiona", "nazwa": "Koper ogrodowy", "baza": 2, "miesiace": [1, 2, 3, 4, 5, 6, 7], "jakosc": 0.97 },
+    "burak-nasiona": { "gatunek": "burak", "forma": "nasiona", "nazwa": "Burak cukrowy, odmiana kleinwanzlebeńska", "baza": 3, "miesiace": [1, 2, 3, 4, 5], "jakosc": 0.96 },
+    "cebula-dymka": { "gatunek": "cebula", "forma": "sadzonki", "nazwa": "Cebula dymka", "baza": 4, "miesiace": [1, 2, 3, 4], "jakosc": 0.95 },
+    "czosnek-zabki": { "gatunek": "czosnek", "forma": "sadzonki", "nazwa": "Czosnek ozimy, ząbki", "baza": 4, "miesiace": [7, 8, 9, 10], "jakosc": 0.95 }
+   }
+  },
+  "targ": {
+   "nazwa": "Targ na Starym Rynku",
+   "opis": "W środy i soboty przed południem. Najtaniej, ale co kupione od chłopów, to różnie się przyjmuje. Henryk przynosi koszyk sam, po godzinie.",
+   "zwloka_s": 3600,
+   "dni": [3, 6],
+   "godziny": [6, 13],
+   "towary": {
+    "cebula-dymka": { "gatunek": "cebula", "forma": "sadzonki", "nazwa": "Dymka cebuli, na wagę", "baza": 2, "miesiace": [3, 4, 5], "jakosc": 0.75 },
+    "czosnek-zabki": { "gatunek": "czosnek", "forma": "sadzonki", "nazwa": "Czosnek do sadzenia", "baza": 2, "miesiace": [3, 4, 9, 10, 11], "jakosc": 0.75 },
+    "ruta-sadzonki": { "gatunek": "ruta", "forma": "sadzonki", "nazwa": "Ruta w doniczce", "baza": 2, "miesiace": [5, 6], "jakosc": 0.7 },
+    "koper-nasiona": { "gatunek": "koper", "forma": "nasiona", "nazwa": "Nasiona kopru w tutce", "baza": 1, "miesiace": [4, 5, 6, 7], "jakosc": 0.7 }
+   }
+  }
+ }
+}

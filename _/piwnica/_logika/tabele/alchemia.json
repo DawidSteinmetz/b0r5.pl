@@ -4,6 +4,7 @@
  "czas_wagi_s": 4,
  "czas_gotowania_s": 5,
  "pojemnosc_g": 12000,
+ "rozdzielacz": true,
  "czar_wagi": "Revelio Ponderis",
  "start": [
   {

@@ -230,17 +230,24 @@
       /* Ulotnienie: po wyssaniu do zera wodoru (albo tlenu) drugi gaz łączy się w pary i ulatuje. Świeże: bańki nad próbką. */
       if (st.ulot) {
         const u = st.ulot, wz = u.e + '₂', cz = s.czary.find(c => c.id === u.czar);
-        if (u.swiezy) h += '<div class="ulot-scena" aria-hidden="true"><svg viewBox="0 0 100 100">' + ((cz && cz.przyrzad.ikona) || '') + '<ellipse class="probka" cx="50" cy="54" rx="9" ry="7"/>' +
+        const ikona = u.zlapany && st.rozdzielacz ? st.rozdzielacz.ikona : ((cz && cz.przyrzad.ikona) || '');
+        if (u.swiezy) h += '<div class="ulot-scena' + (u.zlapany ? ' zlapane' : '') + '" aria-hidden="true"><svg viewBox="0 0 100 100">' + ikona + '<ellipse class="probka" cx="50" cy="54" rx="9" ry="7"/>' +
           [0, 1, 2, 3, 4, 5].map(i => '<g class="banka" style="--d:' + (i * .45) + 's;--x:' + [-10, 7, -3, 11, -7, 3][i] + 'px"><circle cx="50" cy="50" r="7"/><text x="50" y="52.5">' + wz + '</text></g>').join('') + '</svg></div>';
-        const dop = { O: 'tlenu', H: 'wodoru', Cl: 'chloru', N: 'azotu', F: 'fluoru' }[u.e] || u.nazwa;
-        h += '<p class="ulot">' + (!u.czar
-          ? 'Został sam ' + esc(u.nazwa) + '. Bez towarzystwa łączy się w pary ' + wz + ' i ulatuje z próbki'
-          : u.e === 'O' ? 'Bez wodoru tlen nie ma się czego trzymać. Łączy się w pary ' + wz + ' i bańkami ulatuje z próbki'
-          : u.e === 'H' ? 'Bez tlenu wodór łączy się w pary ' + wz + ' i ulatuje pod sufit'
-          : esc(u.nazwa) + ' łączy się w pary ' + wz + ' i ulatuje z próbki') +
-          (u.zlapany ? ', ale w porę podstawiony przyrząd go chwyta: ' + liczba(u.g, 2) + ' g ' + dop + ' leży na kopczyku.</p>'
-          : u.swiezy ? '…</p>' : ': ' + liczba(u.g, 2) + ' g ' + dop + ' przepadło w powietrzu.</p>');
+        const zdanie = u => {
+          const wz = u.e + '₂', dop = { O: 'tlenu', H: 'wodoru', Cl: 'chloru', N: 'azotu', F: 'fluoru' }[u.e] || u.nazwa;
+          return (!u.czar
+            ? 'Został sam ' + esc(u.nazwa) + '. Bez towarzystwa łączy się w pary ' + wz + ' i ulatuje z próbki'
+            : u.e === 'O' ? 'Bez wodoru tlen nie ma się czego trzymać. Łączy się w pary ' + wz + ' i bańkami ulatuje z próbki'
+            : u.e === 'H' ? 'Bez tlenu wodór łączy się w pary ' + wz + ' i ulatuje pod sufit'
+            : esc(u.nazwa) + ' łączy się w pary ' + wz + ' i ulatuje z próbki') +
+            (u.zlapany ? ', ale rozdzielacz chwyta go do bańki: ' + liczba(u.g, 2) + ' g ' + dop + ' leży na kopczyku.'
+            : (u.niedomkniety ? '. Rozdzielacz nie domknął się nad ruszoną już próbką' : '') + (u.swiezy ? '…' : ': ' + liczba(u.g, 2) + ' g ' + dop + ' przepadło w powietrzu.'));
+        };
+        h += (u.wczesniej || []).map(q => '<p class="ulot">' + zdanie(q) + '</p>').join('') + '<p class="ulot">' + zdanie(u) + '</p>';
       }
+      /* Magiczny rozdzielacz (tylko tam, gdzie pokój go ma): podstawia się go nad próbką albo zdejmuje. */
+      if (st.rozdzielacz) h += '<div class="rozdz' + (st.rozdzielacz.jest ? ' on' : '') + '"><svg viewBox="0 0 100 100" aria-hidden="true">' + st.rozdzielacz.ikona + '</svg><span>' +
+        esc(st.rozdzielacz.nazwa) + (st.rozdzielacz.jest ? ' stoi nad próbką' : ' stoi na półce') + '</span><button id="rozdz">' + (st.rozdzielacz.jest ? 'Zdejmij' : 'Podstaw') + '</button></div>';
       const naGorze = '<div id="czp"></div>';                       // lista czarów na górze okna
       const sklad = tabelaSkladu(st.sklad) + '<p class="proporcja">' + proporcja(m) + '</p>';
       if (st.czar) {
@@ -248,8 +255,7 @@
         return;
       }
       h += naGorze + sklad;
-      const lapie = c => !!(st.ulot && st.ulot.swiezy && c.usuwa.includes(st.ulot.e));       // czar, który złapie ulatujący gaz
-      const dostepne = s.czary.filter(c => c.znany && (c.usuwa.some(e => m[e] > 0) || lapie(c)));   // w notatkach tylko znane czary
+      const dostepne = s.czary.filter(c => c.znany && c.usuwa.some(e => m[e] > 0));   // w notatkach tylko znane czary
       if (!dostepne.some(c => c.id === wybrany)) wybrany = '';          // bez listy wyboru: suwak dotyczy ostatnio rzuconego czaru
       /* Czar-przepis podpowiada, ile wyssać, i od razu wybiera czar, który jest jeszcze potrzebny. */
       const pod = st.podpowiedz || null;
@@ -302,7 +308,6 @@
           wybrany = id;
           if (moc === null) moc = 'optimum';
         }
-        if (lapie(c)) return akcja('czar', { czar: id, ulamek: 1 });
         const ma = m[c.usuwa[0]] || 0;
         if (!(ma > 0)) return kom(c.nazwa + ': w tej próbce nie ma czego wyssać.');
         const u = moc === 'maximum' ? 1 : moc === 'optimum' ? (nadmiar(c) > 0 ? Math.min(1, nadmiar(c) / ma) : 1)
@@ -315,6 +320,7 @@
       czary.wstaw($('#czp'), { czary: dostepne.map(c => ({ id: c.id, nazwa: c.nazwa, opis: c.pl })), wszystkie: s.czary, naCzar: rzucCzar, kom });
       if ($('#doKot')) $('#doKot').onclick = () => akcja('do_kociolka', { id: st.id });
       $('#odloz').onclick = () => akcja('ze_stolu');
+      if ($('#rozdz')) $('#rozdz').onclick = () => akcja('rozdzielacz', { on: st.rozdzielacz.jest ? '0' : '1' });
     }, s => [s.stol, s.czary.length]);
   }
 

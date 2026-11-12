@@ -91,3 +91,10 @@
 @keyframes banka{0%{opacity:0;transform:translate(0,0) scale(.5)}15%{opacity:1}100%{opacity:0;transform:translate(var(--x),-58px) scale(1.25)}}
 #w p.ulot{font-style:italic;font-size:14px;margin:4px 0 8px;color:#2b4a70}
 @media (prefers-reduced-motion:reduce){#w .ulot-scena .banka{animation:none;opacity:.8}}
+/* stół: magiczny rozdzielacz (podstawiony / na półce); złapany gaz wpada bańkami do rozdzielacza */
+#w .rozdz{display:flex;align-items:center;justify-content:center;gap:.5em;margin:2px 0 6px;font-size:14px;font-style:italic;opacity:.75}
+#w .rozdz.on{opacity:1;color:#2b4a70}
+#w .rozdz svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:4}
+#w .rozdz button{margin:0;padding:2px 9px;font-size:13px}
+#w .ulot-scena.zlapane .banka{animation-name:banka-lap}
+@keyframes banka-lap{0%{opacity:0;transform:translate(0,0) scale(.5)}20%{opacity:1}100%{opacity:0;transform:translate(0,-32px) scale(.35)}}

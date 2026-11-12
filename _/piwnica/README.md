@@ -62,3 +62,5 @@ Kociołek gotuje każdą proporcję. Czystość to masa NaCl, jaką da się uło
 
 Odparowanie: każdy wyrób można położyć na stole („Na stół” w zakładce Wyroby). Wyrób pamięta pełny skład z brudem, więc czar wysysa z niego jak z surowca, a czystość i stopień liczą się od nowa. Brudna sól z sody i spirytusu (ok. 25%) po odessaniu wodoru, tlenu i węgla ma ok. 99,7%. Wyrobu leżącego na stole nie da się sprzedać ani wsypać do kociołka.
 
+Ulatnianie: wodór i tlen trzymają się siebie. Gdy czar wyssie z próbki jeden z nich do zera, drugi łączy się w pary (O₂ albo H₂) i ulatuje: przepada w powietrzu, nie trafia na kopczyk (na stole bańki i opis). Przez `ALCH_ULOT_S` (8 s) gaz jeszcze leci: czar na ten pierwiastek rzucony w tym czasie podstawia swój przyrząd i ulatujący gaz trafia na kopczyk. Częściowe wysysanie (np. w przepisie na cukier) niczego nie uwalnia.
+

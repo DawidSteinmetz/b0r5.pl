@@ -42,6 +42,7 @@ function alch_pod_blokada($f) {
     $h = fopen(ALCH_STAN . '/.blokada', 'c'); flock($h, LOCK_EX);
     try { return $f(); } finally { flock($h, LOCK_UN); fclose($h); }
 }
+const ALCH_ULOT_S = 8;                              // ile sekund gaz ulatuje po wyssaniu partnera (wtedy da się go złapać)
 function alch_kociolek() { return alch_czytaj('kociolek') ?: ['sklad' => [], 'pochodzenie' => [], 'zawartosc' => [], 'koniec' => null, 'katalizator' => null, 'wynik' => '']; }
 
 // --- rzeczy --------------------------------------------------------------------------------------
@@ -445,6 +446,15 @@ function alch_dokoncz() {
             if ($zostaje <= ALCH_MALO) unset($r['sklad'][$e]); else $r['sklad'][$e] = $zostaje;
             alch_dosyp_kopczyk($e, $x, $sid);
         }
+        // Wodór i tlen trzymają się siebie: gdy jednego wyssie się do zera, drugi łączy się w pary (O₂ albo H₂) i ulatuje.
+        // Ulotniony gaz przepada w powietrzu, nie trafia na kopczyk.
+        $r['ulot'] = null;
+        foreach (($cz['usuwa'] ?? []) as $e) {
+            $p = ['H' => 'O', 'O' => 'H'][$e] ?? null;
+            if ($p === null || !empty($r['sklad'][$e]) || empty($r['sklad'][$p])) continue;
+            $mol = (float)$r['sklad'][$p]; unset($r['sklad'][$p]);
+            $r['ulot'] = ['e' => $p, 'mol' => round($mol, 6), 'g' => round($mol * alch_M($p), 3), 'czar' => $r['czar']['id'], 'ts' => $teraz];
+        }
         $r['czar'] = null;
         if ($r['typ'] === 'produkt') {
             // Wyrób (np. brudna sól, czyli solanka) pamięta pełny skład z brudem: po czarze czystość liczy się od nowa z tego, co zostało.
@@ -545,7 +555,8 @@ function alch_wykonaj($akcja, $in) {
             $st = alch_czytaj('stol'); $x = $st ? alch_rzecz($st['id']) : null;
             if (!$x) alch_blad('Na stole nic nie ma.');
             if (!empty($x['czar'])) alch_blad('Czar jeszcze działa.');
-            $x['gdzie'] = 'sklad'; alch_zapisz_rzecz($x); alch_zapisz('stol', null);
+            if (alch_masa($x['sklad']) <= ALCH_MALO) { alch_usun_rzecz($x['id']); alch_zapisz('stol', null); return 'Na stole nic nie zostało.'; }   // wszystko wyssane albo uleciało
+            $x['gdzie'] = 'sklad'; unset($x['ulot']); alch_zapisz_rzecz($x); alch_zapisz('stol', null);
             alch_rozloz_stosy();
             return $x['nazwa'] . ' wraca do Składu.';
         case 'czar':
@@ -553,7 +564,15 @@ function alch_wykonaj($akcja, $in) {
             if (!$x) alch_blad('Na stole nic nie ma.');
             if (!empty($x['czar'])) alch_blad('Czar jeszcze działa.');
             $cz = alch_tabela('czary')[$s('czar')] ?? null;
-            if (!$cz) alch_blad('Nie ma takiego czaru.');                // czar działa, nawet jeśli postać go nie zna (nie ma go tylko w jej notatkach)
+            if (!$cz) alch_blad('Nie ma takiego czaru.');
+            // Łapanie ulatującego gazu: czar na ten pierwiastek rzucony, póki gaz jeszcze ulatuje, podstawia swój przyrząd i gaz trafia na kopczyk.
+            $u = $x['ulot'] ?? null;
+            if ($u && empty($u['zlapany']) && $teraz - (float)$u['ts'] < ALCH_ULOT_S + 1.5 && in_array($u['e'], $cz['usuwa'], true)) {
+                alch_dosyp_kopczyk($u['e'], (float)$u['mol'], (string)array_key_first($x['pochodzenie'] ?? []));
+                $x['ulot']['zlapany'] = true; alch_zapisz_rzecz($x);
+                $prz = alch_tabela('przyrzady')[$cz['przyrzad']]['nazwa'] ?? 'Przyrząd';
+                return $prz . ' w ostatniej chwili chwyta ulatujący ' . alch_nazwa_el($u['e']) . ': ' . alch_f((float)$u['g'], 2) . ' g trafia na kopczyk.';
+            }                // czar działa, nawet jeśli postać go nie zna (nie ma go tylko w jej notatkach)
             $jest = false; foreach ($cz['usuwa'] as $e) if (!empty($x['sklad'][$e])) $jest = true;
             if (!$jest) alch_blad('W tej próbce nie ma czego wyssać.');
             $u = (float)str_replace(',', '.', $s('ulamek'));
@@ -715,6 +734,7 @@ function alch_widok() {
     $stol = null; $st = alch_czytaj('stol');
     if ($st && ($r = alch_rzecz($st['id']))) {
         $stol = ['id' => $r['id'], 'nazwa' => $r['nazwa'], 'masa_g' => round(alch_masa($r['sklad']), 2), 'sklad' => alch_tabela_skladu($r['sklad']), 'czar' => null];
+        if (!empty($r['ulot'])) $stol['ulot'] = $r['ulot'] + ['nazwa' => alch_nazwa_el($r['ulot']['e']), 'swiezy' => empty($r['ulot']['zlapany']) && microtime(true) - (float)$r['ulot']['ts'] < ALCH_ULOT_S];
         if ($r['typ'] === 'produkt') { $stol['wyrob'] = true; $stol['czystosc'] = $r['czystosc']; $stol['stopien'] = $r['stopien']; }
         if (!empty($r['czar'])) { $c = $tczary[$r['czar']['id']]; $stol['czar'] = ['nazwa' => $c['nazwa'], 'przyrzad' => $tprz[$c['przyrzad']] ?? []]; }
         $cel = alch_cel_dla($r);

@@ -227,6 +227,16 @@
       if (!st) { el.innerHTML = '<p><i>Stół jest pusty. Połóż coś na nim ze spiżarni.</i></p>'; return; }
       const m = mole(st.sklad);
       let h = '<p><b>' + esc(st.nazwa) + '</b>, ' + liczba(st.masa_g, 2) + ' g' + (st.wyrob ? ' · ' + esc(st.stopien) + ' · czystość ' + liczba(st.czystosc * 100, 1) + '%' : '') + '</p>';
+      /* Ulotnienie: po wyssaniu do zera wodoru (albo tlenu) drugi gaz łączy się w pary i ulatuje. Świeże: bańki nad próbką. */
+      if (st.ulot) {
+        const u = st.ulot, wz = u.e + '₂', cz = s.czary.find(c => c.id === u.czar);
+        if (u.swiezy) h += '<div class="ulot-scena" aria-hidden="true"><svg viewBox="0 0 100 100">' + ((cz && cz.przyrzad.ikona) || '') + '<ellipse class="probka" cx="50" cy="54" rx="9" ry="7"/>' +
+          [0, 1, 2, 3, 4, 5].map(i => '<g class="banka" style="--d:' + (i * .45) + 's;--x:' + [-10, 7, -3, 11, -7, 3][i] + 'px"><circle cx="50" cy="50" r="7"/><text x="50" y="52.5">' + wz + '</text></g>').join('') + '</svg></div>';
+        h += '<p class="ulot">' + (u.e === 'O'
+          ? 'Bez wodoru tlen nie ma się czego trzymać. Łączy się w pary ' + wz + ' i bańkami ulatuje z próbki'
+          : 'Bez tlenu wodór łączy się w pary ' + wz + ' i ulatuje pod sufit') + (u.zlapany ? ', ale w porę podstawiony przyrząd go chwyta: ' + liczba(u.g, 2) + ' g ' + (u.e === 'O' ? 'tlenu' : 'wodoru') + ' leży na kopczyku.</p>'
+          : u.swiezy ? '…</p>' : ': ' + liczba(u.g, 2) + ' g ' + (u.e === 'O' ? 'tlenu' : 'wodoru') + ' przepadło w powietrzu.</p>');
+      }
       const naGorze = '<div id="czp"></div>';                       // lista czarów na górze okna
       const sklad = tabelaSkladu(st.sklad) + '<p class="proporcja">' + proporcja(m) + '</p>';
       if (st.czar) {
@@ -234,7 +244,8 @@
         return;
       }
       h += naGorze + sklad;
-      const dostepne = s.czary.filter(c => c.znany && c.usuwa.some(e => m[e] > 0));   // w notatkach tylko znane czary
+      const lapie = c => !!(st.ulot && st.ulot.swiezy && c.usuwa.includes(st.ulot.e));       // czar, który złapie ulatujący gaz
+      const dostepne = s.czary.filter(c => c.znany && (c.usuwa.some(e => m[e] > 0) || lapie(c)));   // w notatkach tylko znane czary
       if (!dostepne.some(c => c.id === wybrany)) wybrany = '';          // bez listy wyboru: suwak dotyczy ostatnio rzuconego czaru
       /* Czar-przepis podpowiada, ile wyssać, i od razu wybiera czar, który jest jeszcze potrzebny. */
       const pod = st.podpowiedz || null;
@@ -287,6 +298,7 @@
           wybrany = id;
           if (moc === null) moc = 'optimum';
         }
+        if (lapie(c)) return akcja('czar', { czar: id, ulamek: 1 });
         const ma = m[c.usuwa[0]] || 0;
         if (!(ma > 0)) return kom(c.nazwa + ': w tej próbce nie ma czego wyssać.');
         const u = moc === 'maximum' ? 1 : moc === 'optimum' ? (nadmiar(c) > 0 ? Math.min(1, nadmiar(c) / ma) : 1)

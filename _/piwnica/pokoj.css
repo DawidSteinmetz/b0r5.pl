@@ -81,3 +81,13 @@
 #w table.mole.zaw tr.razem td{border-top:1px solid #2b1d1088;font-weight:bold}
 #w .porcje{text-align:left;margin:4px 0 8px;font-size:14px}
 #w .porcje p{margin:3px 0 3px 1em}
+/* stół: ulatujący gaz (O₂ albo H₂) po wyssaniu partnera do zera */
+#w .ulot-scena{width:120px;height:120px;margin:0 auto -8px;overflow:visible}
+#w .ulot-scena svg{width:100%;overflow:visible}
+#w .ulot-scena .probka{fill:#c28a3b88;stroke:#8a5a1a}
+#w .ulot-scena .banka{opacity:0;animation:banka 2.4s ease-out var(--d) 2 both}
+#w .ulot-scena .banka circle{fill:#ffffff55;stroke:#2b6ca0aa;stroke-width:.8}
+#w .ulot-scena .banka text{font:7px Georgia,serif;fill:#2b4a70;text-anchor:middle}
+@keyframes banka{0%{opacity:0;transform:translate(0,0) scale(.5)}15%{opacity:1}100%{opacity:0;transform:translate(var(--x),-58px) scale(1.25)}}
+#w p.ulot{font-style:italic;font-size:14px;margin:4px 0 8px;color:#2b4a70}
+@media (prefers-reduced-motion:reduce){#w .ulot-scena .banka{animation:none;opacity:.8}}

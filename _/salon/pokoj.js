@@ -74,8 +74,14 @@
 
   /* --- Czary ------------------------------------------------------------------------------------------------- */
   // Jak rozpoznawanie mowy po polsku słyszy łacińskie słowa (bez ogonków). Dłuższe warianty najpierw.
-  // "Nota hoc" bywa słyszane jako "nota hok", "nota ok", a nawet "no to chodź" albo "no ta chodź"
-  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta|no\s+to|no\s+ta|na\s+to|no\s+tu)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot|chodz|chodzi|chodze|hodz|choc)\b\s*/;
+  // "Nota hoc" rozpoznawanie mowy słyszy różnie: "nota hok", "nota ok", "no to chodź", "no ta chodź", "notachoć"…
+  // Zamiast listy wariantów: pierwsze 1–3 słowa sklejone razem mają brzmieć jak "no-ta-hoc":
+  // n + samogłoska, t, (samogłoska), (h/ch/k/g), samogłoska, (c/k/dź/ch/…) – i nic więcej.
+  const BRZMI_JAK_NOTA_HOC = /^n[aeiouy]{1,2}t{1,2}k?[aeiouy]?(?:h|ch|k|g|c)?h?[aeiouy]{1,2}(?:c|ck|k|kk|g|ch|cz|dz|dzi|dze|dzie|dzil|z|s|sz|t|h|j)?$/;
+  function przedrostek(slowa) {                 // ile pierwszych słów to "Nota hoc" (0 = nie ma)
+    for (let k = Math.min(3, slowa.length); k >= 1; k--) if (BRZMI_JAK_NOTA_HOC.test(slowa.slice(0, k).join(''))) return k;
+    return 0;
+  }
   const GRY = { mille: /^(mille|mile|mila|mili|milla|mil|mille mille)$/, alea: /^(alea|aleja|alei|ale a|alee|allea|alea jacta est)$/ };
   const ZACZNIJ = /^(incipiamus|incipjamus|incypiamus|in cipiamus|incipiam us|incipe|incipit|incipimus)$/;
   const NOWA = /^(nova|nowa|novo|nowe|nova pars|nowa gra)$/;
@@ -101,8 +107,8 @@
   function rozbierz(tekst, s, glos) {
     const oryg = String(tekst).replace(/[,.:;!?]/g, ' ').replace(/['"„”‘’]/g, '').replace(/\s+/g, ' ').trim();
     let t = bezOgonkow(oryg), o = oryg;
-    const m = t.match(PRZEDROSTEK), zPrzedrostkiem = !!m;
-    if (m) { const n = m[0].trim().split(/\s+/).length; o = o.split(' ').slice(n).join(' '); t = t.split(' ').slice(n).join(' '); }
+    const np = przedrostek(t.split(' ')), zPrzedrostkiem = np > 0;
+    if (np) { o = o.split(' ').slice(np).join(' '); t = t.split(' ').slice(np).join(' '); }
     for (const typ in GRY) if (GRY[typ].test(t)) return { akcja: 'wybierz', dane: { typ } };
     const lu = t.match(LUSOR);
     if (lu) {                                    // imię to dokładnie słowo po "Lusor Primus", tak jak padło
@@ -313,9 +319,17 @@
         const z = rozbierz(t, s, glos);
         if (!z) continue;
         if (z.blad) { blad = blad || z.blad; continue; }
+        if (glos) $('#slyszy').textContent += ' → ' + opis(z);
         return wykonaj(z.akcja, Object.assign({ glos: !!glos }, z.dane || {}));
       }
-      if (blad) kom(blad); else if (glos) $('#slyszy').textContent += ' (to nie czar)';
+      if (blad) { kom(blad); if (glos) $('#slyszy').textContent += ' → ' + blad; }
+      else if (glos) $('#slyszy').textContent += ' (to nie czar: brak „Nota hoc” na początku)';
+    };
+    // jak pióro zrozumiało czar (widać pod przyciskiem, gdy czar był rzucony głosem)
+    const opis = z => {
+      const d = z.dane || {}, u = d.kat && s.uklady.find(x => x.id === d.kat);
+      return ({ wybierz: 'gra: ' + d.typ, gracz_nr: 'gracz ' + d.nr + ': ' + d.imie, zacznij: 'zaczynamy', cofnij: 'wykreśl ostatni', od_nowa: 'nowa gra', bomba: 'bomba: ' + d.imie,
+        wpisz: 'gracz: ' + d.imie + (u ? ', układ: ' + u.lac : '') + (d.skresl ? ', skreślone' : d.pkt !== undefined ? ', punkty: ' + d.pkt : '') })[z.akcja] || z.akcja;
     };
     const ucho = $('#ucho');
     naStan = st => {

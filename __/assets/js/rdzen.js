@@ -143,6 +143,26 @@
     '<button id="next" type="button" aria-label="Następna strona"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>' +
     '</div></div></div>');
   const sky = $('#sky'), modal = $('#modal'), sheet = $('#sheet'), w = $('#w');
+  /* Kartka wyłania się z mgły, jak wejście do pokoju, tylko szybciej: kłęby gęstnieją nad kartką i od razu rzedną.
+     Działa przy każdym otwarciu okna (notatki, książki, przyrządy), nie przy przewracaniu stron. */
+  const MGLA_KARTKI = RUCH ? [260, 900] : [0, 0];
+  let mglaKartki = null, bylOn = false;
+  new MutationObserver(() => {
+    const on = modal.classList.contains('on');
+    if (on && !bylOn && MGLA_KARTKI[1]) {
+      if (mglaKartki) mglaKartki.remove();
+      const m = mglaKartki = document.createElement('div');
+      m.className = 'mgla-k'; m.setAttribute('aria-hidden', 'true');
+      m.innerHTML = [[-30, -25, 9], [28, -28, 11], [-26, 26, 10], [30, 24, 12], [0, -36, 8], [0, 34, 13]]
+        .map(([x, y, t], i) => '<div class="kleb" style="--x:' + x + 'vmax;--y:' + y + 'vmax;--dryf:' + t + 's;--opozn:-' + (i * 1.3) + 's"></div>').join('');
+      m.style.setProperty('--ms', MGLA_KARTKI[0] + 'ms');
+      modal.appendChild(m); sheet.classList.add('z-mgly');
+      void m.offsetWidth; m.classList.add('gesta');
+      setTimeout(() => { m.style.setProperty('--ms', MGLA_KARTKI[1] + 'ms'); m.classList.remove('gesta'); m.classList.add('rzednie'); }, MGLA_KARTKI[0]);
+      setTimeout(() => { m.remove(); if (mglaKartki === m) mglaKartki = null; sheet.classList.remove('z-mgly'); }, MGLA_KARTKI[0] + MGLA_KARTKI[1] + 100);
+    }
+    bylOn = on;
+  }).observe(modal, { attributes: true, attributeFilter: ['class'] });
 
   /* czas: godzina serwera w strefie świata (domyślnie Europe/Warsaw), niezależnie od komputera gracza */
   let rok = 1914, strefa = 'Europe/Warsaw', offset = 0;

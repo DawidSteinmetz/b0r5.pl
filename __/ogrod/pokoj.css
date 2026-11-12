@@ -81,3 +81,6 @@ body.o-noc #sky{background:#05081588}
 @media (prefers-reduced-motion:reduce){body.o-deszcz::after,body.o-snieg::after,#w .plan .grz.czar .plama{animation:none}}
 /* w rozłożonym zeszycie: opis i plan na lewej stronie, szczegóły grządki i czary na prawej */
 #sheet.poziom.rozklad #w #szcz{break-before:column}
+/* rośliny: każdy gatunek swoim kolorem (kolor w atrybucie stroke), kreska jak piórem */
+#w .plan .ros{fill:none;stroke-width:.06;stroke-opacity:.9;stroke-linecap:round}
+#w .plan .ros.ogonki{stroke-width:.05}

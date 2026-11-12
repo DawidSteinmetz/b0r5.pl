@@ -174,6 +174,16 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
   animation:kleb var(--dryf,12s) ease-in-out var(--opozn,0s) infinite alternate}
 #przejscie.gesta .kleb{opacity:1;transform:translate(calc(var(--x) * .2),calc(var(--y) * .2)) scale(1.15)}
 #przejscie.rzednie .kleb{transform:translate(calc(var(--x) * 1.3),calc(var(--y) * 1.3)) scale(.7)}
+/* kartka wyłania się z mgły (krótsza wersja przejścia między pokojami) */
+.mgla-k{position:absolute;inset:0;z-index:5;overflow:hidden;pointer-events:none}
+.mgla-k .kleb{position:absolute;left:calc(50% - 30vmax);top:calc(50% - 30vmax);width:60vmax;height:60vmax;border-radius:50%;
+  background:radial-gradient(circle,#dfe7f0e6,#d2dce6b8 22%,#c2cfdc78 42%,#b4c3d336 58%,#b4c3d30e 68%,#b4c3d300 74%);opacity:0;
+  transform:translate(var(--x),var(--y)) scale(.6);transition:transform var(--ms,.3s) cubic-bezier(.3,0,.25,1),opacity var(--ms,.3s) ease-in-out;
+  animation:kleb var(--dryf,10s) ease-in-out var(--opozn,0s) infinite alternate}
+.mgla-k.gesta .kleb{opacity:1;transform:translate(calc(var(--x) * .15),calc(var(--y) * .15)) scale(1.1)}
+.mgla-k.rzednie .kleb{opacity:0;transform:translate(calc(var(--x) * 1.4),calc(var(--y) * 1.4)) scale(.75)}
+#sheet.z-mgly{animation:z-mgly 1.1s ease-out both}
+@keyframes z-mgly{0%,20%{opacity:0;filter:blur(6px)}100%{opacity:1;filter:blur(0)}}
 @keyframes kleb{from{translate:-3vmax -2vmax;rotate:-6deg}to{translate:3vmax 2vmax;rotate:6deg}}
 #przejscie .cel{position:absolute;left:0;right:0;top:46%;text-align:center;color:#f4f7fb;font:var(--pismo-tytul-waga,400) 34px/1.2 var(--pismo-tytul,Georgia,serif);letter-spacing:.06em;
   text-shadow:0 0 18px #ffffffaa,0 0 40px #dfe7f0;opacity:0;filter:blur(6px);transition:opacity calc(var(--ms,2.6s) * .6) ease-in-out,filter calc(var(--ms,2.6s) * .6) ease-out}

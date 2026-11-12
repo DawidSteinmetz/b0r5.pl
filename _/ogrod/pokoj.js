@@ -143,6 +143,25 @@
       'M' + n2(x + b / 2) + ' ' + n2(y - s * .55) + 'q' + n2(s * .45) + ' ' + n2(-s * .02) + ' ' + n2(s * .45) + ' ' + n2(-s * .38);
     return [d, kwiat ? [n2(x + b / 2), t] : null];
   }
+  /* Każdy gatunek ma swój pokrój i kolor: [kolor łodyg i liści, kolor kwiatu, funkcja rysująca kępkę]. */
+  const L = (x1, y1, x2, y2) => 'M' + n2(x1) + ' ' + n2(y1) + 'L' + n2(x2) + ' ' + n2(y2);
+  const Q = (x1, y1, cx, cy, x2, y2) => 'M' + n2(x1) + ' ' + n2(y1) + 'Q' + n2(cx) + ' ' + n2(cy) + ' ' + n2(x2) + ' ' + n2(y2);
+  const PIERZASTA = (q, x, y, s, n, dl) => {           // łodyga z krótkimi listkami na zmianę (bylica, koper)
+    const b = (q() - .5) * s * .2; let d = Q(x, y, x + b, y - s / 2, x + b / 2, y - s);
+    for (let i = 1; i <= n; i++) { const t = i / (n + 1), sx = x + b * t * .7, sy = y - s * t, st = i % 2 ? 1 : -1; d += L(sx, sy, sx + st * dl * s * (1 - t * .5), sy - dl * s * .5); }
+    return d;
+  };
+  const POKROJ = {
+    bylica: ['#6c7660', '#b8a650', (q, x, y, s) => PIERZASTA(q, x, y, s * 1.15, 7, .22) + PIERZASTA(q, x + .12, y, s * .8, 5, .18)],
+    ruta: ['#4d7468', '#c9b23a', (q, x, y, s) => { let d = ''; for (let i = 0; i < 5; i++) { const a = -2.5 + i * .5, r = s * .32; d += 'M' + n2(x) + ' ' + n2(y) + 'q' + n2(Math.cos(a) * r * 1.3) + ' ' + n2(Math.sin(a) * r * 1.3) + ' ' + n2(Math.cos(a) * r * 1.6) + ' ' + n2(Math.sin(a) * r * 1.6) + 'a' + n2(r * .25) + ' ' + n2(r * .25) + ' 0 1 1 .001 0'; } return d; }],
+    kozlek: ['#3f5a2c', '#d8a0b4', (q, x, y, s) => { const t = y - s * 1.2; let d = L(x, y, x, t); for (let i = 0; i < 3; i++) { const yy = y - s * (.25 + i * .2); d += L(x, yy, x - s * .28, yy - s * .08) + L(x, yy, x + s * .28, yy - s * .08); } for (let i = -2; i <= 2; i++) d += L(x, t, x + i * s * .09, t - s * .12); return d; }],
+    mak: ['#7b8a6c', '#b3261a', (q, x, y, s) => { const b = (q() - .5) * s * .4; return Q(x, y, x + b, y - s * .6, x + b * .6, y - s * 1.1) + Q(x, y - s * .1, x - s * .3, y - s * .2, x - s * .35, y - s * .45) + Q(x, y - s * .15, x + s * .3, y - s * .25, x + s * .3, y - s * .5); }],
+    koper: ['#5d7d2c', '#d1aa2a', (q, x, y, s) => { const t = y - s * 1.25; let d = PIERZASTA(q, x, y, s * 1.25, 4, .3); for (let i = -3; i <= 3; i++) d += L(x, t, x + i * s * .1, t - s * .18 + Math.abs(i) * s * .03); return d; }],
+    czosnek: ['#557552', '#e0d8c8', (q, x, y, s) => { let d = ''; for (let i = -2; i <= 2; i++) d += Q(x, y, x + i * s * .12, y - s * .5, x + i * s * .3, y - s * .9); return d; }],
+    cebula: ['#6a8c62', '#e8e0c8', (q, x, y, s) => { let d = 'M' + n2(x - s * .14) + ' ' + n2(y) + 'a' + n2(s * .14) + ' ' + n2(s * .11) + ' 0 1 0 ' + n2(s * .28) + ' 0a' + n2(s * .14) + ' ' + n2(s * .11) + ' 0 1 0 ' + n2(-s * .28) + ' 0'; for (let i = -1; i <= 1; i++) d += L(x + i * s * .05, y - s * .1, x + i * s * .16, y - s * 1.05); return d; }],
+    burak: ['#3e5c22', '#8a1f33', (q, x, y, s) => { let d = ''; for (let i = -2; i <= 2; i++) { const a = -1.57 + i * .45, ex = x + Math.cos(a) * s * .75, ey = y + Math.sin(a) * s * .75; d += Q(x, y, (x + ex) / 2 + s * .12, (y + ey) / 2, ex, ey) + Q(x, y, (x + ex) / 2 - s * .12, (y + ey) / 2, ex, ey); } return d; }],
+  };
+  const OGONKI_BURAKA = (x, y, s) => { let d = ''; for (let i = -2; i <= 2; i++) { const a = -1.57 + i * .45; d += L(x, y, x + Math.cos(a) * s * .5, y + Math.sin(a) * s * .5); } return d; };
   function trawa(q, x, y) {
     let d = '';
     for (let i = 0; i < 3; i++) { const bx = x + i * .2; d += 'M' + n2(bx) + ' ' + n2(y) + 'q' + n2((q() - .3) * .18) + ' ' + n2(-.18) + ' ' + n2((q() - .5) * .25) + ' ' + n2(-.3 - q() * .2); }
@@ -205,13 +224,21 @@
       }
       const stan = g.czar ? 'czar' : g.stan, r = g.roslina, [kol, op0] = WODA[stan] || WODA.pusta;
       const op = stan === 'rosnie' ? op0 + .3 * (r.postep || 0) : op0;
-      let d = '', kropki = '', nasiona = '';
+      let d = '', kropki = '', nasiona = '', ros = '', ogonki = '';
+      const pk = r && POKROJ[r.gatunek];
       if (stan === 'pusta' || (r && r.faza === 'posiane')) for (let k = 1; k < 4; k++) d += kres(q, m.x + m.dl * k / 4, m.y + .4, m.x + m.dl * k / 4, m.y + m.szer - .4, .05);
       if (r && r.faza === 'posiane') for (let y = m.y + .6; y < m.y + m.szer - .4; y += .45) nasiona += 'M' + n2(m.x + m.dl / 2 + (q() - .5) * .1) + ' ' + n2(y) + 'h.01';
       if (r && !r.martwa && r.faza !== 'posiane') {
         const sz = .45 + .5 * Math.min(1, r.postep || 0);
         for (let k = 0; k < 3; k++) {
-          const [p, kw] = roslinka(q, m.x + m.dl / 2 + (q() - .5) * .3, m.y + m.szer * (k + .85) / 3.1, sz, stan === 'do_zbioru');
+          const px = m.x + m.dl / 2 + (q() - .5) * .3, py = m.y + m.szer * (k + .85) / 3.1;
+          if (pk) {                                                        // gatunek znany: własny pokrój, kolor i kwiat
+            ros += pk[2](q, px, py, sz);
+            if (r.gatunek === 'burak') ogonki += OGONKI_BURAKA(px, py, sz);
+            if (stan === 'do_zbioru') kropki += 'M' + n2(px) + ' ' + n2(py - sz * (r.gatunek === 'cebula' || r.gatunek === 'burak' ? .1 : 1.2)) + 'h.01';
+            continue;
+          }
+          const [p, kw] = roslinka(q, px, py, sz, stan === 'do_zbioru');
           d += p; if (kw) kropki += 'M' + kw[0] + ' ' + kw[1] + 'h.01';
         }
       }
@@ -224,7 +251,9 @@
       grz += '<g class="grz ' + stan + '" data-g="' + esc(g.id) + '"><title>' + esc(r ? r.nazwa + ': ' + r.faza_t : (g.czar ? g.stan : 'pusta grządka')) + '</title>' + traf +
         '<path class="plama" d="' + czworokat(dq, m.x + (dq() - .5) * .2, m.y + (dq() - .5) * .3, m.dl, m.szer, .12) + '" fill="' + kol + '" fill-opacity="' + n2(op) + '"/>' +
         '<path class="obrys" d="' + obrys(q, m.x, m.y, m.dl, m.szer, .08, .12) + '"/>' +
-        (d ? '<path class="detal" d="' + d + '"/>' : '') + (kropki ? '<path class="kropki" d="' + kropki + '"/>' : '') + (nasiona ? '<path class="nasiona" d="' + nasiona + '"/>' : '') + '</g>';
+        (d ? '<path class="detal" d="' + d + '"/>' : '') +
+        (ros ? '<path class="ros" d="' + ros + '" style="stroke:' + pk[0] + '"/>' : '') + (ogonki ? '<path class="ros ogonki" d="' + ogonki + '" style="stroke:' + pk[1] + '"/>' : '') +
+        (kropki ? '<path class="kropki" d="' + kropki + '"' + (pk ? ' style="stroke:' + pk[1] + '"' : '') + '/>' : '') + (nasiona ? '<path class="nasiona" d="' + nasiona + '"/>' : '') + '</g>';
     });
     // pod płotem: tytuł, podziałka 10 m i strzałka północy
     const ly = D.szer + 2.4;

@@ -164,18 +164,18 @@
       const zrodlo = laczy && s.sklad.find(r => r.id === laczy && r.typ === 'produkt');
       if (laczy && !zrodlo) laczy = '';
       const wierszWyrobu = r => {
-        const ilosc = r.ciecz ? liczba(r.masa_g / 1000, 3) + ' l' : liczba(r.masa_g, 2) + ' g';
+        const ilosc = r.ciecz ? liczba(r.masa_g / 1000, 3) + ' l' : r.gaz ? liczba(r.litry, 2) + ' l (' + liczba(r.masa_g, 2) + ' g)' : liczba(r.masa_g, 2) + ' g';
         const cel = zrodlo && parowalne(zrodlo, r), to = zrodlo && zrodlo.id === r.id;
         const polacz = '<button data-a="polacz" data-id="' + esc(r.id) + '" class="polacz' + (to ? ' on' : '') + '" title="' + (cel ? 'Połącz z tym' : to ? 'Anuluj łączenie' : 'Połącz z takim samym wyrobem') + '">' + (cel ? 'Połącz tu' : '⧉') + '</button>';
         return pr(r.nazwa, ilosc + ' · ' + esc(r.stopien) + ' · czystość ' + liczba(r.czystosc * 100, 1) + '% · skup: ' + esc(r.cena_t),
-          '<input type="text" inputmode="decimal" placeholder="' + (r.ciecz ? 'l' : 'g') + '" data-porcja="' + esc(r.id) + '" data-mnoznik="' + (r.ciecz ? 1000 : 1) + '" aria-label="Wielkość porcji">' +
-          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('na_stol', r.id, 'Na stół', !!s.stol || r.id === idWagi) + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad wyrob' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
+          '<input type="text" inputmode="decimal" placeholder="' + (r.ciecz || r.gaz ? 'l' : 'g') + '" data-porcja="' + esc(r.id) + '" data-mnoznik="' + (r.ciecz ? 1000 : r.gaz ? r.g_na_l : 1) + '" aria-label="Wielkość porcji">' +
+          btn('odlej', r.id, r.ciecz ? 'Odlej' : r.gaz ? 'Upuść' : 'Odsyp') + btn('na_stol', r.id, 'Na stół', !!s.stol || r.id === idWagi) + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad wyrob' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
       };
       const surowceAlf = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       const zaklad = (id, nazwa, lista, wiersz) => ({ id, nazwa, n: lista.length, zazn: lista.some(r => r.zaznaczone_g), h: lista.map(wiersz).join('') });
       const zakladki = s.kategorie.map(k => zaklad(k.id, k.nazwa, surowceAlf.filter(r => r.kat === k.id), wierszSurowca))
         .concat([zaklad('kopczyki', 'Kopczyki', s.sklad.filter(r => r.typ === 'kopczyk' && !r.banka), wierszKopczyka),
-          zaklad('banki', 'Bańki', s.sklad.filter(r => r.typ === 'kopczyk' && r.banka), r => pr(r.nazwa, liczba(r.mol) + ' mol · ' + liczba(r.masa_g, 2) + ' g', wyrzuc(r.id))),
+          zaklad('banki', 'Bańki', s.sklad.filter(r => r.typ === 'kopczyk' && r.banka), r => pr(r.nazwa, liczba(r.litry, 2) + ' l · ' + liczba(r.mol) + ' mol · ' + liczba(r.masa_g, 2) + ' g', wyrzuc(r.id))),
           zaklad('wyroby', 'Wyroby', s.sklad.filter(r => r.typ === 'produkt' && r.gdzie === 'sklad'), wierszWyrobu),
           zaklad('katalizatory', 'Katalizatory', s.katalizatory, k => pr(k.nazwa, esc(k.produkt) + ' · ' + esc(k.wzor), ''))])
         .filter(z => z.n > 0);

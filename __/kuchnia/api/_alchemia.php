@@ -178,7 +178,12 @@ function alch_uwarz($sklad, $k) {
     return ['masa' => $masa, 'czystosc' => min(1.0, $n * $m1 / $masa)];
 }
 // Ilość produktu do pokazania: ciecze w litrach (1 g liczy się jak 1 ml, tak jak pojemność garnka).
-function alch_ile($masa, $kat) { return !empty($kat['ciecz']) ? alch_f($masa / 1000, 3) . ' l' : alch_f($masa, 2) . ' g'; }
+const ALCH_L_NA_MOL = 22.414;                        // gaz w warunkach normalnych: litry na mol
+function alch_M_wzoru($wzor) { $m = 0.0; foreach ($wzor as $e => $n) $m += $n * alch_M($e); return $m; }
+function alch_ile($masa, $kat) {
+    if (!empty($kat['gaz'])) return alch_f($masa / max(1e-9, alch_M_wzoru($kat['wzor'])) * ALCH_L_NA_MOL, 2) . ' l';
+    return !empty($kat['ciecz']) ? alch_f($masa / 1000, 3) . ' l' : alch_f($masa, 2) . ' g';
+}
 function alch_kategoria($sid) {
     foreach (alch_cfg()['kategorie'] ?? [] as $k) if (in_array($sid, $k['surowce'], true)) return $k['id'];
     return 'inne';
@@ -534,7 +539,7 @@ function alch_dokoncz() {
                 $tekst = 'Powstało: ' . $nazwa . ', ' . alch_ile($mg, $kat) . '. Gaz uleciał prosto do rozdzielacza, bańka leży w Składzie.';
             } else $tekst = 'Zabulgotało i coś bezbarwnego uleciało w komin: ' . alch_ile($mg, $kat) . ' gazu przepadło. Nad naczyniem nie było rozdzielacza.';
             if ($inne) {
-                $opis = []; foreach ($inne as $e => $mol) $opis[] = alch_nazwa_el($e) . ' ' . alch_f($mol * alch_M($e), 2) . ' g';
+                $opis = []; foreach ($inne as $e => $mol) $opis[] = alch_nazwa_el($e) . ' ' . alch_f($mol / 2 * ALCH_L_NA_MOL, 2) . ' l';
                 if (!empty($k['rozdzielacz'])) {
                     foreach ($inne as $e => $mol) alch_dosyp_kopczyk($e, $mol, 'kociolek');   // mieszanina: bańka „z kociołka”
                     $tekst .= ' Resztę gazów rozdzielacz złapał do osobnych baniek: ' . implode(', ', $opis) . '.';
@@ -785,9 +790,10 @@ function alch_tabela_skladu($sklad) {
 function alch_widok_rzeczy($r, $o) {
     $v = ['id' => $r['id'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'gdzie' => $r['gdzie'], 'masa_g' => round(alch_masa($r['sklad']), 2), 'zbadany' => !empty($r['zbadany'])];
     if (!empty($r['zbadany'])) $v['sklad'] = alch_tabela_skladu($r['sklad']);
-    if ($r['typ'] === 'kopczyk') { $v['mol'] = round($r['sklad'][$r['pierwiastek']], 4); $v['banka'] = alch_banka($r['pierwiastek']); $v['nazwa'] = alch_nazwa_kopczyka($r['pierwiastek'], (string)$r['zrodlo']); }
+    if ($r['typ'] === 'kopczyk') { $v['mol'] = round($r['sklad'][$r['pierwiastek']], 4); $v['banka'] = alch_banka($r['pierwiastek']); if ($v['banka']) $v['litry'] = round($v['mol'] / 2 * ALCH_L_NA_MOL, 2); /* w bańce gaz w parach (H₂, O₂…) */ $v['nazwa'] = alch_nazwa_kopczyka($r['pierwiastek'], (string)$r['zrodlo']); }
     if ($r['typ'] === 'surowiec') $v['kat'] = alch_kategoria($r['surowiec']);
-    if ($r['typ'] === 'produkt') { $v['czystosc'] = $r['czystosc']; $v['stopien'] = $r['stopien']; $v['cena_t'] = rynek_kwota_txt(alch_cena($r, $o)); $v['ciecz'] = !empty(alch_tabela('katalizatory')[$r['katalizator']]['ciecz']); $v['kat'] = (string)($r['katalizator'] ?? ''); }
+    if ($r['typ'] === 'produkt') { $v['czystosc'] = $r['czystosc']; $v['stopien'] = $r['stopien']; $v['cena_t'] = rynek_kwota_txt(alch_cena($r, $o)); $v['ciecz'] = !empty(alch_tabela('katalizatory')[$r['katalizator']]['ciecz']); $kt = alch_tabela('katalizatory')[$r['katalizator']] ?? [];
+        if (!empty($kt['gaz'])) { $v['gaz'] = true; $v['g_na_l'] = round(alch_M_wzoru($kt['wzor']) / ALCH_L_NA_MOL, 6); $v['litry'] = round($v['masa_g'] / $v['g_na_l'], 2); } $v['kat'] = (string)($r['katalizator'] ?? ''); }
     return $v;
 }
 function alch_widok() {

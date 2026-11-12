@@ -194,3 +194,5 @@ body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infi
 #szept{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:9;text-align:center;pointer-events:none;opacity:0;
   color:#e8eef5;font:italic 22px/1.2 Georgia,"Times New Roman",serif;letter-spacing:.08em;text-shadow:0 0 14px #dfe7f0aa,0 0 32px #9fb4cc88;animation:drzy .2s linear infinite}
 @media (prefers-reduced-motion:reduce){body.lek .p,body.lek .k,body.lek .corner,body.lek #radio,body.lek #sheet,#szept{animation:none}}
+.rozblysk{position:fixed;inset:0;z-index:40;pointer-events:none;opacity:0;
+  background:radial-gradient(ellipse at 50% 18%,#fffef8,#fff8e6 30%,#e9f0f8 60%,#cdd9e6)}

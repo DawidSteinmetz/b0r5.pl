@@ -357,10 +357,22 @@
     if (szept) szept.style.opacity = Math.min(1, lek * 1.6).toFixed(2);
     if (lek > 0 || lekCel > 0) lekPetla = requestAnimationFrame(lekaj); else { lekPetla = 0; if (szept) { szept.remove(); szept = null; } }
   }
+  /* Rozbłysk: białe światło na cały ekran, ostro w górę i powoli w dół. Przykrywa mignięcie przeglądarki
+     przy przycisku wyjścia z pełnego ekranu (to samo mignięcie wraca przy pierwszym najechaniu na pergamin). */
+  let dreszcz = false;
+  function rozblysk(sila) {
+    if (!RUCH) return;
+    const b = document.createElement('div');
+    b.className = 'rozblysk'; b.setAttribute('aria-hidden', 'true');
+    body.appendChild(b);
+    b.animate([{ opacity: 0 }, { opacity: sila, offset: .06 }, { opacity: sila * .85, offset: .2 }, { opacity: 0 }],
+      { duration: 1500 * Math.max(.6, sila), easing: 'ease-out' }).finished.then(() => b.remove(), () => b.remove());
+  }
   function boiSie(tak) {
     const cel = tak ? 1 : 0;
     if (cel === lekCel) return;
     lekCel = cel;
+    if (tak) { rozblysk(1); dreszcz = true; }
     if (tak && !szept) {
       szept = document.createElement('div'); szept.id = 'szept'; szept.setAttribute('aria-hidden', 'true');
       szept.textContent = SZEPTY[Math.floor(Math.random() * SZEPTY.length)];
@@ -416,7 +428,9 @@
         a: (Math.random() - .5) * (kind === 'ksiazka' ? 24 : 40), va: (Math.random() - .5) * .12,
         ph: i * 2, per: 1500 + Math.random() * 1500, bob: P.bob
       };
-      el.addEventListener('pointerenter', () => { o.hover = true; clearTimeout(o.echoT); o.echoT = setTimeout(() => { if (o.hover) echo(o); }, 1100); });
+      el.addEventListener('pointerenter', () => {
+        if (dreszcz && pelnyEkran()) { dreszcz = false; rozblysk(.7); }   // ostatni dreszcz po strachu przed zamknięciem
+        o.hover = true; clearTimeout(o.echoT); o.echoT = setTimeout(() => { if (o.hover) echo(o); }, 1100); });
       el.addEventListener('pointerleave', () => { o.hover = false; clearTimeout(o.echoT); });
       el.addEventListener('click', () => otworz(o));
       items.push(o);

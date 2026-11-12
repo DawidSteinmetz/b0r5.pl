@@ -41,7 +41,7 @@ W oknach wagi, stołu i przepisu na górze jest lista czarów tego miejsca (czar
 ## Łączenie i badanie
 
 - Kopczyki łączą się same, ale tylko przy tym samym pierwiastku i pochodzeniu (węgiel z cebuli da potem cukier cebulowy).
-- Wyroby łączy się ręcznie: ⧉ przy wyrobie podświetla te, z którymi można go połączyć (ten sam wyrób, ta sama czystość co do 0,1%), a „Połącz tu” je scala.
+- Wyroby łączy się ręcznie: ⧉ przy wyrobie podświetla te, z którymi można go połączyć (ten sam wyrób z tego samego katalizatora; czystość wychodzi średnia ważona masą), a „Połącz tu” je scala.
 - Na wadze zbadane porcje mają znaczek ✓.
 
 ## Rynek
@@ -53,3 +53,10 @@ Inne myśloodsiewnie kupują przez `api/rynek_zewn.php`, podpisując zapytania H
 ## Fruktoza
 
 Katalizator fruktozy to „Zakurzony flakon”, przedmiot przenośny schowany na strychu (`strych/przedmioty/002-…`). Działa dopiero po przeniesieniu do piwnicy.
+
+## Sól kuchenna (zagadka bez przepisu)
+
+Nie ma przepisu, jest tylko `przedmioty/011-notatka-o-soli.md`. Katalizator `sol` (NaCl) działa, gdy w Składzie leży „Kryształ soli z Wieliczki” (dosypka `sol-1`). Wrzucony do kociołka przepada razem z katalizatorem. Sód i chlor kupuje się w księdze (`tabele/rynek_towary.json`): soda oczyszczona, soda do prania, spirytus solny, salmiak.
+
+Kociołek gotuje każdą proporcję. Czystość to masa NaCl, jaką da się ułożyć, przez masę całości, więc byle jak wrzucona soda ze spirytusem daje bardzo brudną sól (ok. 20%). Lepiej jest odessać na stole węgiel, wodór i tlen. Najlepiej: nieznany Henrykowi czar *Separatio Salis Crystallinum* (z marginesu notatki) wyciąga sód i chlor na kopczyki, a te wsypuje się do kociołka po równo w molach (100%). Azotu z salmiaku zwykłe czary nie ruszą.
+

@@ -62,6 +62,15 @@
      "ile": 20
     }
    ]
+  },
+  {
+   "id": "sol-1",
+   "surowce": [
+    {
+     "surowiec": "krysztal-soli-wieliczka",
+     "ile": 1
+    }
+   ]
   }
  ],
  "kategorie": [
@@ -90,7 +99,11 @@
     "witriol-zielony-siarczan-zelaza-ii",
     "saletra-potasowa-kno3",
     "kreda-malarska-wapien-caco3",
-    "popiol-bukowy-potaz"
+    "popiol-bukowy-potaz",
+    "soda-oczyszczona",
+    "soda-krystaliczna",
+    "salmiak",
+    "krysztal-soli-wieliczka"
    ]
   },
   {
@@ -103,7 +116,8 @@
     "miod-pszczeli",
     "jad-wezowy-zasuszony",
     "rtec-zywe-srebro",
-    "drozdze-gorzelnicze"
+    "drozdze-gorzelnicze",
+    "kwas-solny"
    ]
   }
  ],
@@ -166,6 +180,73 @@
     "O": 88.81
    },
    "opis": "Jeden kubek to dokładnie jeden mol."
+  },
+  "soda-oczyszczona": {
+   "nazwa": "Soda oczyszczona",
+   "stan": "Proszek (paczka z drogerii)",
+   "masa_od": 100,
+   "masa_do": 100,
+   "masowo": {
+    "O": 57.13,
+    "C": 14.3,
+    "Na": 27.37,
+    "H": 1.2
+   },
+   "opis": "Natron do ciasta i na zgagę. Sód jest, ale razem z węglem, tlenem i odrobiną wodoru."
+  },
+  "soda-krystaliczna": {
+   "nazwa": "Soda krystaliczna",
+   "stan": "Kryształy (do prania)",
+   "masa_od": 500,
+   "masa_do": 500,
+   "masowo": {
+    "O": 72.69,
+    "Na": 16.07,
+    "H": 7.04,
+    "C": 4.2
+   },
+   "opis": "Soda do prania. Tania, ale w większości to woda krystalizacyjna."
+  },
+  "kwas-solny": {
+   "nazwa": "Spirytus solny",
+   "stan": "Ciecz (butelka z apteki)",
+   "masa_od": 250,
+   "masa_do": 250,
+   "masowo": {
+    "O": 66.61,
+    "Cl": 24.31,
+    "H": 9.08
+   },
+   "widelki": {
+    "Cl": [
+     23.3,
+     25.3
+    ]
+   },
+   "opis": "Kwas solny, około jednej czwartej to chlorowodór, reszta to woda. Stężenie z butelki na butelkę trochę inne."
+  },
+  "salmiak": {
+   "nazwa": "Salmiak",
+   "stan": "Kryształki (do lutowania)",
+   "masa_od": 100,
+   "masa_do": 100,
+   "masowo": {
+    "Cl": 66.28,
+    "N": 26.19,
+    "H": 7.54
+   },
+   "opis": "Chlorek amonu od blacharza. Dużo chloru, ale azotu nie odessie się zwykłym czarem."
+  },
+  "krysztal-soli-wieliczka": {
+   "nazwa": "Kryształ soli z Wieliczki",
+   "stan": "Bryłka (pamiątka)",
+   "masa_od": 4,
+   "masa_do": 7,
+   "masowo": {
+    "Cl": 60.66,
+    "Na": 39.34
+   },
+   "opis": "Przezroczysta bryłka z kopalni. Jako katalizator wystarczy, że leży w Składzie."
   }
  },
  "masa_stala": {
@@ -243,7 +324,12 @@
   "kreda-malarska-wapien-caco3": "z kredy",
   "popiol-bukowy-potaz": "z potażu",
   "sol-kamienna-halit": "z soli",
-  "witriol-zielony-siarczan-zelaza-ii": "z witriolu"
+  "witriol-zielony-siarczan-zelaza-ii": "z witriolu",
+  "soda-oczyszczona": "z sody",
+  "soda-krystaliczna": "z sody",
+  "kwas-solny": "ze spirytusu solnego",
+  "salmiak": "z salmiaku",
+  "krysztal-soli-wieliczka": "z soli"
  },
  "progi_czystosci": [
   {
@@ -429,6 +515,29 @@
     18
    ],
    "rozrzut": 2
+  },
+  "soda-oczyszczona": {
+   "woda": [
+    0.1,
+    0.5
+   ],
+   "rozrzut": 1
+  },
+  "soda-krystaliczna": {
+   "rozrzut": 2
+  },
+  "kwas-solny": {
+   "rozrzut": 0
+  },
+  "salmiak": {
+   "woda": [
+    0.2,
+    1
+   ],
+   "rozrzut": 1
+  },
+  "krysztal-soli-wieliczka": {
+   "rozrzut": 0.3
   }
  }
 }

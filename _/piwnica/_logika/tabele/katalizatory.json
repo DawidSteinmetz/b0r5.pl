@@ -4,7 +4,11 @@
   "nazwa": "Katalizator cukrowy",
   "produkt": "Cukier",
   "rodzaj": "m",
-  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor": {
+   "C": 6,
+   "H": 12,
+   "O": 6
+  },
   "wzor_tekst": "C₆H₁₂O₆",
   "cena_10g": 10
  },
@@ -12,7 +16,12 @@
   "nazwa": "Katalizator preparatu Z.",
   "produkt": "Olanzapina",
   "rodzaj": "f",
-  "wzor": { "C": 17, "H": 20, "N": 4, "S": 1 },
+  "wzor": {
+   "C": 17,
+   "H": 20,
+   "N": 4,
+   "S": 1
+  },
   "wzor_tekst": "C₁₇H₂₀N₄S",
   "cena_10g": 300
  },
@@ -20,7 +29,11 @@
   "nazwa": "Zakurzony flakon",
   "produkt": "Fruktoza",
   "rodzaj": "f",
-  "wzor": { "C": 6, "H": 12, "O": 6 },
+  "wzor": {
+   "C": 6,
+   "H": 12,
+   "O": 6
+  },
   "wzor_tekst": "C₆H₁₂O₆",
   "cena_10g": 16,
   "ukryty": "zakurzony-flakon"
@@ -29,10 +42,26 @@
   "nazwa": "Drożdże gorzelnicze",
   "produkt": "Elixir Betae",
   "rodzaj": "m",
-  "wzor": { "C": 2, "H": 6, "O": 1 },
+  "wzor": {
+   "C": 2,
+   "H": 6,
+   "O": 1
+  },
   "wzor_tekst": "C₂H₅OH",
   "cena_10g": 14,
   "ciecz": true,
   "wymaga": "drozdze-gorzelnicze"
+ },
+ "sol": {
+  "nazwa": "Kryształ soli z Wieliczki",
+  "produkt": "Sól kuchenna",
+  "rodzaj": "f",
+  "wzor": {
+   "Na": 1,
+   "Cl": 1
+  },
+  "wzor_tekst": "NaCl",
+  "cena_10g": 1,
+  "wymaga": "krysztal-soli-wieliczka"
  }
 }

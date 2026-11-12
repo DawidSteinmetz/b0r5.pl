@@ -1,0 +1,12 @@
+/* Pismo Henryka: trzy kroje używane we wszystkich jego pokojach (ładuje je rdzen.js).
+   tekst: księgi, opisy, przyciski; tytuł: nagłówki, kalendarz, grzbiety ksiąg, nazwa miejsca w mgle;
+   ręka: rzeczy pisane odręcznie (podpisy pergaminów, plan ogrodu, notes, szept).
+   Bez internetu zostaje Georgia. Inna postać ma własny plik pismo.css z innymi krojami. */
+@import url('https://fonts.googleapis.com/css2?family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Cormorant+SC:wght@500;600&family=Marck+Script&display=swap');
+:root{
+  --pismo-tekst:'Old Standard TT',Georgia,"Times New Roman",serif;
+  --pismo-tytul:'Cormorant SC',Georgia,"Times New Roman",serif;
+  --pismo-tytul-waga:600;
+  --pismo-reka:'Marck Script',Georgia,"Times New Roman",serif;
+  --pismo-reka-skala:1.08;
+}

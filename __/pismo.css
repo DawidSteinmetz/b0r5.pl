@@ -1,0 +1,12 @@
+/* Pismo Artemidy: trzy kroje używane we wszystkich jej pokojach (ładuje je rdzen.js).
+   tekst: księgi, opisy, przyciski; tytuł: nagłówki, kalendarz, grzbiety ksiąg, nazwa miejsca w mgle;
+   ręka: rzeczy pisane odręcznie (podpisy pergaminów, plan ogrodu, notes, szept).
+   Bez internetu zostaje Georgia. Inna postać ma własny plik pismo.css z innymi krojami. */
+@import url('https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,400;0,700;1,400&family=Pirata+One&family=Dancing+Script:wght@400;600&display=swap');
+:root{
+  --pismo-tekst:'Alegreya',Georgia,"Times New Roman",serif;
+  --pismo-tytul:'Pirata One',Georgia,"Times New Roman",serif;
+  --pismo-tytul-waga:400;
+  --pismo-reka:'Dancing Script',Georgia,"Times New Roman",serif;
+  --pismo-reka-skala:1.12;
+}

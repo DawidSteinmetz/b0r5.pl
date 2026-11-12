@@ -19,7 +19,7 @@ if cel.exists():
 
 BEZ = shutil.ignore_patterns('__pycache__', '*.pyc')
 cel.mkdir(parents=True)
-for nazwa in ('index.html', '.htaccess', 'README.md'):
+for nazwa in ('index.html', '.htaccess', 'README.md', 'pismo.css'):   # pismo.css: kroje nowej postaci (do zmiany na własne)
     shutil.copy2(KORZEN / nazwa, cel / nazwa)
 for nazwa in ('api', 'assets', 'narzedzia', '_szablon_pokoju'):
     shutil.copytree(KORZEN / nazwa, cel / nazwa, ignore=BEZ)

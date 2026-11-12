@@ -6,6 +6,7 @@ Każda postać ma własną myśloodsiewnię w osobnym folderze. Świat to sandbo
 
 ```
 postac.json          jedyne ustawienia postaci: nazwa, rok, strefa czasowa, radio
+pismo.css            kroje pisma postaci: tekst, tytuły i pismo ręczne (wspólne dla wszystkich jej pokoi)
 index.html           strona główna (pokoje jako lewitujące pergaminy)
 assets/              rdzeń w przeglądarce (rdzen.js, styl.css)
 api/                 rdzeń na serwerze: indeks, wspólny stan, przenoszenie, radio, poczta

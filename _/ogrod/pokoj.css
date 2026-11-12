@@ -9,7 +9,7 @@
 #w .akcje button{margin:0;padding:3px 10px;font-size:13px}
 #w button small{font-size:.8em;opacity:.8}
 #w button:disabled{opacity:.35;cursor:default}
-#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 Georgia,serif;text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 var(--pismo-tekst,Georgia,"Times New Roman",serif);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
 #tost.on{opacity:1}
 #w .dim{opacity:.7;font-size:.85em}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
@@ -30,8 +30,8 @@
 #w .plan .nasiona{fill:none;stroke:#3a2412;stroke-width:.16}
 #w .plan .grz:hover .obrys{stroke-width:.13}
 #w .plan .zazn{fill:none;stroke:#8b2a1a;stroke-width:.12;stroke-opacity:.9}
-#w .plan text{font-family:Georgia,"Times New Roman",serif;font-style:italic;fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
-#w .plan text.duzy{font-size:1.5px}
+#w .plan text{font-family:var(--pismo-reka,Georgia,serif);font-style:normal;fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
+#w .plan text.duzy{font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-size:1.6px}
 #w .plan text.sredni{font-size:1.05px}
 #w .plan text.maly{font-size:.75px;fill-opacity:.85}
 #w .plan .tlo-napisu{fill:#e6d3a6;fill-opacity:.85;stroke:none}
@@ -55,7 +55,7 @@
 #w .cennik .naz i{opacity:.7;font-size:.9em}
 #w .cennik .cena{white-space:nowrap;text-align:right;font-style:italic;padding-left:.6em}
 #w .cennik .krok{white-space:nowrap;text-align:right;padding-left:.5em}
-#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 Georgia,serif;border-color:#2b1d1099;vertical-align:middle}
+#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 var(--pismo-tekst,Georgia,"Times New Roman",serif);border-color:#2b1d1099;vertical-align:middle}
 #w .krok output{display:inline-block;width:1.9em;text-align:center;font-variant-numeric:tabular-nums;vertical-align:middle}
 #w .zamow{display:flex;justify-content:space-between;align-items:center;gap:.6em;margin-top:8px;font-style:italic}
 #w .zamow button{margin:0}

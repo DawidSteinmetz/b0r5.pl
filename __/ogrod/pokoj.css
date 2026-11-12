@@ -1,18 +1,7 @@
-/* Wygląd elementów ogrodu (pokoj.json: styl). U Artemidy cały ogród jest pisany piórem:
-   tytuły gotykiem (Pirata One), reszta pismem odręcznym (Dancing Script). Obie czcionki mają polskie znaki;
-   bez internetu zostaje Georgia. */
-@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;600&family=Pirata+One&display=swap');
-:root{--pismo:'Dancing Script',Georgia,serif;--gotyk:'Pirata One',Georgia,serif}
-#w,#w button,#w input,#w select,#tost,.p span{font-family:var(--pismo);font-style:normal}
-#w{font-size:1.08em}
-#w p,#w .tekst p{font-size:17px;line-height:1.35}
-#w .tekst{font-size:17px}
-#w button{font:600 16px var(--pismo)}
-#w h2,#w h3{font-family:var(--gotyk);letter-spacing:.02em}
-#w h2{font-size:28px}
-#w .grupa{font-family:var(--gotyk);font-size:18px;font-style:normal;letter-spacing:.02em}
+/* Wygląd elementów ogrodu (pokoj.json: styl). Kroje pisma są wspólne dla wszystkich pokoi Artemidy (__/pismo.css):
+   tytuły gotykiem, opisy Alegreyą, a plan i drobne napisy na nim pismem odręcznym. */
+#w .grupa{font-family:var(--pismo-tytul);font-size:18px;font-style:normal;letter-spacing:.02em}
 #w .dim{font-size:.92em}
-.p span{font-size:17px}
 .p.kot{width:150px;height:184px}
 #w .rzad,#w .poz,#w .zamow,#w .akcje,#w .termo,#w svg.plan,#w table.dni tr{break-inside:avoid}
 #w .rzad{display:flex;justify-content:space-between;align-items:center;gap:.6em;text-align:left;margin:.3em 0}
@@ -23,7 +12,7 @@
 #w .akcje button{margin:0;padding:3px 10px;font-size:13px}
 #w button small{font-size:.8em;opacity:.8}
 #w button:disabled{opacity:.35;cursor:default}
-#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:16px/1.3 var(--pismo);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:16px/1.3 var(--pismo-reka);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
 #tost.on{opacity:1}
 #w .dim{opacity:.7;font-size:.85em}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
@@ -47,10 +36,10 @@
 #w .plan .nasiona{fill:none;stroke:#3a2412;stroke-width:.17}
 #w .plan .grz:hover .obrys{stroke-width:.14}
 #w .plan .zazn{fill:none;stroke:#8b2a1a;stroke-width:.13;stroke-opacity:.9}
-#w .plan text{font-family:var(--gotyk);fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
+#w .plan text{font-family:var(--pismo-tytul);fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
 #w .plan text.duzy{font-size:3.2px}
 #w .plan text.sredni{font-size:1.8px}
-#w .plan text.maly{font-family:var(--pismo);font-size:1.3px}
+#w .plan text.maly{font-family:var(--pismo-reka);font-size:1.3px}
 #w .plan .grz.czar .plama{animation:czaruje 1.2s ease-in-out infinite alternate}
 @keyframes czaruje{from{fill-opacity:.15}to{fill-opacity:.6}}
 /* termometr */
@@ -71,7 +60,7 @@
 #w .cennik .naz i{opacity:.7;font-size:.9em}
 #w .cennik .cena{white-space:nowrap;text-align:right;font-style:italic;padding-left:.6em}
 #w .cennik .krok{white-space:nowrap;text-align:right;padding-left:.5em}
-#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 Georgia,serif;border-color:#2b1d1099;vertical-align:middle}
+#w .krok button{display:inline-block;width:22px;height:22px;padding:0;margin:0;border-radius:50%;font:16px/1 var(--pismo-tekst,Georgia,"Times New Roman",serif);border-color:#2b1d1099;vertical-align:middle}
 #w .krok output{display:inline-block;width:1.9em;text-align:center;font-variant-numeric:tabular-nums;vertical-align:middle}
 #w .zamow{display:flex;justify-content:space-between;align-items:center;gap:.6em;margin-top:8px;font-style:italic}
 #w .zamow button{margin:0}

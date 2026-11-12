@@ -9,6 +9,8 @@
   const BASE = new URL('../../', SK.src).href;
   const body = document.body;
   const POKOJ = body.dataset.pokoj || '';
+  // pismo postaci: ten sam plik we wszystkich jej pokojach (kroje tekstu, tytułów i ręki)
+  document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="' + BASE + 'pismo.css">');
   const URL_POKOJU = BASE + (POKOJ ? POKOJ + '/' : '');
   const $ = s => document.querySelector(s);
 

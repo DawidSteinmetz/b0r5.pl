@@ -446,7 +446,18 @@
       if (k.gotuje) { el.innerHTML = h + '<div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + IKONA_KOCIOLEK + '</svg></div><p><i>Kociołek bulgocze…</i></p>'; return; }
       if (!k.zawartosc.length) { el.innerHTML = h + '<p><i>Kociołek jest pusty. Wsypujesz do niego rzeczy ze Składu albo ze stołu.</i></p>'; return; }
       if (!s.katalizatory.some(c => c.id === wybrany)) wybrany = s.katalizatory.length ? s.katalizatory[0].id : '';
-      h += '<p>W kociołku: ' + k.zawartosc.map(x => esc(x.nazwa) + ' (' + liczba(x.masa_g, 2) + ' g)').join(', ') + '. <i>(' + liczba(k.masa_g / 1000, 2) + ' z ' + liczba(s.pojemnosc_g / 1000, 0) + ' l)</i></p>' + tabelaSkladu(k.sklad) + '<p class="proporcja">' + proporcja(mole(k.sklad)) + '</p>' +
+      /* Najpierw podsumowanie: ile gramów każdej substancji (alfabetycznie), potem porcje pogrupowane tak samo. */
+      const grupy = {};
+      k.zawartosc.forEach(x => { (grupy[x.nazwa] = grupy[x.nazwa] || []).push(x.masa_g); });
+      const nazwy = Object.keys(grupy).sort((a, b) => a.localeCompare(b, 'pl'));
+      const porcji = n => n + ' ' + (n === 1 ? 'porcja' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? 'porcje' : 'porcji');
+      h += '<p>W kociołku <i>(' + liczba(k.masa_g / 1000, 2) + ' z ' + liczba(s.pojemnosc_g / 1000, 0) + ' l)</i>:</p>' +
+        '<table class="mole zaw"><tr><th>Substancja</th><th>porcje</th><th>g</th></tr>' +
+        nazwy.map(n => '<tr><td>' + esc(n) + '</td><td>' + grupy[n].length + '</td><td>' + liczba(grupy[n].reduce((a, b) => a + b, 0), 2) + '</td></tr>').join('') +
+        (nazwy.length > 1 ? '<tr class="razem"><td>Razem</td><td>' + k.zawartosc.length + '</td><td>' + liczba(k.masa_g, 2) + '</td></tr>' : '') + '</table>' +
+        '<div class="porcje">' +
+        nazwy.map(n => '<p><b>' + esc(n) + '</b>, ' + porcji(grupy[n].length) + ': ' + grupy[n].map(g => liczba(g, 2) + ' g').join(', ') + '</p>').join('') + '</div>' +
+        tabelaSkladu(k.sklad) + '<p class="proporcja">' + proporcja(mole(k.sklad)) + '</p>' +
         '<div><select id="kat">' + s.katalizatory.map(c => '<option value="' + esc(c.id) + '"' + (c.id === wybrany ? ' selected' : '') + '>' + esc(c.nazwa) + ' (' + esc(c.produkt) + ', ' + esc(c.wzor) + ')</option>').join('') + '</select></div>' +
         '<div><button id="gotuj">Zagotuj</button><button id="wylej">Wylej</button></div>';
       el.innerHTML = h;

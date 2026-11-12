@@ -77,3 +77,7 @@
   #w .rzad.wyrob>span:first-child{flex:1 1 100%}
   #w .rzad.wyrob>span:last-child{margin-left:auto}
 }
+/* kociołek: podsumowanie zawartości i lista porcji */
+#w table.mole.zaw tr.razem td{border-top:1px solid #2b1d1088;font-weight:bold}
+#w .porcje{text-align:left;margin:4px 0 8px;font-size:14px}
+#w .porcje p{margin:3px 0 3px 1em}

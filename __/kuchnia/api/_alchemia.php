@@ -472,7 +472,7 @@ function alch_wykonaj($akcja, $in) {
             if (!$x) alch_blad('Na stole nic nie ma.');
             if (!empty($x['czar'])) alch_blad('Czar jeszcze działa.');
             $cz = alch_tabela('czary')[$s('czar')] ?? null;
-            if (!$cz || empty($cz['znany'])) alch_blad('Artemida tego jeszcze nie umie.');
+            if (!$cz) alch_blad('Nie ma takiego czaru.');                // czar działa, nawet jeśli postać go nie zna (nie ma go tylko w jej notatkach)
             $jest = false; foreach ($cz['usuwa'] as $e) if (!empty($x['sklad'][$e])) $jest = true;
             if (!$jest) alch_blad('W tej próbce nie ma czego wyssać.');
             $u = (float)str_replace(',', '.', $s('ulamek'));
@@ -610,12 +610,11 @@ function alch_widok_rzeczy($r, $o) {
 function alch_widok() {
     $o = rynek_stan(); $tczary = alch_tabela('czary'); $tprz = alch_tabela('przyrzady');
     $czary = [];
-    foreach ($tczary as $id => $c) {
-        if (empty($c['znany'])) continue;
+    foreach ($tczary as $id => $c) {                       // wszystkie czary; nieznane nie trafiają na listy, ale da się je rzucić głosem
         $wyt = [];
         foreach ($tczary as $d) if (!empty($d['znany']) && $d['przyrzad'] === $c['przyrzad']) foreach ($d['usuwa'] as $e) $wyt[] = alch_nazwa_el($e);
         $p = $tprz[$c['przyrzad']] ?? [];
-        $czary[] = ['id' => $id, 'nazwa' => $c['nazwa'], 'pl' => $c['pl'], 'usuwa' => $c['usuwa'],
+        $czary[] = ['id' => $id, 'nazwa' => $c['nazwa'], 'pl' => $c['pl'], 'usuwa' => $c['usuwa'], 'znany' => !empty($c['znany']),
             'przyrzad' => ['nazwa' => $p['nazwa'] ?? '', 'opis' => $p['opis'] ?? '', 'ikona' => $p['ikona'] ?? '', 'wytraca' => array_values(array_unique($wyt))]];
     }
     $sklad = [];

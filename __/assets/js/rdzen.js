@@ -816,9 +816,133 @@
   }
 
   /* To, czego skrypt pokoju potrzebuje od rdzenia */
+  /* --- Czary: wspólny silnik zaklęć dla pokoi (piwnica, kuchnia…) ------------------------------------------
+     Panel czarów w oknie: lista czarów tego miejsca (kliknięcie nazwy rzuca czar), przycisk "Rzuć czar" (słuchanie mowy
+     przez Web Speech API, pl-PL; Chrome i Edge) i pole do wpisania. Czar rozpoznaje się po brzmieniu pierwszych dwóch słów,
+     a ostatnie słowo to moc: "optimum", "maximum" albo liczba (cyframi, po polsku albo po łacinie: duo, tres, quattuor…).
+     Pokój dostaje wywołanie naCzar(id, moc), gdzie moc to 'optimum' | 'maximum' | liczba | null (nie podano). */
+  const czary = (function () {
+    const bezOgonkow = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+    // uproszczona wymowa: podobne głoski zlewają się (b/p/m/w/f, d/t, k/g/q/c, s/z, y/i/j), podwójne w pojedyncze
+    const wymowa = t => bezOgonkow(t).replace(/[^a-z]/g, '').replace(/qu/g, 'kw').replace(/ph/g, 'f').replace(/ch/g, 'h').replace(/x/g, 'ks')
+      .replace(/[yj]/g, 'i').replace(/ie/g, 'i').replace(/[bpfwvm]/g, 'p').replace(/[dt]/g, 't').replace(/[gkcq]/g, 'k').replace(/[zs]/g, 's').replace(/(.)\1+/g, '$1');
+    function odleglosc(a, b) {
+      const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+      for (let j = 1; j <= b.length; j++) d[0][j] = j;
+      for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      return d[a.length][b.length];
+    }
+    const LICZBY = {
+      zero: 0, jeden: 1, jedna: 1, dwa: 2, dwie: 2, trzy: 3, cztery: 4, piec: 5, szesc: 6, siedem: 7, osiem: 8, dziewiec: 9,
+      dziesiec: 10, jedenascie: 11, dwanascie: 12, trzynascie: 13, czternascie: 14, pietnascie: 15, szesnascie: 16, siedemnascie: 17,
+      osiemnascie: 18, dziewietnascie: 19, dwadziescia: 20, trzydziesci: 30, czterdziesci: 40, piecdziesiat: 50, szescdziesiat: 60,
+      siedemdziesiat: 70, osiemdziesiat: 80, dziewiecdziesiat: 90, sto: 100, pol: .5, polowa: .5, poltora: 1.5,
+      // po łacinie (i jak to bywa słyszane)
+      unus: 1, una: 1, unum: 1, duo: 2, tres: 3, tresz: 3, quattuor: 4, kwattuor: 4, kwatuor: 4, quatro: 4, kwatro: 4, quattro: 4, kwattro: 4,
+      quinque: 5, kwinkwe: 5, kwinke: 5, sex: 6, seks: 6, septem: 7, septen: 7, octo: 8, okto: 8, novem: 9, nowem: 9, decem: 10, decen: 10
+    };
+    const OPTIMUM = /^(optimum|optymum|optimu|optimom|optima|optymalnie|optimo)$/, MAXIMUM = /^(maximum|maksimum|maksymum|maksimom|maximo|maksymalnie|max|maks)$/;
+    // moc z ostatnich słów: 'optimum' | 'maximum' | liczba | null
+    function moc(slowa) {
+      if (!slowa.length) return null;
+      const ost = slowa[slowa.length - 1];
+      if (OPTIMUM.test(ost)) return 'optimum';
+      if (MAXIMUM.test(ost)) return 'maximum';
+      const t = slowa.join(' ').replace(/(\d),(\d)/g, '$1.$2');
+      if (/^-?\d+(\.\d+)?$/.test(t.replace(/\s+/g, ''))) return parseFloat(t.replace(/\s+/g, ''));
+      let suma = 0, ok = false;
+      for (const s of slowa) { if (!(s in LICZBY)) return undefined; suma += LICZBY[s]; ok = true; }
+      return ok ? suma : undefined;
+    }
+    // Rozpoznanie: {id, moc} | {blad} | null (to nie czar tego miejsca)
+    function rozpoznaj(tekst, lista) {
+      const slowa = bezOgonkow(tekst).replace(/[^a-z0-9,.\s-]/g, ' ').replace(/[.]/g, ' ').trim().split(/\s+/).filter(Boolean);
+      if (!slowa.length) return null;
+      let naj = null;
+      for (const c of lista) {
+        const n = c.nazwa.split(/\s+/).slice(0, 2).length;               // wystarczą dwa pierwsze słowa nazwy
+        const wz = wymowa(c.nazwa.split(/\s+/).slice(0, 2).join(''));
+        for (const k of [n, n + 1, n - 1]) {                           // mowa bywa sklejona albo rozdzielona o słowo
+          if (k < 1 || k > slowa.length) continue;
+          const d = odleglosc(wymowa(slowa.slice(0, k).join('')), wz);
+          if (d <= Math.max(1, Math.floor(wz.length / 4)) && (!naj || d < naj.d)) naj = { c, k, d };
+        }
+      }
+      if (!naj) return null;
+      // reszta: dalsze słowa nazwy (np. "Nigrum") i moc na końcu
+      let reszta = slowa.slice(naj.k);
+      const dalsze = naj.c.nazwa.split(/\s+/).slice(2).map(wymowa);
+      while (reszta.length && dalsze.some(x => odleglosc(wymowa(reszta[0]), x) <= 2)) reszta = reszta.slice(1);
+      const m = moc(reszta);
+      if (m === undefined) return { blad: naj.c.nazwa + ': nie rozumiem mocy „' + reszta.join(' ') + '”. Powiedz optimum, maximum albo liczbę.' };
+      return { id: naj.c.id, moc: m, nazwa: naj.c.nazwa };
+    }
+    /* słuchanie: jedno na stronę, wynik trafia do panelu, który właśnie jest na kartce */
+    const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let sluch = null, slucha = false, panel = null, slyszalem = '';
+    function stanPrzycisku() {
+      const b = panel && panel.el.querySelector('.mcz-ucho'); if (!b) return;
+      b.classList.toggle('slucha', slucha); b.setAttribute('aria-pressed', slucha ? 'true' : 'false');
+      b.textContent = !Rozpoznawanie ? 'Ta przeglądarka nie słyszy czarów' : slucha ? 'Słucham… (kliknij, by przestać)' : 'Rzuć czar';
+      b.disabled = !Rozpoznawanie;
+    }
+    function sluchaj(wl) {
+      if (!Rozpoznawanie) return;
+      slucha = wl;
+      if (!wl) { if (sluch) sluch.stop(); stanPrzycisku(); return; }
+      if (!sluch) {
+        sluch = new Rozpoznawanie();
+        sluch.lang = 'pl-PL'; sluch.continuous = true; sluch.interimResults = false; sluch.maxAlternatives = 3;
+        sluch.onresult = e => {
+          for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal && panel) panel.usłyszane(Array.from(e.results[i]).map(a => a.transcript));
+        };
+        sluch.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { slucha = false; stanPrzycisku(); if (panel) panel.kom('Przeglądarka nie dała dostępu do mikrofonu.'); } };
+        sluch.onend = () => { if (slucha) { try { sluch.start(); } catch (err) { /* już słucha */ } } else stanPrzycisku(); };
+      }
+      try { sluch.start(); } catch (err) { /* już słucha */ }
+      stanPrzycisku();
+    }
+    // słuchanie gaśnie razem z zamknięciem kartki
+    new MutationObserver(() => { if (!modal.classList.contains('on') && slucha) sluchaj(false); }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+    /* panel: el (kontener), opcje: {czary: [{id, nazwa, opis?}] (na liście), wszystkie?: [...] (rozpoznawane głosem,
+       także nieznane), naCzar(id, moc), kom(tekst), podpowiedz?: tekst w polu, bezMocy?: czar bez mocy (np. waga)} */
+    function wstaw(el, o) {
+      const lista = o.czary || [], wszystkie = o.wszystkie || lista;
+      el.innerHTML = '<ul class="mcz-lista">' + lista.map(c => '<li><button type="button" class="mcz-czar" data-id="' + esc(c.id) + '">' + esc(c.nazwa) + '</button>' +
+        (c.opis ? ' <span>' + esc(c.opis) + '</span>' : '') + '</li>').join('') + '</ul>' +
+        (o.bezMocy ? '' : '<p class="mcz-moc">ostatnie słowo to moc: <i>optimum</i>, <i>maximum</i> albo liczba</p>') +
+        '<div class="mcz-rzad"><button type="button" class="mcz-ucho" aria-pressed="false">Rzuć czar</button><span class="mcz-slyszy">' + esc(slyszalem) + '</span></div>' +
+        '<div class="mcz-rzad"><input type="text" class="mcz-pole" autocomplete="off" aria-label="Czar" placeholder="' + esc(o.podpowiedz || (lista[0] ? lista[0].nazwa.split(' ').slice(0, 2).join(' ') + (o.bezMocy ? '' : ' optimum') : '')) + '">' +
+        '<button type="button" class="mcz-zapisz">Rzuć</button></div>';
+      const sly = el.querySelector('.mcz-slyszy'), kom = o.kom || (() => { });
+      const rzuc = (warianty, glos) => {
+        let blad = null;
+        for (const t of warianty) {
+          const r = rozpoznaj(t, wszystkie);
+          if (!r) continue;
+          if (r.blad) { blad = blad || r.blad; continue; }
+          if (glos) { slyszalem = 'usłyszane: „' + String(t).trim() + '” → ' + r.nazwa + (r.moc !== null ? ', moc: ' + r.moc : ''); sly.textContent = slyszalem; }
+          return o.naCzar(r.id, r.moc);
+        }
+        if (glos) { slyszalem = 'usłyszane: „' + String(warianty[0] || '').trim() + '” → ' + (blad || 'to nie czar tego miejsca'); sly.textContent = slyszalem; }
+        kom(blad || 'Tu nie ma takiego czaru.');
+      };
+      panel = { el, usłyszane: alt => rzuc(alt, true), kom };
+      el.querySelectorAll('.mcz-czar').forEach(b => { b.onclick = () => o.naCzar(b.dataset.id, null); });
+      el.querySelector('.mcz-ucho').onclick = () => sluchaj(!slucha);
+      const pole = el.querySelector('.mcz-pole');
+      const zPola = () => { const t = pole.value.trim(); if (!t) return; rzuc([t], false); pole.value = ''; };
+      el.querySelector('.mcz-zapisz').onclick = zPola;
+      pole.addEventListener('keydown', e => { if (e.key === 'Enter') zPola(); });
+      stanPrzycisku();
+    }
+    return { wstaw, rozpoznaj, moc, wymowa, odleglosc, bezOgonkow };
+  })();
+
   window.Mysl = {
     BASE, POKOJ, URL_POKOJU, gracz, $, esc, md, w, modal, elementy: items,
-    arkusz, zamknij, tresc, odswiez, przenoszenie,
+    arkusz, zamknij, tresc, odswiez, przenoszenie, czary,
     poziom: () => sheet.classList.contains('poziom'),
     rodzaj(nazwa, opis) { RODZAJE[nazwa] = Object.assign({ v: .3, bob: .25 }, opis); }
   };

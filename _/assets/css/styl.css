@@ -210,3 +210,17 @@ body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infi
 #w h2,#w h3,#cal b,.k span{font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-style:normal}
 #w h2{font-size:25px;letter-spacing:.02em}
 .p span{font-family:var(--pismo-reka,Georgia,serif);font-style:normal;font-size:calc(15px * var(--pismo-reka-skala,1))}
+/* Panel czarów (Mysl.czary): lista czarów miejsca, "Rzuć czar" i pole do wpisania */
+#w .mcz-lista{list-style:none;margin:4px 0 2px;padding:6px 10px;border:1px dashed #2b1d1066;border-radius:4px;text-align:left;break-inside:avoid}
+#w .mcz-lista li{margin:2px 0;line-height:1.35}
+#w .mcz-lista span{font-style:italic;opacity:.7;font-size:.9em}
+#w .mcz-czar{margin:0;padding:0;border:0;background:none;font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-style:normal;font-size:17px;letter-spacing:.02em;text-decoration:underline dotted #2b1d1066;text-underline-offset:3px;cursor:pointer}
+#w .mcz-czar:hover{color:#7a1f12}
+#w .mcz-moc{margin:0 0 4px;font-size:12.5px;opacity:.65;text-align:left;font-style:italic}
+#w .mcz-rzad{display:flex;align-items:center;justify-content:center;gap:.5em;flex-wrap:wrap;margin:5px 0;break-inside:avoid}
+#w .mcz-rzad button{margin:0}
+#w .mcz-ucho.slucha{background:#7a1f1218;box-shadow:0 0 0 2px #7a1f1244;animation:mczslucha 1.6s ease-in-out infinite}
+@keyframes mczslucha{50%{box-shadow:0 0 0 5px #7a1f1222}}
+#w .mcz-slyszy{font-style:italic;opacity:.75;font-size:13px}
+#w .mcz-pole{flex:1 1 auto;max-width:300px;margin:0;min-width:0;padding:3px 6px;font:italic 15px var(--pismo-tekst,Georgia,serif)}
+@media (prefers-reduced-motion:reduce){#w .mcz-ucho.slucha{animation:none}}

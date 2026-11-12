@@ -2,7 +2,7 @@
    Plik należy do pokoju (pokoj.json: "skrypt"), a z rdzenia korzysta tylko przez window.Mysl. */
 (function () {
   'use strict';
-  const { $, esc, w, modal, gracz, arkusz, zamknij, tresc, odswiez, URL_POKOJU: U } = window.Mysl;
+  const { $, esc, w, modal, gracz, arkusz, zamknij, tresc, odswiez, czary, URL_POKOJU: U } = window.Mysl;
   let okno = null;
   const liczba = (x, d = 4) => String(Math.round(x * 10 ** d) / 10 ** d).replace('.', ',');
   async function rynekApi(akcja, d) {            // zeszyt domowy (api/rynek.php)
@@ -202,12 +202,15 @@
       const st = s.stol;
       if (!st) { el.innerHTML = '<p><i>Stół jest pusty. Połóż coś na nim ze spiżarni.</i></p>'; return; }
       const m = mole(st.sklad);
-      let h = '<p><b>' + esc(st.nazwa) + '</b>, ' + liczba(st.masa_g, 2) + ' g</p>' + tabelaSkladu(st.sklad) + '<p class="proporcja">' + proporcja(m) + '</p>';
+      let h = '<p><b>' + esc(st.nazwa) + '</b>, ' + liczba(st.masa_g, 2) + ' g</p>';
+      const naGorze = '<div id="czp"></div>';                       // lista czarów na górze okna
+      const sklad = tabelaSkladu(st.sklad) + '<p class="proporcja">' + proporcja(m) + '</p>';
       if (st.czar) {
-        el.innerHTML = h + '<div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + (st.czar.przyrzad.ikona || '') + '<ellipse class="probka" cx="50" cy="54" rx="9" ry="7"/></svg></div><p><i>' + esc(st.czar.nazwa) + ': ' + esc(st.czar.przyrzad.nazwa || '') + '…</i></p>';
+        el.innerHTML = h + sklad + '<div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + (st.czar.przyrzad.ikona || '') + '<ellipse class="probka" cx="50" cy="54" rx="9" ry="7"/></svg></div><p><i>' + esc(st.czar.nazwa) + ': ' + esc(st.czar.przyrzad.nazwa || '') + '…</i></p>';
         return;
       }
-      const dostepne = s.czary.filter(c => c.usuwa.some(e => m[e] > 0));
+      h += naGorze + sklad;
+      const dostepne = s.czary.filter(c => c.znany && c.usuwa.some(e => m[e] > 0));   // w notatkach tylko znane czary
       if (!dostepne.some(c => c.id === wybrany)) wybrany = dostepne.length ? dostepne[0].id : '';
       /* Czar-przepis podpowiada, ile wyssać, i od razu wybiera czar, który jest jeszcze potrzebny. */
       const pod = st.podpowiedz || null;
@@ -225,7 +228,7 @@
           '<input id="moc" type="range" min="0" max="1000" value="0" aria-label="Moc czaru">' +
           '<div class="jednostka"><span>Wyssać:</span><input id="ilem" type="text" inputmode="decimal" value="0" aria-label="Ile wyssać">' +
           '<select id="jedn" aria-label="Jednostka"><option value="mol"' + (jedn === 'mol' ? ' selected' : '') + '>mol</option><option value="g"' + (jedn === 'g' ? ' selected' : '') + '>g</option></select></div>' +
-          '<p id="pog" class="proporcja"></p><div><button id="rzuc">Rzuć czar</button></div>';
+          '<p id="pog" class="proporcja"></p>';
       }
       h += '<div><button id="doKot">Do garnka</button><button id="odloz">Odłóż do spiżarni</button></div>';
       el.innerHTML = h;
@@ -254,12 +257,27 @@
         $('#moc').oninput = () => { $('#ilem').value = pokaz(mam() * $('#moc').value / 1000); pogl(); };
         $('#ilem').oninput = () => { $('#moc').value = mam() > 0 ? Math.min(1000, wMolach() / mam() * 1000) : 0; pogl(); };
         $('#jedn').onchange = () => { const mol = mam() * $('#moc').value / 1000; zapiszJedn($('#jedn').value); ustawMole(mol); };
-        $('#rzuc').onclick = () => {
-          animacjaLotu($('#scena'));
-          akcja('czar', { czar: wybrany, ulamek: mam() > 0 ? Math.min(1, wMolach() / mam()) : 0 });
-        };
         opisCzaru();
       }
+      /* Czar wyssania: z listy, głosem albo z pola. Moc: optimum (ile podpowiada przepis, bez podpowiedzi wszystko),
+         maximum (wszystko), liczba (procent), bez mocy: to, co na suwaku (a dla innego czaru niż wybrany: optimum). */
+      const rzucCzar = (id, moc) => {
+        const c = s.czary.find(x => x.id === id); if (!c) return;
+        if (id !== wybrany) {
+          wybrany = id;
+          if ($('#czar') && [...$('#czar').options].some(x => x.value === id)) { $('#czar').value = id; opisCzaru(); }
+          if (moc === null) moc = 'optimum';
+        }
+        const ma = m[c.usuwa[0]] || 0;
+        if (!(ma > 0)) return kom(c.nazwa + ': w tej próbce nie ma czego wyssać.');
+        const u = moc === 'maximum' ? 1 : moc === 'optimum' ? (nadmiar(c) > 0 ? Math.min(1, nadmiar(c) / ma) : 1)
+          : typeof moc === 'number' ? Math.max(0, Math.min(1, moc / 100))
+          : ($('#ilem') && wMolach() > 0 ? Math.min(1, wMolach() / ma) : (nadmiar(c) > 0 ? Math.min(1, nadmiar(c) / ma) : 1));   // suwak na zerze: optimum
+        if (!(u > 0)) return kom('Moc zero: czar nic nie zrobi.');
+        animacjaLotu($('#scena'));
+        akcja('czar', { czar: id, ulamek: u });
+      };
+      czary.wstaw($('#czp'), { czary: dostepne.map(c => ({ id: c.id, nazwa: c.nazwa, opis: c.pl })), wszystkie: s.czary, naCzar: rzucCzar, kom });
       $('#doKot').onclick = () => akcja('do_kociolka', { id: st.id });
       $('#odloz').onclick = () => akcja('ze_stolu');
     }, s => [s.stol, s.czary.length]);
@@ -305,13 +323,13 @@
         '<p>' + esc(x.surowy.nazwa) + ' w spiżarni: ' + x.surowy.szt + ' szt., ' + gram(x.surowy.masa_g) + ' g. Czar zważył każdą sztukę osobno i radzi położyć na stole najlepsze: <b>' + x.surowy.rada + ' szt.</b></p>' +
         (s.stol ? '<p><i>Na stole leży już: ' + esc(s.stol.nazwa) + '.</i></p>'
           : '<div class="jednostka"><span>Na stół, sztuk:</span><input id="stos' + i + '" type="text" inputmode="numeric" value="' + x.surowy.rada + '" aria-label="Ile sztuk położyć na stole"><button id="poloz' + i + '" type="button"' + (x.surowy.szt ? '' : ' disabled') + '>Połóż</button></div><p id="prog' + i + '" class="proporcja"></p>')).join('');
-      el.innerHTML = nagl + przygotowanie + '<table class="przepis"><tr><th>Składnik</th><th>Na porcję</th><th>Masz</th><th>Użyje</th></tr>' +
+      el.innerHTML = nagl + '<div id="czp"></div>' + przygotowanie + '<table class="przepis"><tr><th>Składnik</th><th>Na porcję</th><th>Masz</th><th>Użyje</th></tr>' +
         p.skladniki.map((x, i) => '<tr><td>' + esc(x.nazwa) + '</td><td>' + gram(x.g) + ' g</td><td>' + gram(x.mam_g) + ' g</td><td id="u' + i + '"></td></tr>').join('') + '</table>' +
         '<input id="mn" type="range" min="0" max="1000" value="0" aria-label="Wielkość porcji">' +
         '<div class="jednostka"><span>Porcja ×</span><input id="mnv" type="text" inputmode="decimal" aria-label="Mnożnik porcji"><button id="czysto" type="button">Bez brudu ×' + liczba(p.czysty, 2) + '</button></div>' +
         '<p id="pr" class="proporcja"></p>' +
         (z ? '<p><i>Inny czar czeka już na wsypanie.</i></p>' : garnekPelny ? '<p><i>Garnek musi być pusty.</i></p>' : !p.dostepny ? '<p><i>Brakuje katalizatora.</i></p>' : brakuje ? '<p><i>Najpierw trzeba odessać składnik na stole i odłożyć go do spiżarni.</i></p>' : '') +
-        '<div><button id="rzuc"' + (z || garnekPelny || !p.dostepny || brakuje ? ' disabled' : '') + '>Rzuć czar</button></div>';
+        '';
       doOdessania.forEach((x, i) => {
         const b = $('#poloz' + i);
         if (!b) return;
@@ -342,7 +360,14 @@
       $('#mn').oninput = () => ustaw(p.gorny * $('#mn').value / 1000, 'mn');
       $('#mnv').oninput = () => ustaw(parseFloat($('#mnv').value.replace(',', '.')) || 0, 'mnv');
       $('#czysto').onclick = () => ustaw(p.czysty);
-      $('#rzuc').onclick = () => akcja('rzuc_przepis', { przepis: p.id, mnoznik: mn });
+      /* Czar-przepis: z listy, głosem albo z pola. Moc: optimum (bez brudu), maximum (największa porcja), liczba (mnożnik), bez mocy: z pola. */
+      czary.wstaw($('#czp'), { czary: [{ id: p.id, nazwa: p.nazwa, opis: 'porcja: optimum ×' + liczba(p.czysty, 2) + ', maximum ×' + liczba(p.gorny, 2) }], kom,
+        naCzar: (id, moc) => {
+          if (z || garnekPelny || !p.dostepny || brakuje) return kom(p.nazwa + ': teraz się nie uda. ' + (z ? 'Inny czar czeka na wsypanie.' : garnekPelny ? 'Naczynie musi być puste.' : !p.dostepny ? 'Brakuje katalizatora.' : 'Najpierw trzeba odessać składnik na stole.'));
+          const mnoz = moc === 'optimum' ? p.czysty : moc === 'maximum' ? p.gorny : typeof moc === 'number' ? Math.max(0, Math.min(p.gorny, moc)) : mn;
+          if (!(mnoz > 0)) return kom('Porcja zero: czar nic nie zrobi.');
+          ustaw(mnoz); akcja('rzuc_przepis', { przepis: p.id, mnoznik: mnoz });
+        } });
       ustaw(mn);
     }, s => [(s.przepisy || []).find(x => x.id === o.e.id), s.zaznaczenie, s.kociolek.zawartosc.length, s.kociolek.gotuje, s.stol && s.stol.nazwa]);
   }
@@ -353,9 +378,10 @@
       if (!wg) {
         const lista = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad');
         el.innerHTML = lista.length
-          ? '<div><select id="rz">' + lista.map(r => '<option value="' + esc(r.id) + '">' + esc(r.nazwa) + ', ' + liczba(r.masa_g, 2) + ' g</option>').join('') + '</select></div><div><button id="bad">Rzuć: ' + esc(s.czar_wagi) + '</button></div>'
+          ? '<div id="czp"></div><div><select id="rz" aria-label="Co zbadać">' + lista.map(r => '<option value="' + esc(r.id) + '">' + esc(r.nazwa) + ', ' + liczba(r.masa_g, 2) + ' g</option>').join('') + '</select></div>'
           : '<p><i>W spiżarni nie ma niczego do zważenia.</i></p>';
-        if ($('#bad')) $('#bad').onclick = () => akcja('zbadaj', { id: $('#rz').value });
+        if ($('#czp')) czary.wstaw($('#czp'), { czary: [{ id: 'waga', nazwa: s.czar_wagi, opis: 'bada skład wybranego surowca' }], kom, bezMocy: true,
+          naCzar: () => akcja('zbadaj', { id: $('#rz').value }) });
         return;
       }
       if (!wg.gotowe) { el.innerHTML = '<p><b>' + esc(wg.nazwa) + '</b></p><div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + IKONA_WAGA + '</svg></div><p><i>Szalki drżą…</i></p>'; return; }

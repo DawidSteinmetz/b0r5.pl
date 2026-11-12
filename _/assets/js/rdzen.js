@@ -452,9 +452,9 @@
       '</svg><div id="rtyt"></div></div>');
     const el = $('#radio'), wl = $('#rwl'), gl = $('#rgl'), tyt = $('#rtyt');
     if (!R.ustawienia.tytul) tyt.hidden = true;
-    /* Napis z tytułem: gdy jest dłuższy niż okienko radia, przesuwa się powoli w pętli. Za tekstem idzie jego kopia,
-       a między ostatnią literą a pierwszą zostaje przerwa (padding w styl.css). Napis zmienia się tylko przy zmianie utworu,
-       więc pasek nie zaczyna od nowa przy każdej synchronizacji. */
+    /* Napis z tytułem: gdy jest dłuższy niż okienko radia, przesuwa się powoli w lewo. Wjeżdża zza prawej krawędzi,
+       przejeżdża całe okienko i znika za lewą; kiedy schowa się ostatnia litera, linia jest pusta i napis wjeżdża od nowa.
+       Napis zmienia się tylko przy zmianie utworu, więc pasek nie zaczyna od nowa przy każdej synchronizacji. */
     const stacja = R.ustawienia.stacja || '';
     let tytTekst = null;
     function napis(t) {
@@ -462,13 +462,13 @@
       tytTekst = t;
       tyt.classList.remove('jedzie'); tyt.textContent = '';
       if (!t) return;
-      const pas = document.createElement('span'), a = document.createElement('span');
-      pas.className = 'pas'; a.textContent = t; pas.appendChild(a); tyt.appendChild(pas);
-      if (a.offsetWidth <= tyt.clientWidth) return;
-      const b = a.cloneNode(true); b.setAttribute('aria-hidden', 'true'); pas.appendChild(b);
-      const d = b.getBoundingClientRect().left - a.getBoundingClientRect().left;
-      pas.style.setProperty('--d', -d + 'px');
-      pas.style.setProperty('--t', (d / 22).toFixed(1) + 's');      // około 22 pikseli na sekundę
+      const pas = document.createElement('span');
+      pas.className = 'pas'; pas.textContent = t; tyt.appendChild(pas);
+      const W = tyt.clientWidth, d = pas.offsetWidth;
+      if (!W || d <= W) return;
+      pas.style.setProperty('--od', W + 'px');
+      pas.style.setProperty('--do', -d + 'px');
+      pas.style.setProperty('--t', ((W + d) / 22).toFixed(1) + 's');   // około 22 pikseli na sekundę
       tyt.classList.add('jedzie');
     }
 

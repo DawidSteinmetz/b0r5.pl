@@ -76,6 +76,17 @@
   const RUCH = !matchMedia('(prefers-reduced-motion: reduce)').matches;
   const MGLA_GESTNIEJE = RUCH ? 2600 : 500, MGLA_RZEDNIE = RUCH ? 3600 : 500;
   let mgla = null, przechodzi = false;
+  /* Tłumik radia przy przejściach (0–1, niezależny od pokrętła głośności): cichnie razem z gęstniejącą mgłą,
+     a w nowym pokoju wraca razem z rzednącą. Zmiana w czasie od t0 do t1; radio pyta tlumikRadia() w każdej klatce zmiany. */
+  const glosRadia = { v0: 1, v1: 1, t0: 0, t1: 0 };
+  function tlumikRadia() {
+    const t = performance.now(), g = glosRadia;
+    return t >= g.t1 ? g.v1 : g.v0 + (g.v1 - g.v0) * (t - g.t0) / (g.t1 - g.t0);
+  }
+  function zmienGlosRadia(cel, ms) {
+    glosRadia.v0 = tlumikRadia(); glosRadia.v1 = cel; glosRadia.t0 = performance.now(); glosRadia.t1 = glosRadia.t0 + ms;
+    document.dispatchEvent(new CustomEvent('mysl:glos'));
+  }
   function warstwaMgly(napis) {
     if (mgla) mgla.remove();
     mgla = document.createElement('div');
@@ -93,6 +104,7 @@
     przechodzi = true;
     try { sessionStorage.setItem('mprzejscie', JSON.stringify({ t: Date.now(), napis: napis || '' })); } catch (e) { /* tryb prywatny */ }
     const m = warstwaMgly(napis);
+    zmienGlosRadia(0, MGLA_GESTNIEJE);                   // radio cichnie razem z gęstniejącą mgłą
     m.style.setProperty('--ms', MGLA_GESTNIEJE + 'ms');
     void m.offsetWidth;                                   // najpierw przezroczysta, dopiero potem gęstnieje
     m.classList.add('gesta');
@@ -100,6 +112,7 @@
   }
   function rozprosz() {
     const m = mgla; if (!m || !m.classList.contains('gesta')) return;
+    zmienGlosRadia(1, MGLA_RZEDNIE);                     // i wraca razem z rzednącą
     m.style.setProperty('--ms', MGLA_RZEDNIE + 'ms');
     m.classList.remove('od-razu'); void m.offsetWidth;
     m.classList.remove('gesta'); m.classList.add('rzednie');
@@ -107,9 +120,9 @@
   }
   let przybycie = null;
   try { przybycie = JSON.parse(sessionStorage.getItem('mprzejscie') || 'null'); sessionStorage.removeItem('mprzejscie'); } catch (e) { /* tryb prywatny */ }
-  if (przybycie && Date.now() - przybycie.t < 20000) warstwaMgly(przybycie.napis).classList.add('gesta', 'od-razu');
+  if (przybycie && Date.now() - przybycie.t < 20000) { warstwaMgly(przybycie.napis).classList.add('gesta', 'od-razu'); glosRadia.v0 = glosRadia.v1 = 0; }
   // powrót przyciskiem "wstecz": przeglądarka może pokazać stronę z pamięci, jeszcze zasnutą mgłą
-  addEventListener('pageshow', e => { if (e.persisted && mgla) { przechodzi = false; mgla.remove(); mgla = null; } });
+  addEventListener('pageshow', e => { if (e.persisted && mgla) { przechodzi = false; mgla.remove(); mgla = null; zmienGlosRadia(1, MGLA_RZEDNIE); } });
 
   /* tło, zegar, kalendarz, okno pergaminu */
   body.insertAdjacentHTML('afterbegin',
@@ -607,20 +620,30 @@
       try {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         const zr = ctx.createMediaElementSource(audio);
-        wzm = ctx.createGain(); wzm.gain.value = glosnosc;
+        wzm = ctx.createGain(); wzm.gain.value = glosnosc * tlumikRadia() ** 2;
         zr.connect(wzm); wzm.connect(ctx.destination);
         if (ctx.state === 'suspended') ctx.resume().catch(() => { });
       } catch (e) { ctx = null; wzm = null; }
     }
+    // co naprawdę słychać: pokrętło razy tłumik przejścia (w kwadracie, żeby wyciszanie brzmiało płynnie)
+    function zastosujGlos() { const v = glosnosc * tlumikRadia() ** 2; if (wzm) wzm.gain.value = v; else audio.volume = v; }
+    let glosPetla = 0;
+    function plynnieGlos() {
+      cancelAnimationFrame(glosPetla);
+      const krok = () => { zastosujGlos(); if (performance.now() < glosRadia.t1) glosPetla = requestAnimationFrame(krok); };
+      krok();
+    }
+    document.addEventListener('mysl:glos', plynnieGlos);
     function ustawGlosnosc(v, zapis) {
       glosnosc = Math.min(1, Math.max(0, v));
-      if (wzm) wzm.gain.value = glosnosc; else audio.volume = glosnosc;
+      zastosujGlos();
       $('#rglm').style.transform = 'rotate(' + (-135 + glosnosc * 270) + 'deg)';
       gl.setAttribute('aria-valuenow', Math.round(glosnosc * 100));
       gl.setAttribute('aria-valuetext', Math.round(glosnosc * 100) + '%');
       if (zapis) zapisz();
     }
     ustawGlosnosc(glosnosc, false);
+    plynnieGlos();                                       // jeśli mgła już rzednie, radio dołącza do podgłaśniania
 
     /* gdzie w szufli jesteśmy teraz (czas serwera) */
     function gdzie() {

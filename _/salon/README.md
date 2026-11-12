@@ -4,25 +4,15 @@ Pokój z własną mechaniką: `pokoj.js` i `pokoj.css` (przeglądarka), `api/not
 
 ## Notes do gier
 
-Notes zapisuje punkty jednej wspólnej partii (stan na serwerze, wszyscy goście widzą to samo). Ma dwa formularze:
+Notes zapisuje punkty jednej wspólnej partii (stan na serwerze, wszyscy goście widzą to samo) i idzie krokami. Na górze każdego kroku jest lista czarów tego kroku. Czar można rzucić głosem (przycisk „Rzuć czar”) albo wpisać w pole; w polu „Nota hoc” można pominąć.
 
-- **Mille** (tysiąc): kolumny graczy, kolejne wpisy, sumy na dole; zwycięzca po osiągnięciu celu (domyślnie 1000; cel 0 = gra bez końca).
-- **Alea** (kości, jak Generał): kategorie jedynki–szóstki (premia +35 za co najmniej 63 w górnej części), trzy jednakowe, cztery jednakowe, full (25), mały strit (30), duży strit (40), generał (50), szansa. Pióro pilnuje zasad: każda kategoria raz na gracza, w górnej części tylko wielokrotności oczka. Koniec, kiedy wszyscy wypełnią wszystko.
+1. **Wybór gry:** „Mille” (tysiąc) albo „Alea” (kości); można też kliknąć.
+2. **Gracze:** „Lusor Primus Kopytko”, „Lusor Secundus Maja”, „Lusor Tertius …”, „Lusor Quartus …” (do Octavus). Nazwa gracza to dokładnie słowo po „Lusor Primus”. Imiona można też wpisać w pola, a gracza bez punktów usunąć. Na start są wpisani gracze z poprzedniej partii. „Incipiāmus” (albo przycisk) zaczyna grę.
+3. **Punkty:** tabela, w której każdą komórkę można kliknąć i wpisać ręcznie (także imię w nagłówku).
+   - Tysiąc: „Nota hoc Kopytko 60”, „Nota hoc Maja minus 60”, „Nota hoc Borsuk bomba” (Borsuk 0 ze znakiem ✹, pozostali po 60, przy czterech graczach po 40; jedna bomba przed 500 i jedna po 500). Zwycięzca po 1000.
+   - Kości: „Nota hoc Majusia trēs 18”: imię, łacińska nazwa układu i punkty; „nihil” (albo „zero”) skreśla. Układy (`NOTES_UKLADY` w `api/notes.php`): Singulī, Bīnī, Ternī, Quaternī, Quīnī, Sēnī (jedynki–szóstki, premia +50 od 63), Pār (para), Duo paria (dwie pary), Trēs (trójka), Quattuor (kareta), Plēnus (full), Ōrdō minor (mały strit, 15), Ōrdō maior (duży strit, 20), Fortūna (szansa), Imperātor (generał, 50). Pióro pilnuje dozwolonych wyników; w polu działają też polskie nazwy.
+   - „Nota hoc deleo” wykreśla ostatni wpis (bombę w całości), „Nota hoc nova” wraca do kroku 1, a partia trafia do archiwum.
 
-Zmiana formularza zaczyna nową partię z tymi samymi graczami, a poprzednia trafia do archiwum (osiem ostatnich).
+Głosem czary gry, graczy i „Incipiāmus” działają same, jeśli całe zdanie jest czarem; wpisy punktów trzeba zacząć od „Nota hoc”, żeby rozmowa przy stole niczego nie wpisała. Pod przyciskiem widać, co pióro usłyszało. Mowę rozpoznaje przeglądarka (Web Speech API: Chrome i Edge, po polsku); nagranie idzie do usługi rozpoznawania mowy przeglądarki, a strona musi być pod HTTPS.
 
-Czary, głosem (przycisk „Rzuć czar”) albo w polu tekstowym:
-
-- „Mille”, „Alea”: formularz do tysiąca albo do kości,
-- „Lusor Primus Kopytko”, „Lusor Secundus Maja”, „Lusor Tertius Wujek”, „Lusor Quartus Heniu” (i dalej do Octavus): gracz na danym miejscu, zapisany dokładnie jako słowo po „Lusor Primus”; jeśli miejsce jest zajęte, zmienia się imię, a punkty zostają,
-- „Nota hoc Kacper 120”, „Nota hoc Maja minus 60”: wpis w tysiącu (liczby cyframi albo słowami),
-- „Nota hoc Borsuk bomba”: bomba w tysiącu; Borsuk dostaje 0 ze znakiem ✹, pozostali po 60 (przy czterech graczach po 40); każdy ma jedną bombę przed 500 i jedną po 500, a „deleo” wykreśla całą bombę. Bomba stoi w jednym wierszu u wszystkich graczy,
-- „Nota hoc Kacper trójki 9”, „Nota hoc Maja full”, „Nota hoc Wujek generał skreśl”: wpis w kościach (stałe wartości bez liczby, „skreśl” albo „zero” wpisuje 0),
-- „Nota hoc deleo”: wykreślenie ostatniego wpisu,
-- „Nota hoc nova”: nowa partia tego samego rodzaju (albo „Nota hoc nova Kacper Maja i Borsuk”).
-
-Głosem „Mille”, „Alea” i „Lusor …” działają same albo po „Nota hoc”, ale tylko wtedy, gdy całe zdanie jest czarem; pozostałe trzeba zacząć od „Nota hoc”, żeby rozmowa przy stole niczego nie wpisała. W polu tekstowym „Nota hoc” można pominąć. Imię dopasowuje się do najbliższego gracza, także w odmianie („Kacprowi”) i z drobną literówką rozpoznawania.
-
-Mowę rozpoznaje przeglądarka (Web Speech API: Chrome i Edge, po polsku); nagranie idzie do usługi rozpoznawania mowy przeglądarki, a strona musi być pod HTTPS.
-
-Jeśli serwer nie może pisać w `_logika/stan/`, notes pokazuje to wprost („Notes nie może pisać…”), zamiast milczeć.
+Jeśli serwer nie może pisać w `_logika/stan/`, notes pokazuje to wprost („Notes nie może pisać…”).

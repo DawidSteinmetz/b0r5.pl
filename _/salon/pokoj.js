@@ -1,10 +1,13 @@
-/* Salon: magiczny notes do zapisywania punktów (tysiąc, kości, cokolwiek). Wpisy przyjmuje głosem albo z klawiatury:
-   "Nota hoc Kacper 120", "Nota hoc Maja minus 60", "Nota hoc deleo" (cofnij), "Nota hoc nova" (nowa partia).
+/* Salon: magiczny notes do liczenia punktów. Idzie krokami:
+     1. wybór gry: czar "Mille" (tysiąc) albo "Alea" (kości),
+     2. gracze: "Lusor Primus <imię>", "Lusor Secundus <imię>"…, potem "Incipiāmus",
+     3. punkty: "Nota hoc <imię> <punkty>" (w kościach "Nota hoc <imię> <układ po łacinie> <punkty>").
+   Każdy czar można rzucić głosem ("Rzuć czar") albo wpisać w pole; każdą komórkę tabeli można też kliknąć i wpisać ręcznie.
    Mowę rozpoznaje przeglądarka (Web Speech API: Chrome, Edge; nagranie idzie do ich usługi rozpoznawania).
-   Plik należy do pokoju (pokoj.json: "skrypt"), a z rdzenia korzysta tylko przez window.Mysl. Serwer: api/notes.php. */
+   Plik należy do pokoju (pokoj.json: "skrypt"), z rdzenia korzysta tylko przez window.Mysl. Serwer: api/notes.php. */
 (function () {
   'use strict';
-  const { $, esc, w, modal, gracz, arkusz, zamknij, tresc, URL_POKOJU: U } = window.Mysl;
+  const { $, esc, w, modal, gracz, arkusz, zamknij, URL_POKOJU: U } = window.Mysl;
   let okno = null;
   async function api(akcja, d) {
     const r = await fetch(U + 'api/notes.php', {
@@ -23,10 +26,9 @@
     czasTostu = setTimeout(() => e.classList.remove('on'), 6000);
   }
 
-  /* --- Zaklęcia: tekst (z mowy albo z klawiatury) na działanie ---------------------------------------------- */
-  const bezOgonkow = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
-  // "nota hoc" bywa słyszane różnie: nota hok, nota ok, note hoc, notahok…
-  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot)\b[\s,.:]*/;
+  /* --- Słowa: bez ogonków, liczby, imiona ------------------------------------------------------------------- */
+  const bezOgonkow = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+  const duza = s => s.charAt(0).toUpperCase() + s.slice(1);
   const LICZBY = {
     zero: 0, jeden: 1, jedna: 1, dwa: 2, dwie: 2, trzy: 3, cztery: 4, piec: 5, szesc: 6, siedem: 7, osiem: 8, dziewiec: 9,
     dziesiec: 10, jedenascie: 11, dwanascie: 12, trzynascie: 13, czternascie: 14, pietnascie: 15, szesnascie: 16, siedemnascie: 17,
@@ -34,92 +36,91 @@
     siedemdziesiat: 70, osiemdziesiat: 80, dziewiecdziesiat: 90, sto: 100, dwiescie: 200, trzysta: 300, czterysta: 400,
     piecset: 500, szescset: 600, siedemset: 700, osiemset: 800, dziewiecset: 900, tysiac: 1000, tysiace: 1000, tysiecy: 1000
   };
-  // Liczba z końca zaklęcia: cyfry ("120", "1 20") albo słowa ("sto dwadzieścia"); "minus" na początku daje wynik ujemny.
+  // Liczba ze słów: cyfry ("120", "1 20") albo słowa ("sto dwadzieścia"); "minus" na początku daje wynik ujemny.
   function liczba(slowa) {
     let znak = 1, i = 0;
     if (slowa[0] === 'minus' || slowa[0] === '-') { znak = -1; i = 1; }
-    const reszta = slowa.slice(i);
+    const reszta = slowa.slice(i).filter(Boolean);
     if (!reszta.length) return null;
-    const cyfry = reszta.join('').replace(/[^\d-]/g, '');
-    if (/^-?\d+$/.test(cyfry) && reszta.every(s => /^-?\d+$/.test(s))) return znak * parseInt(cyfry, 10);
-    let suma = 0, ok = false;
+    if (reszta.every(s => /^-?\d+$/.test(s))) return znak * parseInt(reszta.join(''), 10);
+    let suma = 0;
     for (const s of reszta) {
       if (!(s in LICZBY)) return null;
       const v = LICZBY[s];
-      suma = v === 1000 ? Math.max(1, suma) * 1000 : suma + v; ok = true;
+      suma = v === 1000 ? Math.max(1, suma) * 1000 : suma + v;
     }
-    return ok ? znak * suma : null;
+    return znak * suma;
   }
-  function odleglosc(a, b) {                   // Levenshtein: ile liter trzeba zmienić
+  function odleglosc(a, b) {
     const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
     for (let j = 1; j <= b.length; j++) d[0][j] = j;
     for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
       d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
     return d[a.length][b.length];
   }
-  // Najbliższy gracz w notesie (imię może być usłyszane z literówką albo w innej formie: "Kacprowi", "Mai").
+  // Gracz o najbliższym imieniu (rozpoznawanie mowy myli litery i odmienia: "Kacprowi", "Majusi").
   function ktoTo(slowo, gracze) {
-    const s = bezOgonkow(slowo), jedno = !s.includes(' '); let naj = null, wynik = 99;
+    const s = bezOgonkow(slowo).replace(/['"„”‘’]/g, ''), jedno = !s.includes(' '); let naj = null, wynik = 99;
     for (const g of gracze) {
       const n = bezOgonkow(g.imie);
       let o = odleglosc(s, n), wsp = 0;
       while (wsp < s.length && wsp < n.length && s[wsp] === n[wsp]) wsp++;
-      // odmiana: wspólny początek (Kacper → Kacprowi, Borsuk → Borsukowi) albo skrót (Kac → Kacper)
       if (jedno && wsp >= Math.min(4, n.length - 1) && s.length <= n.length + 4) o = Math.min(o, 1);
       if (jedno && s.length >= 3 && n.startsWith(s)) o = Math.min(o, 1);
       if (o < wynik) { wynik = o; naj = g.imie; }
     }
     return naj && wynik <= Math.max(1, Math.floor(bezOgonkow(naj).length / 3)) ? naj : null;
   }
-  // Kategorie kości i to, jak bywają wypowiadane (bez ogonków). Dłuższe warianty najpierw.
-  const KATEGORIE = [
-    ['trzy', ['trzy jednakowe', 'trzy takie same', 'trzy identyczne']], ['cztery', ['cztery jednakowe', 'cztery takie same', 'kareta', 'karete']],
-    ['maly', ['maly strit', 'maly strajt', 'maly street', 'malego strita', 'maly']], ['duzy', ['duzy strit', 'duzy strajt', 'duzy street', 'duzego strita', 'duzy']],
-    ['jedynki', ['jedynki', 'jedynek', 'jedynka']], ['dwojki', ['dwojki', 'dwojek', 'dwojka']], ['trojki', ['trojki', 'trojek', 'trojka']],
-    ['czworki', ['czworki', 'czworek', 'czworka']], ['piatki', ['piatki', 'piatek', 'piatka']], ['szostki', ['szostki', 'szostek', 'szostka']],
-    ['full', ['pelny dom', 'full', 'fula', 'ful', 'fulla']], ['general', ['general', 'generala', 'jazzy', 'yahtzee', 'jaci']], ['szansa', ['szansa', 'szanse', 'szansy']]
-  ];
-  const SKRESL = /^(skresl|skreslam|skreslone|skreslic|zero|nic|krzyzyk)$/;
-  // Lusor Primus/Secundus/Tertius/Quartus (i dalej): gracz na danym miejscu
-  // jak rozpoznawanie mowy przekręca "lusor" i liczebniki (bez ogonków)
-  const LUSOR = /^(lusor|luzor|lusora|luzora|lu sor|lu zor|loser|luser|luzer|lusar|luzar|lozor|losor|lizor|lusser|louser)\s+(primus|prymus|primu|prima|primo|primas|prymas|prim us|secundus|sekundus|secundu|sekundu|sekunda|secundo|sekundos|tertius|tercjus|tercius|terciu|tercjusz|tertio|quartus|kwartus|kwartu|kwartusz|quarto|kwarta|quintus|kwintus|sextus|sekstus|septimus|septymus|octavus|oktawus)\s+(.+)$/;
-  const MIEJSCA = { primus: 1, prymus: 1, primu: 1, prima: 1, primo: 1, primas: 1, prymas: 1, 'prim us': 1,
+
+  /* --- Czary ------------------------------------------------------------------------------------------------- */
+  // Jak rozpoznawanie mowy po polsku słyszy łacińskie słowa (bez ogonków). Dłuższe warianty najpierw.
+  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot)\b\s*/;
+  const GRY = { mille: /^(mille|mile|mila|mili|milla|mil|mille mille)$/, alea: /^(alea|aleja|alei|ale a|alee|allea|alea jacta est)$/ };
+  const ZACZNIJ = /^(incipiamus|incipjamus|incypiamus|in cipiamus|incipiam us|incipe|incipit|incipimus)$/;
+  const NOWA = /^(nova|nowa|novo|nowe|nova pars|nowa gra)$/;
+  const COFNIJ = /^(deleo|deleto|delo|dele|cofnij|wykresl|usun)$/;
+  const LUSOR = /^(lusor|luzor|lusora|luzora|lu sor|lu zor|loser|luser|luzer|lusar|luzar|lozor|losor|lizor|lusser|louser)\s+(primus|prymus|primu|prima|primo|primas|prymas|secundus|sekundus|secundu|sekundu|sekunda|secundo|sekundos|tertius|tercjus|tercius|terciu|tercjusz|tertio|quartus|kwartus|kwartu|kwartusz|quarto|kwarta|quintus|kwintus|sextus|sekstus|septimus|septymus|octavus|oktawus)\s+(.+)$/;
+  const MIEJSCA = { primus: 1, prymus: 1, primu: 1, prima: 1, primo: 1, primas: 1, prymas: 1,
     secundus: 2, sekundus: 2, secundu: 2, sekundu: 2, sekunda: 2, secundo: 2, sekundos: 2,
     tertius: 3, tercjus: 3, tercius: 3, terciu: 3, tercjusz: 3, tertio: 3,
     quartus: 4, kwartus: 4, kwartu: 4, kwartusz: 4, quarto: 4, kwarta: 4, quintus: 5, kwintus: 5, sextus: 6, sekstus: 6, septimus: 7, septymus: 7, octavus: 8, oktawus: 8 };
-  const duza = s => s.charAt(0).toUpperCase() + s.slice(1);
-  // Zwraca {akcja, dane} albo {blad} albo null (to nie zaklęcie). "glos": przy mowie bez "Nota hoc" przyjmuje tylko
-  // zdanie, które w całości jest czarem formularza albo czarem gracza (żeby rozmowa przy stole niczego nie wpisała).
-  function rozbierz(tekst, notes, glos) {
-    const gracze = notes.gracze || notes;
-    const oryg = String(tekst).replace(/[,.:;!?]/g, ' ').replace(/\s+/g, ' ').trim();
-    let t = bezOgonkow(oryg);
+  const LUSORY = ['Primus', 'Secundus', 'Tertius', 'Quartus', 'Quintus', 'Sextus', 'Septimus', 'Octavus'];
+  // Układy w kościach: identyfikator (jak w api/notes.php) i jak bywa wypowiadany; polskie nazwy też działają w polu.
+  const UKLADY = [
+    ['paria', ['duo paria', 'duo parja', 'duo pari', 'dwa paria', 'dwie pary', 'dwie pary']], ['minor', ['ordo minor', 'orto minor', 'ordo minur', 'maly strit']],
+    ['maior', ['ordo maior', 'ordo major', 'ordo majer', 'orto major', 'duzy strit']], ['quattuor', ['quattuor', 'kwattuor', 'kwatuor', 'kwartuor', 'kwatuo', 'kwattuo', 'kareta']],
+    ['quaterni', ['quaterni', 'kwaterni', 'kwaterny', 'czworki']], ['singuli', ['singuli', 'singulij', 'singulli', 'jedynki']], ['bini', ['bini', 'biny', 'binni', 'dwojki']],
+    ['terni', ['terni', 'terny', 'tierni', 'trojki']], ['quini', ['quini', 'kwini', 'kwiny', 'kfini', 'piatki']], ['seni', ['seni', 'seny', 'senni', 'szostki']],
+    ['tres', ['tres', 'tresz', 'trez', 'trejs', 'trojka']], ['par', ['par', 'parr', 'para']], ['plenus', ['plenus', 'plenuz', 'plenos', 'full', 'ful']],
+    ['fortuna', ['fortuna', 'fortune', 'szansa']], ['imperator', ['imperator', 'imperatur', 'general']]
+  ];
+  const SKRESL = /^(skresl|skreslam|skreslone|skreslic|zero|nic|nihil|krzyzyk)$/;
+  // Tekst -> {akcja, dane} | {blad} | null (to nie czar). "glos": przy mowie wpisy wymagają "Nota hoc",
+  // a czary gry, graczy i "Incipiāmus" działają same, jeśli całe zdanie jest czarem.
+  function rozbierz(tekst, s, glos) {
+    const oryg = String(tekst).replace(/[,.:;!?]/g, ' ').replace(/['"„”‘’]/g, '').replace(/\s+/g, ' ').trim();
+    let t = bezOgonkow(oryg), o = oryg;
     const m = t.match(PRZEDROSTEK), zPrzedrostkiem = !!m;
-    let o = oryg;
-    if (m) { o = o.split(' ').slice(m[0].trim().split(/\s+/).length).join(' '); t = t.slice(m[0].length).trim(); }
-    if (/^(mille|mile|mila|mili|milla|mil)$/.test(t)) return { akcja: 'nowa', dane: { typ: 'mille' } };
-    if (/^(alea|aleja|alei|ale a|alee|allea)$/.test(t)) return { akcja: 'nowa', dane: { typ: 'alea' } };
+    if (m) { const n = m[0].trim().split(/\s+/).length; o = o.split(' ').slice(n).join(' '); t = t.split(' ').slice(n).join(' '); }
+    for (const typ in GRY) if (GRY[typ].test(t)) return { akcja: 'wybierz', dane: { typ } };
     const lu = t.match(LUSOR);
-    if (lu) {
-      // imię to dokładnie trzecie usłyszane słowo (pierwsze po "Lusor Primus"), tak jak padło
+    if (lu) {                                    // imię to dokładnie słowo po "Lusor Primus", tak jak padło
       const im = o.split(' ')[t.split(' ').length - lu[3].split(' ').length];
       return { akcja: 'gracz_nr', dane: { nr: MIEJSCA[lu[2]], imie: duza(im) } };
     }
+    if (ZACZNIJ.test(t)) return { akcja: 'zacznij' };
     if (glos && !zPrzedrostkiem) return null;
     if (!t) return { blad: 'Pióro czeka na resztę zaklęcia.' };
-    if (/^(deleo|deleto|delo|cofnij|wykresl|usun)\b/.test(t)) return { akcja: 'cofnij' };
-    if (/^(nova|nowa|novo|nowe)\b/.test(t)) {
-      const imiona = o.split(' ').slice(1).join(' ').replace(/^(gra|partia)\s*/i, '').split(/\s+(?:i\s+)?|\s*,\s*/).filter(x => x && !/^i$/i.test(x));
-      return { akcja: 'nowa', dane: imiona.length ? { gracze: imiona.map(duza) } : {} };
-    }
+    if (COFNIJ.test(t)) return { akcja: 'cofnij' };
+    if (NOWA.test(t)) return { akcja: 'od_nowa' };
+    if (!s.gracze.length) return { blad: 'Najpierw posadź graczy: Lusor Primus i imię.' };
     const slowa = t.split(' ');
     for (let k = 1; k <= Math.min(3, slowa.length); k++) {
-      const im = ktoTo(slowa.slice(0, k).join(' '), gracze);
+      const im = ktoTo(slowa.slice(0, k).join(' '), s.gracze);
       if (!im) continue;
-      const reszta = slowa.slice(k);
-      if (notes.typ === 'alea') {
-        const r = reszta.join(' ');
-        for (const [kat, warianty] of KATEGORIE) for (const war of warianty) {
+      const reszta = slowa.slice(k), r = reszta.join(' ');
+      if (s.typ === 'alea') {
+        for (const [kat, warianty] of UKLADY) for (const war of warianty) {
           if (r !== war && !r.startsWith(war + ' ')) continue;
           const po = r.slice(war.length).trim().split(' ').filter(Boolean);
           if (po.length === 1 && SKRESL.test(po[0])) return { akcja: 'wpisz', dane: { imie: im, kat, skresl: true } };
@@ -128,31 +129,28 @@
           return { akcja: 'wpisz', dane: pkt === null ? { imie: im, kat } : { imie: im, kat, pkt } };
         }
         if (reszta.length) continue;
-        return { blad: 'Którą kategorię? Np. „' + im + ' trójki 9” albo „' + im + ' full”.' };
+        return { blad: 'Który układ? Np. „Nota hoc ' + im + ' trēs 18”.' };
       }
       if (reszta.length === 1 && /^(bomba|bombe|bomby|bomb|bombka)$/.test(reszta[0])) return { akcja: 'bomba', dane: { imie: im } };
       const pkt = liczba(reszta);
       if (pkt !== null) return { akcja: 'wpisz', dane: { imie: im, pkt } };
     }
-    if (!ktoTo(slowa[0], gracze)) return { blad: 'Notes nie zna gracza „' + slowa[0] + '”.' };
-    return { blad: notes.typ === 'alea' ? 'Pióro nie zrozumiało kategorii.' : 'Pióro nie zrozumiało liczby.' };
+    if (!ktoTo(slowa[0], s.gracze)) return { blad: 'Przy stoliku nie ma gracza „' + slowa[0] + '”.' };
+    return { blad: s.typ === 'alea' ? 'Pióro nie zrozumiało układu.' : 'Pióro nie zrozumiało liczby.' };
   }
 
   /* --- Słuchanie --------------------------------------------------------------------------------------------- */
   const Rozpoznawanie = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let sluch = null, slucha = false, poUsłyszeniu = null;
-  function sluchaj(wl, naTekst, naStan) {
+  let sluch = null, slucha = false, naTekst = null, naStan = () => { };
+  function sluchaj(wl) {
     if (!Rozpoznawanie) return naStan('brak');
     if (!wl) { slucha = false; if (sluch) sluch.stop(); naStan('cisza'); return; }
-    slucha = true; poUsłyszeniu = naTekst;
+    slucha = true;
     if (!sluch) {
       sluch = new Rozpoznawanie();
       sluch.lang = 'pl-PL'; sluch.continuous = true; sluch.interimResults = false; sluch.maxAlternatives = 3;
       sluch.onresult = e => {
-        for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) {
-          const alt = Array.from(e.results[i]).map(a => a.transcript);
-          if (poUsłyszeniu) poUsłyszeniu(alt);
-        }
+        for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal && naTekst) naTekst(Array.from(e.results[i]).map(a => a.transcript));
       };
       sluch.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { slucha = false; naStan('odmowa'); } };
       sluch.onend = () => { if (slucha) { try { sluch.start(); } catch (err) { /* już słucha */ } } else naStan('cisza'); };   // Chrome kończy po ciszy: wznów
@@ -162,121 +160,176 @@
   }
 
   /* --- Notes ------------------------------------------------------------------------------------------------- */
+  const czar = (lac, pl) => '<li><b>' + lac + '</b>' + (pl ? ' <span>' + pl + '</span>' : '') + '</li>';
+  function listaCzarow(s) {
+    if (s.etap === 'wybor') return czar('Mille', 'notes do tysiąca') + czar('Alea', 'notes do kości');
+    if (s.etap === 'gracze') return czar('Lusor Primus <i>imię</i>', 'gracz 1') + czar('Lusor Secundus <i>imię</i>', 'gracz 2') +
+      czar('Lusor Tertius <i>imię</i>', 'gracz 3') + czar('Lusor Quartus <i>imię</i>', 'gracz 4') + czar('Incipiāmus', 'zaczynamy');
+    if (s.typ === 'alea') return czar('Nota hoc <i>imię</i> <i>układ</i> <i>punkty</i>', 'np. Nota hoc Majusia trēs 18') +
+      czar('Nota hoc <i>imię</i> <i>układ</i> nihil', 'skreślenie') + czar('Nota hoc deleo', 'wykreśl ostatni') + czar('Nota hoc nova', 'nowa gra');
+    return czar('Nota hoc <i>imię</i> <i>punkty</i>', 'np. Nota hoc Kopytko 60') + czar('Nota hoc <i>imię</i> bomba', 'po 60, przy 4 graczach po 40') +
+      czar('Nota hoc deleo', 'wykreśl ostatni') + czar('Nota hoc nova', 'nowa gra');
+  }
   function otworzNotes(o) {
     okno = o; arkusz('ks'); kom('');
-    w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><div class="tekst"></div>' +
+    w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><p class="etap" id="etap"></p><ul class="czary" id="czary"></ul>' +
       '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Rzuć czar</button><span id="slyszy"></span></div>' +
-      '<div class="pisz"><input type="text" id="zakl" placeholder="np. Lusor Primus Kopytko, Kopytko 60, Borsuk bomba" aria-label="Zaklęcie"><button type="button" id="zp">Zapisz</button></div>' +
-      '<div class="akcje"><button type="button" id="cof">Wykreśl ostatni</button><button type="button" id="nowa">Nowa partia…</button></div>' +
-      '<div id="nowaf" hidden><input type="text" id="ng" placeholder="Imiona, po przecinku" aria-label="Gracze nowej partii"><input type="text" id="nc" inputmode="numeric" placeholder="cel" aria-label="Cel punktowy" size="5"><button type="button" id="nok">Zacznij</button></div>' +
+      '<div class="pisz"><input type="text" id="zakl" aria-label="Czar" autocomplete="off"><button type="button" id="zp">Zapisz</button></div>' +
       '<div id="nt"></div><div id="arch"></div><button id="x">Zamknij</button>';
     $('#x').onclick = zamknij; modal.classList.add('on');
-    tresc(o.e, w.querySelector('.tekst'));
-    let s = null, ost = '', nowyWpis = -1;
+    let s = null, ost = '', nowyWpis = -1, edytuje = false;
+    const wykonaj = async (akcja, d) => {
+      let r; try { r = await api(akcja, d); } catch (err) { kom('Kleks: serwer nie odpowiada.'); return; }
+      kom(r.tekst || '');
+      if (r.stan) { s = r.stan; ost = JSON.stringify(s); nowyWpis = (akcja === 'wpisz' || akcja === 'bomba' || akcja === 'popraw') && r.ok ? (d && d.nr !== undefined ? d.nr : s.ostatni) : -1; edytuje = false; rysuj(); }
+      return r;
+    };
+    /* krok 1 */
+    const rysujWybor = () =>
+      '<div class="gry"><button type="button" data-gra="mille"><b>Mille</b><span>tysiąc</span></button><button type="button" data-gra="alea"><b>Alea</b><span>kości</span></button></div>';
+    /* krok 2 */
+    const rysujGraczy = () => {
+      let h = '<p class="partia">' + esc(s.nazwa) + ': kto gra?</p><ol class="gracze">';
+      const n = Math.min(8, s.gracze.length + 1);
+      for (let i = 0; i < n; i++) {
+        const g = s.gracze[i];
+        h += '<li><span class="lusor">Lusor ' + LUSORY[i] + '</span><input type="text" data-nr="' + (i + 1) + '" value="' + (g ? esc(g.imie) : '') + '" placeholder="' + (g ? '' : 'imię') + '" aria-label="Gracz ' + (i + 1) + '">' +
+          (g && !g.ma_wpisy ? '<button type="button" class="usun" data-nr="' + (i + 1) + '" aria-label="Usuń gracza ' + esc(g.imie) + '">×</button>' : '<span class="usun"></span>') + '</li>';
+      }
+      h += '</ol><div class="akcje"><button type="button" id="start"' + (s.gracze.length ? '' : ' disabled') + '>Incipiāmus — zaczynamy</button></div>';
+      return h;
+    };
+    /* krok 3: tysiąc */
+    const komorka = (x, gk, extra) => '<td class="ed' + (x && x.nr === nowyWpis ? ' swiezy' : '') + (extra || '') + '"' + (x ? ' data-nr="' + x.nr + '"' : '') + (gk !== undefined ? ' data-g="' + gk + '"' : '') + '>' +
+      (x ? (x.bomba ? '<span class="bomba" title="bomba">✹</span> 0' : x.pkt < 0 ? '−' + Math.abs(x.pkt) : x.pkt) : '') + '</td>';
+    const glowka = (pierwsza) => '<thead><tr>' + (pierwsza ? '<th class="kat"></th>' : '') + s.gracze.map((g, k) =>
+      '<th class="ed imie' + (g.prowadzi ? ' prow' : '') + '" data-imie="' + (k + 1) + '" title="Kliknij, by zmienić imię">' + esc(g.imie) + '</th>').join('') + '</tr></thead>';
+    const rysujTysiac = () => {
+      // wiersze: wpis trafia do pierwszego wolnego wiersza gracza, bomba do jednego wiersza u wszystkich
+      const wszystkie = []; s.gracze.forEach((g, k) => g.wpisy.forEach(x => wszystkie.push(Object.assign({ k }, x))));
+      wszystkie.sort((a, b) => a.nr - b.nr);
+      const kol = s.gracze.map(() => []), wolny = s.gracze.map(() => 0);
+      for (let i = 0; i < wszystkie.length; i++) {
+        const x = wszystkie[i];
+        if (x.grupa) {
+          const gr = []; while (i < wszystkie.length && wszystkie[i].grupa === x.grupa) gr.push(wszystkie[i++]); i--;
+          const r = Math.max(...gr.map(y => wolny[y.k])); gr.forEach(y => { kol[y.k][r] = y; wolny[y.k] = r + 1; });
+        } else { kol[x.k][wolny[x.k]] = x; wolny[x.k]++; }
+      }
+      const n = Math.max(...wolny, 0) + 1;                // zawsze jeden pusty wiersz do wpisania ręcznie
+      let h = '<p class="partia">' + esc(s.nazwa) + ' · do ' + s.cel + '</p><table class="notes">' + glowka(false) + '<tbody>';
+      for (let r = 0; r < n; r++) h += '<tr>' + s.gracze.map((g, k) => kol[k][r] ? komorka(kol[k][r]) : (r === wolny[k] ? komorka(null, k, ' pusta') : '<td></td>')).join('') + '</tr>';
+      h += '</tbody><tfoot><tr>' + s.gracze.map(g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.suma + '</td>').join('') + '</tr></tfoot></table>';
+      return h;
+    };
+    /* krok 3: kości */
     const rysujKosci = () => {
-      const sw = s.ostatni_wpis, th = s.gracze.map(g => '<th' + (g.prowadzi ? ' class="prow"' : '') + '>' + esc(g.imie) + '</th>').join('');
-      const wiersz = (nazwa, kom, klasa) => '<tr' + (klasa ? ' class="' + klasa + '"' : '') + '><th class="kat">' + nazwa + '</th>' + s.gracze.map(kom).join('') + '</tr>';
-      const kat = k => wiersz(esc(k.nazwa) + (k.stale ? ' <small>' + k.stale + '</small>' : ''), g => {
-        const v = g.kosci.kat[k.id], swiezy = sw && sw.imie === g.imie && sw.kat === k.id;
-        return '<td' + (swiezy ? ' class="swiezy"' : '') + '>' + (v === undefined ? '' : v === 0 ? '<span class="skr">✕</span>' : v) + '</td>';
+      const wiersz = (naglowek, kom, klasa) => '<tr' + (klasa ? ' class="' + klasa + '"' : '') + '><th class="kat">' + naglowek + '</th>' + s.gracze.map(kom).join('') + '</tr>';
+      const uklad = u => wiersz('<b>' + esc(u.lac) + '</b> <small>' + esc(u.nazwa.toLowerCase()) + (u.stale ? ' · ' + u.stale : '') + '</small>', (g, k) => {
+        const x = g.kosci.uklady[u.id];
+        return '<td class="ed' + (x && x.nr === nowyWpis ? ' swiezy' : '') + (x ? '' : ' pusta') + '" data-g="' + k + '" data-kat="' + u.id + '"' + (x ? ' data-nr="' + x.nr + '"' : '') + '>' +
+          (x ? (x.pkt === 0 ? '<span class="skr">✕</span>' : x.pkt) : '') + '</td>';
       });
       const suma = (nazwa, f, klasa) => wiersz(nazwa, g => '<td>' + f(g) + '</td>', klasa);
-      let h = '<p class="partia">' + esc(s.nazwa) + '</p><table class="notes kosci"><thead><tr><th class="kat"></th>' + th + '</tr></thead><tbody>';
-      s.kategorie.filter(k => k.czesc === 'gora').forEach(k => { h += kat(k); });
-      h += suma('Suma', g => g.kosci.gora, 'sum') + suma('Premia <small>(od ' + s.premia.prog + ')</small>', g => g.kosci.premia ? '+' + g.kosci.premia : '', 'sum');
-      s.kategorie.filter(k => k.czesc === 'dol').forEach(k => { h += kat(k); });
+      let h = '<p class="partia">' + esc(s.nazwa) + '</p><table class="notes kosci">' + glowka(true) + '<tbody>';
+      s.uklady.filter(u => u.czesc === 'gora').forEach(u => { h += uklad(u); });
+      h += suma('Suma', g => g.kosci.gora, 'sum') + suma('Premia <small>(od ' + s.premia.prog + ': +' + s.premia.pkt + ')</small>', g => g.kosci.premia ? '+' + g.kosci.premia : '', 'sum');
+      s.uklady.filter(u => u.czesc === 'dol').forEach(u => { h += uklad(u); });
       h += '</tbody><tfoot>' + wiersz('Razem', g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.kosci.razem + '</td>') + '</tfoot></table>';
       return h;
     };
     const rysuj = () => {
       if (!s) return;
-      if (s.typ === 'alea') {
-        $('#nt').innerHTML = rysujKosci() + (s.koniec ? '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>' : '');
-        rysujArchiwum(); return;
+      const KROKI = { wybor: 'Krok 1 z 3 · wybierz grę', gracze: 'Krok 2 z 3 · posadź graczy', gra: 'Krok 3 z 3 · notuj punkty' };
+      $('#etap').textContent = KROKI[s.etap] || '';
+      $('#czary').innerHTML = listaCzarow(s);
+      $('#czary').classList.toggle('zwarte', s.etap === 'gra');      // przy tabeli lista czarów zajmuje mniej miejsca
+      $('#zakl').placeholder = s.etap === 'wybor' ? 'Mille albo Alea' : s.etap === 'gracze' ? 'np. Lusor Primus Kopytko' : s.typ === 'alea' ? 'np. Majusia trēs 18' : 'np. Kopytko 60 albo Borsuk bomba';
+      let h = s.etap === 'wybor' ? rysujWybor() : s.etap === 'gracze' ? rysujGraczy() : s.typ === 'alea' ? rysujKosci() : rysujTysiac();
+      if (s.etap === 'gra') {
+        if (s.koniec) h += '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>';
+        h += '<div class="akcje"><button type="button" id="cof">Wykreśl ostatni (deleo)</button><button type="button" id="nowa">Nowa gra (nova)</button></div>';
       }
-      // Układ wierszy: każdy wpis trafia do pierwszego wolnego wiersza swojego gracza, a bomba (jedna grupa wpisów)
-      // do jednego wiersza u wszystkich, nie wyżej niż najniższy wolny wiersz któregoś z nich.
-      const wszystkie = [];
-      s.gracze.forEach((g, k) => g.wpisy.forEach(x => wszystkie.push(Object.assign({ k }, x))));
-      wszystkie.sort((a, b) => a.nr - b.nr);
-      const kom = s.gracze.map(() => []), wolny = s.gracze.map(() => 0);
-      for (let i = 0; i < wszystkie.length; i++) {
-        const x = wszystkie[i];
-        if (x.grupa) {
-          const grupa = []; while (i < wszystkie.length && wszystkie[i].grupa === x.grupa) grupa.push(wszystkie[i++]); i--;
-          const r = Math.max(...grupa.map(y => wolny[y.k]));
-          grupa.forEach(y => { kom[y.k][r] = y; wolny[y.k] = r + 1; });
-        } else { kom[x.k][wolny[x.k]] = x; wolny[x.k]++; }
-      }
-      const n = Math.max(1, ...wolny);
-      let h = '<p class="partia">' + esc(s.nazwa) + (s.cel ? ' · do ' + s.cel : '') + '</p><table class="notes"><thead><tr>' +
-        s.gracze.map(g => '<th' + (g.prowadzi ? ' class="prow"' : '') + '>' + esc(g.imie) + '</th>').join('') + '</tr></thead><tbody>';
-      for (let r = 0; r < n; r++) h += '<tr>' + s.gracze.map(g => {
-        const x = kom[s.gracze.indexOf(g)][r];
-        return '<td' + (x && x.nr === nowyWpis ? ' class="swiezy"' : '') + '>' + (x ? (x.bomba ? '<span class="bomba" title="bomba">✹</span> 0' : x.pkt < 0 ? '−' + Math.abs(x.pkt) : x.pkt) : '') + '</td>';
-      }).join('') + '</tr>';
-      h += '</tbody><tfoot><tr>' + s.gracze.map(g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.suma + '</td>').join('') + '</tr></tfoot></table>';
-      if (s.koniec) h += '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>';
       $('#nt').innerHTML = h;
-      rysujArchiwum();
-    };
-    const rysujArchiwum = () => {
-      $('#arch').innerHTML = s.archiwum.length ? '<p class="grupa">Wcześniejsze partie</p>' + s.archiwum.map(a =>
+      $('#arch').innerHTML = s.etap !== 'gra' && s.archiwum.length ? '<p class="grupa">Wcześniejsze partie</p>' + s.archiwum.map(a =>
         '<div class="dim">' + new Date(a.start * 1000).toLocaleDateString('pl', { day: 'numeric', month: 'short' }) + ' · ' + esc(a.nazwa) + ': ' +
         Object.entries(a.sumy).map(([im, p]) => esc(im) + ' ' + p).join(', ') + (a.zwyciezca ? ' · wygrał(a) ' + esc(a.zwyciezca) : '') + '</div>').join('') : '';
+      podepnij();
+    };
+    /* edycja: przyciski, pola graczy, komórki tabeli */
+    const podepnij = () => {
+      const nt = $('#nt');
+      nt.querySelectorAll('[data-gra]').forEach(b => { b.onclick = () => wykonaj('wybierz', { typ: b.dataset.gra }); });
+      nt.querySelectorAll('ol.gracze input').forEach(inp => {
+        const zapisz = () => { const v = inp.value.trim(), g = s.gracze[inp.dataset.nr - 1]; if (v && (!g || g.imie !== v)) wykonaj('gracz_nr', { nr: Number(inp.dataset.nr), imie: v }); };
+        inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); zapisz(); } });
+        inp.addEventListener('change', zapisz);
+      });
+      nt.querySelectorAll('button.usun').forEach(b => { b.onclick = () => wykonaj('usun_gracza', { nr: Number(b.dataset.nr) }); });
+      const st = $('#start'); if (st) st.onclick = () => wykonaj('zacznij');
+      const cof = $('#cof'); if (cof) cof.onclick = () => wykonaj('cofnij');
+      const nowa = $('#nowa'); if (nowa) nowa.onclick = () => wykonaj('od_nowa');
+      nt.querySelectorAll('.ed').forEach(c => { c.onclick = () => edytuj(c); });
+    };
+    const edytuj = c => {
+      if (c.querySelector('input') || c.querySelector('.bomba')) return;
+      edytuje = true;
+      const imie = c.dataset.imie !== undefined, stare = imie ? c.textContent : (c.querySelector('.skr') ? '0' : c.textContent.replace('−', '-'));
+      c.innerHTML = '<input type="text" inputmode="' + (imie ? 'text' : 'numeric') + '" value="' + esc(stare) + '" aria-label="' + (imie ? 'Imię' : 'Punkty') + '">';
+      const inp = c.querySelector('input'); inp.focus(); inp.select();
+      let gotowe = false;
+      const koniec = zapis => {
+        if (gotowe) return; gotowe = true; edytuje = false;
+        const v = inp.value.trim();
+        if (!zapis || v === stare || v === '') { rysuj(); return; }
+        if (imie) return wykonaj('gracz_nr', { nr: Number(c.dataset.imie), imie: v });
+        const pkt = liczba(bezOgonkow(v).split(' '));
+        if (pkt === null) { kom('Pióro nie zrozumiało liczby.'); rysuj(); return; }
+        if (c.dataset.nr !== undefined) return wykonaj('popraw', { nr: Number(c.dataset.nr), pkt });
+        const g = s.gracze[Number(c.dataset.g)];
+        wykonaj('wpisz', c.dataset.kat ? { imie: g.imie, kat: c.dataset.kat, pkt } : { imie: g.imie, pkt });
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') koniec(true); if (e.key === 'Escape') { e.stopPropagation(); koniec(false); } });
+      inp.addEventListener('blur', () => koniec(true));
     };
     const pobierz = async () => {
+      if (edytuje) return;                         // nie przerywaj komuś wpisywania w komórce
       let n; try { n = await api(); } catch (err) { n = { tekst: 'Notes nie odpowiada (błąd serwera).' }; }
       if (okno !== o) return;
-      if (!n || !n.gracze) { if (!s) $('#nt').innerHTML = '<p class="wygrana">' + esc(n && n.tekst || 'Notes nie odpowiada.') + '</p>'; return; }
+      if (!n || !n.etap) { if (!s) $('#nt').innerHTML = '<p class="wygrana">' + esc(n && n.tekst || 'Notes nie odpowiada.') + '</p>'; return; }
       const sig = JSON.stringify(n); if (sig === ost) return;
       ost = sig; s = n; rysuj();
     };
-    const wykonaj = async (akcja, d) => {
-      let r; try { r = await api(akcja, d); } catch (err) { kom('Kleks: serwer nie odpowiada.'); return; }
-      kom(r.tekst || '');
-      if (r.stan) { s = r.stan; ost = JSON.stringify(s); nowyWpis = (akcja === 'wpisz' || akcja === 'bomba') && r.ok ? s.ostatni : -1; rysuj(); }
-    };
+    /* czary: głos i pole */
     const zaklecie = (warianty, glos) => {
       if (!s) return;
-      // pod przyciskiem zawsze widać, co pióro usłyszało, także gdy nie rozpozna w tym czaru
       if (glos) $('#slyszy').textContent = 'usłyszane: „' + String(warianty[0] || '').trim() + '”';
       let blad = null;
-      for (const t of warianty) {                // mowa daje kilka wersji: pierwsza, którą da się zrozumieć
+      for (const t of warianty) {
         const z = rozbierz(t, s, glos);
         if (!z) continue;
         if (z.blad) { blad = blad || z.blad; continue; }
-        if (glos) $('#slyszy').textContent = '„' + t.trim() + '”';
         return wykonaj(z.akcja, Object.assign({ glos: !!glos }, z.dane || {}));
       }
-      if (blad) kom(blad);
-      else if (glos) $('#slyszy').textContent += ' (to nie czar)';
+      if (blad) kom(blad); else if (glos) $('#slyszy').textContent += ' (to nie czar)';
     };
-    // słuchanie
     const ucho = $('#ucho');
-    const stan = st => {
+    naStan = st => {
       ucho.classList.toggle('slucha', st === 'slucha'); ucho.setAttribute('aria-pressed', st === 'slucha' ? 'true' : 'false');
       ucho.textContent = st === 'slucha' ? 'Pióro słucha… (kliknij, by przestać)' : 'Rzuć czar';
-      if (st === 'brak') { ucho.disabled = true; ucho.textContent = 'Ta przeglądarka nie słyszy zaklęć'; }
+      if (st === 'brak') { ucho.disabled = true; ucho.textContent = 'Ta przeglądarka nie słyszy czarów'; }
       if (st === 'odmowa') kom('Przeglądarka nie dała dostępu do mikrofonu.');
     };
-    if (!Rozpoznawanie) stan('brak');
-    ucho.onclick = () => sluchaj(!slucha, alt => zaklecie(alt, true), stan);
-    // klawiatura
+    naTekst = alt => zaklecie(alt, true);
+    if (!Rozpoznawanie) naStan('brak');
+    ucho.onclick = () => sluchaj(!slucha);
     const pole = $('#zakl');
     const zapiszPole = () => { const t = pole.value.trim(); if (!t) return; zaklecie([t], false); pole.value = ''; };
     $('#zp').onclick = zapiszPole;
     pole.addEventListener('keydown', e => { if (e.key === 'Enter') zapiszPole(); });
-    $('#cof').onclick = () => wykonaj('cofnij');
-    $('#nowa').onclick = () => { const f = $('#nowaf'); f.hidden = !f.hidden; if (!f.hidden && s) { $('#ng').value = s.gracze.map(g => g.imie).join(', '); $('#nc').value = s.cel || ''; $('#ng').focus(); } };
-    $('#nok').onclick = () => {
-      const gr = $('#ng').value.split(/[,;]+/).map(x => x.trim()).filter(Boolean);
-      wykonaj('nowa', { gracze: gr, cel: $('#nc').value.trim() === '' ? 0 : Number($('#nc').value) });
-      $('#nowaf').hidden = true;
-    };
     pobierz();
     const id = setInterval(() => {
-      if (!modal.classList.contains('on') || okno !== o) { clearInterval(id); if (slucha) sluchaj(false, null, () => { }); return; }
+      if (!modal.classList.contains('on') || okno !== o) { clearInterval(id); if (slucha) sluchaj(false); return; }
       pobierz();
     }, 3000);
   }

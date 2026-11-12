@@ -1,49 +1,70 @@
-/* Notes w salonie: liniowany papier, kolumny graczy, wpisy pojawiają się jak pisane piórem */
+/* Notes w salonie: kroki (wybór gry, gracze, punkty), lista czarów na górze, tabela pisana piórem (ręka postaci) */
 .p.kot{width:150px;height:184px}
 #tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 var(--pismo-tekst,Georgia,"Times New Roman",serif);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
 #tost.on{opacity:1}
 #w .dim{opacity:.7;font-size:.85em;text-align:left}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
-#w .partia{font-style:italic;margin:6px 0 2px;opacity:.8}
-#w table.notes{width:100%;border-collapse:collapse;margin:4px 0 8px;font:calc(18px * var(--pismo-reka-skala,1))/1.5 var(--pismo-reka,Georgia,serif);table-layout:fixed;break-inside:avoid;
-  background:repeating-linear-gradient(transparent 0 25px,#2b6ca033 25px 26px)}
-#w .notes th{font-weight:normal;font-size:16px;padding:2px 4px 4px;border-bottom:2px solid #2b1d10aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#w .notes td{height:26px;padding:0 4px;text-align:center;border-left:1px solid #a3333355}
-#w .notes td:first-child,#w .notes th:first-child{border-left:0}
-#w .notes tfoot td{border-top:2px double #2b1d10aa;font-weight:bold;font-style:normal;font-size:18px;padding-top:2px}
-#w .notes .prow{color:#7a1f12}
-#w .notes td.swiezy{animation:atrament 1.4s ease-out}
-@keyframes atrament{0%{clip-path:inset(0 100% 0 0);color:#3b5fa0}60%{clip-path:inset(0 0 0 0);color:#3b5fa0}100%{color:inherit}}
-#w .wygrana{font-size:20px;font-style:italic;color:#7a1f12;margin:6px 0}
+#w .etap{margin:-4px 0 6px;font-style:italic;font-size:14px;opacity:.7}
+/* lista czarów danego kroku */
+#w ul.czary{list-style:none;margin:0 0 6px;padding:6px 10px;border:1px dashed #2b1d1066;border-radius:4px;text-align:left;font-size:15px;line-height:1.45;break-inside:avoid}
+#w ul.czary b{font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-size:1.08em;letter-spacing:.02em}
+#w ul.czary b i{font-family:var(--pismo-tekst,Georgia,serif);font-weight:normal;font-size:.85em;opacity:.75}
+#w ul.czary span{font-style:italic;opacity:.7;font-size:.9em}
+#w ul.czary span::before{content:"— "}
 #w .zaklecia{display:flex;align-items:center;justify-content:center;gap:.6em;flex-wrap:wrap;margin:6px 0;break-inside:avoid}
 #w .zaklecia button{margin:0}
 #w #ucho.slucha{background:#7a1f1218;box-shadow:0 0 0 2px #7a1f1244;animation:slucha 1.6s ease-in-out infinite}
 @keyframes slucha{50%{box-shadow:0 0 0 5px #7a1f1222}}
 #w #slyszy{font-style:italic;opacity:.75;font-size:14px}
-#w .pisz,#w #nowaf{display:flex;align-items:center;gap:.4em;justify-content:center;margin:6px 0;break-inside:avoid}
-#w #nowaf[hidden]{display:none}
-#w .pisz input,#w #nowaf input{margin:0;font:italic 15px var(--pismo-tekst,Georgia,"Times New Roman",serif);padding:3px 6px;border:1px solid #2b1d1088;background:#fff8;color:var(--ink);border-radius:3px;min-width:0}
-#w .pisz input{flex:1 1 auto;max-width:320px}
-#w #nowaf #ng{flex:1 1 auto;max-width:260px}
-#w #nowaf #nc{width:4.5em}
-#w .pisz button,#w #nowaf button{margin:0}
-#w .akcje{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;break-inside:avoid}
+#w .pisz{display:flex;align-items:center;gap:.4em;justify-content:center;margin:6px 0;break-inside:avoid}
+#w .pisz input{margin:0;flex:1 1 auto;max-width:340px;font:italic 15px var(--pismo-tekst,Georgia,serif);padding:3px 6px;border:1px solid #2b1d1088;background:#fff8;color:var(--ink);border-radius:3px;min-width:0}
+#w .pisz button{margin:0}
+#w .akcje{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin:6px 0;break-inside:avoid}
 #w .akcje button{margin:0;padding:3px 10px;font-size:13px}
-@media (prefers-reduced-motion:reduce){#w .notes td.swiezy,#w #ucho.slucha{animation:none}}
-/* formularz do kości: wiersze kategorii, kolumny graczy */
-#w table.kosci{table-layout:auto;font-size:16px}
-#w .kosci th.kat{text-align:left;font-weight:normal;font-style:italic;font-size:15px;padding:0 8px 0 0;white-space:nowrap;border-bottom:0}
-#w .kosci th.kat small{opacity:.6;font-size:.8em}
-#w .kosci thead th{min-width:3.5em}
-#w .kosci tr.sum td,#w .kosci tr.sum th{border-top:1px solid #2b1d1066;font-style:normal;font-size:14px;opacity:.85}
-#w .kosci tr.sum + tr:not(.sum) td,#w .kosci tr.sum + tr:not(.sum) th{border-top:2px solid #2b1d1099}
-#w .kosci .skr{opacity:.55}
-/* zagęszczenie, żeby cały formularz kości zmieścił się na jednej stronie kartki */
+#w .partia{font-style:italic;margin:8px 0 2px;opacity:.8}
+#w .wygrana{font-size:20px;font-style:italic;color:#7a1f12;margin:6px 0}
+/* krok 1: wybór gry */
+#w .gry{display:flex;gap:16px;justify-content:center;margin:18px 0;break-inside:avoid}
+#w .gry button{display:flex;flex-direction:column;align-items:center;gap:2px;margin:0;padding:14px 26px;min-width:120px}
+#w .gry b{font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-style:normal;font-size:28px}
+#w .gry span{font-size:13px;opacity:.75}
+/* krok 2: gracze */
+#w ol.gracze{list-style:none;margin:6px auto;padding:0;max-width:380px;break-inside:avoid}
+#w ol.gracze li{display:flex;align-items:center;gap:.5em;margin:4px 0}
+#w ol.gracze .lusor{flex:0 0 8.5em;text-align:right;font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-size:15px}
+#w ol.gracze input{flex:1 1 auto;margin:0;min-width:0;padding:3px 8px;font:calc(19px * var(--pismo-reka-skala,1)) var(--pismo-reka,Georgia,serif);background:transparent;border:0;border-bottom:1px solid #2b1d1088;border-radius:0;color:var(--ink)}
+#w ol.gracze input:focus{outline:none;border-bottom-color:#7a1f12;background:#fff4}
+#w ol.gracze .usun{flex:0 0 22px;width:22px;height:22px;margin:0;padding:0;border-radius:50%;font:15px/1 Georgia,serif}
+/* krok 3: tabela */
+#w table.notes{width:100%;border-collapse:collapse;margin:4px 0 8px;font:calc(18px * var(--pismo-reka-skala,1))/1.5 var(--pismo-reka,Georgia,serif);table-layout:fixed;break-inside:avoid;
+  background:repeating-linear-gradient(transparent 0 25px,#2b6ca033 25px 26px)}
+#w .notes th{font-weight:normal;font-size:16px;padding:2px 4px 4px;border-bottom:2px solid #2b1d10aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#w .notes td{height:26px;padding:0 4px;text-align:center;border-left:1px solid #a3333355}
+#w .notes td:first-child,#w .notes th:first-child{border-left:0}
+#w .notes tfoot td{border-top:2px double #2b1d10aa;font-weight:bold;font-size:18px;padding-top:2px}
+#w .notes .prow{color:#7a1f12}
+#w .notes .ed{cursor:text}
+#w .notes .ed:hover{background:#7a4a1a14}
+#w .notes td.pusta::after{content:"·";opacity:.25}
+#w .notes .ed input{width:100%;box-sizing:border-box;margin:0;padding:0 2px;border:0;border-bottom:1px solid #7a1f12;background:#fff6;font:inherit;text-align:center;color:var(--ink)}
+#w .notes th.ed input{text-align:center}
+#w .notes td.swiezy{animation:atrament 1.4s ease-out}
+@keyframes atrament{0%{clip-path:inset(0 100% 0 0);color:#3b5fa0}60%{clip-path:inset(0 0 0 0);color:#3b5fa0}100%{color:inherit}}
+#w .notes .bomba{color:#7a1f12;font-size:.85em}
+#w .notes .skr{opacity:.55}
+/* kości: wiersze układów (łacina i polski), kolumny graczy */
+#w table.kosci{table-layout:auto;font-size:calc(16px * var(--pismo-reka-skala,1));background:repeating-linear-gradient(transparent 0 20px,#2b6ca033 20px 21px)}
 #w .kosci td{height:21px;line-height:21px}
-#w table.kosci{background:repeating-linear-gradient(transparent 0 20px,#2b6ca033 20px 21px);font-size:15px;margin:2px 0 4px}
-#w .kosci th.kat{font-size:14px;line-height:21px}
-#w .kosci thead th{padding:0 4px 2px}
+#w .kosci th.kat{text-align:left;font-weight:normal;padding:0 8px 0 0;white-space:nowrap;border-bottom:0;line-height:21px;font-size:14px}
+#w .kosci th.kat b{font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400)}
+#w .kosci th.kat small{font-family:var(--pismo-tekst,Georgia,serif);font-style:italic;opacity:.6;font-size:.85em}
+#w .kosci thead th{min-width:3.5em}
+#w .kosci tr.sum td,#w .kosci tr.sum th{border-top:1px solid #2b1d1066;font-size:14px;opacity:.85}
+#w .kosci tr.sum + tr:not(.sum) td,#w .kosci tr.sum + tr:not(.sum) th{border-top:2px solid #2b1d1099}
 #w .kosci tfoot td{font-size:16px;padding-top:0}
-#w .tekst{font-size:.9em;line-height:1.35}
-#w .tekst p{margin:.3em 0}
-#w .notes .bomba{color:#7a1f12;font-style:normal;font-size:.85em}
+@media (prefers-reduced-motion:reduce){#w .notes td.swiezy,#w #ucho.slucha{animation:none}}
+/* krok 3: lista czarów w dwóch kolumnach, mniejsza, żeby tabela zmieściła się na stronie */
+#w ul.czary.zwarte{columns:2;column-gap:14px;font-size:12.5px;line-height:1.35;padding:4px 8px}
+#w ul.czary.zwarte li{break-inside:avoid}
+#w .kosci td,#w .kosci th.kat{height:20px;line-height:20px}
+#w table.kosci{background:repeating-linear-gradient(transparent 0 19px,#2b6ca033 19px 20px)}

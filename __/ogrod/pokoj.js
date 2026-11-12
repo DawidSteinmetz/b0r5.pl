@@ -307,7 +307,8 @@
     const svg = w.querySelector('svg.plan'); if (!svg) return;
     const vb = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
     svg.style.height = '8px';                                  // mały plan wskakuje tuż pod tekst
-    const H = w.clientHeight, cw = w.clientWidth;
+    const H = w.clientHeight, cs = getComputedStyle(w), n = parseInt(cs.columnCount, 10) || 1, g = parseFloat(cs.columnGap) || 0;
+    const cw = (w.clientWidth - g * (n - 1)) / n;                // szerokość jednej szpalty (w rozłożonym zeszycie są dwie)
     if (!H || !cw || vb.length < 4) { svg.style.height = ''; return; }
     // offsetTop akapitu nad planem, a nie getBoundingClientRect: podczas animacji obrotu kartka jest przekręcona i pomniejszona
     // (sam element SVG nie ma offsetTop)

@@ -289,7 +289,8 @@
     const svg = w.querySelector('svg.plan'); if (!svg) return;
     const vb = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
     svg.style.width = 'auto'; svg.style.height = '8px';
-    const H = w.clientHeight, cw = w.clientWidth;
+    const H = w.clientHeight, cs = getComputedStyle(w), n = parseInt(cs.columnCount, 10) || 1, g = parseFloat(cs.columnGap) || 0;
+    const cw = (w.clientWidth - g * (n - 1)) / n;                // szerokość jednej szpalty (w rozłożonym zeszycie są dwie)
     if (!H || !cw || vb.length < 4) { svg.style.width = svg.style.height = ''; return; }
     // offsetTop akapitu nad planem, a nie getBoundingClientRect: podczas animacji obrotu kartka jest przekręcona i pomniejszona
     // (sam element SVG nie ma offsetTop)
@@ -297,7 +298,7 @@
     const gora = nad ? nad.offsetTop + nad.offsetHeight + 8 : 0;
     const reszta = H - gora - 14;
     let h = reszta >= 0.45 * H ? reszta : H - 14;
-    h = Math.min(h, (Math.min(cw, 640) - 2) * vb[3] / vb[2]);
+    h = Math.min(h, (Math.min(cw, n > 1 ? 1400 : 640) - 2) * vb[3] / vb[2]);
     svg.style.height = Math.max(100, Math.floor(h)) + 'px';
   }
   addEventListener('resize', () => requestAnimationFrame(dopasujPlan));

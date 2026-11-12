@@ -151,10 +151,16 @@
   function paginuj() {
     const cw = w.clientWidth;
     if (!cw) return;
-    stron = Math.max(1, Math.ceil((w.scrollWidth - 2) / cw));
+    // przy dwóch szpaltach (rozłożony zeszyt) strona to obie szpalty razem z odstępem między nimi
+    const odstep = parseFloat(getComputedStyle(w).columnGap) || 0, krok = cw + odstep;
+    stron = Math.max(1, Math.ceil((w.scrollWidth + odstep - 2) / krok));
     if (auto && stron > 1 && sheet.classList.contains('a5')) { auto = false; sheet.classList.replace('a5', 'a4'); return paginuj(); }
+    // obrócona kartka, na której treść się nie mieści: transmutacja w rozłożony zeszyt na cały ekran (pokoje dostają 'mysl:obrot')
+    if (stron > 1 && sheet.classList.contains('poziom') && !sheet.classList.contains('rozklad') && !sheet.classList.contains('a5')) {
+      sheet.classList.add('rozklad'); document.dispatchEvent(new CustomEvent('mysl:obrot')); return paginuj();
+    }
     strona = Math.min(strona, stron - 1);
-    w.style.transform = 'translateX(' + (-strona * 100) + '%)';
+    w.style.transform = 'translateX(' + (-strona * krok) + 'px)';
     pager.hidden = stron < 2;
     pnr.textContent = (strona + 1) + ' / ' + stron;
     bPrev.style.visibility = strona > 0 ? 'visible' : 'hidden';
@@ -168,7 +174,7 @@
   new MutationObserver(() => { cancelAnimationFrame(ramka); ramka = requestAnimationFrame(paginuj); })
     .observe(w, { childList: true, subtree: true, characterData: true });
   addEventListener('resize', () => {
-    if (sheet.classList.contains('poziom') && !moznaObrocic()) { sheet.classList.remove('poziom'); document.dispatchEvent(new CustomEvent('mysl:obrot')); }
+    if (sheet.classList.contains('poziom') && !moznaObrocic()) { sheet.classList.remove('poziom', 'rozklad'); document.dispatchEvent(new CustomEvent('mysl:obrot')); }
     paginuj();
   });
   bPrev.onclick = () => przewroc(-1);
@@ -194,6 +200,7 @@
         { duration: 320, easing: 'ease-in' }).finished.catch(() => { });
     }
     sheet.classList.toggle('poziom', naPoziom);
+    sheet.classList.remove('rozklad');                // rozkładówka powstaje sama, jeśli treść nie zmieści się na kartce
     strona = 0; paginuj();
     document.dispatchEvent(new CustomEvent('mysl:obrot'));
     if (ruch) await sheet.animate([{ transform: 'rotate(' + -kat / 2 + 'deg) scale(.82)', opacity: .15, filter: 'blur(2px)' }, { transform: 'none', opacity: 1, filter: 'none' }],

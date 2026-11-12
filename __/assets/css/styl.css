@@ -59,6 +59,14 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
 /* kartka obrócona na poziom (przycisk #obr, tylko na komputerze z szerokim ekranem) */
 #sheet.poziom{aspect-ratio:1.4142 / 1;width:min(calc(var(--wmax) * 1.4142),94vw,calc(92vh * 1.4142));width:min(calc(var(--wmax) * 1.4142),94vw,calc(92dvh * 1.4142))}
 #sheet.poziom #view{left:5.5%;right:5.5%;top:8%;bottom:15%}
+/* Transmutacja notesu: kartka obrócona na poziom, na której treść się nie mieści, staje się rozłożonym zeszytem
+   na prawie cały ekran (klasa .rozklad, nadaje ją paginuj()), z dwiema szpaltami i zagięciem grzbietu pośrodku.
+   Treść rozkłada się na obie strony, a strzałka przewraca całą rozkładówkę. */
+#sheet.poziom.rozklad{aspect-ratio:auto;width:calc(100vw - 56px);height:calc(100vh - 36px);height:calc(100dvh - 36px);max-width:2000px}
+#sheet.poziom.rozklad #view{left:4.5%;right:4.5%;top:62px;bottom:62px}
+#sheet.poziom.rozklad #w{column-count:2;column-gap:112px;column-fill:balance}
+#sheet.poziom.rozklad::after{content:"";position:absolute;top:2%;bottom:2%;left:50%;width:56px;margin-left:-28px;z-index:0;pointer-events:none;border-radius:50%;
+  background:linear-gradient(90deg,transparent,#5a3c1412 30%,#3b25083a 50%,#5a3c1412 70%,transparent)}
 #sheet::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:6px;background:radial-gradient(circle at var(--gx,30%) var(--gy,20%),var(--parch),var(--parch2)),radial-gradient(circle at var(--s1x,78%) var(--s1y,82%),#7a4a1a44,transparent 40%);box-shadow:inset 0 0 28px #5a3c14dd,0 0 40px #000;filter:var(--rough,url(#rough0))}
 #view{position:absolute;left:7%;right:7%;top:6%;bottom:11%;overflow:hidden}
 #w{width:100%;height:100%;box-sizing:border-box;column-count:1;column-gap:0;column-fill:auto;color:var(--ink);text-align:center;transition:transform .35s ease}

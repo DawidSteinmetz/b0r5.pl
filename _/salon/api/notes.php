@@ -2,7 +2,7 @@
 // Notes do gry w salonie. Jedna wspólna partia dla wszystkich gości, stan w _logika/stan/notes.json (pod blokadą).
 // Dwa formularze: "mille" (tysiąc: kolumny graczy, kolejne wpisy, cel) i "alea" (kości: tabela kategorii jak w Generale).
 // GET: partia i kilka ostatnich zakończonych. POST {akcja, gracz, ...}:
-//   wpisz {imie, pkt, kat?, glos?} | cofnij | nowa {typ?: mille|alea, gracze?: [imiona], cel?} | gracz_nr {nr, imie} | dodaj_gracza {imie}
+//   wpisz {imie, pkt, kat?, glos?} | bomba {imie} | cofnij | nowa {typ?: mille|alea, gracze?: [imiona], cel?} | gracz_nr {nr, imie} | dodaj_gracza {imie}
 // Zaklęcia głosowe rozpoznaje przeglądarka (pokoj.js); tu przychodzą już gotowe działania.
 require dirname(__DIR__, 2) . '/api/_baza.php';
 header('Content-Type: application/json; charset=utf-8');
@@ -58,8 +58,10 @@ function notes_zapisz($d) {
     rename($t, $p);
 }
 function notes_pod_blokada($f) {
-    if (!is_dir(NOTES_STAN)) mkdir(NOTES_STAN, 0775, true);
-    $h = fopen(NOTES_STAN . '/.blokada', 'c'); flock($h, LOCK_EX);
+    if (!is_dir(NOTES_STAN)) @mkdir(NOTES_STAN, 0775, true);
+    $h = @fopen(NOTES_STAN . '/.blokada', 'c');
+    if (!$h || !is_writable(NOTES_STAN)) wyj(['blad' => 'brak zapisu', 'tekst' => 'Notes nie może pisać: serwer nie ma prawa zapisu w salon/_logika/stan/.'], 503);
+    flock($h, LOCK_EX);
     try { return $f(); } finally { flock($h, LOCK_UN); fclose($h); }
 }
 function notes_nowa_gra(&$d, $typ, $gracze, $cel) {
@@ -100,7 +102,12 @@ function notes_widok($d) {
         $gracze[] = $x;
     }
     $poz = array_flip($g['gracze']);
-    foreach ($g['wpisy'] as $i => $w) if (isset($poz[$w['imie']])) $gracze[$poz[$w['imie']]]['wpisy'][] = ['pkt' => (int)$w['pkt'], 'nr' => $i, 'kat' => $w['kat'] ?? null];
+    foreach ($g['wpisy'] as $i => $w) if (isset($poz[$w['imie']])) $gracze[$poz[$w['imie']]]['wpisy'][] = ['pkt' => (int)$w['pkt'], 'nr' => $i, 'kat' => $w['kat'] ?? null, 'bomba' => !empty($w['bomba']), 'grupa' => $w['grupa'] ?? null];
+    foreach ($gracze as &$x) {                                       // ile bomb zostało: jedna przed 500, jedna po
+        $x['bomby'] = ['przed' => true, 'po' => true];
+        foreach ($g['wpisy'] as $w) if (!empty($w['bomba']) && $w['imie'] === $x['imie']) $x['bomby'][$w['faza'] ?? 'przed'] = false;
+    }
+    unset($x);
     $kat = [];
     foreach (NOTES_KATEGORIE as $id => $k) $kat[] = ['id' => $id, 'nazwa' => $k['nazwa'], 'czesc' => $k['czesc'], 'stale' => $k['stale'] ?? null];
     $ost = $g['wpisy'] ? end($g['wpisy']) : null;
@@ -163,9 +170,31 @@ try {
                     notes_sprawdz_koniec($g);
                     if ($g['koniec']) $t .= ' ' . $g['koniec']['zwyciezca'] . ' wygrywa!';
                     break;
+                case 'bomba':                                     // tysiąc: rozgrywający rezygnuje, pozostali dostają po 60 (przy 4 graczach po 40)
+                    $imie = notes_imie($in['imie'] ?? '');
+                    if ($g['typ'] !== 'mille') notes_blad('Bomba jest tylko w tysiącu.');
+                    if (!in_array($imie, $g['gracze'], true)) notes_blad('W notesie nie ma takiego gracza.');
+                    if ($g['koniec']) notes_blad('Ta partia jest skończona. Zacznij nową.');
+                    if (count($g['gracze']) < 2) notes_blad('Bomba potrzebuje przeciwników.');
+                    $suma = notes_sumy($g)[$imie]; $faza = $suma < 500 ? 'przed' : 'po';
+                    foreach ($g['wpisy'] as $x) if (!empty($x['bomba']) && $x['imie'] === $imie && ($x['faza'] ?? '') === $faza)
+                        notes_blad($imie . ' zużył już bombę ' . ($faza === 'przed' ? 'przed 500' : 'po 500') . '.');
+                    $ile = count($g['gracze']) >= 4 ? 40 : 60;
+                    $grupa = 'b' . (count($g['wpisy']) + 1) . '-' . time();
+                    foreach ($g['gracze'] as $im)
+                        $g['wpisy'][] = $im === $imie ? ['imie' => $im, 'pkt' => 0, 'bomba' => true, 'faza' => $faza, 'grupa' => $grupa, 'ts' => time(), 'glos' => !empty($in['glos'])]
+                            : ['imie' => $im, 'pkt' => $ile, 'grupa' => $grupa, 'ts' => time(), 'glos' => !empty($in['glos'])];
+                    notes_sprawdz_koniec($g);
+                    $t = 'Bomba! ' . $imie . ' rezygnuje, pozostali dostają po ' . $ile . '.' . ($g['koniec'] ? ' ' . $g['koniec']['zwyciezca'] . ' wygrywa!' : '');
+                    break;
                 case 'cofnij':
                     if (!$g['wpisy']) notes_blad('Nie ma czego wykreślić.');
                     $w = array_pop($g['wpisy']); $g['koniec'] = null;
+                    if (!empty($w['grupa'])) {                    // bomba wykreśla się w całości
+                        while ($g['wpisy'] && (end($g['wpisy'])['grupa'] ?? '') === $w['grupa']) array_pop($g['wpisy']);
+                        $t = 'Wykreślona bomba.';
+                        break;
+                    }
                     $t = 'Wykreślone: ' . $w['imie'] . (isset($w['kat']) ? ', ' . mb_strtolower(NOTES_KATEGORIE[$w['kat']]['nazwa'], 'UTF-8') : '') . ' ' . $w['pkt'] . '.';
                     break;
                 case 'nowa':

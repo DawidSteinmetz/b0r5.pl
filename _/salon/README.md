@@ -11,11 +11,12 @@ Notes zapisuje punkty jednej wspólnej partii (stan na serwerze, wszyscy goście
 
 Zmiana formularza zaczyna nową partię z tymi samymi graczami, a poprzednia trafia do archiwum (osiem ostatnich).
 
-Czary, głosem albo w polu tekstowym:
+Czary, głosem (przycisk „Rzuć czar”) albo w polu tekstowym:
 
 - „Mille”, „Alea”: formularz do tysiąca albo do kości,
-- „Lusor Primus Kacper”, „Lusor Secundus Maja”, „Lusor Tertius Wujek”, „Lusor Quartus Heniu” (i dalej do Octavus): gracz na danym miejscu; jeśli miejsce jest zajęte, zmienia się imię, a punkty zostają,
+- „Lusor Primus Kopytko”, „Lusor Secundus Maja”, „Lusor Tertius Wujek”, „Lusor Quartus Heniu” (i dalej do Octavus): gracz na danym miejscu, zapisany dokładnie jako słowo po „Lusor Primus”; jeśli miejsce jest zajęte, zmienia się imię, a punkty zostają,
 - „Nota hoc Kacper 120”, „Nota hoc Maja minus 60”: wpis w tysiącu (liczby cyframi albo słowami),
+- „Nota hoc Borsuk bomba”: bomba w tysiącu; Borsuk dostaje 0 ze znakiem ✹, pozostali po 60 (przy czterech graczach po 40); każdy ma jedną bombę przed 500 i jedną po 500, a „deleo” wykreśla całą bombę. Bomba stoi w jednym wierszu u wszystkich graczy,
 - „Nota hoc Kacper trójki 9”, „Nota hoc Maja full”, „Nota hoc Wujek generał skreśl”: wpis w kościach (stałe wartości bez liczby, „skreśl” albo „zero” wpisuje 0),
 - „Nota hoc deleo”: wykreślenie ostatniego wpisu,
 - „Nota hoc nova”: nowa partia tego samego rodzaju (albo „Nota hoc nova Kacper Maja i Borsuk”).
@@ -23,3 +24,5 @@ Czary, głosem albo w polu tekstowym:
 Głosem „Mille”, „Alea” i „Lusor …” działają same albo po „Nota hoc”, ale tylko wtedy, gdy całe zdanie jest czarem; pozostałe trzeba zacząć od „Nota hoc”, żeby rozmowa przy stole niczego nie wpisała. W polu tekstowym „Nota hoc” można pominąć. Imię dopasowuje się do najbliższego gracza, także w odmianie („Kacprowi”) i z drobną literówką rozpoznawania.
 
 Mowę rozpoznaje przeglądarka (Web Speech API: Chrome i Edge, po polsku); nagranie idzie do usługi rozpoznawania mowy przeglądarki, a strona musi być pod HTTPS.
+
+Jeśli serwer nie może pisać w `_logika/stan/`, notes pokazuje to wprost („Notes nie może pisać…”), zamiast milczeć.

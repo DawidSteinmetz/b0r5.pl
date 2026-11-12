@@ -98,7 +98,8 @@
     if (/^(alea|aleja|alei|ale a|alee|allea)$/.test(t)) return { akcja: 'nowa', dane: { typ: 'alea' } };
     const lu = t.match(LUSOR);
     if (lu) {
-      const im = o.split(' ').slice(t.split(' ').length - lu[3].split(' ').length).join(' ');
+      // imię to dokładnie trzecie usłyszane słowo (pierwsze po "Lusor Primus"), tak jak padło
+      const im = o.split(' ')[t.split(' ').length - lu[3].split(' ').length];
       return { akcja: 'gracz_nr', dane: { nr: MIEJSCA[lu[2]], imie: duza(im) } };
     }
     if (glos && !zPrzedrostkiem) return null;
@@ -126,6 +127,7 @@
         if (reszta.length) continue;
         return { blad: 'Którą kategorię? Np. „' + im + ' trójki 9” albo „' + im + ' full”.' };
       }
+      if (reszta.length === 1 && /^(bomba|bombe|bomby|bomb|bombka)$/.test(reszta[0])) return { akcja: 'bomba', dane: { imie: im } };
       const pkt = liczba(reszta);
       if (pkt !== null) return { akcja: 'wpisz', dane: { imie: im, pkt } };
     }
@@ -160,8 +162,8 @@
   function otworzNotes(o) {
     okno = o; arkusz('ks'); kom('');
     w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><div class="tekst"></div>' +
-      '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Słuchaj zaklęć</button><span id="slyszy"></span></div>' +
-      '<div class="pisz"><input type="text" id="zakl" placeholder="np. Kacper 120, Maja full, Lusor Primus Kacper" aria-label="Zaklęcie"><button type="button" id="zp">Zapisz</button></div>' +
+      '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Rzuć czar</button><span id="slyszy"></span></div>' +
+      '<div class="pisz"><input type="text" id="zakl" placeholder="np. Lusor Primus Kopytko, Kopytko 60, Borsuk bomba" aria-label="Zaklęcie"><button type="button" id="zp">Zapisz</button></div>' +
       '<div class="akcje"><button type="button" id="cof">Wykreśl ostatni</button><button type="button" id="nowa">Nowa partia…</button></div>' +
       '<div id="nowaf" hidden><input type="text" id="ng" placeholder="Imiona, po przecinku" aria-label="Gracze nowej partii"><input type="text" id="nc" inputmode="numeric" placeholder="cel" aria-label="Cel punktowy" size="5"><button type="button" id="nok">Zacznij</button></div>' +
       '<div id="nt"></div><div id="arch"></div><button id="x">Zamknij</button>';
@@ -189,12 +191,26 @@
         $('#nt').innerHTML = rysujKosci() + (s.koniec ? '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>' : '');
         rysujArchiwum(); return;
       }
-      const n = Math.max(1, ...s.gracze.map(g => g.wpisy.length));
+      // Układ wierszy: każdy wpis trafia do pierwszego wolnego wiersza swojego gracza, a bomba (jedna grupa wpisów)
+      // do jednego wiersza u wszystkich, nie wyżej niż najniższy wolny wiersz któregoś z nich.
+      const wszystkie = [];
+      s.gracze.forEach((g, k) => g.wpisy.forEach(x => wszystkie.push(Object.assign({ k }, x))));
+      wszystkie.sort((a, b) => a.nr - b.nr);
+      const kom = s.gracze.map(() => []), wolny = s.gracze.map(() => 0);
+      for (let i = 0; i < wszystkie.length; i++) {
+        const x = wszystkie[i];
+        if (x.grupa) {
+          const grupa = []; while (i < wszystkie.length && wszystkie[i].grupa === x.grupa) grupa.push(wszystkie[i++]); i--;
+          const r = Math.max(...grupa.map(y => wolny[y.k]));
+          grupa.forEach(y => { kom[y.k][r] = y; wolny[y.k] = r + 1; });
+        } else { kom[x.k][wolny[x.k]] = x; wolny[x.k]++; }
+      }
+      const n = Math.max(1, ...wolny);
       let h = '<p class="partia">' + esc(s.nazwa) + (s.cel ? ' · do ' + s.cel : '') + '</p><table class="notes"><thead><tr>' +
         s.gracze.map(g => '<th' + (g.prowadzi ? ' class="prow"' : '') + '>' + esc(g.imie) + '</th>').join('') + '</tr></thead><tbody>';
       for (let r = 0; r < n; r++) h += '<tr>' + s.gracze.map(g => {
-        const x = g.wpisy[r];
-        return '<td' + (x && x.nr === nowyWpis ? ' class="swiezy"' : '') + '>' + (x ? (x.pkt < 0 ? '−' + Math.abs(x.pkt) : x.pkt) : '') + '</td>';
+        const x = kom[s.gracze.indexOf(g)][r];
+        return '<td' + (x && x.nr === nowyWpis ? ' class="swiezy"' : '') + '>' + (x ? (x.bomba ? '<span class="bomba" title="bomba">✹</span> 0' : x.pkt < 0 ? '−' + Math.abs(x.pkt) : x.pkt) : '') + '</td>';
       }).join('') + '</tr>';
       h += '</tbody><tfoot><tr>' + s.gracze.map(g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.suma + '</td>').join('') + '</tr></tfoot></table>';
       if (s.koniec) h += '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>';
@@ -207,15 +223,16 @@
         Object.entries(a.sumy).map(([im, p]) => esc(im) + ' ' + p).join(', ') + (a.zwyciezca ? ' · wygrał(a) ' + esc(a.zwyciezca) : '') + '</div>').join('') : '';
     };
     const pobierz = async () => {
-      let n; try { n = await api(); } catch (err) { return; }
-      if (!n || !n.gracze || okno !== o) return;
+      let n; try { n = await api(); } catch (err) { n = { tekst: 'Notes nie odpowiada (błąd serwera).' }; }
+      if (okno !== o) return;
+      if (!n || !n.gracze) { if (!s) $('#nt').innerHTML = '<p class="wygrana">' + esc(n && n.tekst || 'Notes nie odpowiada.') + '</p>'; return; }
       const sig = JSON.stringify(n); if (sig === ost) return;
       ost = sig; s = n; rysuj();
     };
     const wykonaj = async (akcja, d) => {
-      let r; try { r = await api(akcja, d); } catch (err) { kom('Kleks. Spróbuj jeszcze raz.'); return; }
+      let r; try { r = await api(akcja, d); } catch (err) { kom('Kleks: serwer nie odpowiada.'); return; }
       kom(r.tekst || '');
-      if (r.stan) { s = r.stan; ost = JSON.stringify(s); nowyWpis = akcja === 'wpisz' && r.ok ? s.ostatni : -1; rysuj(); }
+      if (r.stan) { s = r.stan; ost = JSON.stringify(s); nowyWpis = (akcja === 'wpisz' || akcja === 'bomba') && r.ok ? s.ostatni : -1; rysuj(); }
     };
     const zaklecie = (warianty, glos) => {
       if (!s) return;
@@ -233,7 +250,7 @@
     const ucho = $('#ucho');
     const stan = st => {
       ucho.classList.toggle('slucha', st === 'slucha'); ucho.setAttribute('aria-pressed', st === 'slucha' ? 'true' : 'false');
-      ucho.textContent = st === 'slucha' ? 'Pióro słucha… (kliknij, by przestać)' : 'Słuchaj zaklęć';
+      ucho.textContent = st === 'slucha' ? 'Pióro słucha… (kliknij, by przestać)' : 'Rzuć czar';
       if (st === 'brak') { ucho.disabled = true; ucho.textContent = 'Ta przeglądarka nie słyszy zaklęć'; }
       if (st === 'odmowa') kom('Przeglądarka nie dała dostępu do mikrofonu.');
     };

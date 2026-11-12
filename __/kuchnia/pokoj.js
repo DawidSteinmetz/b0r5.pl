@@ -152,8 +152,8 @@
       };
       const wierszKopczyka = r =>
         pr(r.nazwa, liczba(r.mol) + ' mol · ' + liczba(r.masa_g, 2) + ' g', '<input type="text" inputmode="decimal" placeholder="' + jedn + '" data-mol="' + esc(r.id) + '" aria-label="Ile moli wsypać">' + btn('do_kociolka', r.id, 'Do garnka') + wyrzuc(r.id));
-      // Łączenie wyrobów: ⧉ przy wyrobie podświetla te, z którymi da się go połączyć (ten sam wyrób, ta sama czystość co do 0,1%)
-      const parowalne = (a, b) => a.id !== b.id && a.nazwa === b.nazwa && Math.round(a.czystosc * 1000) === Math.round(b.czystosc * 1000);
+      // Łączenie wyrobów: ⧉ przy wyrobie podświetla te, z którymi da się go połączyć (ten sam wyrób z tego samego czaru; czystość się uśrednia)
+      const parowalne = (a, b) => a.id !== b.id && a.nazwa === b.nazwa && a.kat === b.kat;
       const zrodlo = laczy && s.sklad.find(r => r.id === laczy && r.typ === 'produkt');
       if (laczy && !zrodlo) laczy = '';
       const wierszWyrobu = r => {
@@ -162,7 +162,7 @@
         const polacz = '<button data-a="polacz" data-id="' + esc(r.id) + '" class="polacz' + (to ? ' on' : '') + '" title="' + (cel ? 'Połącz z tym' : to ? 'Anuluj łączenie' : 'Połącz z takim samym wyrobem') + '">' + (cel ? 'Połącz tu' : '⧉') + '</button>';
         return pr(r.nazwa, ilosc + ' · ' + esc(r.stopien) + ' · czystość ' + liczba(r.czystosc * 100, 1) + '% · skup: ' + esc(r.cena_t),
           '<input type="text" inputmode="decimal" placeholder="' + (r.ciecz ? 'l' : 'g') + '" data-porcja="' + esc(r.id) + '" data-mnoznik="' + (r.ciecz ? 1000 : 1) + '" aria-label="Wielkość porcji">' +
-          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
+          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad wyrob' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
       };
       const surowceAlf = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       const zaklad = (id, nazwa, lista, wiersz) => ({ id, nazwa, n: lista.length, zazn: lista.some(r => r.zaznaczone_g), h: lista.map(wiersz).join('') });
@@ -185,7 +185,7 @@
             const id = b.dataset.id;
             if (!laczy) {
               const ja = s.sklad.find(r => r.id === id);
-              if (!s.sklad.some(r => r.typ === 'produkt' && r.gdzie === 'sklad' && parowalne(ja, r))) return kom('Nie ma z czym tego połączyć: brak takiego samego wyrobu o tej samej czystości.');
+              if (!s.sklad.some(r => r.typ === 'produkt' && r.gdzie === 'sklad' && parowalne(ja, r))) return kom('Nie ma z czym tego połączyć: brak drugiego takiego samego wyrobu.');
               laczy = id; return rysujSklad(s, el, akcja);
             }
             if (laczy === id) { laczy = ''; return rysujSklad(s, el, akcja); }
@@ -228,20 +228,17 @@
       }
       h += naGorze + sklad;
       const dostepne = s.czary.filter(c => c.znany && c.usuwa.some(e => m[e] > 0));   // w notatkach tylko znane czary
-      if (!dostepne.some(c => c.id === wybrany)) wybrany = dostepne.length ? dostepne[0].id : '';
+      if (!dostepne.some(c => c.id === wybrany)) wybrany = '';          // bez listy wyboru: suwak dotyczy ostatnio rzuconego czaru
       /* Czar-przepis podpowiada, ile wyssać, i od razu wybiera czar, który jest jeszcze potrzebny. */
       const pod = st.podpowiedz || null;
       const nadmiar = c => (pod && pod.mol[c.usuwa[0]]) || 0;
       if (pod) {
-        const potrzebny = dostepne.find(c => nadmiar(c) > 0);
-        if (potrzebny && !nadmiar(dostepne.find(c => c.id === wybrany))) wybrany = potrzebny.id;
         const co = Object.entries(pod.mol).map(([e, mol]) => e + ' ' + liczba(mol, 2) + ' mol');
         h += co.length ? '<p class="proporcja">' + esc(pod.przepis) + ' podpowiada, ile wyssać: ' + co.join(', ') + '.</p>'
           : '<p class="proporcja">' + esc(pod.przepis) + ': to już ' + esc(pod.cel_nazwa.toLowerCase()) + '. Odłóż do spiżarni.</p>';
       }
-      if (dostepne.length) {
-        h += '<div><select id="czar">' + dostepne.map(c => '<option value="' + esc(c.id) + '"' + (c.id === wybrany ? ' selected' : '') + '>' + esc(c.nazwa) + ' (' + esc(c.pl) + ')</option>').join('') + '</select></div>' +
-          '<div id="scena"><svg id="przyrzad" viewBox="0 0 100 100"></svg></div><p id="opis" class="dim"></p>' +
+      if (wybrany) {                                                    // czar wybiera gracz z notatek (lista na górze albo głos), nie z okienka
+        h += '<div id="scena"><svg id="przyrzad" viewBox="0 0 100 100"></svg></div><p id="opis" class="dim"></p>' +
           '<input id="moc" type="range" min="0" max="1000" value="0" aria-label="Moc czaru">' +
           '<div class="jednostka"><span>Wyssać:</span><input id="ilem" type="text" inputmode="decimal" value="0" aria-label="Ile wyssać">' +
           '<select id="jedn" aria-label="Jednostka"><option value="mol"' + (jedn === 'mol' ? ' selected' : '') + '>mol</option><option value="g"' + (jedn === 'g' ? ' selected' : '') + '>g</option></select></div>' +
@@ -269,8 +266,7 @@
         $('#opis').innerHTML = '<b>' + esc(c.przyrzad.nazwa) + '.</b> ' + esc(c.przyrzad.opis) + ' Wytrąca: ' + esc(c.przyrzad.wytraca.join(', ')) + '.';
         ustawMole(nadmiar(c));
       };
-      if ($('#czar')) {
-        $('#czar').onchange = () => { wybrany = $('#czar').value; opisCzaru(); };
+      if ($('#moc')) {
         $('#moc').oninput = () => { $('#ilem').value = pokaz(mam() * $('#moc').value / 1000); pogl(); };
         $('#ilem').oninput = () => { $('#moc').value = mam() > 0 ? Math.min(1000, wMolach() / mam() * 1000) : 0; pogl(); };
         $('#jedn').onchange = () => { const mol = mam() * $('#moc').value / 1000; zapiszJedn($('#jedn').value); ustawMole(mol); };
@@ -282,7 +278,6 @@
         const c = s.czary.find(x => x.id === id); if (!c) return;
         if (id !== wybrany) {
           wybrany = id;
-          if ($('#czar') && [...$('#czar').options].some(x => x.value === id)) { $('#czar').value = id; opisCzaru(); }
           if (moc === null) moc = 'optimum';
         }
         const ma = m[c.usuwa[0]] || 0;

@@ -652,14 +652,14 @@ function alch_wykonaj($akcja, $in) {
             dodaj_zdarzenie('sprzedano', $r['nazwa'], (string)($in['gracz'] ?? ''), ['cena' => $cena]);
             alch_usun_rzecz($r['id']);
             return 'Zielarz kupił: ' . $r['nazwa'] . '. Zapłacił ' . rynek_kwota_txt($cena) . '.';
-        case 'polacz':                                   // dwa takie same wyroby (ten sam produkt, ta sama czystość z dokładnością do 0,1%)
+        case 'polacz':                                   // dwa takie same wyroby (ten sam produkt z tego samego czaru); czystość: średnia ważona masą
             $x = $s('z') !== '' ? alch_rzecz($s('z')) : null;
             if (!$r || !$x || $r['id'] === $x['id'] || $r['typ'] !== 'produkt' || $x['typ'] !== 'produkt' || $r['gdzie'] !== 'sklad' || $x['gdzie'] !== 'sklad') alch_blad('Tych rzeczy nie da się połączyć.');
-            if ($r['nazwa'] !== $x['nazwa'] || ($r['katalizator'] ?? '') !== ($x['katalizator'] ?? '') || round($r['czystosc'] * 1000) !== round($x['czystosc'] * 1000))
-                alch_blad('Połączyć można tylko ten sam wyrób o tej samej czystości.');
+            if ($r['nazwa'] !== $x['nazwa'] || ($r['katalizator'] ?? '') !== ($x['katalizator'] ?? ''))
+                alch_blad('Połączyć można tylko ten sam wyrób.');
             $ma = alch_masa($r['sklad']); $mx = alch_masa($x['sklad']);
             foreach ($x['sklad'] as $e => $mol) $r['sklad'][$e] = round((float)($r['sklad'][$e] ?? 0) + $mol, 6);
-            foreach ($x['pochodzenie'] as $q => $m) $r['pochodzenie'][$q] = (float)($r['pochodzenie'][$q] ?? 0) + $m;
+            foreach (($x['pochodzenie'] ?? []) as $q => $m) $r['pochodzenie'][$q] = (float)($r['pochodzenie'][$q] ?? 0) + $m;
             $r['czystosc'] = round(($r['czystosc'] * $ma + $x['czystosc'] * $mx) / max(1e-9, $ma + $mx), 4);
             $r['stopien'] = alch_stopien($r['czystosc'], alch_tabela('katalizatory')[$r['katalizator']]['rodzaj'] ?? '');
             alch_zapisz_rzecz($r); alch_usun_rzecz($x['id']);
@@ -685,7 +685,7 @@ function alch_widok_rzeczy($r, $o) {
     if (!empty($r['zbadany'])) $v['sklad'] = alch_tabela_skladu($r['sklad']);
     if ($r['typ'] === 'kopczyk') $v['mol'] = round($r['sklad'][$r['pierwiastek']], 4);
     if ($r['typ'] === 'surowiec') $v['kat'] = alch_kategoria($r['surowiec']);
-    if ($r['typ'] === 'produkt') { $v['czystosc'] = $r['czystosc']; $v['stopien'] = $r['stopien']; $v['cena_t'] = rynek_kwota_txt(alch_cena($r, $o)); $v['ciecz'] = !empty(alch_tabela('katalizatory')[$r['katalizator']]['ciecz']); }
+    if ($r['typ'] === 'produkt') { $v['czystosc'] = $r['czystosc']; $v['stopien'] = $r['stopien']; $v['cena_t'] = rynek_kwota_txt(alch_cena($r, $o)); $v['ciecz'] = !empty(alch_tabela('katalizatory')[$r['katalizator']]['ciecz']); $v['kat'] = (string)($r['katalizator'] ?? ''); }
     return $v;
 }
 function alch_widok() {

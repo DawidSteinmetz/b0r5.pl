@@ -71,3 +71,9 @@
 @keyframes swieci{to{box-shadow:0 0 0 1px #b8892a,0 0 22px #e8c86a}}
 #w button.polacz.on{background:#7a4a1a26}
 @media (prefers-reduced-motion:reduce){#w .rzad.swieci{animation:none}}
+/* telefon: w wierszu wyrobu przyciski schodzą pod opis, żeby opis nie łamał się po jednym słowie */
+@media (max-width:600px){
+  #w .rzad.wyrob{flex-wrap:wrap}
+  #w .rzad.wyrob>span:first-child{flex:1 1 100%}
+  #w .rzad.wyrob>span:last-child{margin-left:auto}
+}

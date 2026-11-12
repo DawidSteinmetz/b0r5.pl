@@ -74,7 +74,8 @@
 
   /* --- Czary ------------------------------------------------------------------------------------------------- */
   // Jak rozpoznawanie mowy po polsku słyszy łacińskie słowa (bez ogonków). Dłuższe warianty najpierw.
-  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot)\b\s*/;
+  // "Nota hoc" bywa słyszane jako "nota hok", "nota ok", a nawet "no to chodź"
+  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta|no\s+to|noto)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot|chodz|chodzi|chodze|hodz|choc)\b\s*/;
   const GRY = { mille: /^(mille|mile|mila|mili|milla|mil|mille mille)$/, alea: /^(alea|aleja|alei|ale a|alee|allea|alea jacta est)$/ };
   const ZACZNIJ = /^(incipiamus|incipjamus|incypiamus|in cipiamus|incipiam us|incipe|incipit|incipimus)$/;
   const NOWA = /^(nova|nowa|novo|nowe|nova pars|nowa gra)$/;

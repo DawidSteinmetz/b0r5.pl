@@ -102,6 +102,28 @@
     ['fortuna', ['fortuna', 'fortune', 'szansa']], ['imperator', ['imperator', 'imperatur', 'general']]
   ];
   const SKRESL = /^(skresl|skreslam|skreslone|skreslic|zero|nic|nihil|krzyzyk)$/;
+  // Uproszczona wymowa: głoski brzmiące podobnie zlewają się w jedną (b/p/m/w/f, d/t, k/g/q/c, s/z, y/i/j), podwójne w pojedyncze.
+  // Dzięki temu "mini", "Vinnie", "binie" to wciąż Bīnī, a "kwiny", "Queeny" to Quīnī.
+  const wymowa = t => bezOgonkow(t).replace(/[^a-z]/g, '').replace(/qu/g, 'kw').replace(/ph/g, 'f').replace(/ch/g, 'h').replace(/x/g, 'ks')
+    .replace(/[yj]/g, 'i').replace(/ie/g, 'i').replace(/[bpfwvm]/g, 'p').replace(/[dt]/g, 't').replace(/[gkcq]/g, 'k').replace(/[zs]/g, 's').replace(/(.)\1+/g, '$1');
+  const UKLADY_WYMOWA = UKLADY.map(([kat, war]) => [kat, war.map(wymowa)]);
+  // Najbliższy układ po brzmieniu dla pierwszych 1–2 słów: {kat, slow} albo null.
+  function ukladPoBrzmieniu(slowa) {
+    let naj = null;
+    for (let k = Math.min(2, slowa.length); k >= 1; k--) {
+      // liczba (cyframi albo słowem) nigdy nie jest częścią nazwy układu
+      if (slowa.slice(0, k).some(x => /\d/.test(x) || x in LICZBY || x === 'minus' || SKRESL.test(x))) continue;
+      const w = wymowa(slowa.slice(0, k).join(''));
+      if (w.length < 2) continue;
+      for (const [kat, wary] of UKLADY_WYMOWA) for (const war of wary) {
+        // przy remisie lepszy układ zaczynający się tą samą głoską ("sieni" to Sēnī, nie Bīnī)
+        const d = odleglosc(w, war) + (w[0] === war[0] ? 0 : .5);
+        if (d <= Math.max(1, Math.floor(war.length / 3)) + .5 && (!naj || d < naj.d)) naj = { kat, slow: k, d };
+      }
+      if (naj && naj.d === 0) break;
+    }
+    return naj;
+  }
   // Tekst -> {akcja, dane} | {blad} | null (to nie czar). "glos": przy mowie wpisy wymagają "Nota hoc",
   // a czary gry, graczy i "Incipiāmus" działają same, jeśli całe zdanie jest czarem.
   function rozbierz(tekst, s, glos) {
@@ -134,6 +156,14 @@
           const pkt = po.length ? liczba(po) : null;
           if (po.length && pkt === null) return { blad: 'Pióro nie zrozumiało liczby.' };
           return { akcja: 'wpisz', dane: pkt === null ? { imie: im, kat } : { imie: im, kat, pkt } };
+        }
+        const pb = ukladPoBrzmieniu(reszta);         // nie było dokładnej nazwy: najbliższy układ po brzmieniu
+        if (pb) {
+          const po = reszta.slice(pb.slow);
+          if (po.length === 1 && SKRESL.test(po[0])) return { akcja: 'wpisz', dane: { imie: im, kat: pb.kat, skresl: true } };
+          const pkt = po.length ? liczba(po) : null;
+          if (po.length && pkt === null) return { blad: 'Pióro nie zrozumiało liczby.' };
+          return { akcja: 'wpisz', dane: pkt === null ? { imie: im, kat: pb.kat } : { imie: im, kat: pb.kat, pkt } };
         }
         if (reszta.length) continue;
         return { blad: 'Który układ? Np. „Nota hoc ' + im + ' trēs 18”.' };

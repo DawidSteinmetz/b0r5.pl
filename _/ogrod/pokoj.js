@@ -86,30 +86,164 @@
 
   /* --- Grządki ------------------------------------------------------------------------------ */
   let wybor = null;            // {g: id grządki} albo {m: numer wolnego miejsca}
-  const KOLOR = { pusta: '#7a4e24', rosnie: '#4f7a2e', do_zbioru: '#c79a2a', martwa: '#6d6458', czar: '#8a6bb0' };
+  /* Plan rysowany piórem, jak u Artemidy: kreski z drżeniem ręki z ziarnem (ten sam plan zawsze wygląda tak samo),
+     akwarelowe plamy na grządkach, płot ze sztachetami, furtka od ulicy, kreskowany dom, trawa, podziałka i róża wiatrów.
+     Północ jest u góry, więc zachód (ulica) to lewa krawędź planu. */
+  const WODA = { pusta: ['#8a5a2b', .22], rosnie: ['#55792a', .3], do_zbioru: ['#c08a1e', .5], martwa: ['#6d6458', .32], czar: ['#7d5aa8', .45] };
+  function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function rnd(seed) {
+    return function () {
+      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const ziarno = k => rnd(hash('ogrod-h:' + k));
+  const n2 = x => Math.round(x * 100) / 100;
+  // Kreska od A do B (bez "M"): co ok. 2,5 m punkt lekko zbaczający w bok, połączony łukiem.
+  function kreska(q, x0, y0, x1, y1, amp) {
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+    const n = Math.max(1, Math.min(8, Math.round(L / 2.5)));
+    let d = '', px = x0, py = y0;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, bok = i < n ? (q() - .5) * amp : 0, luk = (q() - .5) * 2 * amp;
+      const x = x0 + dx * t + nx * bok, y = y0 + dy * t + ny * bok;
+      d += 'Q' + n2((px + x) / 2 + nx * luk) + ' ' + n2((py + y) / 2 + ny * luk) + ' ' + n2(x) + ' ' + n2(y);
+      px = x; py = y;
+    }
+    return d;
+  }
+  const kres = (q, x0, y0, x1, y1, amp) => 'M' + n2(x0) + ' ' + n2(y0) + kreska(q, x0, y0, x1, y1, amp);
+  function czworokat(q, x, y, w, h, amp) {
+    const j = () => (q() - .5) * amp * 1.4;
+    const p = [[x + j(), y + j()], [x + w + j(), y + j()], [x + w + j(), y + h + j()], [x + j(), y + h + j()]];
+    let d = 'M' + n2(p[0][0]) + ' ' + n2(p[0][1]);
+    for (let i = 0; i < 4; i++) { const a = p[i], b = p[(i + 1) % 4]; d += kreska(q, a[0], a[1], b[0], b[1], amp); }
+    return d + 'Z';
+  }
+  // Obrys z czterech osobnych pociągnięć, które wychodzą trochę za narożniki, jak przy rysowaniu pod linijkę.
+  function obrys(q, x, y, w, h, amp, wyjscie) {
+    const o = () => wyjscie * (.4 + q() * .8), j = () => (q() - .5) * amp;
+    return kres(q, x - o(), y + j(), x + w + o(), y + j(), amp) + kres(q, x + w + j(), y - o(), x + w + j(), y + h + o(), amp) +
+      kres(q, x + w + o(), y + h + j(), x - o(), y + h + j(), amp) + kres(q, x + j(), y + h + o(), x + j(), y - o(), amp);
+  }
+  function petla(q, cx, cy, rx, ry, obroty, drzenie) {
+    const a0 = q() * 6.283, n = Math.round(18 * obroty), pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + i / n * obroty * 6.283, k = 1 + (q() - .5) * drzenie;
+      pts.push(n2(cx + Math.cos(a) * rx * k) + ' ' + n2(cy + Math.sin(a) * ry * k));
+    }
+    return 'M' + pts.join('L');
+  }
+  function roslinka(q, x, y, s, kwiat) {
+    const b = (q() - .5) * s * .3, t = n2(y - s);
+    const d = 'M' + n2(x) + ' ' + n2(y) + 'Q' + n2(x + b) + ' ' + n2(y - s / 2) + ' ' + n2(x + b / 2) + ' ' + t +
+      'M' + n2(x + b / 3) + ' ' + n2(y - s * .35) + 'q' + n2(-s * .45) + ' ' + n2(-s * .05) + ' ' + n2(-s * .5) + ' ' + n2(-s * .4) +
+      'M' + n2(x + b / 2) + ' ' + n2(y - s * .55) + 'q' + n2(s * .45) + ' ' + n2(-s * .02) + ' ' + n2(s * .45) + ' ' + n2(-s * .38);
+    return [d, kwiat ? [n2(x + b / 2), t] : null];
+  }
+  function trawa(q, x, y) {
+    let d = '';
+    for (let i = 0; i < 3; i++) { const bx = x + i * .2; d += 'M' + n2(bx) + ' ' + n2(y) + 'q' + n2((q() - .3) * .18) + ' ' + n2(-.18) + ' ' + n2((q() - .5) * .25) + ' ' + n2(-.3 - q() * .2); }
+    return d;
+  }
   function plan(s) {
-    const D = s.dzialka, zaj = {};
+    const D = s.dzialka, zaj = {}, dom = D.zabudowa[0];
     s.grzadki.forEach(g => { zaj[g.miejsce] = g; });
-    let h = '<svg class="plan" viewBox="-0.6 -0.6 ' + (D.dl + 1.2) + ' ' + (D.szer + 1.2) + '" role="img" aria-label="Plan działki">' +
-      '<rect class="dzialka" x="0" y="0" width="' + D.dl + '" height="' + D.szer + '"/>';
+    // furtka: z ogrod.json ("furtka": {"bok": "zachod", "y": …}); bez ustawienia od zachodu, tuż pod domem
+    const F = D.furtka || { bok: 'zachod', y: dom ? dom.y + dom.szer + 1.2 : D.szer / 2 };
+    const fy = Number(F.y), fs = .9;                             // środek i pół szerokości furtki
+    const napis = (x, y, k, t, obrot) => '<text x="' + n2(x) + '" y="' + n2(y) + '" class="' + k + '"' + (obrot ? ' transform="rotate(' + obrot + ' ' + n2(x) + ' ' + n2(y) + ')"' : '') + '>' + esc(t) + '</text>';
+    const vb = [-3.4, -1.3, D.dl + 4.8, D.szer + 6];
+    let tlo = '', tusz = '', cienki = '', grz = '', napisy = '', zazn = '';
+    // ulica za zachodnim płotem: krawężnik i kocie łby
+    let q = ziarno('ulica');
+    cienki += kres(q, -1.9, -1, -1.9, D.szer + 1, .1);
+    for (let i = 0; i < 70; i++) { const x = -3.1 + q() * 1, y = -.8 + q() * (D.szer + 1.6); cienki += petla(q, x, y, .13, .1, 1, .3); }
+    napisy += '<rect class="tlo-napisu" x="-3.05" y="' + n2(D.szer * .72 - 1.3) + '" width=".85" height="2.6" rx=".25"/>' + napis(-2.4, D.szer * .72, 'maly', 'ulica', -90);
+    // płot z przerwą na furtkę i sztachety co półtora metra (od zewnątrz)
+    q = ziarno('plot');
+    tusz += kres(q, -.3, 0, D.dl + .4, 0, .12) + kres(q, D.dl, -.4, D.dl, D.szer + .3, .12) + kres(q, D.dl + .3, D.szer, -.4, D.szer, .12) +
+      kres(q, 0, D.szer + .4, 0, fy + fs, .12) + kres(q, 0, fy - fs, 0, -.3, .12);
+    for (let x = 1.5; x < D.dl; x += 1.5) cienki += kres(q, x, 0, x + (q() - .5) * .1, -.4, .02) + kres(q, x, D.szer, x + (q() - .5) * .1, D.szer + .4, .02);
+    for (let y = 1.5; y < D.szer; y += 1.5) { if (Math.abs(y - fy) < fs + .4) continue; cienki += kres(q, 0, y, -.4, y + (q() - .5) * .1, .02) + kres(q, D.dl, y, D.dl + .4, y + (q() - .5) * .1, .02); }
+    tusz += 'M0 ' + n2(fy - fs) + 'a' + n2(fs * 2) + ' ' + n2(fs * 2) + ' 0 0 1 ' + n2(fs * 2 * .7) + ' ' + n2(fs * 2 * .7);   // skrzydło furtki otwarte do środka
+    cienki += 'M0 ' + n2(fy - fs) + 'l' + n2(fs * 2 * .7) + ' ' + n2(fs * 2 * .7);
+    napisy += '<rect class="tlo-napisu" x="-1.75" y="' + n2(fy - 1.35) + '" width=".8" height="2.7" rx=".25"/>' + napis(-1.15, fy, 'maly', 'furtka', -90);
+    // dom: kreskowany, z liniami dachu i drzwiami od południa
     D.zabudowa.forEach(z => {
-      h += '<rect class="dom" x="' + z.x + '" y="' + z.y + '" width="' + z.dl + '" height="' + z.szer + '"/>' +
-        '<text x="' + (z.x + z.dl / 2) + '" y="' + (z.y + z.szer / 2 + 0.6) + '">' + esc(z.nazwa.toLowerCase()) + '</text>';
+      q = ziarno('dom:' + z.nazwa);
+      tlo += '<path d="' + czworokat(q, z.x, z.y, z.dl, z.szer, .15) + '" fill="url(#ogrh-kreski)" stroke="none"/>';
+      tusz += obrys(q, z.x, z.y, z.dl, z.szer, .12, .35) + obrys(q, z.x + .08, z.y + .06, z.dl - .1, z.szer - .1, .1, .1);
+      const r = Math.min(z.dl, z.szer) * .3, cx = z.x + z.dl / 2, cy = z.y + z.szer / 2;
+      cienki += kres(q, z.x, z.y, cx - (z.dl / 2 - r), cy, .08) + kres(q, z.x, z.y + z.szer, cx - (z.dl / 2 - r), cy, .08) +
+        kres(q, z.x + z.dl, z.y, cx + (z.dl / 2 - r), cy, .08) + kres(q, z.x + z.dl, z.y + z.szer, cx + (z.dl / 2 - r), cy, .08) +
+        kres(q, cx - (z.dl / 2 - r), cy, cx + (z.dl / 2 - r), cy, .06);
+      napisy += '<rect class="tlo-napisu" x="' + n2(cx - 1.4) + '" y="' + n2(cy - .85) + '" width="2.8" height="1.25" rx=".3"/>' + napis(cx, cy + .1, 'sredni', z.nazwa.toLowerCase());
     });
-    h += '<text class="furtka" x="' + (D.dl / 2) + '" y="' + (D.szer + 0.55) + '">furtka</text>';
+    // ścieżka od furtki wzdłuż południowej ściany domu do grządek, z drzwiami po drodze
+    const sx = dom ? dom.x + dom.dl + .4 : 6, dz = dom ? dom.x + dom.dl * .6 : 4;
+    q = ziarno('sciezki');
+    cienki += kres(q, .3, fy - .6, sx, fy - .6, .1) + kres(q, .3, fy + .6, sx, fy + .6, .1);
+    if (dom && fy - .6 > dom.y + dom.szer) cienki += kres(q, dz - .5, dom.y + dom.szer, dz - .5, fy - .6, .05) + kres(q, dz + .5, dom.y + dom.szer, dz + .5, fy - .6, .05);
+    for (let x = .9; x < sx - .3; x += .9) cienki += 'M' + n2(x + (q() - .5) * .2) + ' ' + n2(fy + (q() - .5) * .5) + 'h.01';   // żwir
+    // trawa wszędzie tam, gdzie nie ma grządki, domu ani ścieżki
+    const zajete = (x, y) => D.miejsca.some(m => x > m.x - .25 && x < m.x + m.dl + .1 && y > m.y - .1 && y < m.y + m.szer + .45) ||
+      D.zabudowa.some(z => x > z.x - .3 && x < z.x + z.dl + .2 && y > z.y - .2 && y < z.y + z.szer + .5) || (x < sx + .3 && Math.abs(y - fy) < .9);
+    q = ziarno('trawa');
+    for (let i = 0; i < 520; i++) { const x = .3 + q() * (D.dl - .9), y = .7 + q() * (D.szer - 1); if (!zajete(x, y)) cienki += trawa(q, x, y); }
+    // grządki i wolne miejsca
     D.miejsca.forEach((m, i) => {
       const g = zaj[i], wyb = wybor && ((g && wybor.g === g.id) || (!g && wybor.m === i));
+      q = ziarno('m' + i + (g ? ':' + g.id : ''));
+      const traf = '<rect x="' + n2(m.x - .25) + '" y="' + n2(m.y - .3) + '" width="' + n2(m.dl + .5) + '" height="' + n2(m.szer + .6) + '" fill="transparent"/>';
+      if (wyb) { const qz = ziarno('wyb' + i); zazn += petla(qz, m.x + m.dl / 2, m.y + m.szer / 2, m.dl / 2 + .6, m.szer / 2 + .6, 1.25, .1); }
       if (!g) {
-        h += '<rect class="miejsce' + (wyb ? ' wyb' : '') + '" data-m="' + i + '" x="' + m.x + '" y="' + m.y + '" width="' + m.dl + '" height="' + m.szer + '"><title>wolne miejsce</title></rect>';
+        grz += '<g class="miejsce" data-m="' + i + '"><title>wolne miejsce</title>' + traf + '<path class="olowek" d="' + obrys(q, m.x, m.y, m.dl, m.szer, .08, .05) + '"/></g>';
         return;
       }
-      const stan = g.czar ? 'czar' : g.stan, r = g.roslina;
-      const op = stan === 'rosnie' ? (0.35 + 0.65 * (r.postep || 0)).toFixed(2) : 1;
-      h += '<rect class="grz ' + stan + (wyb ? ' wyb' : '') + '" data-g="' + esc(g.id) + '" x="' + m.x + '" y="' + m.y + '" width="' + m.dl + '" height="' + m.szer +
-        '" style="fill:' + KOLOR[stan] + ';fill-opacity:' + op + '"><title>' + esc(r ? r.nazwa + ': ' + r.faza_t : (g.czar ? g.stan : 'pusta grządka')) + '</title></rect>';
-      if (g.chwasty > 0.4) h += '<rect class="chwast" x="' + m.x + '" y="' + m.y + '" width="' + m.dl + '" height="' + m.szer + '" pointer-events="none"/>';
+      const stan = g.czar ? 'czar' : g.stan, r = g.roslina, [kol, op0] = WODA[stan] || WODA.pusta;
+      const op = stan === 'rosnie' ? op0 + .3 * (r.postep || 0) : op0;
+      let d = '', kropki = '', nasiona = '';
+      if (stan === 'pusta' || (r && r.faza === 'posiane')) for (let k = 1; k < 4; k++) d += kres(q, m.x + m.dl * k / 4, m.y + .4, m.x + m.dl * k / 4, m.y + m.szer - .4, .05);
+      if (r && r.faza === 'posiane') for (let y = m.y + .6; y < m.y + m.szer - .4; y += .45) nasiona += 'M' + n2(m.x + m.dl / 2 + (q() - .5) * .1) + ' ' + n2(y) + 'h.01';
+      if (r && !r.martwa && r.faza !== 'posiane') {
+        const sz = .45 + .5 * Math.min(1, r.postep || 0);
+        for (let k = 0; k < 3; k++) {
+          const [p, kw] = roslinka(q, m.x + m.dl / 2 + (q() - .5) * .3, m.y + m.szer * (k + .85) / 3.1, sz, stan === 'do_zbioru');
+          d += p; if (kw) kropki += 'M' + kw[0] + ' ' + kw[1] + 'h.01';
+        }
+      }
+      if (r && r.martwa) d += kres(q, m.x + .1, m.y + 1, m.x + m.dl - .1, m.y + m.szer - 1, .1) + kres(q, m.x + m.dl - .1, m.y + 1, m.x + .1, m.y + m.szer - 1, .1);
+      if (g.chwasty > 0.3) for (let k = 0; k < Math.round(g.chwasty * 7); k++) {
+        const x = m.x + .15 + q() * (m.dl - .4), y = m.y + .3 + q() * (m.szer - .5);
+        d += 'M' + n2(x) + ' ' + n2(y) + 'c.1 -.25 .3 -.25 .25 0s-.15 .15 -.05 .1';
+      }
+      const dq = ziarno('plama' + i);
+      grz += '<g class="grz ' + stan + '" data-g="' + esc(g.id) + '"><title>' + esc(r ? r.nazwa + ': ' + r.faza_t : (g.czar ? g.stan : 'pusta grządka')) + '</title>' + traf +
+        '<path class="plama" d="' + czworokat(dq, m.x + (dq() - .5) * .2, m.y + (dq() - .5) * .3, m.dl, m.szer, .12) + '" fill="' + kol + '" fill-opacity="' + n2(op) + '"/>' +
+        '<path class="obrys" d="' + obrys(q, m.x, m.y, m.dl, m.szer, .08, .12) + '"/>' +
+        (d ? '<path class="detal" d="' + d + '"/>' : '') + (kropki ? '<path class="kropki" d="' + kropki + '"/>' : '') + (nasiona ? '<path class="nasiona" d="' + nasiona + '"/>' : '') + '</g>';
     });
-    return h + '<defs><pattern id="chw" width="0.6" height="0.6" patternUnits="userSpaceOnUse"><circle cx="0.3" cy="0.3" r="0.12" fill="#2e4a1a"/></pattern></defs></svg>';
+    // pod płotem: tytuł, podziałka 10 m i strzałka północy
+    const ly = D.szer + 2.4;
+    napisy += napis(D.dl / 2, ly + .2, 'duzy', 'Ogród') + napis(D.dl / 2, ly + 1.5, 'maly', D.dl + ' × ' + D.szer + ' m');
+    q = ziarno('podzialka');
+    const px = D.dl - 14;
+    tusz += kres(q, px, ly, px + 10, ly, .04);
+    for (let k = 0; k <= 10; k += 5) cienki += kres(q, px + k, ly - .35, px + k, ly + .35, .02);
+    napisy += napis(px + 5, ly + 1.3, 'maly', '10 m');
+    const nx = D.dl - 1.5;
+    tusz += kres(q, nx, ly + 1.4, nx, ly - 1.2, .05) + 'M' + n2(nx - .45) + ' ' + n2(ly - .4) + 'L' + n2(nx) + ' ' + n2(ly - 1.4) + 'L' + n2(nx + .45) + ' ' + n2(ly - .4);
+    napisy += napis(nx - 1, ly - .5, 'sredni', 'N');
+    if (s.oslona_do) napisy += napis(D.dl / 2 + 5, -.4, 'maly', 'nad grządkami osłona przed przymrozkiem');
+    return '<svg class="plan" viewBox="' + vb.join(' ') + '" style="aspect-ratio:' + n2(vb[2]) + '/' + n2(vb[3]) + '" role="img" aria-label="Plan działki">' +
+      '<defs><filter id="ogrh-pioro" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="' + (hash('pioro-h') % 97) + '" result="n"/>' +
+      '<feDisplacementMap in="SourceGraphic" in2="n" scale=".12" xChannelSelector="R" yChannelSelector="G"/></filter>' +
+      '<pattern id="ogrh-kreski" width=".5" height=".5" patternUnits="userSpaceOnUse" patternTransform="rotate(38)"><path d="M0 .25h.5" stroke="#2b1d10" stroke-width=".05" stroke-opacity=".55"/></pattern></defs>' +
+      '<g filter="url(#ogrh-pioro)">' + tlo + '<path class="cienki" d="' + cienki + '"/><path class="tusz" d="' + tusz + '"/>' + grz +
+      (zazn ? '<path class="zazn" d="' + zazn + '"/>' : '') + '</g>' + napisy + '</svg>';
   }
   const przycisk = (a, t, d, wyl) => '<button type="button" data-a="' + a + '"' + (d ? " data-d='" + esc(JSON.stringify(d)) + "'" : '') + (wyl ? ' disabled' : '') + '>' + t + '</button>';
   function szczegoly(s) {
@@ -149,6 +283,25 @@
     }
     return h;
   }
+  /* Rozmiar planu liczy się z miejsca na kartce: jeśli pod tekstem zostało co najmniej 45% strony, plan wypełnia
+     resztę pierwszej strony, a jeśli nie, dostaje całą następną. Nigdy nie jest szerszy niż kolumna (ani niż 640 px). */
+  function dopasujPlan() {
+    const svg = w.querySelector('svg.plan'); if (!svg) return;
+    const vb = (svg.getAttribute('viewBox') || '').split(' ').map(Number);
+    svg.style.width = 'auto'; svg.style.height = '8px';
+    const H = w.clientHeight, cw = w.clientWidth;
+    if (!H || !cw || vb.length < 4) { svg.style.width = svg.style.height = ''; return; }
+    // offsetTop akapitu nad planem, a nie getBoundingClientRect: podczas animacji obrotu kartka jest przekręcona i pomniejszona
+    // (sam element SVG nie ma offsetTop)
+    const nad = svg.previousElementSibling;
+    const gora = nad ? nad.offsetTop + nad.offsetHeight + 8 : 0;
+    const reszta = H - gora - 14;
+    let h = reszta >= 0.45 * H ? reszta : H - 14;
+    h = Math.min(h, (Math.min(cw, 640) - 2) * vb[3] / vb[2]);
+    svg.style.height = Math.max(100, Math.floor(h)) + 'px';
+  }
+  addEventListener('resize', () => requestAnimationFrame(dopasujPlan));
+  document.addEventListener('mysl:obrot', () => requestAnimationFrame(dopasujPlan));
   function otworzGrzadki(o) {
     const rysuj = (s, el, akcja) => {
       const D = s.dzialka, t = s.pogoda.teraz, zajete = D.grzadek * D.m2_grzadki;
@@ -159,6 +312,7 @@
         '<div id="szcz">' + szczegoly(s) + '</div>' +
         (zbiorcze.length ? '<p class="grupa">Czary na cały ogród</p><div class="akcje">' + zbiorcze.map(c => przycisk('czar', c.nazwa + ' <small>(' + esc(c.pl) + ')</small>', { czar: c.id })).join('') + '</div>' : '') +
         (s.suszy_sie.length ? '<p class="grupa">Schnie na strychu</p>' + s.suszy_sie.map(x => '<div class="dim">' + esc(x.nazwa) + ' ×' + x.n + ', do Składu ' + esc(x.za) + '</div>').join('') : '');
+      dopasujPlan();
       el.querySelector('.plan').onclick = e => {
         const r = e.target.closest('[data-g],[data-m]'); if (!r) return;
         wybor = r.dataset.g ? { g: r.dataset.g } : { m: Number(r.dataset.m) };
@@ -181,6 +335,8 @@
       if (!wybor) { const g = s.grzadki.find(x => x.stan === 'do_zbioru') || s.grzadki[0]; if (g) wybor = { g: g.id }; }
       rysuj(s, el, akcja);
     }, s => [s.grzadki, s.skrzynka, s.zmarznieta, s.suszy_sie.length, s.pogoda.teraz.temp_t, s.pogoda.teraz.opis]);
+    const opis = w.querySelector('.tekst');                 // opis wczytuje się osobno i przesuwa plan w dół
+    if (opis) new MutationObserver(dopasujPlan).observe(opis, { childList: true });
   }
 
   /* --- Skrzynka z nasionami i zakupy ------------------------------------------------------- */

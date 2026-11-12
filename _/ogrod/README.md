@@ -14,7 +14,7 @@ Kiedy pada albo leży mgła, widać to na całej stronie ogrodu.
 
 ## Grządki
 
-Działka i rozmiar grządek są w `tabele/ogrod.json`. Domyślnie działka ma 40×20 m, dom zajmuje 10×10 m, a grządka 1,2×5 m z wąskimi ścieżkami, więc mieści się 57 grządek. Nową grządkę robi się czarem (`tabele/czary.json`, efekt `nowa_grzadka`), klikając wolne miejsce na planie. Czar nie ruszy zmarzniętej ziemi.
+Działka i rozmiar grządek są w `tabele/ogrod.json`. Domyślnie działka ma 40×20 m, dom zajmuje 10×10 m, a grządka 1,2×5 m z wąskimi ścieżkami, więc mieści się 57 grządek. Plan jest rysowany piórem jak u Artemidy (kreski z ziarnem, akwarelowe plamy, płot, kocie łby ulicy, trawa, podziałka). Północ jest u góry, a furtka od ulicy leży w zachodnim płocie tuż pod domem (`furtka` w `ogrod.json`). Rozmiar planu dopasowuje się do miejsca na kartce, także po obrocie na poziom. Nową grządkę robi się czarem (`tabele/czary.json`, efekt `nowa_grzadka`), klikając wolne miejsce na planie. Czar nie ruszy zmarzniętej ziemi.
 
 Ogród żyje w czasie rzeczywistym: pierwsze zapytanie po północy przeżywa za niego wszystkie dni, które minęły. Każdego dnia:
 

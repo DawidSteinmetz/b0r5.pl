@@ -14,19 +14,28 @@
 #w .dim{opacity:.7;font-size:.85em}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
 #w .kasa{font-size:18px;font-style:italic;margin:10px 0 4px}
-/* plan działki */
-#w svg.plan{display:block;width:100%;max-width:520px;margin:6px auto;cursor:pointer;stroke:none;stroke-width:0}
-#w .plan .dzialka{fill:#6b8a3a22;stroke:#2b1d10;stroke-width:.12}
-#w .plan .dom{fill:#5a3c1455;stroke:#2b1d10;stroke-width:.1}
-#w .plan text{font:italic 1.3px Georgia,serif;fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
-#w .plan text.furtka{font-size:.9px;opacity:.7}
-#w .plan .miejsce{fill:transparent;stroke:#2b1d1055;stroke-width:.06;stroke-dasharray:.25 .2}
-#w .plan .miejsce:hover{fill:#2b1d1012}
-#w .plan .grz{stroke:#2b1d10aa;stroke-width:.07}
-#w .plan .chwast{fill:url(#chw);stroke:none;opacity:.8}
-#w .plan .wyb{stroke:#000;stroke-width:.22;stroke-dasharray:none}
-#w .plan .czar{animation:czaruje 1.2s ease-in-out infinite alternate}
-@keyframes czaruje{from{fill-opacity:.25}to{fill-opacity:.85}}
+/* plan działki: atrament na pergaminie (kształty rysuje pokoj.js) */
+#w svg.plan{display:block;width:100%;max-width:640px;height:auto;margin:6px auto;cursor:pointer;fill:none;stroke:none;stroke-width:0;stroke-linecap:round;stroke-linejoin:round}
+#w .plan .tusz,#w .plan .cienki,#w .plan .olowek,#w .plan .obrys,#w .plan .detal{fill:none;stroke:#2b1d10}
+#w .plan .tusz{stroke-width:.1;stroke-opacity:.9}
+#w .plan .cienki{stroke-width:.045;stroke-opacity:.55}
+#w .plan .olowek{stroke-width:.045;stroke-opacity:.3;stroke-dasharray:.35 .25}
+#w .plan .miejsce:hover .olowek{stroke-opacity:.65}
+#w .plan .plama{stroke:none}
+#w .plan .obrys{stroke-width:.075;stroke-opacity:.85}
+#w .plan .detal{stroke-width:.05;stroke-opacity:.75}
+#w .plan .grz.rosnie .detal,#w .plan .grz.do_zbioru .detal{stroke:#2f4a14}
+#w .plan .kropki{fill:none;stroke:#7a1f12;stroke-width:.26}
+#w .plan .nasiona{fill:none;stroke:#3a2412;stroke-width:.16}
+#w .plan .grz:hover .obrys{stroke-width:.13}
+#w .plan .zazn{fill:none;stroke:#8b2a1a;stroke-width:.12;stroke-opacity:.9}
+#w .plan text{font-family:Georgia,"Times New Roman",serif;font-style:italic;fill:#2b1d10;stroke:none;text-anchor:middle;pointer-events:none}
+#w .plan text.duzy{font-size:1.5px}
+#w .plan text.sredni{font-size:1.05px}
+#w .plan text.maly{font-size:.75px;fill-opacity:.85}
+#w .plan .tlo-napisu{fill:#e6d3a6;fill-opacity:.85;stroke:none}
+#w .plan .grz.czar .plama{animation:czaruje 1.2s ease-in-out infinite alternate}
+@keyframes czaruje{from{fill-opacity:.15}to{fill-opacity:.6}}
 /* termometr */
 #w .termo{display:flex;align-items:baseline;justify-content:center;gap:.5em;margin:4px 0}
 #w .termo b{font-size:40px;font-weight:normal}
@@ -65,4 +74,4 @@ body.o-snieg::after{background-image:radial-gradient(circle,#fffe 1.2px,transpar
 @keyframes snieg{to{background-position:30px 90px,10px 200px}}
 body.o-mgla .fog{opacity:.95;filter:blur(28px)}
 body.o-noc #sky{background:#05081588}
-@media (prefers-reduced-motion:reduce){body.o-deszcz::after,body.o-snieg::after,#w .plan .czar{animation:none}}
+@media (prefers-reduced-motion:reduce){body.o-deszcz::after,body.o-snieg::after,#w .plan .grz.czar .plama{animation:none}}

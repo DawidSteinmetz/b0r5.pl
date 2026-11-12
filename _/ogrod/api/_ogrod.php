@@ -484,7 +484,7 @@ function ogr_widok() {
         'pogoda' => pog_widok(),
         'oslona_do' => (!empty($o['oslona_do']) && $o['oslona_do'] >= pog_dzis()) ? $o['oslona_do'] : null,
         'zmarznieta' => $zmarzl,
-        'dzialka' => ['dl' => $c['dzialka']['dl'], 'szer' => $c['dzialka']['szer'], 'zabudowa' => $c['zabudowa'] ?? [], 'obszar' => $c['obszar_grzadek'] ?? null, 'miejsca' => ogr_miejsca(),
+        'dzialka' => ['dl' => $c['dzialka']['dl'], 'szer' => $c['dzialka']['szer'], 'zabudowa' => $c['zabudowa'] ?? [], 'furtka' => $c['furtka'] ?? null, 'obszar' => $c['obszar_grzadek'] ?? null, 'miejsca' => ogr_miejsca(),
             'm2_grzadki' => $m2, 'grzadek' => count($grz), 'miejsc' => $mz],
         'grzadki' => $grz,
         'skrzynka' => $paczki, 'w_drodze' => $wdrodze, 'suszy_sie' => $suszy,

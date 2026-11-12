@@ -309,7 +309,11 @@
     svg.style.height = '8px';                                  // mały plan wskakuje tuż pod tekst
     const H = w.clientHeight, cw = w.clientWidth;
     if (!H || !cw || vb.length < 4) { svg.style.height = ''; return; }
-    const reszta = H - (svg.getBoundingClientRect().top - w.getBoundingClientRect().top) - 12;
+    // offsetTop akapitu nad planem, a nie getBoundingClientRect: podczas animacji obrotu kartka jest przekręcona i pomniejszona
+    // (sam element SVG nie ma offsetTop)
+    const nad = svg.previousElementSibling;
+    const gora = nad ? nad.offsetTop + nad.offsetHeight + 8 : 0;
+    const reszta = H - gora - 12;
     let h = reszta >= 0.55 * H ? reszta : H - 12;
     h = Math.min(h, (cw - 2) * vb[3] / vb[2]);
     svg.style.height = Math.max(120, Math.floor(h)) + 'px';

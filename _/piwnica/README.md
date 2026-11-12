@@ -22,6 +22,7 @@ Produkt bierze przymiotnik od nieneutralnego surowca o największym udziale w ma
 - `pierwiastki.json`, `surowce.json`: nadpisuje je `_logika/narzedzia/import_xlsx.py` z arkusza w `zrodlo/`, więc nie wpisuj tam nic ręcznie.
 - `alchemia.json`: czasy, zapas startowy, naturalna zmienność porcji (`zmiennosc`: wilgotność i rozrzut suchej masy każdej nowej porcji; `mol_staly`: np. węgiel aktywny zawsze 1 mol C), surowce ręczne (woda, burak, drożdże), przymiotniki, progi czystości. `dosypki` to dostawy jednorazowe do działającego Składu: nowy wpis z nowym `id` wchodzi raz, a `usun` zabiera wskazane surowce.
 - `przepisy.json`: składnik z `cel` trzeba najpierw odessać na stole do podanej proporcji atomów. Kartka układa stos, a stół podpowiada, ile wyssać.
+- Przepis może mieć `warianty` (ta sama kartka i nazwa czaru, inne składniki), wybierane zakładką na kartce. Burak położony na stole pamięta, pod który przepis jest odsysany (`cel_dla`), więc burak pod cukier nie miesza się z burakiem pod eliksir. U Henryka Cantus Sacchari ma dwa warianty: z wody i węgla aktywnego (ok. 95% czystości, bo węgiel ma zanieczyszczenia) i z buraka cukrowego odessanego do proporcji C₆H₁₂O₆ (ok. 99% czystości).
 - `czary.json`: `znany: false` to czar spoza notatek Henryka: nie ma go na listach, ale rzucony głosem albo wpisany działa. Zmiana na `true` dopisuje go do notatek.
 - `przyrzady.json`: opisy i ikony. Lista wytrącanych pierwiastków wynika ze znanych czarów.
 - `katalizatory.json`: wzór produktu i cena. Pole `ukryty` wiąże katalizator z przedmiotem przenośnym.

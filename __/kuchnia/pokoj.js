@@ -314,12 +314,22 @@
   }
   function otworzPrzepis(o) {
     let mn = null, poprzedniCzysty = null;
-    okienko(o, (s, el, akcja) => {
-      const p = (s.przepisy || []).find(x => x.id === o.e.id);
-      if (!p) { el.innerHTML = '<p><i>Ten czar nie ma jeszcze przepisu.</i></p>'; return; }
+    /* Warianty przepisu (ta sama kartka, inne składniki): zakładki; wybrany wariant pamięta się w przeglądarce */
+    const KLUCZ_W = 'mwariant:' + o.e.kid;
+    let wybranyW = ''; try { wybranyW = localStorage.getItem(KLUCZ_W) || ''; } catch (e) { /* tryb prywatny */ }
+    const rysujPrzepis = (s, el, akcja) => {
+      const warianty = (s.przepisy || []).filter(x => x.karta === o.e.id);
       const z = s.zaznaczenie, garnekPelny = s.kociolek.gotuje || s.kociolek.zawartosc.length > 0;
-      const nagl = '<p class="dim">' + esc(p.produkt) + ' · ' + esc(p.wzor_tekst) + ' · ' + esc(p.katalizator) + '</p>';
-      if (z && z.przepis === p.id) {
+      const zTejKartki = z && warianty.find(x => x.id === z.przepis);
+      const p = zTejKartki || warianty.find(x => x.id === wybranyW) || warianty[0];
+      if (!p) { el.innerHTML = '<p><i>Ten czar nie ma jeszcze przepisu.</i></p>'; return; }
+      const zakladki = warianty.length > 1 && !zTejKartki ? '<div class="zakladki">' + warianty.map(x =>
+        '<button type="button" data-w="' + esc(x.id) + '"' + (x.id === p.id ? ' class="on"' : '') + '>' + esc(x.wariant) + '</button>').join('') + '</div>' : '';
+      const nagl = '<p class="dim">' + esc(p.produkt) + ' · ' + esc(p.wzor_tekst) + ' · ' + esc(p.katalizator) + (p.wariant ? ' · ' + esc(p.wariant) : '') + '</p>' + zakladki;
+      const podepnijZakladki = () => el.querySelectorAll('button[data-w]').forEach(b => {
+        b.onclick = () => { wybranyW = b.dataset.w; try { localStorage.setItem(KLUCZ_W, wybranyW); } catch (e) { /* tryb prywatny */ } mn = null; poprzedniCzysty = null; rysujPrzepis(s, el, akcja); };
+      });
+      if (zTejKartki) {
         if (!z.gotowe) { el.innerHTML = nagl + '<div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + IKONA_SKLAD + '</svg></div><p><i>Czar przelicza spiżarnię…</i></p>'; return; }
         const w = rachunek(p, z.mnoznik);
         el.innerHTML = nagl + '<p class="grupa">Zaznaczone w spiżarni (porcja ×' + liczba(z.mnoznik, 2) + ')</p>' +
@@ -377,8 +387,9 @@
       $('#mn').oninput = () => ustaw(p.gorny * $('#mn').value / 1000, 'mn');
       $('#mnv').oninput = () => ustaw(parseFloat($('#mnv').value.replace(',', '.')) || 0, 'mnv');
       $('#czysto').onclick = () => ustaw(p.czysty);
+      podepnijZakladki();
       /* Czar-przepis: z listy, głosem albo z pola. Moc: optimum (bez brudu), maximum (największa porcja), liczba (mnożnik), bez mocy: z pola. */
-      czary.wstaw($('#czp'), { czary: [{ id: p.id, nazwa: p.nazwa, opis: 'porcja: optimum ×' + liczba(p.czysty, 2) + ', maximum ×' + liczba(p.gorny, 2) }], kom,
+      czary.wstaw($('#czp'), { czary: [{ id: p.id, nazwa: p.nazwa, opis: (p.wariant ? p.wariant + ' · ' : '') + 'porcja: optimum ×' + liczba(p.czysty, 2) + ', maximum ×' + liczba(p.gorny, 2) }], kom,
         naCzar: (id, moc) => {
           if (z || garnekPelny || !p.dostepny || brakuje) return kom(p.nazwa + ': teraz się nie uda. ' + (z ? 'Inny czar czeka na wsypanie.' : garnekPelny ? 'Naczynie musi być puste.' : !p.dostepny ? 'Brakuje katalizatora.' : 'Najpierw trzeba odessać składnik na stole.'));
           const mnoz = moc === 'optimum' ? p.czysty : moc === 'maximum' ? p.gorny : typeof moc === 'number' ? Math.max(0, Math.min(p.gorny, moc)) : mn;
@@ -386,7 +397,8 @@
           ustaw(mnoz); akcja('rzuc_przepis', { przepis: p.id, mnoznik: mnoz });
         } });
       ustaw(mn);
-    }, s => [(s.przepisy || []).find(x => x.id === o.e.id), s.zaznaczenie, s.kociolek.zawartosc.length, s.kociolek.gotuje, s.stol && s.stol.nazwa]);
+    };
+    okienko(o, rysujPrzepis, s => [(s.przepisy || []).filter(x => x.karta === o.e.id), s.zaznaczenie, s.kociolek.zawartosc.length, s.kociolek.gotuje, s.stol && s.stol.nazwa]);
   }
 
   function otworzWage(o) {

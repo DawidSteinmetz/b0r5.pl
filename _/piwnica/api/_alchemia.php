@@ -170,7 +170,32 @@ function alch_cena($r, $o) {
 }
 
 // --- czary-przepisy: projektowane ręcznie w tabele/przepisy.json, mechanizm jest wspólny -----------
-function alch_przepisy() { return alch_tabela('przepisy'); }
+// Przepisy z wariantami: wpis z 'warianty' rozkłada się na osobne przepisy o id "karta~wariant" (ta sama kartka, nazwa i katalizator,
+// inne składniki). Przepisy bez wariantów idą pierwsze, żeby stare rzeczy bez 'cel_dla' trafiały tam, gdzie trafiały wcześniej.
+function alch_przepisy() {
+    static $wyn = null;
+    if ($wyn !== null) return $wyn;
+    $proste = []; $warianty = [];
+    foreach (alch_tabela('przepisy') as $id => $x) {
+        if (empty($x['warianty'])) { $proste[$id] = $x + ['karta' => $id, 'wariant' => '']; continue; }
+        foreach ($x['warianty'] as $w) $warianty[$id . '~' . $w['id']] = ['nazwa' => $x['nazwa'], 'katalizator' => $w['katalizator'] ?? $x['katalizator'],
+            'skladniki' => $w['skladniki'], 'karta' => $id, 'wariant' => $w['nazwa']];
+    }
+    return $wyn = $proste + $warianty;
+}
+// Przepis po id; stare id kartki bez wariantu (np. z zapisanego zaznaczenia) prowadzi do jej pierwszego wariantu.
+function alch_przepis($id) {
+    $P = alch_przepisy();
+    if (isset($P[$id])) return $P[$id];
+    foreach ($P as $p) if ($p['karta'] === $id) return $p;
+    return null;
+}
+function alch_przepis_id($id) {
+    $P = alch_przepisy();
+    if (isset($P[$id])) return $id;
+    foreach ($P as $i => $p) if ($p['karta'] === $id) return $i;
+    return '';
+}
 function alch_pojemnosc() { return (float)(alch_cfg()['pojemnosc_g'] ?? 12000); }
 function alch_miejsce($masa) {
     if (alch_masa(alch_kociolek()['sklad']) + $masa > alch_pojemnosc() + 0.01)
@@ -197,15 +222,24 @@ function alch_zapasy() {
     $w = alch_czytaj('waga'); $idw = $w ? $w['id'] : ''; $z = [];
     foreach (alch_rzeczy() as $r) {
         if ($r['typ'] !== 'surowiec' || $r['gdzie'] !== 'sklad' || $r['id'] === $idw || !empty($r['czar'])) continue;
-        $z[$r['surowiec'] . (alch_nienaruszony($r) ? '' : '#o')][] = $r;
+        if (alch_nienaruszony($r)) { $z[$r['surowiec']][] = $r; continue; }
+        $c = alch_cel_dla($r);
+        $z[$r['surowiec'] . '#o@' . ($c['przepis_id'] ?? '')][] = $r;
     }
     foreach ($z as &$l) usort($l, function ($a, $b) { return alch_masa($a['sklad']) <=> alch_masa($b['sklad']); });
     return $z;
 }
-function alch_klucz_zapasu($x) { return $x['surowiec'] . (isset($x['cel']) ? '#o' : ''); }
+// Klucz zapasu: surowiec nienaruszony albo odessany pod konkretny przepis (burak pod cukier to nie burak pod eliksir).
+function alch_klucz_zapasu($x, $pid) { return $x['surowiec'] . (isset($x['cel']) ? '#o@' . $pid : ''); }
 // Składnik, który czar każe najpierw odessać, jeśli ten surowiec jest w jakimś przepisie.
-function alch_cel_dla($sid) {
-    foreach (alch_przepisy() as $p) foreach ($p['skladniki'] as $x) if ($x['surowiec'] === $sid && isset($x['cel'])) return $x + ['przepis' => $p['nazwa']];
+// Cel odsysania dla rzeczy: przepis, pod który leży na stole ('cel_dla'), a dla starszych rzeczy pierwszy przepis z celem dla tego surowca.
+function alch_cel_dla($r) {
+    $sid = is_array($r) ? ($r['surowiec'] ?? '') : (string)$r;
+    $P = alch_przepisy();
+    $pid = is_array($r) ? alch_przepis_id((string)($r['cel_dla'] ?? '')) : '';
+    $kolej = $pid !== '' ? [$pid => $P[$pid]] + $P : $P;
+    foreach ($kolej as $id => $p) foreach ($p['skladniki'] as $x) if ($x['surowiec'] === $sid && isset($x['cel']))
+        return $x + ['przepis' => $p['nazwa'] . ($p['wariant'] !== '' ? ' (' . $p['wariant'] . ')' : ''), 'przepis_id' => $id];
     return null;
 }
 // Ile moli każdego pierwiastka jest ponad proporcję z 'cel'. Różnica do 1% nie liczy się jako nadmiar.
@@ -232,7 +266,7 @@ function alch_nadmiar($sklad, $cel) {
 }
 function alch_nazwa_gotowego($x, $r) { return $x['cel_nazwa'] . ((int)($r['szt'] ?? 1) > 1 ? ' ×' . (int)$r['szt'] : ''); }
 // Kilka sztuk tego samego surowca leży na stole jako jeden stos, więc czary działają na wszystkie naraz.
-function alch_stos($lista) {
+function alch_stos($lista, $pid = '') {
     $czesci = $lista;
     $a = array_shift($lista); $n = 1;
     $a['czesci'] = $czesci;
@@ -243,6 +277,7 @@ function alch_stos($lista) {
     }
     if ($n > 1) $a['nazwa'] .= ' ×' . $n;
     $a['szt'] = $n; $a['gdzie'] = 'stol'; $a['zbadany'] = true;
+    if ($pid !== '') $a['cel_dla'] = $pid;                // pamięta, pod który przepis jest odsysany
     alch_zapisz_rzecz($a); alch_zapisz('stol', ['id' => $a['id']]);
     return $a;
 }
@@ -264,7 +299,7 @@ function alch_przepis_widok($id, $p, $zapasy, $kat, $poj) {
     $sur = alch_surowce(); $skl = []; $min = INF; $max = 0.0; $suma = 0.0; $M = []; $inne = INF; $brakOdessanego = false;
     foreach ($p['skladniki'] as $x) {
         $sid = $x['surowiec']; $g = (float)$x['g']; $mam = 0.0; $na = []; $cel = $x['cel'] ?? null;
-        $lista = $zapasy[alch_klucz_zapasu($x)] ?? [];
+        $lista = $zapasy[alch_klucz_zapasu($x, $id)] ?? [];
         foreach ($lista as $r) $mam += alch_masa($r['sklad']);
         if ($cel && $mam > 0) {
             // Prawdziwa masa porcji: atomy z 'cel' plus domieszki, jakie akurat mają te sztuki.
@@ -315,7 +350,7 @@ function alch_przepis_widok($id, $p, $zapasy, $kat, $poj) {
     }
     unset($w);
     if ($brakOdessanego) { $min = 0.0; $max = 0.0; }
-    return ['id' => $id, 'nazwa' => $p['nazwa'], 'opis' => $p['opis'] ?? '', 'skladniki' => $skl, 'suma_g' => $suma, 'M' => $M,
+    return ['id' => $id, 'karta' => $p['karta'] ?? $id, 'wariant' => $p['wariant'] ?? '', 'nazwa' => $p['nazwa'], 'opis' => $p['opis'] ?? '', 'skladniki' => $skl, 'suma_g' => $suma, 'M' => $M,
         'czysty' => round(min($min === INF ? 0 : $min, $gr), 4), 'gorny' => round(min($max, $gr), 4),
         'katalizator' => $k['nazwa'] ?? '', 'dostepny' => isset($kat[$p['katalizator']]), 'produkt' => $k['produkt'] ?? '', 'wzor' => $k['wzor'] ?? [], 'wzor_tekst' => $k['wzor_tekst'] ?? ''];
 }
@@ -411,7 +446,7 @@ function alch_dokoncz() {
         }
         $r['czar'] = null; $r['odessany'] = true; unset($r['czesci']);
         $r['pochodzenie'] = [$sid => alch_masa($r['sklad'])];
-        $cel = alch_cel_dla($r['surowiec'] ?? '');
+        $cel = alch_cel_dla($r);
         if ($cel && !alch_nadmiar($r['sklad'], $cel['cel'])) $r['nazwa'] = alch_nazwa_gotowego($cel, $r);
         alch_zapisz_rzecz($r);
     }
@@ -514,14 +549,14 @@ function alch_wykonaj($akcja, $in) {
             alch_zapisz_rzecz($x);
             return $cz['nazwa'] . '. Próbka zaczyna drżeć.';
         case 'poloz_stos':
-            $p = alch_przepisy()[$s('przepis')] ?? null; $x = null;
+            $pid = alch_przepis_id($s('przepis')); $p = alch_przepis($pid); $x = null;
             foreach (($p['skladniki'] ?? []) as $q) if (isset($q['cel'])) $x = $q;
             if (!$x) alch_blad('Ten czar niczego nie układa na stole.');
             if (alch_czytaj('stol')) alch_blad('Na stole coś już leży.');
             $lista = alch_najlepsze(alch_zapasy()[$x['surowiec']] ?? [], $x['cel']);
             $ile = min((int)$s('ile'), count($lista));
             if ($ile < 1) alch_blad('Nie ma czego położyć.');
-            return alch_stos(array_slice($lista, 0, $ile))['nazwa'] . ' leży na stole.';
+            return alch_stos(array_slice($lista, 0, $ile), $pid)['nazwa'] . ' leży na stole.';
         case 'do_kociolka':
             if (!$r || !in_array($r['typ'], ['surowiec', 'kopczyk'], true)) alch_blad('Tego nie wsypie się do kociołka.');
             if ($naWadze) alch_blad('To leży na wadze. Najpierw zdejmij.');
@@ -552,7 +587,7 @@ function alch_wykonaj($akcja, $in) {
             alch_zapisz('kociolek', $k);
             return 'Kociołek zaczyna bulgotać.';
         case 'rzuc_przepis':
-            $p = alch_przepisy()[$s('przepis')] ?? null;
+            $pid = alch_przepis_id($s('przepis')); $p = alch_przepis($pid);
             if (!$p) alch_blad('Tego czaru nikt tu nie zna.');
             if (alch_czytaj('zaznaczenie')) alch_blad('Inny czar czeka już na wsypanie. Wsyp albo zgaś zaznaczenia.');
             $k = alch_kociolek();
@@ -560,13 +595,13 @@ function alch_wykonaj($akcja, $in) {
             $kat = alch_katalizatory();
             if (!isset($kat[$p['katalizator']])) alch_blad('Brakuje katalizatora do tego czaru.');
             $zap = alch_zapasy();
-            $v = alch_przepis_widok($s('przepis'), $p, $zap, $kat, alch_pojemnosc());
+            $v = alch_przepis_widok($pid, $p, $zap, $kat, alch_pojemnosc());
             $mn = min((float)str_replace(',', '.', $s('mnoznik')), $v['gorny']);
             if (!($mn > 0)) alch_blad('W Składzie nie ma z czego tego zrobić.');
             $poz = [];
             foreach ($p['skladniki'] as $i => $x) {
                 $brak = $mn * (float)$v['skladniki'][$i]['g'];
-                foreach (($zap[alch_klucz_zapasu($x)] ?? []) as $r2) {
+                foreach (($zap[alch_klucz_zapasu($x, $pid)] ?? []) as $r2) {
                     if ($brak <= 0.0005) break;
                     $g = min($brak, alch_masa($r2['sklad']));
                     $poz[] = ['id' => $r2['id'], 'nazwa' => $r2['nazwa'], 'g' => round($g, 3)];
@@ -574,13 +609,13 @@ function alch_wykonaj($akcja, $in) {
                 }
             }
             if (!$poz) alch_blad('W Składzie nie ma z czego tego zrobić.');
-            alch_zapisz('zaznaczenie', ['przepis' => $s('przepis'), 'mnoznik' => $mn, 'pozycje' => $poz, 'koniec' => $teraz + (float)$cfg['czas_czaru_s']]);
+            alch_zapisz('zaznaczenie', ['przepis' => $pid, 'mnoznik' => $mn, 'pozycje' => $poz, 'koniec' => $teraz + (float)$cfg['czas_czaru_s']]);
             return $p['nazwa'] . '. Czar przelicza Skład.';
         case 'wsyp_przepis':
             $z = alch_czytaj('zaznaczenie');
             if (!$z) alch_blad('Nic nie jest zaznaczone.');
             if ($z['koniec'] > $teraz) alch_blad('Czar jeszcze liczy.');
-            $p = alch_przepisy()[$z['przepis']] ?? null;
+            $p = alch_przepis($z['przepis']);
             $k = alch_kociolek();
             if (!$p || !empty($k['koniec']) || $k['sklad']) alch_blad('Kociołek musi być pusty.');
             if (!isset(alch_katalizatory()[$p['katalizator']])) alch_blad('Brakuje katalizatora do tego czaru.');
@@ -668,7 +703,7 @@ function alch_widok() {
     if ($st && ($r = alch_rzecz($st['id']))) {
         $stol = ['id' => $r['id'], 'nazwa' => $r['nazwa'], 'masa_g' => round(alch_masa($r['sklad']), 2), 'sklad' => alch_tabela_skladu($r['sklad']), 'czar' => null];
         if (!empty($r['czar'])) { $c = $tczary[$r['czar']['id']]; $stol['czar'] = ['nazwa' => $c['nazwa'], 'przyrzad' => $tprz[$c['przyrzad']] ?? []]; }
-        $cel = alch_cel_dla($r['surowiec'] ?? '');
+        $cel = alch_cel_dla($r);
         if ($cel) $stol['podpowiedz'] = ['przepis' => $cel['przepis'], 'cel_nazwa' => $cel['cel_nazwa'], 'mol' => (object)alch_nadmiar($r['sklad'], $cel['cel'])];
     }
     $waga = null; $w = alch_czytaj('waga');
@@ -682,7 +717,7 @@ function alch_widok() {
     foreach (alch_przepisy() as $id => $p) $przepisy[] = alch_przepis_widok($id, $p, $zap, $katDost, alch_pojemnosc());
     $z = alch_czytaj('zaznaczenie'); $zaznaczenie = null;
     if ($z) {
-        $zaznaczenie = ['przepis' => $z['przepis'], 'mnoznik' => $z['mnoznik'], 'gotowe' => $z['koniec'] <= microtime(true), 'pozycje' => $z['pozycje']];
+        $zaznaczenie = ['przepis' => alch_przepis_id($z['przepis']), 'mnoznik' => $z['mnoznik'], 'gotowe' => $z['koniec'] <= microtime(true), 'pozycje' => $z['pozycje']];
         foreach ($sklad as &$v) foreach ($z['pozycje'] as $x) if ($x['id'] === $v['id']) $v['zaznaczone_g'] = $x['g'];
         unset($v);
     }

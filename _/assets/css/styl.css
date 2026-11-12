@@ -212,6 +212,7 @@ body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infi
 .p span{font-family:var(--pismo-reka,Georgia,serif);font-style:normal;font-size:calc(15px * var(--pismo-reka-skala,1))}
 /* Panel czarów (Mysl.czary): lista czarów miejsca, "Rzuć czar" i pole do wpisania */
 #w .mcz-lista{list-style:none;margin:4px 0 2px;padding:6px 10px;border:1px dashed #2b1d1066;border-radius:4px;text-align:left;break-inside:avoid}
+#w .mcz-lista:empty{display:none}
 #w .mcz-lista li{margin:2px 0;line-height:1.35}
 #w .mcz-lista span{font-style:italic;opacity:.7;font-size:.9em}
 #w .mcz-czar{margin:0;padding:0;border:0;background:none;font-family:var(--pismo-tytul,Georgia,serif);font-weight:var(--pismo-tytul-waga,400);font-style:normal;font-size:17px;letter-spacing:.02em;text-decoration:underline dotted #2b1d1066;text-underline-offset:3px;cursor:pointer}

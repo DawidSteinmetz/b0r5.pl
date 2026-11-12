@@ -24,10 +24,17 @@
   const tabelaSkladu = sk => '<table class="mole"><tr><th>Pierwiastek</th><th>mol</th><th>g</th></tr>' +
     Object.entries(sk).map(([e, x]) => '<tr><td>' + esc(x.nazwa) + ' (' + esc(e) + ')</td><td>' + liczba(x.mol) + '</td><td>' + liczba(x.g, 2) + '</td></tr>').join('') + '</table>';
   const krotko = sk => Object.entries(sk).map(([e, x]) => esc(e) + ' ' + liczba(x.mol)).join(' · ');
-  /* proporcja atomów względem węgla; mapa: pierwiastek -> liczba moli */
+  /* proporcja atomów względem węgla; bez węgla (np. sól): główne pierwiastki (co najmniej 1% atomów) względem najmniej licznego z nich.
+     mapa: pierwiastek -> liczba moli */
   function proporcja(m) {
     const c = m.C || 0;
-    if (c <= 0) return 'Bez węgla nie ma proporcji.';
+    if (c <= 0) {
+      const suma = Object.values(m).reduce((a, b) => a + b, 0);
+      const gl = Object.entries(m).filter(([, x]) => x > 0 && x >= suma * .01).sort((a, b) => b[1] - a[1]);
+      if (gl.length < 2) return gl.length ? 'Sam ' + gl[0][0] + '.' : '';
+      const min = gl[gl.length - 1][1];
+      return gl.map(([e, x]) => e + ' ' + liczba(x / min, 2)).join(' : ');
+    }
     return ['C', 'H', 'O'].map(e => e + ' ' + liczba((m[e] || 0) / c, 2)).join(' : ');
   }
   const mole = sk => Object.fromEntries(Object.entries(sk).map(([e, x]) => [e, x.mol]));
@@ -162,13 +169,13 @@
         const polacz = '<button data-a="polacz" data-id="' + esc(r.id) + '" class="polacz' + (to ? ' on' : '') + '" title="' + (cel ? 'Połącz z tym' : to ? 'Anuluj łączenie' : 'Połącz z takim samym wyrobem') + '">' + (cel ? 'Połącz tu' : '⧉') + '</button>';
         return pr(r.nazwa, ilosc + ' · ' + esc(r.stopien) + ' · czystość ' + liczba(r.czystosc * 100, 1) + '% · skup: ' + esc(r.cena_t),
           '<input type="text" inputmode="decimal" placeholder="' + (r.ciecz ? 'l' : 'g') + '" data-porcja="' + esc(r.id) + '" data-mnoznik="' + (r.ciecz ? 1000 : 1) + '" aria-label="Wielkość porcji">' +
-          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad wyrob' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
+          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('na_stol', r.id, 'Na stół', !!s.stol || r.id === idWagi) + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad wyrob' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
       };
       const surowceAlf = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       const zaklad = (id, nazwa, lista, wiersz) => ({ id, nazwa, n: lista.length, zazn: lista.some(r => r.zaznaczone_g), h: lista.map(wiersz).join('') });
       const zakladki = s.kategorie.map(k => zaklad(k.id, k.nazwa, surowceAlf.filter(r => r.kat === k.id), wierszSurowca))
         .concat([zaklad('kopczyki', 'Kopczyki', s.sklad.filter(r => r.typ === 'kopczyk'), wierszKopczyka),
-          zaklad('wyroby', 'Wyroby', s.sklad.filter(r => r.typ === 'produkt'), wierszWyrobu),
+          zaklad('wyroby', 'Wyroby', s.sklad.filter(r => r.typ === 'produkt' && r.gdzie === 'sklad'), wierszWyrobu),
           zaklad('katalizatory', 'Katalizatory', s.katalizatory, k => pr(k.nazwa, esc(k.produkt) + ' · ' + esc(k.wzor), ''))])
         .filter(z => z.n > 0);
       if (!zakladki.some(z => z.id === zakladka)) zakladka = zakladki.length ? zakladki[0].id : '';
@@ -219,7 +226,7 @@
       const st = s.stol;
       if (!st) { el.innerHTML = '<p><i>Stół jest pusty. Połóż coś na nim ze spiżarni.</i></p>'; return; }
       const m = mole(st.sklad);
-      let h = '<p><b>' + esc(st.nazwa) + '</b>, ' + liczba(st.masa_g, 2) + ' g</p>';
+      let h = '<p><b>' + esc(st.nazwa) + '</b>, ' + liczba(st.masa_g, 2) + ' g' + (st.wyrob ? ' · ' + esc(st.stopien) + ' · czystość ' + liczba(st.czystosc * 100, 1) + '%' : '') + '</p>';
       const naGorze = '<div id="czp"></div>';                       // lista czarów na górze okna
       const sklad = tabelaSkladu(st.sklad) + '<p class="proporcja">' + proporcja(m) + '</p>';
       if (st.czar) {
@@ -244,7 +251,7 @@
           '<select id="jedn" aria-label="Jednostka"><option value="mol"' + (jedn === 'mol' ? ' selected' : '') + '>mol</option><option value="g"' + (jedn === 'g' ? ' selected' : '') + '>g</option></select></div>' +
           '<p id="pog" class="proporcja"></p>';
       }
-      h += '<div><button id="doKot">Do garnka</button><button id="odloz">Odłóż do spiżarni</button></div>';
+      h += '<div>' + (st.wyrob ? '' : '<button id="doKot">Do garnka</button>') + '<button id="odloz">Odłóż do spiżarni</button></div>';
       el.innerHTML = h;
       const czar = () => s.czary.find(c => c.id === wybrany);
       const pierw = () => czar().usuwa[0];
@@ -290,7 +297,7 @@
         akcja('czar', { czar: id, ulamek: u });
       };
       czary.wstaw($('#czp'), { czary: dostepne.map(c => ({ id: c.id, nazwa: c.nazwa, opis: c.pl })), wszystkie: s.czary, naCzar: rzucCzar, kom });
-      $('#doKot').onclick = () => akcja('do_kociolka', { id: st.id });
+      if ($('#doKot')) $('#doKot').onclick = () => akcja('do_kociolka', { id: st.id });
       $('#odloz').onclick = () => akcja('ze_stolu');
     }, s => [s.stol, s.czary.length]);
   }

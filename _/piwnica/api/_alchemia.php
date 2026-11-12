@@ -445,11 +445,23 @@ function alch_dokoncz() {
             if ($zostaje <= ALCH_MALO) unset($r['sklad'][$e]); else $r['sklad'][$e] = $zostaje;
             alch_dosyp_kopczyk($e, $x, $sid);
         }
-        $r['czar'] = null; $r['odessany'] = true; unset($r['czesci']);
+        $r['czar'] = null;
+        if ($r['typ'] === 'produkt') {
+            // Wyrób (np. brudna sól, czyli solanka) pamięta pełny skład z brudem: po czarze czystość liczy się od nowa z tego, co zostało.
+            $m0 = array_sum($r['pochodzenie'] ?? []); $m1 = alch_masa($r['sklad']);
+            if ($m0 > 0) foreach ($r['pochodzenie'] as $q => $m) $r['pochodzenie'][$q] = $m * $m1 / $m0;
+            $kat = alch_tabela('katalizatory')[$r['katalizator']] ?? null;
+            $wyn = $kat ? alch_uwarz($r['sklad'], $kat) : null;
+            $r['czystosc'] = $wyn ? round($wyn['czystosc'], 4) : 0.0;
+            $r['stopien'] = alch_stopien($r['czystosc'], $kat['rodzaj'] ?? 'm');
+            alch_zapisz_rzecz($r);
+        } else {
+        $r['odessany'] = true; unset($r['czesci']);
         $r['pochodzenie'] = [$sid => alch_masa($r['sklad'])];
         $cel = alch_cel_dla($r);
         if ($cel && !alch_nadmiar($r['sklad'], $cel['cel'])) $r['nazwa'] = alch_nazwa_gotowego($cel, $r);
         alch_zapisz_rzecz($r);
+        }
     }
 
     $w = alch_czytaj('waga');
@@ -524,7 +536,7 @@ function alch_wykonaj($akcja, $in) {
     $naWadze = $r && $w && $w['id'] === $r['id'];
     switch ($akcja) {
         case 'na_stol':
-            if (!$r || $r['typ'] !== 'surowiec' || $r['gdzie'] !== 'sklad') alch_blad('Tego nie da się położyć na stole.');
+            if (!$r || !in_array($r['typ'], ['surowiec', 'produkt'], true) || $r['gdzie'] !== 'sklad') alch_blad('Tego nie da się położyć na stole.');
             if ($naWadze) alch_blad('To leży na wadze. Najpierw zdejmij.');
             if (alch_czytaj('stol')) alch_blad('Na stole coś już leży.');
             $r['gdzie'] = 'stol'; alch_zapisz_rzecz($r); alch_zapisz('stol', ['id' => $r['id']]);
@@ -647,7 +659,7 @@ function alch_wykonaj($akcja, $in) {
             alch_zapisz_rzecz($r); alch_zapisz_rzecz($czesc);
             return 'Oddzielona porcja: ' . alch_ile($g, alch_tabela('katalizatory')[$r['katalizator']] ?? []) . '.';
         case 'sprzedaj':
-            if (!$r || $r['typ'] !== 'produkt') alch_blad('Tego zielarz nie kupi.');
+            if (!$r || $r['typ'] !== 'produkt' || $r['gdzie'] !== 'sklad') alch_blad('Tego zielarz nie kupi.');
             $cena = alch_cena($r, rynek_stan());
             dodaj_zdarzenie('sprzedano', $r['nazwa'], (string)($in['gracz'] ?? ''), ['cena' => $cena]);
             alch_usun_rzecz($r['id']);
@@ -703,6 +715,7 @@ function alch_widok() {
     $stol = null; $st = alch_czytaj('stol');
     if ($st && ($r = alch_rzecz($st['id']))) {
         $stol = ['id' => $r['id'], 'nazwa' => $r['nazwa'], 'masa_g' => round(alch_masa($r['sklad']), 2), 'sklad' => alch_tabela_skladu($r['sklad']), 'czar' => null];
+        if ($r['typ'] === 'produkt') { $stol['wyrob'] = true; $stol['czystosc'] = $r['czystosc']; $stol['stopien'] = $r['stopien']; }
         if (!empty($r['czar'])) { $c = $tczary[$r['czar']['id']]; $stol['czar'] = ['nazwa' => $c['nazwa'], 'przyrzad' => $tprz[$c['przyrzad']] ?? []]; }
         $cel = alch_cel_dla($r);
         if ($cel) $stol['podpowiedz'] = ['przepis' => $cel['przepis'], 'cel_nazwa' => $cel['cel_nazwa'], 'mol' => (object)alch_nadmiar($r['sklad'], $cel['cel'])];

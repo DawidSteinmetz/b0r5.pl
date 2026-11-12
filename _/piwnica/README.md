@@ -60,3 +60,5 @@ Nie ma przepisu, jest tylko `przedmioty/011-notatka-o-soli.md`. Katalizator `sol
 
 Kociołek gotuje każdą proporcję. Czystość to masa NaCl, jaką da się ułożyć, przez masę całości, więc byle jak wrzucona soda ze spirytusem daje bardzo brudną sól (ok. 20%). Lepiej jest odessać na stole węgiel, wodór i tlen. Najlepiej: nieznany Henrykowi czar *Separatio Salis Crystallinum* (z marginesu notatki) wyciąga sód i chlor na kopczyki, a te wsypuje się do kociołka po równo w molach (100%). Azotu z salmiaku zwykłe czary nie ruszą.
 
+Odparowanie: każdy wyrób można położyć na stole („Na stół” w zakładce Wyroby). Wyrób pamięta pełny skład z brudem, więc czar wysysa z niego jak z surowca, a czystość i stopień liczą się od nowa. Brudna sól z sody i spirytusu (ok. 25%) po odessaniu wodoru, tlenu i węgla ma ok. 99,7%. Wyrobu leżącego na stole nie da się sprzedać ani wsypać do kociołka.
+

@@ -323,6 +323,58 @@
     modal.classList.add('on');
   }
 
+  /* Echo wspomnienia: myśloodsiewnia przypomina sobie drogę pergaminu. W miejscu, gdzie był kilka sekund wcześniej,
+     wyłania się jego półprzezroczysty duch, który płynie za nim i gaśnie. Przy dłuższym najechaniu myszą,
+     a czasem samo z siebie. */
+  function echo(o) {
+    if (!RUCH || !o.slad || o.slad.length < 6 || o.acc || !o.el.isConnected) return;
+    const teraz = performance.now(), dawno = o.slad.find(p => teraz - p[0] < 4500) || o.slad[0];
+    if (Math.hypot(dawno[1] - o.x, dawno[2] - o.y) < 25) return;      // stał w miejscu: nie ma czego wspominać
+    const g = o.el.cloneNode(true);
+    g.classList.add('echo'); g.classList.remove('przywolany', 'nowy'); g.removeAttribute('tabindex'); g.setAttribute('aria-hidden', 'true');
+    o.el.parentNode.insertBefore(g, o.el);
+    const sk = (p) => ({ translate: p[1] + 'px ' + p[2] + 'px', rotate: p[3] + 'deg' });
+    g.animate([Object.assign({ opacity: 0 }, sk(dawno)), { opacity: .42, offset: .3 }, Object.assign({ opacity: 0 }, sk([0, o.x, o.y, o.a]))],
+      { duration: 2600, easing: 'ease-in-out', fill: 'forwards' }).finished.then(() => g.remove(), () => g.remove());
+  }
+  setInterval(() => {                                    // czasem wspomnienie wraca samo, mniej więcej raz na minutę
+    if (document.hidden || modal.classList.contains('on') || Math.random() > .5) return;
+    const widoczne = items.filter(o => !o.acc && o.x > 0 && o.y > 0 && o.x < innerWidth - 150 && o.y < innerHeight - 200);
+    if (widoczne.length) echo(widoczne[Math.floor(Math.random() * widoczne.length)]);
+  }, 30000);
+
+  /* Strach przed zamknięciem: w pełnym ekranie (F11), kiedy mysz podchodzi do górnej krawędzi, gdzie przeglądarka
+     pokazuje przycisk wyjścia, wszystko zaczyna drżeć (tym mocniej, im dłużej mysz tam zostaje) i słychać szept.
+     Kiedy mysz odejdzie, drżenie powoli cichnie. */
+  const pelnyEkran = () => matchMedia('(display-mode: fullscreen)').matches || (Math.abs(innerHeight - screen.height) < 3 && Math.abs(innerWidth - screen.width) < 3);
+  const SZEPTY = ['nie zamykaj mnie…', 'jeszcze nie…', 'zostań…', 'nie odchodź…', 'tu jeszcze tyle wspomnień…'];
+  let lek = 0, lekCel = 0, lekPetla = 0, szept = null;
+  function lekaj() {
+    lek += (lekCel - lek) * (lekCel > lek ? .035 : .02);
+    if (lekCel === 0 && lek < .02) lek = 0;
+    body.style.setProperty('--lek', lek.toFixed(3));
+    body.classList.toggle('lek', lek > .02);
+    if (szept) szept.style.opacity = Math.min(1, lek * 1.6).toFixed(2);
+    if (lek > 0 || lekCel > 0) lekPetla = requestAnimationFrame(lekaj); else { lekPetla = 0; if (szept) { szept.remove(); szept = null; } }
+  }
+  function boiSie(tak) {
+    const cel = tak ? 1 : 0;
+    if (cel === lekCel) return;
+    lekCel = cel;
+    if (tak && !szept) {
+      szept = document.createElement('div'); szept.id = 'szept'; szept.setAttribute('aria-hidden', 'true');
+      szept.textContent = SZEPTY[Math.floor(Math.random() * SZEPTY.length)];
+      body.appendChild(szept);
+    }
+    if (!lekPetla) lekPetla = requestAnimationFrame(lekaj);
+  }
+  addEventListener('mousemove', e => {
+    if (!pelnyEkran()) { if (lekCel) boiSie(false); return; }
+    if (e.clientY < 14) boiSie(true); else if (e.clientY > 70) boiSie(false);
+  });
+  document.addEventListener('mouseleave', e => { if (pelnyEkran() && e.clientY <= 2) boiSie(true); });
+  document.addEventListener('mouseenter', e => { if (e.clientY > 70) boiSie(false); });
+
   /* lewitujące elementy */
   const items = [], znane = new Set();
   /* Rodzaje wbudowane. Pokój dokłada własne przez Mysl.rodzaj(nazwa, {v, bob, klasa, ikona, etykieta, otworz}). */
@@ -364,8 +416,8 @@
         a: (Math.random() - .5) * (kind === 'ksiazka' ? 24 : 40), va: (Math.random() - .5) * .12,
         ph: i * 2, per: 1500 + Math.random() * 1500, bob: P.bob
       };
-      el.addEventListener('pointerenter', () => { o.hover = true; });
-      el.addEventListener('pointerleave', () => { o.hover = false; });
+      el.addEventListener('pointerenter', () => { o.hover = true; clearTimeout(o.echoT); o.echoT = setTimeout(() => { if (o.hover) echo(o); }, 1100); });
+      el.addEventListener('pointerleave', () => { o.hover = false; clearTimeout(o.echoT); });
       el.addEventListener('click', () => otworz(o));
       items.push(o);
     });
@@ -384,6 +436,10 @@
         o.el.style.translate = o.x + 'px ' + o.y + 'px';
         o.el.style.rotate = o.a + 'deg';
         continue;
+      }
+      if (now - (o.sladT || 0) > 250) {                 // ślad drogi do echa wspomnienia: punkt co ćwierć sekundy, ok. 6 s wstecz
+        o.sladT = now; (o.slad = o.slad || []).push([now, o.x, o.y, o.a]);
+        if (o.slad.length > 26) o.slad.shift();
       }
       o.h += ((o.hover ? 0 : 1) - o.h) * 0.12 * dt;
       const s = speed * o.h * dt;

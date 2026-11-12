@@ -180,3 +180,17 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
 #przejscie.gesta .cel{opacity:.85;filter:blur(0);transition-delay:calc(var(--ms,2.6s) * .35)}
 #przejscie.rzednie .cel{transition-duration:calc(var(--ms,3.6s) * .45);transition-delay:0s}
 @media (prefers-reduced-motion:reduce){#przejscie .kleb{animation:none}}
+/* Echo wspomnienia: duch pergaminu płynący jego dawną drogą (tworzy rdzen.js) */
+.echo{pointer-events:none;z-index:0;opacity:0;transition:none;background:radial-gradient(circle at 45% 35%,#f3f6fa,#c4d1de 60%,#93a6bb);filter:var(--rough,url(#rough0));box-shadow:0 0 36px #dfe7f088}
+/* Strach przed zamknięciem (F11, mysz przy górnej krawędzi): drżenie rośnie z --lek (0–1) */
+@keyframes drzy{0%{transform:none}20%{transform:translate(calc(var(--lek,0) * -2.4px),calc(var(--lek,0) * 1.6px)) rotate(calc(var(--lek,0) * -.9deg))}
+  40%{transform:translate(calc(var(--lek,0) * 1.8px),calc(var(--lek,0) * -2.2px)) rotate(calc(var(--lek,0) * .7deg))}
+  60%{transform:translate(calc(var(--lek,0) * -1.4px),calc(var(--lek,0) * -1.2px)) rotate(calc(var(--lek,0) * .4deg))}
+  80%{transform:translate(calc(var(--lek,0) * 2.2px),calc(var(--lek,0) * 1.9px)) rotate(calc(var(--lek,0) * -.6deg))}100%{transform:none}}
+body.lek .p,body.lek .k{animation:drzy .13s linear infinite}
+body.lek .p:nth-child(3n),body.lek .k:nth-child(3n){animation-duration:.11s;animation-direction:reverse}
+body.lek .p:nth-child(3n+1),body.lek .k:nth-child(3n+1){animation-duration:.15s}
+body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infinite}
+#szept{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top,0px) + 54px);z-index:9;text-align:center;pointer-events:none;opacity:0;
+  color:#e8eef5;font:italic 22px/1.2 Georgia,"Times New Roman",serif;letter-spacing:.08em;text-shadow:0 0 14px #dfe7f0aa,0 0 32px #9fb4cc88;animation:drzy .2s linear infinite}
+@media (prefers-reduced-motion:reduce){body.lek .p,body.lek .k,body.lek .corner,body.lek #radio,body.lek #sheet,#szept{animation:none}}

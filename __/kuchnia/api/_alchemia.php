@@ -396,7 +396,8 @@ function alch_dostawy() {
         $d = json_decode((string)$z['dane'], true) ?: [];
         $nowy = (int)$z['id'];
         if (($d['dom'] ?? 'henryk') !== 'henryk') continue;
-        for ($i = 0; $i < (int)($d['n'] ?? 0); $i++) alch_nowy_surowiec((string)$z['cel']);
+        $szt = max(1, (int)($c['towary'][(string)$z['cel']]['sztuk'] ?? 1)); // porcja może mieć kilka sztuk (worek buraków)
+        for ($i = 0; $i < (int)($d['n'] ?? 0) * $szt; $i++) alch_nowy_surowiec((string)$z['cel']);
     }
     if ($nowy !== $ost) alch_zapisz('dostawy', ['id' => $nowy]);
 }

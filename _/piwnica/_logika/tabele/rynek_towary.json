@@ -1,0 +1,6 @@
+{
+  "_opis": "Towary dokładane do księgi rachunkowej obok tych z _logika/rynek.json (tamten plik jest tylko na serwerze i wygrywa przy tym samym kluczu). baza: cena porcji w pkt (1 pkt = 5 fenigów). sztuk: ile sztuk surowca jest w porcji.",
+  "towary": {
+    "burak-cukrowy": { "nazwa": "Buraki cukrowe (worek, 10 szt.)", "baza": 4, "sztuk": 10 }
+  }
+}

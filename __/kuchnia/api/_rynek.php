@@ -7,6 +7,11 @@
 require_once dirname(__DIR__, 2) . '/api/_baza.php';
 if (!defined('KAT_POKOJU')) define('KAT_POKOJU', dirname(__DIR__));
 
+// Dodatkowe towary trzymane w repozytorium (bez kluczy). Pole "sztuk": ile sztuk surowca przychodzi w jednej porcji (np. worek buraków).
+function rynek_towary_jawne() {
+    $t = wczytaj_json(KAT_POKOJU . '/_logika/tabele/rynek_towary.json');
+    return is_array($t['towary'] ?? null) ? $t['towary'] : [];
+}
 function rynek_cfg() {
     static $c = false;
     if ($c === false) {
@@ -17,7 +22,8 @@ function rynek_cfg() {
             'waluta' => array_merge(['fenigi_za_pkt' => 5], is_array($r['waluta'] ?? null) ? $r['waluta'] : []),
             'zakup' => array_merge(['zwloka_s' => 180, 'max_pozycja' => 4, 'max_razem' => 12], is_array($r['zakup'] ?? null) ? $r['zakup'] : []),
             'cena' => array_merge(['min' => 0.5, 'max' => 2.5, 'K' => 6, 'polokres_h' => 72], is_array($r['cena'] ?? null) ? $r['cena'] : []),
-            'towary' => is_array($r['towary'] ?? null) ? $r['towary'] : [],
+            // towary z rynek.json (tajny, tylko na serwerze) + jawne z tabele/rynek_towary.json; przy tym samym towarze wygrywa rynek.json
+            'towary' => (is_array($r['towary'] ?? null) ? $r['towary'] : []) + rynek_towary_jawne(),
             'skup' => array_merge(['min' => 0.4, 'max' => 1.3, 'K' => 2, 'polokres_h' => 72], is_array($r['skup'] ?? null) ? $r['skup'] : []),
             'domy' => is_array($r['domy'] ?? null) ? $r['domy'] : [],
         ];

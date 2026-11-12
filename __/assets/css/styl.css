@@ -196,3 +196,13 @@ body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infi
 @media (prefers-reduced-motion:reduce){body.lek .p,body.lek .k,body.lek .corner,body.lek #radio,body.lek #sheet,#szept{animation:none}}
 .rozblysk{position:fixed;inset:0;z-index:40;pointer-events:none;opacity:0;
   background:radial-gradient(ellipse at 50% 18%,#fffef8,#fff8e6 30%,#e9f0f8 60%,#cdd9e6)}
+/* Numery stron w rozłożonym zeszycie: w dolnych zewnętrznych rogach; strzałki przewracania na środku zewnętrznych krawędzi */
+.nrs{position:absolute;bottom:3.6%;z-index:1;color:var(--ink);font:italic 15px Georgia,"Times New Roman",serif;opacity:.7;pointer-events:none}
+.nrs:empty{display:none}
+#nrL{left:4.5%}
+#nrP{right:4.5%}
+#sheet.rozklad #pager{left:0;right:0;top:0;bottom:0;height:auto;pointer-events:none}
+#sheet.rozklad #pager button{position:absolute;top:calc(50% - 17px);pointer-events:auto}
+#sheet.rozklad #prev{left:1.1%}
+#sheet.rozklad #next{right:1.1%}
+#sheet.rozklad #pnr{display:none}

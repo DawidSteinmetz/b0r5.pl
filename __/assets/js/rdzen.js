@@ -121,6 +121,7 @@
     '<button id="zam" type="button" aria-label="Zamknij"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
     '<button id="obr" type="button" aria-label="Obróć kartkę" title="Obróć kartkę"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M18.2 2.8v4.3h-4.3"/>' +
     '<path class="gw" d="M11 8.6l.75 2.15 2.15.75-2.15.75L11 14.4l-.75-2.15-2.15-.75 2.15-.75zM15.6 13.6l.4 1.1 1.1.4-1.1.4-.4 1.1-.4-1.1-1.1-.4 1.1-.4z"/></svg></button>' +
+    '<span id="nrL" class="nrs"></span><span id="nrP" class="nrs"></span>' +
     '<div id="pager" hidden>' +
     '<button id="prev" type="button" aria-label="Poprzednia strona"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>' +
     '<span id="pnr"></span>' +
@@ -179,7 +180,7 @@
      Treść, która się nie mieści, przechodzi na kolejne strony (kolumny CSS, więc działa też
      na treści odświeżanej w tle). Przycisk strzałki przewraca stronę. */
   let strona = 0, stron = 1, auto = false;
-  const pager = $('#pager'), pnr = $('#pnr'), bPrev = $('#prev'), bNext = $('#next');
+  const pager = $('#pager'), pnr = $('#pnr'), bPrev = $('#prev'), bNext = $('#next'), nrL = $('#nrL'), nrP = $('#nrP');
   function arkusz(klasa) {
     auto = klasa !== 'ks';                    // krótkie: zacznij od A5, a gdy się nie mieści, przejdź na A4
     sheet.className = klasa === 'ks' ? 'a4' : 'a5';
@@ -202,7 +203,15 @@
     strona = Math.min(strona, stron - 1);
     w.style.transform = 'translateX(' + (-strona * krok) + 'px)';
     pager.hidden = stron < 2;
-    pnr.textContent = (strona + 1) + ' / ' + stron;
+    if (sheet.classList.contains('rozklad')) {
+      // rozłożony zeszyt: numer nieparzysty w lewym dolnym rogu, parzysty w prawym (pusta prawa strona bez numeru)
+      const kol = (cw - odstep) / 2, szpalt = Math.max(1, Math.round((w.scrollWidth + odstep) / (kol + odstep)));
+      nrL.textContent = 2 * strona + 1; nrP.textContent = 2 * strona + 2 <= szpalt ? 2 * strona + 2 : '';
+      pnr.textContent = '';
+    } else {
+      nrL.textContent = nrP.textContent = '';
+      pnr.textContent = (strona + 1) + ' / ' + stron;
+    }
     bPrev.style.visibility = strona > 0 ? 'visible' : 'hidden';
     bNext.style.visibility = strona < stron - 1 ? 'visible' : 'hidden';
   }

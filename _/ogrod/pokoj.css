@@ -73,7 +73,7 @@ body.o-deszcz.o-mzawka::after{opacity:.45;animation-duration:.9s}
 body.o-snieg::after{background-image:radial-gradient(circle,#fffe 1.2px,transparent 1.6px),radial-gradient(circle,#fffb 1px,transparent 1.4px);background-size:90px 90px,140px 140px;background-position:0 0,40px 60px;animation:snieg 9s linear infinite}
 @keyframes deszcz{to{background-position:-40px 160px}}
 @keyframes snieg{to{background-position:30px 90px,10px 200px}}
-body.o-mgla .fog{opacity:.95;filter:blur(28px)}
+body.o-mgla .fog{opacity:.95}
 body.o-noc #sky{background:#05081588}
 @media (prefers-reduced-motion:reduce){body.o-deszcz::after,body.o-snieg::after,#w .plan .grz.czar .plama{animation:none}}
 /* w rozłożonym zeszycie: opis i plan na lewej stronie, szczegóły grządki i czary na prawej */

@@ -4,9 +4,10 @@ html,body{height:100%;margin:0;overflow:hidden}
 body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);color:var(--text);font-family:Georgia,"Times New Roman",serif;color-scheme:dark;-webkit-tap-highlight-color:transparent}
 
 /* mgła w tle */
-.fog{position:fixed;inset:-20%;pointer-events:none;filter:blur(40px);opacity:.55;animation:drift 60s linear infinite}
-.fog.a{background:radial-gradient(40% 30% at 20% 30%,#9fb4cc55,transparent),radial-gradient(35% 25% at 75% 60%,#8aa0bb55,transparent),radial-gradient(30% 30% at 50% 85%,#b7c6d655,transparent)}
-.fog.b{animation-duration:90s;animation-direction:reverse;opacity:.4;background:radial-gradient(45% 30% at 70% 25%,#a9bbd055,transparent),radial-gradient(40% 30% at 25% 70%,#93a8c255,transparent)}
+/* mgła w tle: miękkie gradienty zamiast rozmycia filtrem (filtr trzeba było liczyć w każdej klatce) */
+.fog{position:fixed;inset:-20%;pointer-events:none;opacity:.55;animation:drift 60s linear infinite;will-change:transform}
+.fog.a{background:radial-gradient(48% 38% at 20% 30%,#9fb4cc55,#9fb4cc3c 30%,#9fb4cc1c 60%,#9fb4cc08 82%,#9fb4cc00),radial-gradient(43% 33% at 75% 60%,#8aa0bb55,#8aa0bb3c 30%,#8aa0bb1c 60%,#8aa0bb08 82%,#8aa0bb00),radial-gradient(38% 38% at 50% 85%,#b7c6d655,#b7c6d63c 30%,#b7c6d61c 60%,#b7c6d608 82%,#b7c6d600)}
+.fog.b{animation-duration:90s;animation-direction:reverse;opacity:.4;background:radial-gradient(53% 38% at 70% 25%,#a9bbd055,#a9bbd03c 30%,#a9bbd01c 60%,#a9bbd008 82%,#a9bbd000),radial-gradient(48% 38% at 25% 70%,#93a8c255,#93a8c23c 30%,#93a8c21c 60%,#93a8c208 82%,#93a8c200)}
 @keyframes drift{from{transform:translateX(-6%) scale(1.05)}50%{transform:translateX(6%) scale(1.15)}to{transform:translateX(-6%) scale(1.05)}}
 
 #sky{position:fixed;inset:0;overflow:hidden}
@@ -23,7 +24,7 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
 .p:hover{scale:1.07;z-index:3}
 
 /* książka: pionowy napis na grzbiecie */
-.k{position:absolute;left:0;top:0;width:var(--w);height:var(--h);display:flex;align-items:center;justify-content:center;border-radius:2px 3px 3px 2px;cursor:pointer;user-select:none;will-change:translate,rotate;opacity:.92;transition:opacity 2.5s,scale .4s,box-shadow .4s;
+.k{position:absolute;left:0;top:0;width:var(--w);height:var(--h);display:flex;align-items:center;justify-content:center;border-radius:2px 3px 3px 2px;cursor:pointer;user-select:none;will-change:translate,rotate,scale;opacity:.92;transition:opacity 2.5s,scale .4s,box-shadow .4s;
   background:linear-gradient(90deg,hsl(var(--hue) 34% 12%),hsl(var(--hue) 38% 24%) 18%,hsl(var(--hue) 34% 18%) 80%,hsl(var(--hue) 30% 9%));
   box-shadow:inset 0 0 6px #000a,0 0 16px #bcd0e625}
 .k::before,.k::after{content:"";position:absolute;left:0;right:0;height:3px;background:hsl(var(--hue) 50% 55% / .5)}
@@ -168,7 +169,7 @@ body{background:radial-gradient(ellipse at 50% 40%,var(--bg1),var(--bg2) 75%);co
 #przejscie.gesta{opacity:1;pointer-events:auto;cursor:wait}
 #przejscie.od-razu,#przejscie.od-razu *{transition:none!important}
 #przejscie .kleb{position:absolute;left:calc(50% - 40vmax);top:calc(50% - 40vmax);width:80vmax;height:80vmax;border-radius:50%;
-  background:radial-gradient(circle,#dfe7f0d9,#c2cfdc80 38%,#b4c3d300 68%);filter:blur(28px);opacity:.2;
+  background:radial-gradient(circle,#dfe7f0d9,#d2dce6b0 22%,#c2cfdc70 42%,#b4c3d330 58%,#b4c3d30c 68%,#b4c3d300 74%);opacity:.2;will-change:transform,opacity;
   transform:translate(var(--x),var(--y)) scale(.55);transition:transform var(--ms,2.6s) cubic-bezier(.3,0,.25,1),opacity var(--ms,2.6s) ease-in-out;
   animation:kleb var(--dryf,12s) ease-in-out var(--opozn,0s) infinite alternate}
 #przejscie.gesta .kleb{opacity:1;transform:translate(calc(var(--x) * .2),calc(var(--y) * .2)) scale(1.15)}

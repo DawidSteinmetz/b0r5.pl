@@ -30,3 +30,19 @@
 #w .akcje{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;break-inside:avoid}
 #w .akcje button{margin:0;padding:3px 10px;font-size:13px}
 @media (prefers-reduced-motion:reduce){#w .notes td.swiezy,#w #ucho.slucha{animation:none}}
+/* formularz do kości: wiersze kategorii, kolumny graczy */
+#w table.kosci{table-layout:auto;font-size:16px}
+#w .kosci th.kat{text-align:left;font-weight:normal;font-style:italic;font-size:15px;padding:0 8px 0 0;white-space:nowrap;border-bottom:0}
+#w .kosci th.kat small{opacity:.6;font-size:.8em}
+#w .kosci thead th{min-width:3.5em}
+#w .kosci tr.sum td,#w .kosci tr.sum th{border-top:1px solid #2b1d1066;font-style:normal;font-size:14px;opacity:.85}
+#w .kosci tr.sum + tr:not(.sum) td,#w .kosci tr.sum + tr:not(.sum) th{border-top:2px solid #2b1d1099}
+#w .kosci .skr{opacity:.55}
+/* zagęszczenie, żeby cały formularz kości zmieścił się na jednej stronie kartki */
+#w .kosci td{height:21px;line-height:21px}
+#w table.kosci{background:repeating-linear-gradient(transparent 0 20px,#2b6ca033 20px 21px);font-size:15px;margin:2px 0 4px}
+#w .kosci th.kat{font-size:14px;line-height:21px}
+#w .kosci thead th{padding:0 4px 2px}
+#w .kosci tfoot td{font-size:16px;padding-top:0}
+#w .tekst{font-size:.9em;line-height:1.35}
+#w .tekst p{margin:.3em 0}

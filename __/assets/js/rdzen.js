@@ -232,6 +232,17 @@
     const n = Math.max(0, Math.min(stron - 1, strona + d));
     if (n !== strona) { strona = n; paginuj(); }
   }
+  // Przeglądarka sama przesuwa kartkę, kiedy pole tekstowe z dalszej strony dostaje fokus (albo przy szukaniu w tekście).
+  // To przesunięcie omija strony, więc kartka stawała krzywo: zamiast niego przewróć na stronę, na której jest to miejsce.
+  const widok = $('#view');
+  widok.addEventListener('scroll', () => {
+    const x = widok.scrollLeft; if (!x) return;
+    widok.scrollLeft = 0;
+    const odstep = parseFloat(getComputedStyle(w).columnGap) || 0, krok = w.clientWidth + odstep;
+    if (!krok) return;
+    strona = Math.max(0, Math.min(stron - 1, Math.floor((strona * krok + x + w.clientWidth / 2) / krok)));
+    paginuj();
+  });
   let ramka = 0;
   new MutationObserver(() => { cancelAnimationFrame(ramka); ramka = requestAnimationFrame(paginuj); })
     .observe(w, { childList: true, subtree: true, characterData: true });

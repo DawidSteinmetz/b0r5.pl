@@ -71,26 +71,66 @@
     }
     return naj && wynik <= Math.max(1, Math.floor(bezOgonkow(naj).length / 3)) ? naj : null;
   }
-  // Zwraca {akcja, dane} albo {blad}; "wymaga" = czy bez "nota hoc" to nie jest zaklęcie (tak dla mowy).
-  function rozbierz(tekst, gracze, wymaga) {
-    let t = bezOgonkow(tekst).replace(/[,.:;!?]/g, ' ').replace(/\s+/g, ' ').trim();
-    const m = t.match(PRZEDROSTEK);
-    if (m) t = t.slice(m[0].length).trim(); else if (wymaga) return null;
+  // Kategorie kości i to, jak bywają wypowiadane (bez ogonków). Dłuższe warianty najpierw.
+  const KATEGORIE = [
+    ['trzy', ['trzy jednakowe', 'trzy takie same', 'trzy identyczne']], ['cztery', ['cztery jednakowe', 'cztery takie same', 'kareta', 'karete']],
+    ['maly', ['maly strit', 'maly strajt', 'maly street', 'malego strita', 'maly']], ['duzy', ['duzy strit', 'duzy strajt', 'duzy street', 'duzego strita', 'duzy']],
+    ['jedynki', ['jedynki', 'jedynek', 'jedynka']], ['dwojki', ['dwojki', 'dwojek', 'dwojka']], ['trojki', ['trojki', 'trojek', 'trojka']],
+    ['czworki', ['czworki', 'czworek', 'czworka']], ['piatki', ['piatki', 'piatek', 'piatka']], ['szostki', ['szostki', 'szostek', 'szostka']],
+    ['full', ['pelny dom', 'full', 'fula', 'ful', 'fulla']], ['general', ['general', 'generala', 'jazzy', 'yahtzee', 'jaci']], ['szansa', ['szansa', 'szanse', 'szansy']]
+  ];
+  const SKRESL = /^(skresl|skreslam|skreslone|skreslic|zero|nic|krzyzyk)$/;
+  // Lusor Primus/Secundus/Tertius/Quartus (i dalej): gracz na danym miejscu
+  const LUSOR = /^(lusor|luzor|lusora|luzora|lu sor|loser|luser|lizor)\s+(primus|prymus|primu|prima|secundus|sekundus|secundu|sekundu|tertius|tercjus|tercius|terciu|quartus|kwartus|kwartu|quintus|kwintus|sextus|sekstus|septimus|septymus|octavus|oktawus)\s+(.+)$/;
+  const MIEJSCA = { primus: 1, prymus: 1, primu: 1, prima: 1, secundus: 2, sekundus: 2, secundu: 2, sekundu: 2, tertius: 3, tercjus: 3, tercius: 3, terciu: 3,
+    quartus: 4, kwartus: 4, kwartu: 4, quintus: 5, kwintus: 5, sextus: 6, sekstus: 6, septimus: 7, septymus: 7, octavus: 8, oktawus: 8 };
+  const duza = s => s.charAt(0).toUpperCase() + s.slice(1);
+  // Zwraca {akcja, dane} albo {blad} albo null (to nie zaklęcie). "glos": przy mowie bez "Nota hoc" przyjmuje tylko
+  // zdanie, które w całości jest czarem formularza albo czarem gracza (żeby rozmowa przy stole niczego nie wpisała).
+  function rozbierz(tekst, notes, glos) {
+    const gracze = notes.gracze || notes;
+    const oryg = String(tekst).replace(/[,.:;!?]/g, ' ').replace(/\s+/g, ' ').trim();
+    let t = bezOgonkow(oryg);
+    const m = t.match(PRZEDROSTEK), zPrzedrostkiem = !!m;
+    let o = oryg;
+    if (m) { o = o.split(' ').slice(m[0].trim().split(/\s+/).length).join(' '); t = t.slice(m[0].length).trim(); }
+    if (/^(mille|mile|mila|mili|milla|mil)$/.test(t)) return { akcja: 'nowa', dane: { typ: 'mille' } };
+    if (/^(alea|aleja|alei|ale a|alee|allea)$/.test(t)) return { akcja: 'nowa', dane: { typ: 'alea' } };
+    const lu = t.match(LUSOR);
+    if (lu) {
+      const im = o.split(' ').slice(t.split(' ').length - lu[3].split(' ').length).join(' ');
+      return { akcja: 'gracz_nr', dane: { nr: MIEJSCA[lu[2]], imie: duza(im) } };
+    }
+    if (glos && !zPrzedrostkiem) return null;
     if (!t) return { blad: 'Pióro czeka na resztę zaklęcia.' };
     if (/^(deleo|deleto|delo|cofnij|wykresl|usun)\b/.test(t)) return { akcja: 'cofnij' };
     if (/^(nova|nowa|novo|nowe)\b/.test(t)) {
-      const imiona = t.replace(/^(nova|nowa|novo|nowe)\s*(gra|partia)?\s*/, '').split(/\s+(?:i\s+)?|\s*,\s*/).filter(Boolean);
-      return { akcja: 'nowa', dane: imiona.length ? { gracze: imiona.map(s => s[0].toUpperCase() + s.slice(1)) } : {} };
+      const imiona = o.split(' ').slice(1).join(' ').replace(/^(gra|partia)\s*/i, '').split(/\s+(?:i\s+)?|\s*,\s*/).filter(x => x && !/^i$/i.test(x));
+      return { akcja: 'nowa', dane: imiona.length ? { gracze: imiona.map(duza) } : {} };
     }
     const slowa = t.split(' ');
-    // imię może mieć dwa słowa ("Pan Borsuk"): próbuj od najdłuższego
-    for (let k = 1; k <= Math.min(3, slowa.length - 1); k++) {
-      const im = ktoTo(slowa.slice(0, k).join(' '), gracze), pkt = liczba(slowa.slice(k));
-      if (im && pkt !== null) return { akcja: 'wpisz', dane: { imie: im, pkt } };
+    for (let k = 1; k <= Math.min(3, slowa.length); k++) {
+      const im = ktoTo(slowa.slice(0, k).join(' '), gracze);
+      if (!im) continue;
+      const reszta = slowa.slice(k);
+      if (notes.typ === 'alea') {
+        const r = reszta.join(' ');
+        for (const [kat, warianty] of KATEGORIE) for (const war of warianty) {
+          if (r !== war && !r.startsWith(war + ' ')) continue;
+          const po = r.slice(war.length).trim().split(' ').filter(Boolean);
+          if (po.length === 1 && SKRESL.test(po[0])) return { akcja: 'wpisz', dane: { imie: im, kat, skresl: true } };
+          const pkt = po.length ? liczba(po) : null;
+          if (po.length && pkt === null) return { blad: 'Pióro nie zrozumiało liczby.' };
+          return { akcja: 'wpisz', dane: pkt === null ? { imie: im, kat } : { imie: im, kat, pkt } };
+        }
+        if (reszta.length) continue;
+        return { blad: 'Którą kategorię? Np. „' + im + ' trójki 9” albo „' + im + ' full”.' };
+      }
+      const pkt = liczba(reszta);
+      if (pkt !== null) return { akcja: 'wpisz', dane: { imie: im, pkt } };
     }
-    const im = ktoTo(slowa[0], gracze);
-    if (!im) return { blad: 'Notes nie zna gracza „' + slowa[0] + '”.' };
-    return { blad: 'Pióro nie zrozumiało liczby.' };
+    if (!ktoTo(slowa[0], gracze)) return { blad: 'Notes nie zna gracza „' + slowa[0] + '”.' };
+    return { blad: notes.typ === 'alea' ? 'Pióro nie zrozumiało kategorii.' : 'Pióro nie zrozumiało liczby.' };
   }
 
   /* --- Słuchanie --------------------------------------------------------------------------------------------- */
@@ -119,17 +159,36 @@
   /* --- Notes ------------------------------------------------------------------------------------------------- */
   function otworzNotes(o) {
     okno = o; arkusz('ks'); kom('');
-    w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><div class="tekst"></div><div id="nt"></div>' +
+    w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><div class="tekst"></div>' +
       '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Słuchaj zaklęć</button><span id="slyszy"></span></div>' +
-      '<div class="pisz"><input type="text" id="zakl" placeholder="np. Kacper 120 albo Nota hoc deleo" aria-label="Zaklęcie"><button type="button" id="zp">Zapisz</button></div>' +
+      '<div class="pisz"><input type="text" id="zakl" placeholder="np. Kacper 120, Maja full, Lusor Primus Kacper" aria-label="Zaklęcie"><button type="button" id="zp">Zapisz</button></div>' +
       '<div class="akcje"><button type="button" id="cof">Wykreśl ostatni</button><button type="button" id="nowa">Nowa partia…</button></div>' +
       '<div id="nowaf" hidden><input type="text" id="ng" placeholder="Imiona, po przecinku" aria-label="Gracze nowej partii"><input type="text" id="nc" inputmode="numeric" placeholder="cel" aria-label="Cel punktowy" size="5"><button type="button" id="nok">Zacznij</button></div>' +
-      '<div id="arch"></div><button id="x">Zamknij</button>';
+      '<div id="nt"></div><div id="arch"></div><button id="x">Zamknij</button>';
     $('#x').onclick = zamknij; modal.classList.add('on');
     tresc(o.e, w.querySelector('.tekst'));
     let s = null, ost = '', nowyWpis = -1;
+    const rysujKosci = () => {
+      const sw = s.ostatni_wpis, th = s.gracze.map(g => '<th' + (g.prowadzi ? ' class="prow"' : '') + '>' + esc(g.imie) + '</th>').join('');
+      const wiersz = (nazwa, kom, klasa) => '<tr' + (klasa ? ' class="' + klasa + '"' : '') + '><th class="kat">' + nazwa + '</th>' + s.gracze.map(kom).join('') + '</tr>';
+      const kat = k => wiersz(esc(k.nazwa) + (k.stale ? ' <small>' + k.stale + '</small>' : ''), g => {
+        const v = g.kosci.kat[k.id], swiezy = sw && sw.imie === g.imie && sw.kat === k.id;
+        return '<td' + (swiezy ? ' class="swiezy"' : '') + '>' + (v === undefined ? '' : v === 0 ? '<span class="skr">✕</span>' : v) + '</td>';
+      });
+      const suma = (nazwa, f, klasa) => wiersz(nazwa, g => '<td>' + f(g) + '</td>', klasa);
+      let h = '<p class="partia">' + esc(s.nazwa) + '</p><table class="notes kosci"><thead><tr><th class="kat"></th>' + th + '</tr></thead><tbody>';
+      s.kategorie.filter(k => k.czesc === 'gora').forEach(k => { h += kat(k); });
+      h += suma('Suma', g => g.kosci.gora, 'sum') + suma('Premia <small>(od ' + s.premia.prog + ')</small>', g => g.kosci.premia ? '+' + g.kosci.premia : '', 'sum');
+      s.kategorie.filter(k => k.czesc === 'dol').forEach(k => { h += kat(k); });
+      h += '</tbody><tfoot>' + wiersz('Razem', g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.kosci.razem + '</td>') + '</tfoot></table>';
+      return h;
+    };
     const rysuj = () => {
       if (!s) return;
+      if (s.typ === 'alea') {
+        $('#nt').innerHTML = rysujKosci() + (s.koniec ? '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>' : '');
+        rysujArchiwum(); return;
+      }
       const n = Math.max(1, ...s.gracze.map(g => g.wpisy.length));
       let h = '<p class="partia">' + esc(s.nazwa) + (s.cel ? ' · do ' + s.cel : '') + '</p><table class="notes"><thead><tr>' +
         s.gracze.map(g => '<th' + (g.prowadzi ? ' class="prow"' : '') + '>' + esc(g.imie) + '</th>').join('') + '</tr></thead><tbody>';
@@ -140,6 +199,9 @@
       h += '</tbody><tfoot><tr>' + s.gracze.map(g => '<td' + (g.prowadzi ? ' class="prow"' : '') + '>' + g.suma + '</td>').join('') + '</tr></tfoot></table>';
       if (s.koniec) h += '<p class="wygrana">' + esc(s.koniec.zwyciezca) + ' wygrywa z wynikiem ' + s.koniec.suma + '!</p>';
       $('#nt').innerHTML = h;
+      rysujArchiwum();
+    };
+    const rysujArchiwum = () => {
       $('#arch').innerHTML = s.archiwum.length ? '<p class="grupa">Wcześniejsze partie</p>' + s.archiwum.map(a =>
         '<div class="dim">' + new Date(a.start * 1000).toLocaleDateString('pl', { day: 'numeric', month: 'short' }) + ' · ' + esc(a.nazwa) + ': ' +
         Object.entries(a.sumy).map(([im, p]) => esc(im) + ' ' + p).join(', ') + (a.zwyciezca ? ' · wygrał(a) ' + esc(a.zwyciezca) : '') + '</div>').join('') : '';
@@ -159,7 +221,7 @@
       if (!s) return;
       let blad = null;
       for (const t of warianty) {                // mowa daje kilka wersji: pierwsza, którą da się zrozumieć
-        const z = rozbierz(t, s.gracze, glos);
+        const z = rozbierz(t, s, glos);
         if (!z) continue;
         if (z.blad) { blad = blad || z.blad; continue; }
         if (glos) $('#slyszy').textContent = '„' + t.trim() + '”';
@@ -200,5 +262,5 @@
     v: .2, bob: .2, klasa: 'p kot', etykieta: 'notes', otworz: otworzNotes,
     ikona: '<path d="M26 14h46v72H26z"/><path d="M26 14c-6 0-8 4-8 8v60c0 4 2 6 8 4M34 30h30M34 42h30M34 54h22"/><path d="M84 18L60 66l-3 9 7-6 24-48z"/>'
   });
-  window.Mysl.notesZaklecie = rozbierz;        // do testów: Mysl.notesZaklecie("Nota hoc Kacper 120", [{imie:"Kacper"}], true)
+  window.Mysl.notesZaklecie = rozbierz;        // do testów: Mysl.notesZaklecie("Nota hoc Kacper 120", {typ:'mille', gracze:[{imie:"Kacper"}]}, true)
 })();

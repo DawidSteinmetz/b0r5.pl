@@ -30,7 +30,7 @@
   "produkt": "Elixir Betae",
   "rodzaj": "m",
   "wzor": { "C": 2, "H": 6, "O": 1 },
-  "wzor_tekst": "C₂H₆O",
+  "wzor_tekst": "C₂H₅OH",
   "cena_10g": 14,
   "ciecz": true,
   "wymaga": "drozdze-gorzelnicze"

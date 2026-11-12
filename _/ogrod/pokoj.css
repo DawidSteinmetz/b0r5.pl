@@ -9,8 +9,6 @@
 #w .akcje button{margin:0;padding:3px 10px;font-size:13px}
 #w button small{font-size:.8em;opacity:.8}
 #w button:disabled{opacity:.35;cursor:default}
-#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 var(--pismo-tekst,Georgia,"Times New Roman",serif);text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
-#tost.on{opacity:1}
 #w .dim{opacity:.7;font-size:.85em}
 #w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
 #w .kasa{font-size:18px;font-style:italic;margin:10px 0 4px}

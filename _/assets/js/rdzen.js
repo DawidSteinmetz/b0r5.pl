@@ -906,15 +906,13 @@
     // słuchanie gaśnie razem z zamknięciem kartki
     new MutationObserver(() => { if (!modal.classList.contains('on') && slucha) sluchaj(false); }).observe(modal, { attributes: true, attributeFilter: ['class'] });
     /* panel: el (kontener), opcje: {czary: [{id, nazwa, opis?}] (na liście), wszystkie?: [...] (rozpoznawane głosem,
-       także nieznane), naCzar(id, moc), kom(tekst), podpowiedz?: tekst w polu, bezMocy?: czar bez mocy (np. waga)} */
+       także nieznane), naCzar(id, moc), kom(tekst), bezMocy?: czar bez mocy (np. waga)} */
     function wstaw(el, o) {
       const lista = o.czary || [], wszystkie = o.wszystkie || lista;
       el.innerHTML = '<ul class="mcz-lista">' + lista.map(c => '<li><button type="button" class="mcz-czar" data-id="' + esc(c.id) + '">' + esc(c.nazwa) + '</button>' +
         (c.opis ? ' <span>' + esc(c.opis) + '</span>' : '') + '</li>').join('') + '</ul>' +
         (o.bezMocy ? '' : '<p class="mcz-moc">ostatnie słowo to moc: <i>optimum</i>, <i>maximum</i> albo liczba</p>') +
-        '<div class="mcz-rzad"><button type="button" class="mcz-ucho" aria-pressed="false">Rzuć czar</button><span class="mcz-slyszy">' + esc(slyszalem) + '</span></div>' +
-        '<div class="mcz-rzad"><input type="text" class="mcz-pole" autocomplete="off" aria-label="Czar" placeholder="' + esc(o.podpowiedz || (lista[0] ? lista[0].nazwa.split(' ').slice(0, 2).join(' ') + (o.bezMocy ? '' : ' optimum') : '')) + '">' +
-        '<button type="button" class="mcz-zapisz">Rzuć</button></div>';
+        '<div class="mcz-rzad"><button type="button" class="mcz-ucho" aria-pressed="false">Rzuć czar</button><span class="mcz-slyszy">' + esc(slyszalem) + '</span></div>';
       const sly = el.querySelector('.mcz-slyszy'), kom = o.kom || (() => { });
       const rzuc = (warianty, glos) => {
         let blad = null;
@@ -931,13 +929,9 @@
       panel = { el, usłyszane: alt => rzuc(alt, true), kom };
       el.querySelectorAll('.mcz-czar').forEach(b => { b.onclick = () => o.naCzar(b.dataset.id, null); });
       el.querySelector('.mcz-ucho').onclick = () => sluchaj(!slucha);
-      const pole = el.querySelector('.mcz-pole');
-      const zPola = () => { const t = pole.value.trim(); if (!t) return; rzuc([t], false); pole.value = ''; };
-      el.querySelector('.mcz-zapisz').onclick = zPola;
-      pole.addEventListener('keydown', e => { if (e.key === 'Enter') zPola(); });
       stanPrzycisku();
     }
-    return { wstaw, rozpoznaj, moc, wymowa, odleglosc, bezOgonkow };
+    return { wstaw, rozpoznaj: (t, l) => rozpoznaj(t, l), moc, wymowa, odleglosc, bezOgonkow };
   })();
 
   window.Mysl = {

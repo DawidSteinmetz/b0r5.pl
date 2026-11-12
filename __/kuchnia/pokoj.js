@@ -135,7 +135,7 @@
     }, 5000);
   }
   /* Otwarta zakładka Składu pamięta się do przeładowania strony. */
-  let zakladka = '';
+  let zakladka = '', laczy = '';                     // laczy: wyrób wybrany do połączenia (⧉)
   function otworzSklad(o) {
     const rysujSklad = (s, el, akcja) => {
       const grupa = (t, h) => h ? '<p class="grupa">' + t + '</p>' + h : '';
@@ -152,11 +152,17 @@
       };
       const wierszKopczyka = r =>
         pr(r.nazwa, liczba(r.mol) + ' mol · ' + liczba(r.masa_g, 2) + ' g', '<input type="text" inputmode="decimal" placeholder="' + jedn + '" data-mol="' + esc(r.id) + '" aria-label="Ile moli wsypać">' + btn('do_kociolka', r.id, 'Do garnka') + wyrzuc(r.id));
+      // Łączenie wyrobów: ⧉ przy wyrobie podświetla te, z którymi da się go połączyć (ten sam wyrób, ta sama czystość co do 0,1%)
+      const parowalne = (a, b) => a.id !== b.id && a.nazwa === b.nazwa && Math.round(a.czystosc * 1000) === Math.round(b.czystosc * 1000);
+      const zrodlo = laczy && s.sklad.find(r => r.id === laczy && r.typ === 'produkt');
+      if (laczy && !zrodlo) laczy = '';
       const wierszWyrobu = r => {
         const ilosc = r.ciecz ? liczba(r.masa_g / 1000, 3) + ' l' : liczba(r.masa_g, 2) + ' g';
+        const cel = zrodlo && parowalne(zrodlo, r), to = zrodlo && zrodlo.id === r.id;
+        const polacz = '<button data-a="polacz" data-id="' + esc(r.id) + '" class="polacz' + (to ? ' on' : '') + '" title="' + (cel ? 'Połącz z tym' : to ? 'Anuluj łączenie' : 'Połącz z takim samym wyrobem') + '">' + (cel ? 'Połącz tu' : '⧉') + '</button>';
         return pr(r.nazwa, ilosc + ' · ' + esc(r.stopien) + ' · czystość ' + liczba(r.czystosc * 100, 1) + '% · skup: ' + esc(r.cena_t),
           '<input type="text" inputmode="decimal" placeholder="' + (r.ciecz ? 'l' : 'g') + '" data-porcja="' + esc(r.id) + '" data-mnoznik="' + (r.ciecz ? 1000 : 1) + '" aria-label="Wielkość porcji">' +
-          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('sprzedaj', r.id, 'Sprzedaj') + wyrzuc(r.id));
+          btn('odlej', r.id, r.ciecz ? 'Odlej' : 'Odsyp') + btn('sprzedaj', r.id, 'Sprzedaj') + polacz + wyrzuc(r.id)).replace('<div class="rzad">', '<div class="rzad' + (cel ? ' swieci' : to ? ' laczy' : '') + '">');
       };
       const surowceAlf = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       const zaklad = (id, nazwa, lista, wiersz) => ({ id, nazwa, n: lista.length, zazn: lista.some(r => r.zaznaczone_g), h: lista.map(wiersz).join('') });
@@ -175,6 +181,17 @@
       });
       el.querySelectorAll('button[data-a]').forEach(b => {
         b.onclick = () => {
+          if (b.dataset.a === 'polacz') {
+            const id = b.dataset.id;
+            if (!laczy) {
+              const ja = s.sklad.find(r => r.id === id);
+              if (!s.sklad.some(r => r.typ === 'produkt' && r.gdzie === 'sklad' && parowalne(ja, r))) return kom('Nie ma z czym tego połączyć: brak takiego samego wyrobu o tej samej czystości.');
+              laczy = id; return rysujSklad(s, el, akcja);
+            }
+            if (laczy === id) { laczy = ''; return rysujSklad(s, el, akcja); }
+            const z = laczy; laczy = '';
+            return akcja('polacz', { id: z, z: id });
+          }
           const d = { id: b.dataset.id }, m = el.querySelector('[data-mol="' + b.dataset.id + '"]');
           if (m && m.value.trim()) d[jedn === 'g' ? 'gramy' : 'mol'] = m.value;
           if (b.dataset.a === 'odlej') {
@@ -378,7 +395,7 @@
       if (!wg) {
         const lista = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad');
         el.innerHTML = lista.length
-          ? '<div id="czp"></div><div><select id="rz" aria-label="Co zbadać">' + lista.map(r => '<option value="' + esc(r.id) + '">' + esc(r.nazwa) + ', ' + liczba(r.masa_g, 2) + ' g</option>').join('') + '</select></div>'
+          ? '<div id="czp"></div><div><select id="rz" aria-label="Co zbadać">' + lista.map(r => '<option value="' + esc(r.id) + '">' + (r.zbadany ? '✓ ' : '') + esc(r.nazwa) + ', ' + liczba(r.masa_g, 2) + ' g' + (r.zbadany ? ' (zbadane)' : '') + '</option>').join('') + '</select></div>'
           : '<p><i>W spiżarni nie ma niczego do zważenia.</i></p>';
         if ($('#czp')) czary.wstaw($('#czp'), { czary: [{ id: 'waga', nazwa: s.czar_wagi, opis: 'bada skład wybranego surowca' }], kom, bezMocy: true,
           naCzar: () => akcja('zbadaj', { id: $('#rz').value }) });

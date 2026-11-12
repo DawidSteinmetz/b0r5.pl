@@ -47,7 +47,8 @@ function alch_kociolek() { return alch_czytaj('kociolek') ?: ['sklad' => [], 'po
 // --- rzeczy --------------------------------------------------------------------------------------
 // $porcja_g i $nazwa pozwalają wydać ten sam surowiec w innej porcji (dzban zamiast kubka).
 // Skład jednej sztuki: 'widelki' losują wskazane pierwiastki, a reszta dopełnia do 100%.
-function alch_losuj_sklad($s) {
+// Skład jednej sztuki w % masy. 'widelki' surowca losują wskazane pierwiastki (reszta dopełnia do 100%).
+function alch_losuj_widelki($s) {
     if (empty($s['widelki'])) return $s['masowo'];
     $o = []; $suma = 0.0; $reszta = 0.0;
     foreach ($s['widelki'] as $e => $z) { $o[$e] = $z[0] + mt_rand() / mt_getrandmax() * ($z[1] - $z[0]); $suma += $o[$e]; }
@@ -55,14 +56,46 @@ function alch_losuj_sklad($s) {
     foreach ($s['masowo'] as $e => $p) if (!isset($s['widelki'][$e])) $o[$e] = $p * (100 - $suma) / $reszta;
     return $o;
 }
+// Naturalna zmienność każdej porcji (alchemia.json: 'zmiennosc'). Dwie części: wilgotność losowana z zakresu 'woda' (%),
+// a sucha część dostaje rozrzut 'rozrzut' (% względnie, jak odchylenie) i wraca do swojej masy. Woda to H 11,19% i O 88,81%.
+function alch_los() { return mt_rand(1, mt_getrandmax()) / mt_getrandmax(); }
+function alch_losuj_sklad($s, $sid = '') {
+    $o = alch_losuj_widelki($s);
+    $zm = alch_cfg()['zmiennosc'] ?? [];
+    $z = $zm[$sid] ?? ($zm['_domyslnie'] ?? null);
+    if (!is_array($z)) return $o;
+    $wH = 0.1119; $wO = 0.8881;
+    $w0 = 0.0; $w = 0.0;
+    if (!empty($z['woda'])) {                         // ile wody jest we wzorcu: środek zakresu, ale nie więcej, niż pozwala wodór i tlen
+        $w0 = min(($z['woda'][0] + $z['woda'][1]) / 2, ($o['H'] ?? 0) / $wH, ($o['O'] ?? 0) / $wO);
+        $w = $z['woda'][0] + alch_los() * ($z['woda'][1] - $z['woda'][0]);
+    }
+    $sucha = $o;
+    if ($w0 > 0) { $sucha['H'] = max(0, $sucha['H'] - $w0 * $wH); $sucha['O'] = max(0, $sucha['O'] - $w0 * $wO); }
+    $r = (float)($z['rozrzut'] ?? 0) / 100;
+    if ($r > 0) foreach ($sucha as $e => $p) $sucha[$e] = $p * max(.2, 1 + $r * sqrt(-2 * log(alch_los())) * cos(2 * M_PI * alch_los()));
+    $suma = array_sum($sucha);
+    if ($suma <= 0) return $o;
+    $cel = 100 - (empty($z['woda']) ? 0 : $w);       // sucha część zajmuje to, czego nie zajęła woda
+    $wyn = [];
+    foreach ($sucha as $e => $p) $wyn[$e] = $p * $cel / $suma;
+    if (!empty($z['woda'])) { $wyn['H'] = ($wyn['H'] ?? 0) + $w * $wH; $wyn['O'] = ($wyn['O'] ?? 0) + $w * $wO; }
+    return $wyn;
+}
 function alch_nowy_surowiec($sid, $porcja_g = null, $nazwa = null) {
     $s = alch_surowce()[$sid] ?? null;
     if (!$s) return null;
     $cfg = alch_cfg();
+    $proc = alch_losuj_sklad($s, $sid);
     if ($porcja_g !== null) $masa = (float)$porcja_g;
+    elseif (isset($cfg['mol_staly'][$sid])) {           // np. węgiel aktywny: zawsze 1 mol węgla, a masa wynika z reszty porcji
+        $e = array_key_first($cfg['mol_staly'][$sid]);
+        $masa = round((float)$cfg['mol_staly'][$sid][$e] * alch_M($e) / max(1e-6, ($proc[$e] ?? 100) / 100), 2);
+    }
     else $masa = isset($cfg['masa_stala'][$sid]) ? (float)$cfg['masa_stala'][$sid] : round($s['masa_od'] + mt_rand() / mt_getrandmax() * ($s['masa_do'] - $s['masa_od']), 1);
     $sklad = [];
-    foreach (alch_losuj_sklad($s) as $e => $proc) { $M = alch_M($e); if ($M > 0) $sklad[$e] = round($masa * $proc / 100 / $M, 6); }
+    foreach ($proc as $e => $p) { $M = alch_M($e); if ($M > 0 && $p > 0) $sklad[$e] = round($masa * $p / 100 / $M, 6); }
+    if (isset($cfg['mol_staly'][$sid])) foreach ($cfg['mol_staly'][$sid] as $e => $mol) $sklad[$e] = (float)$mol;
     $r = ['id' => alch_nowe_id(), 'typ' => 'surowiec', 'surowiec' => $sid, 'nazwa' => $nazwa ?? $s['nazwa'], 'gdzie' => 'sklad', 'sklad' => $sklad, 'odessany' => false,
           'pochodzenie' => [$sid => $masa], 'zbadany' => false, 'czar' => null];
     alch_zapisz_rzecz($r);
@@ -583,6 +616,18 @@ function alch_wykonaj($akcja, $in) {
             dodaj_zdarzenie('sprzedano', $r['nazwa'], (string)($in['gracz'] ?? ''), ['cena' => $cena]);
             alch_usun_rzecz($r['id']);
             return 'Zielarz kupił: ' . $r['nazwa'] . '. Zapłacił ' . rynek_kwota_txt($cena) . '.';
+        case 'polacz':                                   // dwa takie same wyroby (ten sam produkt, ta sama czystość z dokładnością do 0,1%)
+            $x = $s('z') !== '' ? alch_rzecz($s('z')) : null;
+            if (!$r || !$x || $r['id'] === $x['id'] || $r['typ'] !== 'produkt' || $x['typ'] !== 'produkt' || $r['gdzie'] !== 'sklad' || $x['gdzie'] !== 'sklad') alch_blad('Tych rzeczy nie da się połączyć.');
+            if ($r['nazwa'] !== $x['nazwa'] || ($r['katalizator'] ?? '') !== ($x['katalizator'] ?? '') || round($r['czystosc'] * 1000) !== round($x['czystosc'] * 1000))
+                alch_blad('Połączyć można tylko ten sam wyrób o tej samej czystości.');
+            $ma = alch_masa($r['sklad']); $mx = alch_masa($x['sklad']);
+            foreach ($x['sklad'] as $e => $mol) $r['sklad'][$e] = round((float)($r['sklad'][$e] ?? 0) + $mol, 6);
+            foreach ($x['pochodzenie'] as $q => $m) $r['pochodzenie'][$q] = (float)($r['pochodzenie'][$q] ?? 0) + $m;
+            $r['czystosc'] = round(($r['czystosc'] * $ma + $x['czystosc'] * $mx) / max(1e-9, $ma + $mx), 4);
+            $r['stopien'] = alch_stopien($r['czystosc'], alch_tabela('katalizatory')[$r['katalizator']]['rodzaj'] ?? '');
+            alch_zapisz_rzecz($r); alch_usun_rzecz($x['id']);
+            return 'Połączone: ' . $r['nazwa'] . ', razem ' . alch_f($ma + $mx, 2) . ' g.';
         case 'wyrzuc':
             if (!$r || $r['gdzie'] !== 'sklad') alch_blad('Tego nie da się wyrzucić.');
             if ($naWadze) alch_blad('To leży na wadze. Najpierw zdejmij.');

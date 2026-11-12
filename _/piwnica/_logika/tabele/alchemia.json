@@ -1,32 +1,111 @@
 {
- "_opis": "Ustawienia alchemii piwnicy. Pliki pierwiastki.json i surowce.json nadpisuje import z arkusza, dlatego wszystko ręczne jest tutaj. 'start' wysypuje się tylko przy pierwszym uruchomieniu. 'dosypki' to dostawy jednorazowe do już działającego Składu: każda wchodzi raz, rozpoznawana po 'id', a 'usun' zabiera nieobrobione sztuki wskazanych surowców. 'widelki' surowca losują procent wskazanych pierwiastków dla każdej sztuki osobno, a pozostałe pierwiastki dopełniają do 100%. 'kategorie' to zakładki surowców w Składzie: surowiec spoza listy trafia do zakładki Inne.",
+ "_opis": "Ustawienia alchemii piwnicy. Pliki pierwiastki.json i surowce.json nadpisuje import z arkusza, dlatego wszystko ręczne jest tutaj. 'start' wysypuje się tylko przy pierwszym uruchomieniu. 'dosypki' to dostawy jednorazowe do już działającego Składu: każda wchodzi raz, rozpoznawana po 'id', a 'usun' zabiera nieobrobione sztuki wskazanych surowców. 'widelki' surowca losują procent wskazanych pierwiastków dla każdej sztuki osobno, a pozostałe pierwiastki dopełniają do 100%. 'kategorie' to zakładki surowców w Składzie: surowiec spoza listy trafia do zakładki Inne. 'zmiennosc' losuje skład każdej nowej porcji (wilgotność i rozrzut suchej masy), a 'mol_staly' ustala stałą liczbę moli pierwiastka w porcji (masa porcji wynika wtedy z reszty składu).",
  "czas_czaru_s": 5,
  "czas_wagi_s": 4,
  "czas_gotowania_s": 5,
  "pojemnosc_g": 12000,
  "czar_wagi": "Revelio Ponderis",
  "start": [
-  { "surowiec": "cebula-swieza", "ile": 4 },
-  { "surowiec": "cebula-luska-suszona", "ile": 2 },
-  { "surowiec": "woda", "ile": 4 },
-  { "surowiec": "wegiel-aktywny", "ile": 4 }
+  {
+   "surowiec": "cebula-swieza",
+   "ile": 4
+  },
+  {
+   "surowiec": "cebula-luska-suszona",
+   "ile": 2
+  },
+  {
+   "surowiec": "woda",
+   "ile": 4
+  },
+  {
+   "surowiec": "wegiel-aktywny",
+   "ile": 4
+  }
  ],
  "dosypki": [
-  { "id": "buraczanka-1", "surowce": [
-   { "surowiec": "woda", "ile": 8, "masa": 360.3, "nazwa": "Dzban wody" },
-   { "surowiec": "drozdze-gorzelnicze", "ile": 2 }
-  ] },
-  { "id": "buraczanka-2", "usun": ["burak-gorzelniany"], "surowce": [
-   { "surowiec": "burak-cukrowy", "ile": 20 }
-  ] },
-  { "id": "buraczanka-3", "usun": ["burak-cukrowy"], "surowce": [
-   { "surowiec": "burak-cukrowy", "ile": 20 }
-  ] }
+  {
+   "id": "buraczanka-1",
+   "surowce": [
+    {
+     "surowiec": "woda",
+     "ile": 8,
+     "masa": 360.3,
+     "nazwa": "Dzban wody"
+    },
+    {
+     "surowiec": "drozdze-gorzelnicze",
+     "ile": 2
+    }
+   ]
+  },
+  {
+   "id": "buraczanka-2",
+   "usun": [
+    "burak-gorzelniany"
+   ],
+   "surowce": [
+    {
+     "surowiec": "burak-cukrowy",
+     "ile": 20
+    }
+   ]
+  },
+  {
+   "id": "buraczanka-3",
+   "usun": [
+    "burak-cukrowy"
+   ],
+   "surowce": [
+    {
+     "surowiec": "burak-cukrowy",
+     "ile": 20
+    }
+   ]
+  }
  ],
  "kategorie": [
-  { "id": "rosliny", "nazwa": "Rośliny", "surowce": ["burak-cukrowy", "cebula-swieza", "cebula-luska-suszona", "czosnek-glowka", "bylica-pospolita-ziele-suszone", "koper-ogrodowy-ziele-swieze", "mak-lekarski-nasiona", "ruta-zwyczajna-ziele", "kozlek-lekarski-korzen"] },
-  { "id": "mineraly", "nazwa": "Minerały", "surowce": ["wegiel-aktywny", "kwiat-siarczany-siarka", "sol-kamienna-halit", "witriol-zielony-siarczan-zelaza-ii", "saletra-potasowa-kno3", "kreda-malarska-wapien-caco3", "popiol-bukowy-potaz"] },
-  { "id": "plyny", "nazwa": "Płyny i reszta", "surowce": ["woda", "olej-lniany", "spirytus-winny-90", "miod-pszczeli", "jad-wezowy-zasuszony", "rtec-zywe-srebro", "drozdze-gorzelnicze"] }
+  {
+   "id": "rosliny",
+   "nazwa": "Rośliny",
+   "surowce": [
+    "burak-cukrowy",
+    "cebula-swieza",
+    "cebula-luska-suszona",
+    "czosnek-glowka",
+    "bylica-pospolita-ziele-suszone",
+    "koper-ogrodowy-ziele-swieze",
+    "mak-lekarski-nasiona",
+    "ruta-zwyczajna-ziele",
+    "kozlek-lekarski-korzen"
+   ]
+  },
+  {
+   "id": "mineraly",
+   "nazwa": "Minerały",
+   "surowce": [
+    "wegiel-aktywny",
+    "kwiat-siarczany-siarka",
+    "sol-kamienna-halit",
+    "witriol-zielony-siarczan-zelaza-ii",
+    "saletra-potasowa-kno3",
+    "kreda-malarska-wapien-caco3",
+    "popiol-bukowy-potaz"
+   ]
+  },
+  {
+   "id": "plyny",
+   "nazwa": "Płyny i reszta",
+   "surowce": [
+    "woda",
+    "olej-lniany",
+    "spirytus-winny-90",
+    "miod-pszczeli",
+    "jad-wezowy-zasuszony",
+    "rtec-zywe-srebro",
+    "drozdze-gorzelnicze"
+   ]
+  }
  ],
  "surowce_reczne": {
   "burak-cukrowy": {
@@ -34,8 +113,31 @@
    "stan": "Świeży (warzywo)",
    "masa_od": 600,
    "masa_do": 1500,
-   "masowo": { "O": 80.5, "H": 10.1, "C": 9.25, "K": 0.1, "N": 0.05 },
-   "widelki": { "C": [7.6, 10.9], "H": [9.6, 10.6], "K": [0.06, 0.14], "N": [0.03, 0.07] },
+   "masowo": {
+    "O": 80.5,
+    "H": 10.1,
+    "C": 9.25,
+    "K": 0.1,
+    "N": 0.05
+   },
+   "widelki": {
+    "C": [
+     7.6,
+     10.9
+    ],
+    "H": [
+     9.6,
+     10.6
+    ],
+    "K": [
+     0.06,
+     0.14
+    ],
+    "N": [
+     0.03,
+     0.07
+    ]
+   },
    "opis": "Zwykły burak. Na eliksir ma za dużo wodoru i tlenu, więc nadmiar trzeba odessać na stole."
   },
   "drozdze-gorzelnicze": {
@@ -43,7 +145,15 @@
    "stan": "Prasowane (kostka)",
    "masa_od": 100,
    "masa_do": 100,
-   "masowo": { "O": 72.4, "C": 14.0, "H": 9.6, "N": 2.8, "P": 0.5, "K": 0.5, "S": 0.2 },
+   "masowo": {
+    "O": 72.4,
+    "C": 14.0,
+    "H": 9.6,
+    "N": 2.8,
+    "P": 0.5,
+    "K": 0.5,
+    "S": 0.2
+   },
    "opis": "Katalizator. Wystarczy, że leżą w Składzie, i nie zużywają się."
   },
   "woda": {
@@ -51,24 +161,77 @@
    "stan": "Ciecz",
    "masa_od": 18.015,
    "masa_do": 18.015,
-   "masowo": { "H": 11.19, "O": 88.81 },
+   "masowo": {
+    "H": 11.19,
+    "O": 88.81
+   },
    "opis": "Jeden kubek to dokładnie jeden mol."
   }
  },
- "masa_stala": { "wegiel-aktywny": 13.42, "drozdze-gorzelnicze": 100 },
+ "masa_stala": {
+  "drozdze-gorzelnicze": 100
+ },
  "przymiotniki": {
-  "cebula-swieza": { "m": "cebulowy", "f": "cebulowa", "z": "z cebuli" },
-  "cebula-luska-suszona": { "m": "cebulowy", "f": "cebulowa", "z": "z łuski cebuli" },
-  "czosnek-glowka": { "m": "czosnkowy", "f": "czosnkowa", "z": "z czosnku" },
-  "bylica-pospolita-ziele-suszone": { "m": "bylicowy", "f": "bylicowa", "z": "z bylicy" },
-  "koper-ogrodowy-ziele-swieze": { "m": "koperkowy", "f": "koperkowa", "z": "z kopru" },
-  "mak-lekarski-nasiona": { "m": "makowy", "f": "makowa", "z": "z maku" },
-  "ruta-zwyczajna-ziele": { "m": "rutowy", "f": "rutowa", "z": "z ruty" },
-  "kozlek-lekarski-korzen": { "m": "kozłkowy", "f": "kozłkowa", "z": "z kozłka" },
-  "olej-lniany": { "m": "lniany", "f": "lniana", "z": "z oleju lnianego" },
-  "spirytus-winny-90": { "m": "winny", "f": "winna", "z": "ze spirytusu" },
-  "miod-pszczeli": { "m": "miodowy", "f": "miodowa", "z": "z miodu" },
-  "jad-wezowy-zasuszony": { "m": "jadowity", "f": "jadowita", "z": "z jadu" }
+  "cebula-swieza": {
+   "m": "cebulowy",
+   "f": "cebulowa",
+   "z": "z cebuli"
+  },
+  "cebula-luska-suszona": {
+   "m": "cebulowy",
+   "f": "cebulowa",
+   "z": "z łuski cebuli"
+  },
+  "czosnek-glowka": {
+   "m": "czosnkowy",
+   "f": "czosnkowa",
+   "z": "z czosnku"
+  },
+  "bylica-pospolita-ziele-suszone": {
+   "m": "bylicowy",
+   "f": "bylicowa",
+   "z": "z bylicy"
+  },
+  "koper-ogrodowy-ziele-swieze": {
+   "m": "koperkowy",
+   "f": "koperkowa",
+   "z": "z kopru"
+  },
+  "mak-lekarski-nasiona": {
+   "m": "makowy",
+   "f": "makowa",
+   "z": "z maku"
+  },
+  "ruta-zwyczajna-ziele": {
+   "m": "rutowy",
+   "f": "rutowa",
+   "z": "z ruty"
+  },
+  "kozlek-lekarski-korzen": {
+   "m": "kozłkowy",
+   "f": "kozłkowa",
+   "z": "z kozłka"
+  },
+  "olej-lniany": {
+   "m": "lniany",
+   "f": "lniana",
+   "z": "z oleju lnianego"
+  },
+  "spirytus-winny-90": {
+   "m": "winny",
+   "f": "winna",
+   "z": "ze spirytusu"
+  },
+  "miod-pszczeli": {
+   "m": "miodowy",
+   "f": "miodowa",
+   "z": "z miodu"
+  },
+  "jad-wezowy-zasuszony": {
+   "m": "jadowity",
+   "f": "jadowita",
+   "z": "z jadu"
+  }
  },
  "zrodla_neutralne": {
   "woda": "z wody",
@@ -83,8 +246,189 @@
   "witriol-zielony-siarczan-zelaza-ii": "z witriolu"
  },
  "progi_czystosci": [
-  { "od": 0.99, "m": "czysty", "f": "czysta" },
-  { "od": 0.85, "m": "brudny", "f": "brudna" },
-  { "od": 0, "m": "bardzo brudny", "f": "bardzo brudna" }
- ]
+  {
+   "od": 0.99,
+   "m": "czysty",
+   "f": "czysta"
+  },
+  {
+   "od": 0.85,
+   "m": "brudny",
+   "f": "brudna"
+  },
+  {
+   "od": 0,
+   "m": "bardzo brudny",
+   "f": "bardzo brudna"
+  }
+ ],
+ "mol_staly": {
+  "wegiel-aktywny": {
+   "C": 1
+  }
+ },
+ "zmiennosc": {
+  "_opis": "Naturalna zmienność każdej nowej porcji. 'woda': zakres wilgotności w % masy (losowany dla każdej porcji); 'rozrzut': względny rozrzut suchej części w % (pierwiastki suchej masy losują się wokół wzorca i wracają do jej masy). '_domyslnie' dotyczy surowców spoza listy. Zakresy oparte na danych: cebula 8–15% suchej masy, drożdże prasowane 27–33% suchej masy, miód 15–21% wody, węgiel aktywny 4,5–5,5% wody wg Ph. Eur. (dawniej do 15%).",
+  "_domyslnie": {
+   "rozrzut": 3
+  },
+  "woda": {
+   "rozrzut": 0
+  },
+  "cebula-swieza": {
+   "woda": [
+    85,
+    92
+   ],
+   "rozrzut": 8
+  },
+  "cebula-luska-suszona": {
+   "woda": [
+    7,
+    13
+   ],
+   "rozrzut": 6
+  },
+  "czosnek-glowka": {
+   "woda": [
+    58,
+    68
+   ],
+   "rozrzut": 6
+  },
+  "bylica-pospolita-ziele-suszone": {
+   "woda": [
+    8,
+    12
+   ],
+   "rozrzut": 8
+  },
+  "koper-ogrodowy-ziele-swieze": {
+   "woda": [
+    84,
+    90
+   ],
+   "rozrzut": 8
+  },
+  "mak-lekarski-nasiona": {
+   "woda": [
+    5,
+    9
+   ],
+   "rozrzut": 5
+  },
+  "ruta-zwyczajna-ziele": {
+   "woda": [
+    8,
+    12
+   ],
+   "rozrzut": 8
+  },
+  "kozlek-lekarski-korzen": {
+   "woda": [
+    8,
+    12
+   ],
+   "rozrzut": 8
+  },
+  "wegiel-aktywny": {
+   "woda": [
+    3,
+    10
+   ],
+   "rozrzut": 15
+  },
+  "kwiat-siarczany-siarka": {
+   "woda": [
+    0.1,
+    0.6
+   ],
+   "rozrzut": 1
+  },
+  "sol-kamienna-halit": {
+   "woda": [
+    0.2,
+    2
+   ],
+   "rozrzut": 4
+  },
+  "witriol-zielony-siarczan-zelaza-ii": {
+   "rozrzut": 4
+  },
+  "saletra-potasowa-kno3": {
+   "woda": [
+    0.1,
+    1
+   ],
+   "rozrzut": 1.5
+  },
+  "rtec-zywe-srebro": {
+   "rozrzut": 0.1
+  },
+  "kreda-malarska-wapien-caco3": {
+   "woda": [
+    0.5,
+    3
+   ],
+   "rozrzut": 3
+  },
+  "olej-lniany": {
+   "rozrzut": 1.5
+  },
+  "spirytus-winny-90": {
+   "woda": [
+    8,
+    13
+   ],
+   "rozrzut": 0.5
+  },
+  "popiol-bukowy-potaz": {
+   "woda": [
+    1,
+    6
+   ],
+   "rozrzut": 25
+  },
+  "miod-pszczeli": {
+   "woda": [
+    15,
+    21
+   ],
+   "rozrzut": 4
+  },
+  "jad-wezowy-zasuszony": {
+   "woda": [
+    5,
+    12
+   ],
+   "rozrzut": 8
+  },
+  "katalizator-alamansusa": {
+   "rozrzut": 2
+  },
+  "burak-cukrowy": {
+   "rozrzut": 2
+  },
+  "drozdze-gorzelnicze": {
+   "woda": [
+    67,
+    73
+   ],
+   "rozrzut": 8
+  },
+  "kakao-ziarna": {
+   "woda": [
+    5,
+    8
+   ],
+   "rozrzut": 5
+  },
+  "maslo-swieze": {
+   "woda": [
+    15,
+    18
+   ],
+   "rozrzut": 2
+  }
+ }
 }

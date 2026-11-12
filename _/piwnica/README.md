@@ -20,7 +20,7 @@ Produkt bierze przymiotnik od nieneutralnego surowca o największym udziale w ma
 ## Tabele (`_logika/tabele/`)
 
 - `pierwiastki.json`, `surowce.json`: nadpisuje je `_logika/narzedzia/import_xlsx.py` z arkusza w `zrodlo/`, więc nie wpisuj tam nic ręcznie.
-- `alchemia.json`: czasy, zapas startowy, surowce ręczne (woda, burak, drożdże), przymiotniki, progi czystości. `dosypki` to dostawy jednorazowe do działającego Składu: nowy wpis z nowym `id` wchodzi raz, a `usun` zabiera wskazane surowce.
+- `alchemia.json`: czasy, zapas startowy, naturalna zmienność porcji (`zmiennosc`: wilgotność i rozrzut suchej masy każdej nowej porcji; `mol_staly`: np. węgiel aktywny zawsze 1 mol C), surowce ręczne (woda, burak, drożdże), przymiotniki, progi czystości. `dosypki` to dostawy jednorazowe do działającego Składu: nowy wpis z nowym `id` wchodzi raz, a `usun` zabiera wskazane surowce.
 - `przepisy.json`: składnik z `cel` trzeba najpierw odessać na stole do podanej proporcji atomów. Kartka układa stos, a stół podpowiada, ile wyssać.
 - `czary.json`: `znany: false` to czar spoza notatek Henryka: nie ma go na listach, ale rzucony głosem albo wpisany działa. Zmiana na `true` dopisuje go do notatek.
 - `przyrzady.json`: opisy i ikony. Lista wytrącanych pierwiastków wynika ze znanych czarów.
@@ -28,7 +28,7 @@ Produkt bierze przymiotnik od nieneutralnego surowca o największym udziale w ma
 
 ## Czary w oknach
 
-W oknach wagi, stołu i przepisu na górze jest lista czarów tego miejsca (czary z notatek postaci; kliknięcie nazwy rzuca czar), a pod nią „Rzuć czar” (słuchanie mowy, Chrome i Edge, po polsku) i pole do wpisania. Silnik jest wspólny dla wszystkich pokoi: `Mysl.czary` w `assets/js/rdzen.js`.
+W oknach wagi, stołu i przepisu na górze jest lista czarów tego miejsca (czary z notatek postaci; kliknięcie nazwy rzuca czar), a pod nią „Rzuć czar” (słuchanie mowy, Chrome i Edge, po polsku). Silnik jest wspólny dla wszystkich pokoi: `Mysl.czary` w `assets/js/rdzen.js`.
 
 - Czar rozpoznaje się po brzmieniu pierwszych dwóch słów („Extractio Carbonis”, „Revelio Ponderis”, „Cantus Sacchari”); przekręcenia mowy („ekstrakcjo karbonis”) też działają. Bez przedrostka.
 - Ostatnie słowo to moc: „optimum”, „maximum” albo liczba (cyframi, po polsku albo po łacinie: duo, tres, quattuor/quatro…).
@@ -36,6 +36,12 @@ W oknach wagi, stołu i przepisu na górze jest lista czarów tego miejsca (czar
   - Przepis: optimum = porcja bez brudu, maximum = największa porcja, liczba = mnożnik porcji; bez mocy to, co w polu.
   - Waga: moc nie ma znaczenia.
 - Czar działa także wtedy, gdy postać go nie zna (`znany: false` w `czary.json`): nie ma go tylko na liście w jej notatkach, ale wypowiedziany albo wpisany zadziała.
+
+## Łączenie i badanie
+
+- Kopczyki łączą się same, ale tylko przy tym samym pierwiastku i pochodzeniu (węgiel z cebuli da potem cukier cebulowy).
+- Wyroby łączy się ręcznie: ⧉ przy wyrobie podświetla te, z którymi można go połączyć (ten sam wyrób, ta sama czystość co do 0,1%), a „Połącz tu” je scala.
+- Na wadze zbadane porcje mają znaczek ✓.
 
 ## Rynek
 

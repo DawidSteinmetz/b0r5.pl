@@ -401,12 +401,16 @@
     b.animate([{ opacity: 0 }, { opacity: sila, offset: .06 }, { opacity: sila * .85, offset: .2 }, { opacity: 0 }],
       { duration: 1500 * Math.max(.6, sila), easing: 'ease-out' }).finished.then(() => b.remove(), () => b.remove());
   }
-  function boiSie(tak) {
+  // skad: 'gora' (przycisk wyjścia u góry: rozbłysk, drżenie i szept) albo 'dol' ("wróć do mgły", Accio: to samo bez szeptu)
+  let lekSkad = '';
+  function boiSie(tak, skad) {
+    skad = skad || 'gora';
+    if (!tak && lekSkad && lekSkad !== skad) return;           // odejście z góry nie uspokaja strachu z dołu i odwrotnie
     const cel = tak ? 1 : 0;
     if (cel === lekCel) return;
-    lekCel = cel;
+    lekCel = cel; lekSkad = tak ? skad : '';
     if (tak) { rozblysk(1); dreszcz = true; }
-    if (tak && !szept) {
+    if (tak && skad === 'gora' && !szept) {
       szept = document.createElement('div'); szept.id = 'szept'; szept.setAttribute('aria-hidden', 'true');
       szept.textContent = SZEPTY[Math.floor(Math.random() * SZEPTY.length)];
       body.appendChild(szept);
@@ -415,41 +419,21 @@
   }
   addEventListener('mousemove', e => {
     if (!pelnyEkran()) { if (lekCel) boiSie(false); return; }
-    if (e.clientY < 14) boiSie(true); else if (e.clientY > 70) boiSie(false);
+    if (e.clientY < 14) boiSie(true, 'gora'); else if (e.clientY > 70) boiSie(false, 'gora');
   });
-  document.addEventListener('mouseleave', e => { if (pelnyEkran() && e.clientY <= 2) boiSie(true); });
-  document.addEventListener('mouseenter', e => { if (e.clientY > 70) boiSie(false); });
+  document.addEventListener('mouseleave', e => { if (pelnyEkran() && e.clientY <= 2) boiSie(true, 'gora'); });
+  document.addEventListener('mouseenter', e => { if (e.clientY > 70) boiSie(false, 'gora'); });
 
-  /* Zaćmienie: w pełnym ekranie najechanie na "wróć do mgły" albo Accio też wywołuje mignięcie przeglądarki, więc tu
-     zamiast rozbłysku świeca gaśnie. Od kursora rozlewa się ciemność jak atrament, mruga dwa razy i wraca światło,
-     a wokół napisu krąży i rozbiega się krąg znaków. */
-  const ZNAKI = ['☾', '✦', '✧', '☽', '✶', '·', '✦', '✧'];
-  let zacmienieOst = 0;
-  function zacmienie(el, ex, ey) {
-    if (!RUCH || performance.now() - zacmienieOst < 1800) return;
-    zacmienieOst = performance.now();
-    const r = el.getBoundingClientRect(), cx = ex || r.left + r.width / 2, cy = ey || r.top + r.height / 2;
-    const c = document.createElement('div');
-    c.className = 'zacmienie'; c.setAttribute('aria-hidden', 'true');
-    c.style.setProperty('--zx', cx + 'px'); c.style.setProperty('--zy', cy + 'px');
-    body.appendChild(c);
-    c.animate([{ opacity: 0, '--zr': '0vmax' }, { opacity: .96, '--zr': '140vmax', offset: .12 }, { opacity: .45, offset: .3 }, { opacity: .9, offset: .42 },
-      { opacity: .2, offset: .62 }, { opacity: 0 }], { duration: 1300, easing: 'ease-out' }).finished.then(() => c.remove(), () => c.remove());
-    ZNAKI.forEach((z, i) => {
-      const g = document.createElement('span'), a0 = i / ZNAKI.length * 6.283, d0 = 26 + Math.random() * 10, d1 = 90 + Math.random() * 90;
-      g.className = 'znak'; g.textContent = z; g.setAttribute('aria-hidden', 'true');
-      g.style.left = cx + 'px'; g.style.top = cy + 'px'; g.style.fontSize = (11 + Math.random() * 9) + 'px';
-      body.appendChild(g);
-      const p = (a, d) => 'translate(calc(-50% + ' + (Math.cos(a) * d).toFixed(1) + 'px),calc(-50% + ' + (Math.sin(a) * d).toFixed(1) + 'px))';
-      g.animate([{ transform: p(a0, d0) + ' scale(.4)', opacity: 0 }, { transform: p(a0 + 1.4, d0 + 6) + ' scale(1)', opacity: 1, offset: .35 },
-        { transform: p(a0 + 2.6, d1) + ' scale(.8) rotate(90deg)', opacity: 0 }], { duration: 1500 + Math.random() * 400, easing: 'ease-out' })
-        .finished.then(() => g.remove(), () => g.remove());
-    });
-  }
+  // "wróć do mgły" i Accio w pełnym ekranie: to samo co u góry (rozbłysk i drżenie), tylko bez szeptu
   document.addEventListener('pointerover', e => {
     const el = e.target.closest && e.target.closest('#wroc, #abtn');
     if (!el || (e.relatedTarget && el.contains(e.relatedTarget)) || !pelnyEkran()) return;
-    zacmienie(el, e.clientX, e.clientY);
+    boiSie(true, 'dol');
+  });
+  document.addEventListener('pointerout', e => {
+    const el = e.target.closest && e.target.closest('#wroc, #abtn');
+    if (!el || (e.relatedTarget && el.contains(e.relatedTarget))) return;
+    boiSie(false, 'dol');
   });
 
   /* lewitujące elementy */

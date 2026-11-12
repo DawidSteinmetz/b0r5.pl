@@ -522,8 +522,9 @@ function alch_dokoncz() {
             // Gaz łapie tylko rozdzielacz postawiony nad naczyniem przed zagotowaniem; bez niego ulatuje w komin.
             $n = INF; foreach ($kat['wzor'] as $e => $ile) $n = min($n, (float)($k['sklad'][$e] ?? 0) / $ile);
             $gaz = []; foreach ($kat['wzor'] as $e => $ile) $gaz[$e] = round($n * $ile, 6);
-            $reszta = []; foreach ($k['sklad'] as $e => $mol) { $z = round($mol - ($gaz[$e] ?? 0), 6); if ($z > ALCH_MALO) $reszta[$e] = $z; }
-            $mg = alch_masa($gaz); $mr = alch_masa($reszta); $mc = $mg + $mr;
+            $reszta = []; $inne = [];                   // reszta stała zostaje na dnie, reszta gazowa (O, H, N, Cl, F) też ulatuje
+            foreach ($k['sklad'] as $e => $mol) { $z = round($mol - ($gaz[$e] ?? 0), 6); if ($z <= ALCH_MALO) continue; if (alch_banka($e)) $inne[$e] = $z; else $reszta[$e] = $z; }
+            $mg = alch_masa($gaz); $mr = alch_masa($reszta); $mc = $mg + $mr + alch_masa($inne);
             $poch = []; foreach ($k['pochodzenie'] as $q => $m) $poch[$q] = $m * $mg / max(1e-9, $mc);
             $pochR = []; foreach ($k['pochodzenie'] as $q => $m) $pochR[$q] = $m * $mr / max(1e-9, $mc);
             $prz = alch_przymiotnik($k['pochodzenie'], $kat['rodzaj']); $nazwa = $kat['produkt'] . ($prz !== '' ? ' ' . $prz : '');
@@ -532,6 +533,13 @@ function alch_dokoncz() {
                     'katalizator' => $k['katalizator'], 'czystosc' => 1.0, 'stopien' => alch_stopien(1.0, $kat['rodzaj']), 'zbadany' => true, 'czar' => null]);
                 $tekst = 'Powstało: ' . $nazwa . ', ' . alch_ile($mg, $kat) . '. Gaz uleciał prosto do rozdzielacza, bańka leży w Składzie.';
             } else $tekst = 'Zabulgotało i coś bezbarwnego uleciało w komin: ' . alch_ile($mg, $kat) . ' gazu przepadło. Nad naczyniem nie było rozdzielacza.';
+            if ($inne) {
+                $opis = []; foreach ($inne as $e => $mol) $opis[] = alch_nazwa_el($e) . ' ' . alch_f($mol * alch_M($e), 2) . ' g';
+                if (!empty($k['rozdzielacz'])) {
+                    foreach ($inne as $e => $mol) alch_dosyp_kopczyk($e, $mol, 'kociolek');   // mieszanina: bańka „z kociołka”
+                    $tekst .= ' Resztę gazów rozdzielacz złapał do osobnych baniek: ' . implode(', ', $opis) . '.';
+                } else $tekst .= ' Razem z nim uleciała reszta gazów: ' . implode(', ', $opis) . '.';
+            }
             if ($mr > ALCH_MALO) $tekst .= ' Na dnie został osad: ' . alch_f($mr, 2) . ' g.';
             alch_zapisz('kociolek', ['sklad' => $reszta, 'pochodzenie' => $mr > ALCH_MALO ? $pochR : [], 'zawartosc' => $mr > ALCH_MALO ? [['nazwa' => 'Osad', 'masa_g' => round($mr, 2)]] : [],
                 'koniec' => null, 'katalizator' => null, 'wynik' => $tekst, 'wynik_id' => (string)$teraz, 'rozdzielacz' => !empty($k['rozdzielacz'])]);

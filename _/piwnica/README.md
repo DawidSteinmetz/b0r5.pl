@@ -68,5 +68,5 @@ Magiczny rozdzielacz (`"rozdzielacz": true` w `alchemia.json`, tylko piwnica Hen
 
 Bańki: wyssane albo złapane gazy (`ALCH_GAZY`) trzyma się w bańkach (zakładka Bańki w Składzie), nie na kopczykach. Bańki nie wchodzą do kociołka: Henryk nie ma aparatury do wprowadzania gazów do eliksiru.
 
-Produkty gazowe: katalizator z `"gaz": true` (np. `metan`, „Błędny ognik w słoiku”, CH₄) robi z kociołka czysty gaz według wzoru, a reszta zostaje na dnie jako osad. Gaz trafia do Składu (czystość 100%) tylko wtedy, gdy przed zagotowaniem nad kociołkiem stoi rozdzielacz; inaczej ulatuje w komin. Receptura: `przedmioty/012-receptura-na-metan.md` (węgiel i wodór z czegoś, co go trzyma, np. węgiel aktywny i dwa kubki wody).
+Produkty gazowe: katalizator z `"gaz": true` (np. `metan`, „Błędny ognik w słoiku”, CH₄) robi z kociołka czysty gaz według wzoru. Reszta gazowa (O, H, N, Cl, F) też ulatuje (z rozdzielaczem do osobnych baniek „z kociołka”), a na dnie zostaje tylko osad stały. Gaz trafia do Składu (czystość 100%) tylko wtedy, gdy przed zagotowaniem nad kociołkiem stoi rozdzielacz; inaczej ulatuje w komin. Receptura: `przedmioty/012-receptura-na-metan.md` (węgiel i wodór z czegoś, co go trzyma, np. węgiel aktywny i dwa kubki wody).
 

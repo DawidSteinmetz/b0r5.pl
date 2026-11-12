@@ -4,10 +4,10 @@
  "gdzie": "w salonie",
  "ikona": "<path d=\"M20 90V45h60v45M30 90V60h40v30M40 45V30h20v15\"/><path d=\"M45 85c-4-8 6-10 2-18 8 4 12 12 8 18z\"/>",
  "kolejnosc": 4,
+ "skrypt": "pokoj.js",
+ "styl": "pokoj.css",
  "foldery": [
-  {
-   "nazwa": "przedmioty",
-   "rodzaj": "przedmiot"
-  }
+  { "nazwa": "przedmioty", "rodzaj": "przedmiot" },
+  { "nazwa": "notes", "rodzaj": "notes" }
  ]
 }

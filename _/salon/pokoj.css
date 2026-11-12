@@ -1,0 +1,32 @@
+/* Notes w salonie: liniowany papier, kolumny graczy, wpisy pojawiają się jak pisane piórem */
+.p.kot{width:150px;height:184px}
+#tost{position:absolute;left:17%;right:17%;bottom:2.6%;z-index:3;padding:6px 10px;background:#2b1d10e6;color:#f3e2b0;font:italic 14px/1.3 Georgia,serif;text-align:center;border-radius:3px;opacity:0;transition:opacity .25s;pointer-events:none}
+#tost.on{opacity:1}
+#w .dim{opacity:.7;font-size:.85em;text-align:left}
+#w .grupa{margin:12px 0 2px;text-align:left;font-style:italic;border-bottom:1px solid #2b1d1055}
+#w .partia{font-style:italic;margin:6px 0 2px;opacity:.8}
+#w table.notes{width:100%;border-collapse:collapse;margin:4px 0 8px;font:italic 17px/1.5 Georgia,"Times New Roman",serif;table-layout:fixed;break-inside:avoid;
+  background:repeating-linear-gradient(transparent 0 25px,#2b6ca033 25px 26px)}
+#w .notes th{font-weight:normal;font-size:16px;padding:2px 4px 4px;border-bottom:2px solid #2b1d10aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#w .notes td{height:26px;padding:0 4px;text-align:center;border-left:1px solid #a3333355}
+#w .notes td:first-child,#w .notes th:first-child{border-left:0}
+#w .notes tfoot td{border-top:2px double #2b1d10aa;font-weight:bold;font-style:normal;font-size:18px;padding-top:2px}
+#w .notes .prow{color:#7a1f12}
+#w .notes td.swiezy{animation:atrament 1.4s ease-out}
+@keyframes atrament{0%{clip-path:inset(0 100% 0 0);color:#3b5fa0}60%{clip-path:inset(0 0 0 0);color:#3b5fa0}100%{color:inherit}}
+#w .wygrana{font-size:20px;font-style:italic;color:#7a1f12;margin:6px 0}
+#w .zaklecia{display:flex;align-items:center;justify-content:center;gap:.6em;flex-wrap:wrap;margin:6px 0;break-inside:avoid}
+#w .zaklecia button{margin:0}
+#w #ucho.slucha{background:#7a1f1218;box-shadow:0 0 0 2px #7a1f1244;animation:slucha 1.6s ease-in-out infinite}
+@keyframes slucha{50%{box-shadow:0 0 0 5px #7a1f1222}}
+#w #slyszy{font-style:italic;opacity:.75;font-size:14px}
+#w .pisz,#w #nowaf{display:flex;align-items:center;gap:.4em;justify-content:center;margin:6px 0;break-inside:avoid}
+#w #nowaf[hidden]{display:none}
+#w .pisz input,#w #nowaf input{margin:0;font:italic 15px Georgia,serif;padding:3px 6px;border:1px solid #2b1d1088;background:#fff8;color:var(--ink);border-radius:3px;min-width:0}
+#w .pisz input{flex:1 1 auto;max-width:320px}
+#w #nowaf #ng{flex:1 1 auto;max-width:260px}
+#w #nowaf #nc{width:4.5em}
+#w .pisz button,#w #nowaf button{margin:0}
+#w .akcje{display:flex;gap:4px;justify-content:center;flex-wrap:wrap;break-inside:avoid}
+#w .akcje button{margin:0;padding:3px 10px;font-size:13px}
+@media (prefers-reduced-motion:reduce){#w .notes td.swiezy,#w #ucho.slucha{animation:none}}

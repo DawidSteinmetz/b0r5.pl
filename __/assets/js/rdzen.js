@@ -71,6 +71,46 @@
     return r.json();
   }
 
+  /* Przejście między pokojami: mgła powoli gęstnieje, w środku blado pojawia się nazwa miejsca, strona przechodzi dalej
+     pod osłoną mgły, a w nowym pokoju mgła równie powoli rzednie. Nowa strona wie o przejściu z sessionStorage. */
+  const RUCH = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const MGLA_GESTNIEJE = RUCH ? 2600 : 500, MGLA_RZEDNIE = RUCH ? 3600 : 500;
+  let mgla = null, przechodzi = false;
+  function warstwaMgly(napis) {
+    if (mgla) mgla.remove();
+    mgla = document.createElement('div');
+    mgla.id = 'przejscie'; mgla.setAttribute('aria-hidden', 'true');
+    // kłęby mgły napływają z różnych stron (położenie startowe w --x/--y, każdy dryfuje własnym rytmem)
+    const KLEBY = [[-60, -45, 11], [55, -50, 13], [-55, 50, 12], [60, 45, 14], [0, -70, 15], [0, 70, 10], [-75, 0, 16], [75, 5, 12]];
+    mgla.innerHTML = KLEBY.map(([x, y, t], i) => '<div class="kleb" style="--x:' + x + 'vmax;--y:' + y + 'vmax;--dryf:' + t + 's;--opozn:-' + (i * 1.7) + 's"></div>').join('') +
+      '<span class="cel"></span>';
+    mgla.querySelector('.cel').textContent = napis || '';
+    body.appendChild(mgla);
+    return mgla;
+  }
+  function przejdz(url, napis) {
+    if (przechodzi) return;
+    przechodzi = true;
+    try { sessionStorage.setItem('mprzejscie', JSON.stringify({ t: Date.now(), napis: napis || '' })); } catch (e) { /* tryb prywatny */ }
+    const m = warstwaMgly(napis);
+    m.style.setProperty('--ms', MGLA_GESTNIEJE + 'ms');
+    void m.offsetWidth;                                   // najpierw przezroczysta, dopiero potem gęstnieje
+    m.classList.add('gesta');
+    setTimeout(() => { location.href = url; }, MGLA_GESTNIEJE + 150);
+  }
+  function rozprosz() {
+    const m = mgla; if (!m || !m.classList.contains('gesta')) return;
+    m.style.setProperty('--ms', MGLA_RZEDNIE + 'ms');
+    m.classList.remove('od-razu'); void m.offsetWidth;
+    m.classList.remove('gesta'); m.classList.add('rzednie');
+    setTimeout(() => { if (mgla === m) { m.remove(); mgla = null; } }, MGLA_RZEDNIE + 200);
+  }
+  let przybycie = null;
+  try { przybycie = JSON.parse(sessionStorage.getItem('mprzejscie') || 'null'); sessionStorage.removeItem('mprzejscie'); } catch (e) { /* tryb prywatny */ }
+  if (przybycie && Date.now() - przybycie.t < 20000) warstwaMgly(przybycie.napis).classList.add('gesta', 'od-razu');
+  // powrót przyciskiem "wstecz": przeglądarka może pokazać stronę z pamięci, jeszcze zasnutą mgłą
+  addEventListener('pageshow', e => { if (e.persisted && mgla) { przechodzi = false; mgla.remove(); mgla = null; } });
+
   /* tło, zegar, kalendarz, okno pergaminu */
   body.insertAdjacentHTML('afterbegin',
     '<svg width="0" height="0" style="position:absolute" aria-hidden="true">' + FILTRY + '</svg>' +
@@ -268,11 +308,9 @@
     const e = o.e;
     ziarnoArk = String(e.kid || e.id || '');
     if (RODZAJE[o.kind].otworz) return RODZAJE[o.kind].otworz(o);
+    if (o.kind === 'pokoj') return przejdz(BASE + e.id + '/', e.nazwa);   // do pokoju wchodzi się przez mgłę
     arkusz(o.kind === 'ksiazka' ? 'ks' : '');
-    if (o.kind === 'pokoj') {
-      w.innerHTML = '<svg viewBox="0 0 100 100">' + (e.ikona || '') + '</svg><h2>' + esc(e.nazwa) + '</h2><p>' + esc(e.opis) + '</p><button id="go">Wejdź</button><button id="x">Zamknij</button>';
-      $('#go').onclick = () => { location.href = BASE + e.id + '/'; };
-    } else {
+    {
       w.innerHTML = '<h2>' + esc(e.tytul) + '</h2><div class="tekst"></div><div id="przen"></div><button id="x">Zamknij</button>';
       if (stanOK && e.kid) {
         wyslij('otworz', { id: e.kid }).catch(() => { });
@@ -662,12 +700,16 @@
     zegar(); setInterval(zegar, 10000);
     radio();
     accio();
-    if (POKOJ) body.insertAdjacentHTML('beforeend', '<a id="wroc" href="' + BASE + '">wróć do mgły</a>');
+    if (POKOJ) {
+      body.insertAdjacentHTML('beforeend', '<a id="wroc" href="' + BASE + '">wróć do mgły</a>');
+      $('#wroc').onclick = ev => { if (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button) return; ev.preventDefault(); przejdz(BASE, ''); };
+    }
     let d;
     try { d = await dane(POKOJ); }
     catch (err) {
       console.error('Brak danych. Strona wymaga serwera z PHP (np. php -S localhost:8000).', err);
       body.insertAdjacentHTML('beforeend', '<div id="blad">Mgła nie ustępuje.</div>');
+      rozprosz();
       return;
     }
     let lista;
@@ -679,6 +721,7 @@
     }
     zbuduj(lista);
     requestAnimationFrame(tick);
+    setTimeout(rozprosz, 350);                          // pokój już stoi: mgła może rzednąć
     await odswiez();
     setInterval(odswiez, 5000);
   }

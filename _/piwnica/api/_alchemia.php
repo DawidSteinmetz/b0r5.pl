@@ -115,6 +115,12 @@ function alch_nowy_surowiec($sid, $porcja_g = null, $nazwa = null) {
     alch_zapisz_rzecz($r);
     return $r;
 }
+// Gazy po wyssaniu albo złapaniu trzyma się w bańkach, nie na kopczykach. Do kociołka ich nie wprowadzi się: nie ma czym.
+function alch_banka($e) { return in_array($e, ALCH_GAZY, true); }
+function alch_nazwa_kopczyka($e, $sid) {
+    $nar = ['H' => 'wodorem', 'O' => 'tlenem', 'N' => 'azotem', 'Cl' => 'chlorem', 'F' => 'fluorem'];
+    return alch_banka($e) ? 'Bańka z ' . $nar[$e] . ' ' . alch_z_czego($sid) : mb_convert_case(alch_nazwa_el($e), MB_CASE_TITLE, 'UTF-8') . ' ' . alch_z_czego($sid);
+}
 function alch_z_czego($sid) {
     $cfg = alch_cfg();
     if (isset($cfg['przymiotniki'][$sid]['z'])) return $cfg['przymiotniki'][$sid]['z'];
@@ -132,7 +138,7 @@ function alch_dosyp_kopczyk($e, $mol, $sid) {
         }
     }
     alch_zapisz_rzecz(['id' => alch_nowe_id(), 'typ' => 'kopczyk', 'pierwiastek' => $e, 'zrodlo' => $sid, 'gdzie' => 'sklad',
-        'nazwa' => mb_convert_case(alch_nazwa_el($e), MB_CASE_TITLE, 'UTF-8') . ' ' . alch_z_czego($sid),
+        'nazwa' => alch_nazwa_kopczyka($e, $sid),
         'sklad' => [$e => round($mol, 6)], 'pochodzenie' => [$sid => $mol * alch_M($e)], 'zbadany' => true, 'czar' => null]);
 }
 
@@ -511,6 +517,26 @@ function alch_dokoncz() {
         $kat = alch_tabela('katalizatory')[$k['katalizator']] ?? null;
         $wyn = $kat ? alch_uwarz($k['sklad'], $kat) : null;
         if (!$wyn) $tekst = 'Nic się nie związało. W kociołku brakowało czegoś, co jest we wzorze.';
+        elseif (!empty($kat['gaz'])) {
+            // Produkt gazowy (np. metan, para wodna): ze wzoru powstaje czysty gaz, a to, co stałe, zostaje w naczyniu jako osad.
+            // Gaz łapie tylko rozdzielacz postawiony nad naczyniem przed zagotowaniem; bez niego ulatuje w komin.
+            $n = INF; foreach ($kat['wzor'] as $e => $ile) $n = min($n, (float)($k['sklad'][$e] ?? 0) / $ile);
+            $gaz = []; foreach ($kat['wzor'] as $e => $ile) $gaz[$e] = round($n * $ile, 6);
+            $reszta = []; foreach ($k['sklad'] as $e => $mol) { $z = round($mol - ($gaz[$e] ?? 0), 6); if ($z > ALCH_MALO) $reszta[$e] = $z; }
+            $mg = alch_masa($gaz); $mr = alch_masa($reszta); $mc = $mg + $mr;
+            $poch = []; foreach ($k['pochodzenie'] as $q => $m) $poch[$q] = $m * $mg / max(1e-9, $mc);
+            $pochR = []; foreach ($k['pochodzenie'] as $q => $m) $pochR[$q] = $m * $mr / max(1e-9, $mc);
+            $prz = alch_przymiotnik($k['pochodzenie'], $kat['rodzaj']); $nazwa = $kat['produkt'] . ($prz !== '' ? ' ' . $prz : '');
+            if (!empty($k['rozdzielacz'])) {
+                alch_zapisz_rzecz(['id' => alch_nowe_id(), 'typ' => 'produkt', 'nazwa' => $nazwa, 'gdzie' => 'sklad', 'sklad' => $gaz, 'pochodzenie' => $poch,
+                    'katalizator' => $k['katalizator'], 'czystosc' => 1.0, 'stopien' => alch_stopien(1.0, $kat['rodzaj']), 'zbadany' => true, 'czar' => null]);
+                $tekst = 'Powstało: ' . $nazwa . ', ' . alch_ile($mg, $kat) . '. Gaz uleciał prosto do rozdzielacza, bańka leży w Składzie.';
+            } else $tekst = 'Zabulgotało i coś bezbarwnego uleciało w komin: ' . alch_ile($mg, $kat) . ' gazu przepadło. Nad naczyniem nie było rozdzielacza.';
+            if ($mr > ALCH_MALO) $tekst .= ' Na dnie został osad: ' . alch_f($mr, 2) . ' g.';
+            alch_zapisz('kociolek', ['sklad' => $reszta, 'pochodzenie' => $mr > ALCH_MALO ? $pochR : [], 'zawartosc' => $mr > ALCH_MALO ? [['nazwa' => 'Osad', 'masa_g' => round($mr, 2)]] : [],
+                'koniec' => null, 'katalizator' => null, 'wynik' => $tekst, 'wynik_id' => (string)$teraz, 'rozdzielacz' => !empty($k['rozdzielacz'])]);
+            return;
+        }
         else {
             $ro = $kat['rodzaj']; $prz = alch_przymiotnik($k['pochodzenie'], $ro);
             $nazwa = $kat['produkt'] . ($prz !== '' ? ' ' . $prz : '');
@@ -519,7 +545,7 @@ function alch_dokoncz() {
                 'katalizator' => $k['katalizator'], 'czystosc' => $czyst, 'stopien' => alch_stopien($czyst, $ro), 'zbadany' => true, 'czar' => null]);
             $tekst = 'Powstało: ' . $nazwa . ', ' . alch_ile($wyn['masa'], $kat) . ', czystość ' . alch_f($czyst * 100, 1) . '%. Leży w Składzie.';
         }
-        alch_zapisz('kociolek', ['sklad' => [], 'pochodzenie' => [], 'zawartosc' => [], 'koniec' => null, 'katalizator' => null, 'wynik' => $tekst, 'wynik_id' => (string)$teraz]);
+        alch_zapisz('kociolek', ['sklad' => [], 'pochodzenie' => [], 'zawartosc' => [], 'koniec' => null, 'katalizator' => null, 'wynik' => $tekst, 'wynik_id' => (string)$teraz, 'rozdzielacz' => !empty($k['rozdzielacz'])]);
     }
 }
 
@@ -598,11 +624,21 @@ function alch_wykonaj($akcja, $in) {
             alch_zapisz_rzecz($x);
             $st['ruszona'] = true; alch_zapisz('stol', $st);
             return $cz['nazwa'] . '. Próbka zaczyna drżeć.';
+        case 'rozdzielacz_kociol':                       // jeden rozdzielacz: albo nad stołem, albo nad naczyniem
+            if (empty($cfg['rozdzielacz'])) alch_blad('Tu nie ma rozdzielacza.');
+            $k = alch_kociolek();
+            if (!empty($k['koniec'])) alch_blad('Teraz się gotuje, nie da się nic przestawić.');
+            if ($s('on') === '1') {
+                if (!empty((alch_czytaj('stol') ?: [])['rozdzielacz'])) alch_blad('Rozdzielacz stoi nad stołem. Najpierw go stamtąd zdejmij.');
+                $k['rozdzielacz'] = true; alch_zapisz('kociolek', $k); return 'Rozdzielacz stoi nad naczyniem.';
+            }
+            $k['rozdzielacz'] = false; alch_zapisz('kociolek', $k); return 'Rozdzielacz wraca na półkę.';
         case 'rozdzielacz':                              // podstaw {on: 1} albo zdejmij {on: 0} magiczny rozdzielacz nad stołem
             if (empty($cfg['rozdzielacz'])) alch_blad('Tu nie ma rozdzielacza.');
             $st = alch_czytaj('stol'); $x = $st ? alch_rzecz($st['id']) : null;
             if (!$x) alch_blad('Na stole nic nie ma.');
             if (!empty($x['czar'])) alch_blad('Czar jeszcze działa.');
+            if ($s('on') === '1' && !empty(alch_kociolek()['rozdzielacz'])) alch_blad('Rozdzielacz stoi nad naczyniem. Najpierw go stamtąd zdejmij.');
             if ($s('on') === '1') { $st['rozdzielacz'] = true; $st['domkniety'] = empty($st['ruszona']); alch_zapisz('stol', $st); return 'Rozdzielacz stoi nad próbką.'; }
             unset($st['rozdzielacz'], $st['domkniety']); alch_zapisz('stol', $st);
             return 'Rozdzielacz wraca na półkę.';
@@ -617,6 +653,7 @@ function alch_wykonaj($akcja, $in) {
             return alch_stos(array_slice($lista, 0, $ile), $pid)['nazwa'] . ' leży na stole.';
         case 'do_kociolka':
             if (!$r || !in_array($r['typ'], ['surowiec', 'kopczyk'], true)) alch_blad('Tego nie wsypie się do kociołka.');
+            if ($r['typ'] === 'kopczyk' && alch_banka($r['pierwiastek'])) alch_blad('Gazu z bańki nie da się wprowadzić do eliksiru. Nie ma czym.');
             if ($naWadze) alch_blad('To leży na wadze. Najpierw zdejmij.');
             if (!empty($r['czar'])) alch_blad('Czar jeszcze działa.');
             $naStole = $r['gdzie'] === 'stol';
@@ -690,7 +727,7 @@ function alch_wykonaj($akcja, $in) {
             $k = alch_kociolek();
             if (!empty($k['koniec'])) alch_blad('W kociołku właśnie się gotuje.');
             if (!$k['sklad']) alch_blad('Kociołek jest pusty.');
-            alch_zapisz('kociolek', null);
+            alch_zapisz('kociolek', !empty($k['rozdzielacz']) ? ['sklad' => [], 'pochodzenie' => [], 'zawartosc' => [], 'koniec' => null, 'katalizator' => null, 'wynik' => '', 'rozdzielacz' => true] : null);
             return 'Wylewasz wszystko. Mieszanina przepadła.';
         case 'odlej':
             if (!$r || $r['typ'] !== 'produkt' || $r['gdzie'] !== 'sklad') alch_blad('Tego nie da się podzielić.');
@@ -740,7 +777,7 @@ function alch_tabela_skladu($sklad) {
 function alch_widok_rzeczy($r, $o) {
     $v = ['id' => $r['id'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'gdzie' => $r['gdzie'], 'masa_g' => round(alch_masa($r['sklad']), 2), 'zbadany' => !empty($r['zbadany'])];
     if (!empty($r['zbadany'])) $v['sklad'] = alch_tabela_skladu($r['sklad']);
-    if ($r['typ'] === 'kopczyk') $v['mol'] = round($r['sklad'][$r['pierwiastek']], 4);
+    if ($r['typ'] === 'kopczyk') { $v['mol'] = round($r['sklad'][$r['pierwiastek']], 4); $v['banka'] = alch_banka($r['pierwiastek']); $v['nazwa'] = alch_nazwa_kopczyka($r['pierwiastek'], (string)$r['zrodlo']); }
     if ($r['typ'] === 'surowiec') $v['kat'] = alch_kategoria($r['surowiec']);
     if ($r['typ'] === 'produkt') { $v['czystosc'] = $r['czystosc']; $v['stopien'] = $r['stopien']; $v['cena_t'] = rynek_kwota_txt(alch_cena($r, $o)); $v['ciecz'] = !empty(alch_tabela('katalizatory')[$r['katalizator']]['ciecz']); $v['kat'] = (string)($r['katalizator'] ?? ''); }
     return $v;
@@ -786,5 +823,6 @@ function alch_widok() {
     $kategorie = array_map(function ($k) { return ['id' => $k['id'], 'nazwa' => $k['nazwa']]; }, alch_cfg()['kategorie'] ?? []);
     $kategorie[] = ['id' => 'inne', 'nazwa' => 'Inne'];
     return ['czar_wagi' => alch_cfg()['czar_wagi'], 'kategorie' => $kategorie, 'pojemnosc_g' => alch_pojemnosc(), 'przepisy' => $przepisy, 'zaznaczenie' => $zaznaczenie, 'czary' => $czary, 'sklad' => $sklad, 'stol' => $stol, 'waga' => $waga, 'katalizatory' => $kat,
-        'kociolek' => ['zawartosc' => $k['zawartosc'], 'sklad' => alch_tabela_skladu($k['sklad']), 'masa_g' => round(alch_masa($k['sklad']), 2), 'gotuje' => !empty($k['koniec']), 'wynik' => (string)$k['wynik'], 'wynik_id' => (string)($k['wynik_id'] ?? '')]];
+        'kociolek' => ['zawartosc' => $k['zawartosc'], 'sklad' => alch_tabela_skladu($k['sklad']), 'masa_g' => round(alch_masa($k['sklad']), 2), 'gotuje' => !empty($k['koniec']), 'wynik' => (string)$k['wynik'], 'wynik_id' => (string)($k['wynik_id'] ?? ''),
+            'rozdzielacz' => !empty(alch_cfg()['rozdzielacz']) ? ['jest' => !empty($k['rozdzielacz']), 'ikona' => $tprz['rozdzielacz']['ikona'] ?? '', 'nazwa' => $tprz['rozdzielacz']['nazwa'] ?? 'Rozdzielacz'] : null]];
 }

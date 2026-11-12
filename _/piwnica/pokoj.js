@@ -174,7 +174,8 @@
       const surowceAlf = s.sklad.filter(r => r.typ === 'surowiec' && r.gdzie === 'sklad').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       const zaklad = (id, nazwa, lista, wiersz) => ({ id, nazwa, n: lista.length, zazn: lista.some(r => r.zaznaczone_g), h: lista.map(wiersz).join('') });
       const zakladki = s.kategorie.map(k => zaklad(k.id, k.nazwa, surowceAlf.filter(r => r.kat === k.id), wierszSurowca))
-        .concat([zaklad('kopczyki', 'Kopczyki', s.sklad.filter(r => r.typ === 'kopczyk'), wierszKopczyka),
+        .concat([zaklad('kopczyki', 'Kopczyki', s.sklad.filter(r => r.typ === 'kopczyk' && !r.banka), wierszKopczyka),
+          zaklad('banki', 'Bańki', s.sklad.filter(r => r.typ === 'kopczyk' && r.banka), r => pr(r.nazwa, liczba(r.mol) + ' mol · ' + liczba(r.masa_g, 2) + ' g', wyrzuc(r.id))),
           zaklad('wyroby', 'Wyroby', s.sklad.filter(r => r.typ === 'produkt' && r.gdzie === 'sklad'), wierszWyrobu),
           zaklad('katalizatory', 'Katalizatory', s.katalizatory, k => pr(k.nazwa, esc(k.produkt) + ' · ' + esc(k.wzor), ''))])
         .filter(z => z.n > 0);
@@ -240,7 +241,7 @@
             : u.e === 'O' ? 'Bez wodoru tlen nie ma się czego trzymać. Łączy się w pary ' + wz + ' i bańkami ulatuje z próbki'
             : u.e === 'H' ? 'Bez tlenu wodór łączy się w pary ' + wz + ' i ulatuje pod sufit'
             : esc(u.nazwa) + ' łączy się w pary ' + wz + ' i ulatuje z próbki') +
-            (u.zlapany ? ', ale rozdzielacz chwyta go do bańki: ' + liczba(u.g, 2) + ' g ' + dop + ' leży na kopczyku.'
+            (u.zlapany ? ', ale rozdzielacz chwyta go do bańki: ' + liczba(u.g, 2) + ' g ' + dop + ' jest w bańce w Składzie.'
             : (u.niedomkniety ? '. Rozdzielacz nie domknął się nad ruszoną już próbką' : '') + (u.swiezy ? '…' : ': ' + liczba(u.g, 2) + ' g ' + dop + ' przepadło w powietrzu.'));
         };
         h += (u.wczesniej || []).map(q => '<p class="ulot">' + zdanie(q) + '</p>').join('') + '<p class="ulot">' + zdanie(u) + '</p>';
@@ -473,7 +474,12 @@
       }
       let h = k.wynik ? '<p><b>' + esc(k.wynik) + '</b></p>' : '';
       if (k.gotuje) { el.innerHTML = h + '<div id="scena" class="trzesie"><svg viewBox="0 0 100 100">' + IKONA_KOCIOLEK + '</svg></div><p><i>Kociołek bulgocze…</i></p>'; return; }
-      if (!k.zawartosc.length) { el.innerHTML = h + '<p><i>Kociołek jest pusty. Wsypujesz do niego rzeczy ze Składu albo ze stołu.</i></p>'; return; }
+      /* Magiczny rozdzielacz nad naczyniem (tylko tam, gdzie pokój go ma): łapie produkt gazowy. Stawia się go przed zagotowaniem. */
+      const rz = k.rozdzielacz;
+      if (rz) h += '<div class="rozdz' + (rz.jest ? ' on' : '') + '"><svg viewBox="0 0 100 100" aria-hidden="true">' + rz.ikona + '</svg><span>' +
+        esc(rz.nazwa) + (rz.jest ? ' stoi nad naczyniem' : ' stoi na półce') + '</span><button id="rozdzK">' + (rz.jest ? 'Zdejmij' : 'Podstaw') + '</button></div>';
+      const podepnij = () => { if ($('#rozdzK')) $('#rozdzK').onclick = () => akcja('rozdzielacz_kociol', { on: rz.jest ? '0' : '1' }); };
+      if (!k.zawartosc.length) { el.innerHTML = h + '<p><i>Kociołek jest pusty. Wsypujesz do niego rzeczy ze Składu albo ze stołu.</i></p>'; podepnij(); return; }
       if (!s.katalizatory.some(c => c.id === wybrany)) wybrany = s.katalizatory.length ? s.katalizatory[0].id : '';
       /* Najpierw podsumowanie: ile gramów każdej substancji (alfabetycznie), potem porcje pogrupowane tak samo. */
       const grupy = {};
@@ -493,6 +499,7 @@
       $('#kat').onchange = () => { wybrany = $('#kat').value; };
       $('#gotuj').onclick = () => akcja('zagotuj', { katalizator: $('#kat').value });
       $('#wylej').onclick = () => akcja('wylej');
+      podepnij();
     };
     okienko(o, rysujKociolek, s => [s.kociolek, s.katalizatory]);
   }

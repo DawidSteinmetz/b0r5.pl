@@ -1,5 +1,5 @@
 {
- "_opis": "Katalizator decyduje, co powstanie w kociołku. 'wzor' to atomy produktu, 'rodzaj' to m albo f (odmiana nazwy), 'cena_10g' to punkty za 10 g przy dobrym skupie. 'ukryty' to nazwa przedmiotu przenośnego: katalizator działa dopiero, gdy ten przedmiot leży w tym pokoju. 'wymaga' to surowiec, który musi być w piwnicy: nie zużywa się i nie dodaje atomów. 'ciecz': true podaje produkt w litrach (1 g liczy się jak 1 ml, tak samo jak pojemność kociołka).",
+ "_opis": "Katalizator decyduje, co powstanie w kociołku. 'wzor' to atomy produktu, 'rodzaj' to m albo f (odmiana nazwy), 'cena_10g' to punkty za 10 g przy dobrym skupie. 'ukryty' to nazwa przedmiotu przenośnego: katalizator działa dopiero, gdy ten przedmiot leży w tym pokoju. 'wymaga' to surowiec, który musi być w piwnicy: nie zużywa się i nie dodaje atomów. 'ciecz': true podaje produkt w litrach (1 g liczy się jak 1 ml, tak samo jak pojemność kociołka). 'gaz': true to produkt gazowy (np. metan, para wodna): powstaje czysty, osad zostaje w kociołku, a gaz łapie tylko rozdzielacz postawiony nad kociołkiem przed zagotowaniem.",
  "cukier": {
   "nazwa": "Katalizator cukrowy",
   "produkt": "Cukier",
@@ -63,5 +63,17 @@
   "wzor_tekst": "NaCl",
   "cena_10g": 1,
   "wymaga": "krysztal-soli-wieliczka"
+ },
+ "metan": {
+  "nazwa": "Błędny ognik w słoiku",
+  "produkt": "Metan",
+  "rodzaj": "m",
+  "wzor": {
+   "C": 1,
+   "H": 4
+  },
+  "wzor_tekst": "CH₄",
+  "cena_10g": 20,
+  "gaz": true
  }
 }

@@ -64,5 +64,9 @@ Odparowanie: każdy wyrób można położyć na stole („Na stół” w zakład
 
 Ulatnianie: wodór i tlen trzymają się siebie. Gdy czar wyssie z próbki jeden z nich do zera, drugi łączy się w pary (O₂ albo H₂) i ulatuje. Gdy w próbce zostaje sam jeden gazowy pierwiastek (`ALCH_GAZY`: H, O, N, Cl, F), on też ulatuje, ale dopiero gdy poprzedni gaz został złapany albo minęło `ALCH_ULOT_S` (8 s). Na stole widać bańki i opis. Częściowe wysysanie (np. w przepisie na cukier) niczego nie uwalnia.
 
-Magiczny rozdzielacz (`"rozdzielacz": true` w `alchemia.json`, tylko piwnica Henryka): przycisk „Podstaw” na stole. Podstawiony, zanim pierwszy czar ruszy próbkę, łapie każdy ulatujący gaz na kopczyk. Podstawiony później się nie domyka i gaz przepada. Henryk opisał to na krawędzi blatu (`stol/001-stol.md`). Bez rozdzielacza ulatujący gaz zawsze przepada (tak jest w kuchni Artemidy).
+Magiczny rozdzielacz (`"rozdzielacz": true` w `alchemia.json`, tylko piwnica Henryka) jest jeden: stoi albo nad stołem, albo nad kociołkiem, albo na półce. Nad stołem: podstawiony, zanim pierwszy czar ruszy próbkę, łapie każdy ulatujący gaz do bańki; podstawiony później się nie domyka i gaz przepada. Henryk opisał to na krawędzi blatu (`stol/001-stol.md`). Bez rozdzielacza ulatujący gaz zawsze przepada (tak jest w kuchni Artemidy).
+
+Bańki: wyssane albo złapane gazy (`ALCH_GAZY`) trzyma się w bańkach (zakładka Bańki w Składzie), nie na kopczykach. Bańki nie wchodzą do kociołka: Henryk nie ma aparatury do wprowadzania gazów do eliksiru.
+
+Produkty gazowe: katalizator z `"gaz": true` (np. `metan`, „Błędny ognik w słoiku”, CH₄) robi z kociołka czysty gaz według wzoru, a reszta zostaje na dnie jako osad. Gaz trafia do Składu (czystość 100%) tylko wtedy, gdy przed zagotowaniem nad kociołkiem stoi rozdzielacz; inaczej ulatuje w komin. Receptura: `przedmioty/012-receptura-na-metan.md` (węgiel i wodór z czegoś, co go trzyma, np. węgiel aktywny i dwa kubki wody).
 

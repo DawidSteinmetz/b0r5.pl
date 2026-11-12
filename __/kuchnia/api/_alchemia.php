@@ -42,6 +42,11 @@ function alch_pod_blokada($f) {
     $h = fopen(ALCH_STAN . '/.blokada', 'c'); flock($h, LOCK_EX);
     try { return $f(); } finally { flock($h, LOCK_UN); fclose($h); }
 }
+const ALCH_GAZY = ['H', 'O', 'N', 'Cl', 'F'];        // pierwiastki, które same łączą się w pary (H₂, O₂, N₂, Cl₂, F₂) i ulatują
+function alch_ulatnij(&$r, $e, $czar, $teraz) {
+    $mol = (float)$r['sklad'][$e]; unset($r['sklad'][$e]);
+    $r['ulot'] = ['e' => $e, 'mol' => round($mol, 6), 'g' => round($mol * alch_M($e), 3), 'czar' => $czar, 'ts' => $teraz];
+}
 const ALCH_ULOT_S = 8;                              // ile sekund gaz ulatuje po wyssaniu partnera (wtedy da się go złapać)
 function alch_kociolek() { return alch_czytaj('kociolek') ?: ['sklad' => [], 'pochodzenie' => [], 'zawartosc' => [], 'koniec' => null, 'katalizator' => null, 'wynik' => '']; }
 
@@ -452,8 +457,7 @@ function alch_dokoncz() {
         foreach (($cz['usuwa'] ?? []) as $e) {
             $p = ['H' => 'O', 'O' => 'H'][$e] ?? null;
             if ($p === null || !empty($r['sklad'][$e]) || empty($r['sklad'][$p])) continue;
-            $mol = (float)$r['sklad'][$p]; unset($r['sklad'][$p]);
-            $r['ulot'] = ['e' => $p, 'mol' => round($mol, 6), 'g' => round($mol * alch_M($p), 3), 'czar' => $r['czar']['id'], 'ts' => $teraz];
+            alch_ulatnij($r, $p, $r['czar']['id'], $teraz);
         }
         $r['czar'] = null;
         if ($r['typ'] === 'produkt') {
@@ -471,6 +475,19 @@ function alch_dokoncz() {
         $cel = alch_cel_dla($r);
         if ($cel && !alch_nadmiar($r['sklad'], $cel['cel'])) $r['nazwa'] = alch_nazwa_gotowego($cel, $r);
         alch_zapisz_rzecz($r);
+        }
+    }
+
+    // Sam gaz na stole: gdy w próbce został jeden gazowy pierwiastek, łączy się w pary i ulatuje,
+    // ale dopiero gdy poprzedni ulatujący gaz został złapany albo przepadł (wtedy kolbę podstawia się drugi raz).
+    $st = alch_czytaj('stol');
+    $r = $st ? alch_rzecz($st['id']) : null;
+    if ($r && empty($r['czar']) && count($r['sklad']) === 1) {
+        $e = (string)array_key_first($r['sklad']); $u = $r['ulot'] ?? null;
+        if (in_array($e, ALCH_GAZY, true) && (!$u || !empty($u['zlapany']) || $teraz - (float)$u['ts'] >= ALCH_ULOT_S)) {
+            alch_ulatnij($r, $e, null, $teraz);
+            if ($r['typ'] === 'produkt') { $r['czystosc'] = 0.0; $r['stopien'] = alch_stopien(0.0, alch_tabela('katalizatory')[$r['katalizator']]['rodzaj'] ?? 'm'); }
+            alch_zapisz_rzecz($r);
         }
     }
 

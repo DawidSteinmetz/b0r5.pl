@@ -206,3 +206,8 @@ body.lek .corner,body.lek #radio,body.lek #sheet{animation:drzy .17s linear infi
 #sheet.rozklad #prev{left:1.1%}
 #sheet.rozklad #next{right:1.1%}
 #sheet.rozklad #pnr{display:none}
+/* Zaćmienie (pełny ekran, "wróć do mgły" i Accio): ciemność rozlewa się od kursora; promień w --zr */
+@property --zr{syntax:'<length>';inherits:false;initial-value:0px}
+.zacmienie{position:fixed;inset:0;z-index:40;pointer-events:none;opacity:0;
+  background:radial-gradient(circle at var(--zx,0) var(--zy,100%),#020108f5 0,#05030ff0 calc(var(--zr) * .8),#05030f00 var(--zr))}
+.znak{position:fixed;z-index:41;pointer-events:none;color:#c9b6ff;text-shadow:0 0 8px #a58cff,0 0 18px #6b4fd0;line-height:1;opacity:0}

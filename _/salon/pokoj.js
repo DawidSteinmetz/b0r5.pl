@@ -81,9 +81,12 @@
   ];
   const SKRESL = /^(skresl|skreslam|skreslone|skreslic|zero|nic|krzyzyk)$/;
   // Lusor Primus/Secundus/Tertius/Quartus (i dalej): gracz na danym miejscu
-  const LUSOR = /^(lusor|luzor|lusora|luzora|lu sor|loser|luser|lizor)\s+(primus|prymus|primu|prima|secundus|sekundus|secundu|sekundu|tertius|tercjus|tercius|terciu|quartus|kwartus|kwartu|quintus|kwintus|sextus|sekstus|septimus|septymus|octavus|oktawus)\s+(.+)$/;
-  const MIEJSCA = { primus: 1, prymus: 1, primu: 1, prima: 1, secundus: 2, sekundus: 2, secundu: 2, sekundu: 2, tertius: 3, tercjus: 3, tercius: 3, terciu: 3,
-    quartus: 4, kwartus: 4, kwartu: 4, quintus: 5, kwintus: 5, sextus: 6, sekstus: 6, septimus: 7, septymus: 7, octavus: 8, oktawus: 8 };
+  // jak rozpoznawanie mowy przekręca "lusor" i liczebniki (bez ogonków)
+  const LUSOR = /^(lusor|luzor|lusora|luzora|lu sor|lu zor|loser|luser|luzer|lusar|luzar|lozor|losor|lizor|lusser|louser)\s+(primus|prymus|primu|prima|primo|primas|prymas|prim us|secundus|sekundus|secundu|sekundu|sekunda|secundo|sekundos|tertius|tercjus|tercius|terciu|tercjusz|tertio|quartus|kwartus|kwartu|kwartusz|quarto|kwarta|quintus|kwintus|sextus|sekstus|septimus|septymus|octavus|oktawus)\s+(.+)$/;
+  const MIEJSCA = { primus: 1, prymus: 1, primu: 1, prima: 1, primo: 1, primas: 1, prymas: 1, 'prim us': 1,
+    secundus: 2, sekundus: 2, secundu: 2, sekundu: 2, sekunda: 2, secundo: 2, sekundos: 2,
+    tertius: 3, tercjus: 3, tercius: 3, terciu: 3, tercjusz: 3, tertio: 3,
+    quartus: 4, kwartus: 4, kwartu: 4, kwartusz: 4, quarto: 4, kwarta: 4, quintus: 5, kwintus: 5, sextus: 6, sekstus: 6, septimus: 7, septymus: 7, octavus: 8, oktawus: 8 };
   const duza = s => s.charAt(0).toUpperCase() + s.slice(1);
   // Zwraca {akcja, dane} albo {blad} albo null (to nie zaklęcie). "glos": przy mowie bez "Nota hoc" przyjmuje tylko
   // zdanie, które w całości jest czarem formularza albo czarem gracza (żeby rozmowa przy stole niczego nie wpisała).
@@ -236,6 +239,8 @@
     };
     const zaklecie = (warianty, glos) => {
       if (!s) return;
+      // pod przyciskiem zawsze widać, co pióro usłyszało, także gdy nie rozpozna w tym czaru
+      if (glos) $('#slyszy').textContent = 'usłyszane: „' + String(warianty[0] || '').trim() + '”';
       let blad = null;
       for (const t of warianty) {                // mowa daje kilka wersji: pierwsza, którą da się zrozumieć
         const z = rozbierz(t, s, glos);
@@ -245,6 +250,7 @@
         return wykonaj(z.akcja, Object.assign({ glos: !!glos }, z.dane || {}));
       }
       if (blad) kom(blad);
+      else if (glos) $('#slyszy').textContent += ' (to nie czar)';
     };
     // słuchanie
     const ucho = $('#ucho');

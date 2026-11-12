@@ -68,3 +68,13 @@
 #w ul.czary.zwarte li{break-inside:avoid}
 #w .kosci td,#w .kosci th.kat{height:20px;line-height:20px}
 #w table.kosci{background:repeating-linear-gradient(transparent 0 19px,#2b6ca033 19px 20px)}
+/* wąski ekran (telefon): w kroku 3 lista czarów schowana pod przyciskiem "czary", żeby tabela była bliżej */
+#w #pokazCzary{display:none}
+@media (max-width:600px){
+  #w #pokazCzary:not([hidden]){display:inline-block;margin:0;padding:3px 10px;font-size:13px}
+  #w ul.czary.zwarte:not(.widac){display:none}
+  #w ul.czary.zwarte{columns:1}
+  /* tabela może się dzielić między strony kartki (wiersze w całości), żeby nie zostawiać pustej pierwszej strony */
+  #w table.notes{break-inside:auto}
+  #w table.notes tr{break-inside:avoid}
+}

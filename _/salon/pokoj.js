@@ -74,8 +74,8 @@
 
   /* --- Czary ------------------------------------------------------------------------------------------------- */
   // Jak rozpoznawanie mowy po polsku słyszy łacińskie słowa (bez ogonków). Dłuższe warianty najpierw.
-  // "Nota hoc" bywa słyszane jako "nota hok", "nota ok", a nawet "no to chodź"
-  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta|no\s+to|noto)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot|chodz|chodzi|chodze|hodz|choc)\b\s*/;
+  // "Nota hoc" bywa słyszane jako "nota hok", "nota ok", a nawet "no to chodź" albo "no ta chodź"
+  const PRZEDROSTEK = /^\s*(nota|note|noto|notka|nuta|no\s+to|no\s+ta|na\s+to|no\s+tu)\s*(hoc|hok|hog|ok|och|hoch|hock|hook|hak|choc|cok|kok|hot|chodz|chodzi|chodze|hodz|choc)\b\s*/;
   const GRY = { mille: /^(mille|mile|mila|mili|milla|mil|mille mille)$/, alea: /^(alea|aleja|alei|ale a|alee|allea|alea jacta est)$/ };
   const ZACZNIJ = /^(incipiamus|incipjamus|incypiamus|in cipiamus|incipiam us|incipe|incipit|incipimus)$/;
   const NOWA = /^(nova|nowa|novo|nowe|nova pars|nowa gra)$/;
@@ -174,10 +174,12 @@
   function otworzNotes(o) {
     okno = o; arkusz('ks'); kom('');
     w.innerHTML = '<h2>' + esc(o.e.tytul) + '</h2><p class="etap" id="etap"></p><ul class="czary" id="czary"></ul>' +
-      '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Rzuć czar</button><span id="slyszy"></span></div>' +
+      '<div class="zaklecia"><button type="button" id="ucho" aria-pressed="false">Rzuć czar</button><button type="button" id="pokazCzary" aria-expanded="false">czary ▾</button><span id="slyszy"></span></div>' +
       '<div class="pisz"><input type="text" id="zakl" aria-label="Czar" autocomplete="off"><button type="button" id="zp">Zapisz</button></div>' +
       '<div id="nt"></div><div id="arch"></div><button id="x">Zamknij</button>';
     $('#x').onclick = zamknij; modal.classList.add('on');
+    // na wąskim ekranie lista czarów przy tabeli jest schowana pod przyciskiem "czary"
+    $('#pokazCzary').onclick = () => { const c = $('#czary'), on = !c.classList.contains('widac'); c.classList.toggle('widac', on); $('#pokazCzary').setAttribute('aria-expanded', on); $('#pokazCzary').textContent = on ? 'czary ▴' : 'czary ▾'; };
     let s = null, ost = '', nowyWpis = -1, edytuje = false;
     const wykonaj = async (akcja, d) => {
       let r; try { r = await api(akcja, d); } catch (err) { kom('Kleks: serwer nie odpowiada.'); return; }
@@ -245,6 +247,7 @@
       $('#etap').textContent = KROKI[s.etap] || '';
       $('#czary').innerHTML = listaCzarow(s);
       $('#czary').classList.toggle('zwarte', s.etap === 'gra');      // przy tabeli lista czarów zajmuje mniej miejsca
+      $('#pokazCzary').hidden = s.etap !== 'gra';
       $('#zakl').placeholder = s.etap === 'wybor' ? 'Mille albo Alea' : s.etap === 'gracze' ? 'np. Lusor Primus Kopytko' : s.typ === 'alea' ? 'np. Majusia trēs 18' : 'np. Kopytko 60 albo Borsuk bomba';
       let h = s.etap === 'wybor' ? rysujWybor() : s.etap === 'gracze' ? rysujGraczy() : s.typ === 'alea' ? rysujKosci() : rysujTysiac();
       if (s.etap === 'gra') {

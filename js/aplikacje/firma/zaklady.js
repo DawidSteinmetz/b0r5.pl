@@ -13,5 +13,5 @@ export function kartaZakladow(p, tytul, opis) {
             h('span.maly-tekst', status[z.stan] || 'czynny')),
           z.wydajnosc ? h('div.slaby.maly-tekst', `Wydajność: ${Number(z.wydajnosc).toLocaleString('pl-PL')} jednostek na cykl`) : null,
           z.opis ? h('p.slaby', z.opis) : null)))
-        : h('div.pusto', 'Nie dodano jeszcze zakładów. Szczegóły zakładów uzupełnia MG w Katalogu.'))));
+        : h('div.pusto', 'Nie dodano jeszcze zakładów. Szczegóły zakładów uzupełnia MG w Katalogu.')));
 }

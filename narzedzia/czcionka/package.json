@@ -1,0 +1,7 @@
+{
+  "name": "datapad-czcionka",
+  "private": true,
+  "description": "Generator czcionki Aurebesh dla datapada",
+  "scripts": { "generuj": "node generuj.js" },
+  "devDependencies": { "opentype.js": "1.3.4" }
+}

@@ -1,0 +1,31 @@
+-- MySQL 8.0+ / MariaDB 10.6+. Uruchom raz przed wdrożeniem nowej wersji.
+CREATE TABLE IF NOT EXISTS datapad_dane (
+  nazwa VARCHAR(80) NOT NULL PRIMARY KEY,
+  payload JSON NOT NULL,
+  zmieniono TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mapa_planety (
+  id INT UNSIGNED NOT NULL PRIMARY KEY,
+  nazwa VARCHAR(160) NOT NULL,
+  region TINYINT UNSIGNED NOT NULL,
+  x DECIMAL(12,1) NOT NULL,
+  y DECIMAL(12,1) NOT NULL,
+  grawitacja DECIMAL(6,3) NOT NULL,
+  slonca SMALLINT UNSIGNED NOT NULL,
+  ksiezyce SMALLINT UNSIGNED NOT NULL,
+  doba DECIMAL(10,2) NOT NULL,
+  rok DECIMAL(10,2) NOT NULL,
+  srednica DECIMAL(12,2) NOT NULL,
+  UNIQUE KEY uq_mapa_planety_nazwa (nazwa),
+  KEY ix_mapa_planety_xy (x,y)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mapa_szlaki (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nazwa VARCHAR(200) NOT NULL DEFAULT '',
+  waznosc TINYINT UNSIGNED NOT NULL,
+  dlugosc DECIMAL(14,2) NOT NULL,
+  sciezki JSON NOT NULL,
+  KEY ix_mapa_szlaki_nazwa (nazwa)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

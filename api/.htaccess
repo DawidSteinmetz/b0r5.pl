@@ -1,0 +1,5 @@
+# Dodatkowa blokada katalogu danych (główna ochrona jest w samych plikach).
+RedirectMatch 404 /api/dane/
+<Files "konfiguracja-bazy.php">
+  Require all denied
+</Files>

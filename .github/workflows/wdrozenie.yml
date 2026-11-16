@@ -1,0 +1,45 @@
+# Wgrywanie na serwer b0r5.pl po każdej zmianie na gałęzi main.
+#
+# Dane logowania NIE są w tym pliku. Trzeba je wpisać raz w GitHubie:
+# Settings → Secrets and variables → Actions → New repository secret
+#   FTP_SERVER    adres serwera FTP
+#   FTP_USERNAME  nazwa użytkownika
+#   FTP_PASSWORD  hasło
+#
+# Automat wgrywa tylko pliki, które się zmieniły, i usuwa tylko te, które sam wcześniej wgrał
+# (pamięta je w pliku .ftp-deploy-sync-state.json na serwerze). Danych gry w api/dane/
+# (konta, bank, firmy) nie ma w repozytorium, więc ich nie rusza.
+
+name: Wdrożenie na serwer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # ręczne uruchomienie z zakładki Actions
+
+concurrency:
+  group: wdrozenie
+  cancel-in-progress: false
+
+jobs:
+  ftp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wgraj pliki przez FTP (TLS)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          port: 21
+          server-dir: /b0r5.pl/UGCC/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            **/node_modules/**
+            narzedzia/**
+            README.md

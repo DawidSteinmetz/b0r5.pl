@@ -144,7 +144,12 @@ async function floty() {
         select.append(...opcje);
         select.value = String(wartosc || 0);
         select.addEventListener('change', () => { wybrane[indeks] = Number(select.value); renderSlotow(); });
-        sloty.append(h('label.mapa-gm-slot', h('span', indeks === 0 ? 'Okręt flagowy' : `Okręt ${indeks + 1}`), select));
+        const usun = wartosc ? h('button.btn.zly', { type: 'button', onclick: () => {
+          wybrane.splice(indeks, 1);
+          if (!wybrane.length) wybrane = [0];
+          renderSlotow();
+        } }, 'Usuń z floty') : null;
+        sloty.append(h('div.mapa-gm-slot', h('span', indeks === 0 ? 'Okręt flagowy' : `Okręt ${indeks + 1}`), select, usun));
       });
     }
     renderSlotow();
@@ -184,9 +189,18 @@ async function floty() {
       } }, 'Zapisz napęd');
       return h('details', h('summary', `${j.nazwa} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
     });
+    const usunFlote = h('section.mapa-gm-usun-flote', h('h3', 'Usuń flotę'),
+      h('p.slaby', 'Zwalnia okręty z tej floty i jej podgrup. Jednostki oraz historia rozkazów pozostaną w bazie.'),
+      h('button.btn.zly', { onclick: async () => {
+        try {
+          await api('mg_flota_usun', { id: f.id });
+          await przeladuj(0);
+          wyczysc(status).append(msg(`Usunięto flotę „${f.nazwa}”. Jej jednostki są wolne.`, 'sukces'));
+        } catch (e) { wyczysc(status).append(msg(e.message)); }
+      } }, 'Usuń flotę i zwolnij jej jednostki'));
     wyczysc(widok).append(h('h2', f.nazwa), h('div.formularz', pole('Nazwa floty', nazwa), pole('Dowódca', dowodca)),
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
-      h('div.formularz', nx, ny, powod, teleport), h('h3', 'Profile napędu'), ...konfiguracje);
+      h('div.formularz', nx, ny, powod, teleport), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
   }
   render();
 }

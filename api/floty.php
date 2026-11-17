@@ -19,10 +19,11 @@ function floty_dowodca(int $flotaId): ?string
     $seen = [];
     while ($flotaId > 0 && !isset($seen[$flotaId])) {
         $seen[$flotaId] = true;
-        $q = $db->prepare('SELECT dowodca_login,rodzic_id FROM mapa_floty WHERE id=?');
+        $q = $db->prepare('SELECT dowodca_login,rodzic_id,status FROM mapa_floty WHERE id=?');
         $q->execute([$flotaId]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
         if (!$r) return null;
+        if (($r['status'] ?? '') === 'nieaktywna') return null;
         if (trim((string) ($r['dowodca_login'] ?? '')) !== '') return (string) $r['dowodca_login'];
         $flotaId = (int) ($r['rodzic_id'] ?? 0);
     }
@@ -90,7 +91,7 @@ function floty_lista(string $login, bool $mg = false): array
 {
     floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
-    $all = $db->query('SELECT id,kod,nazwa,dowodca_login,rodzic_id,status,opis FROM mapa_floty ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC);
+    $all = $db->query("SELECT id,kod,nazwa,dowodca_login,rodzic_id,status,opis FROM mapa_floty WHERE status<>'nieaktywna' ORDER BY nazwa")->fetchAll(PDO::FETCH_ASSOC);
     $dozwolone = [];
     foreach ($all as $f) if ($mg || floty_czy_dowodca((int) $f['id'], $login)) $dozwolone[(int) $f['id']] = true;
     $out = [];
@@ -231,7 +232,7 @@ function floty_rozkaz(string $login, array $w): array
 function obsluz_floty(string $akcja, bool $post): void
 {
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj',
-        'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_naped_zapisz','mg_mapa_teleport'];
+        'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport'];
     if (!in_array($akcja, $akcje, true)) return;
     floty_gotowe();
     switch ($akcja) {
@@ -301,6 +302,26 @@ function obsluz_floty(string $akcja, bool $post): void
             if ($id) $db->prepare('UPDATE mapa_floty SET nazwa=?,dowodca_login=? WHERE id=?')->execute([$nazwa, $login ?: null, $id]);
             else { $db->prepare('INSERT INTO mapa_floty (kod,nazwa,dowodca_login,opis) VALUES (?,?,?,?)')->execute(['flota-' . bin2hex(random_bytes(8)),$nazwa,$login ?: null,mb_substr(trim((string) ($w['opis'] ?? '')),0,4000) ?: null]); $id = (int) $db->lastInsertId(); }
             odpowiedz(['ok' => true, 'flota_id' => $id]);
+
+        case 'mg_flota_usun':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg(); $id = (int) (wejscie()['id'] ?? 0); $db = polaczenie_bazy();
+            $q = $db->prepare("SELECT id FROM mapa_floty WHERE id=? AND status<>'nieaktywna'"); $q->execute([$id]);
+            if (!$q->fetchColumn()) blad('Nie ma takiej aktywnej floty.', 404);
+            // Likwidujemy także podgrupy. Okręty pozostają w mapie, ale stają się wolne.
+            $ids = [$id];
+            for ($i = 0; $i < count($ids); $i++) {
+                $q = $db->prepare('SELECT id FROM mapa_floty WHERE rodzic_id=?'); $q->execute([$ids[$i]]);
+                foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $child) if (!in_array((int) $child, $ids, true)) $ids[] = (int) $child;
+            }
+            $marks = implode(',', array_fill(0, count($ids), '?'));
+            $db->beginTransaction();
+            try {
+                $db->prepare("DELETE FROM mapa_floty_jednostki WHERE flota_id IN ($marks)")->execute($ids);
+                $db->prepare("UPDATE mapa_floty SET status='nieaktywna',dowodca_login=NULL WHERE id IN ($marks)")->execute($ids);
+                $db->commit();
+            } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+            odpowiedz(['ok' => true, 'zwolniono_flot' => count($ids)]);
 
         case 'mg_flota_jednostki':
             if (!$post) blad('Zła metoda.', 405);

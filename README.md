@@ -51,7 +51,8 @@ api/schema_v3.sql        historyczny fundament relacyjny v3
 api/schema_v4.sql        schemat całościowy v4 (nowa, pusta baza)
 api/schema_v5.sql        schemat całościowy v5 (nowa, pusta baza)
 api/schema_v6.sql        schemat całościowy v6: mapa, floty i nawigacja (nowa, pusta baza)
-api/schema_v7.sql        schemat całościowy v7: kolejność okrętów flot (nowa, pusta baza)
+api/schema_v7.sql        historyczny schemat całościowy v7
+api/schema_v8.sql        schemat całościowy v8: profile napędu eskorty (nowa, pusta baza)
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/floty.php            dowodzenie flotami, podział grup i automatyczne skoki
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
@@ -531,3 +532,7 @@ dostają kształt litery podstawowej.
 - **Transmisja na żywo** pokazuje odtwarzacz Twitcha z jego logo. To mały wyłom w immersji.
 - **Logowanie Google** dla MG zostało zastąpione zwykłym kontem z rolą MG.
 - **DataPad (OLD/NEW)**: nie było jak zajrzeć do jego zawartości, więc nie został przeniesiony.
+
+## Schemat SQL v8 — napędy Arquitens i Gozanti
+
+`api/schema_v8.sql` jest pełnym schematem dla nowej, pustej bazy. Do działającej bazy po migracji 007 zaimportuj wyłącznie `api/migracje/008_profile_napedu_arquitens_gozanti.sql`. Migracja dopisuje brakujące profile napędu dla sześciu Gozanti i dwóch Arquitensów; istniejących ustawień napędu nie nadpisuje. Usunięcie floty w panelu MG zwalnia jej okręty i podgrupy, a same jednostki oraz historię ich rozkazów pozostawia w bazie.

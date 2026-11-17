@@ -81,7 +81,7 @@ function zalozMG() {
 function panel(u) {
   document.getElementById('kto').textContent = 'Zalogowano: ' + u.login;
   menu.hidden = false;
-  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
+  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', floty: 'Floty', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
   const rysujMenu = () => wyczysc(menu).append(
     ...Object.entries(zakladki).map(([k, n]) => h('button' + (k === biezaca ? '.on' : ''), { onclick: () => { biezaca = k; rysujMenu(); otworz(); } }, n)),
     h('button', { onclick: async () => { await api('wyloguj', {}); location.reload(); } }, 'Wyloguj'));
@@ -91,7 +91,68 @@ function panel(u) {
 
 function otworz() {
   wyczysc(glowna);
-  ({ stan: stanPostaci, karty: kartyPostaci, mapa, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+  ({ stan: stanPostaci, karty: kartyPostaci, mapa, floty, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+}
+
+async function floty() {
+  const dane = await api('mg_floty');
+  const { floty: lista, jednostki, konta } = dane;
+  const odswiez = () => { biezaca = 'floty'; floty(); };
+  const nowaNazwa = h('input', { placeholder: 'Nazwa nowej floty' });
+  const nowyDowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...konta.map((k) => h('option', { value: k.login }, `${k.login} · ${k.postac}`))]);
+  const nowa = h('button.btn.glowny', { onclick: async () => { await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value }); odswiez(); } }, 'Utwórz flotę');
+  wyczysc(glowna).append(h('h1', 'Floty i napędy'), h('p.slaby', 'Przydziel dowódcę i jednostki. Profil techniczny napędu służy do obliczania czasu, paliwa i odchylenia skoku.'),
+    h('section.karta', h('h2', 'Nowa flota'), nowaNazwa, nowyDowodca, nowa));
+  for (const f of lista) {
+    const nazwa = h('input', { value: f.nazwa, maxlength: 160 });
+    const dowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...konta.map((k) => h('option', { value: k.login, selected: k.login === f.dowodca_login }, `${k.login} · ${k.postac}`))]);
+    const zaznaczone = new Set(f.jednostki.map((j) => Number(j.obiekt_id)));
+    const czlonkowie = h('div.mapa-flota-jednostki', jednostki.map((j) => {
+      const id = Number(j.id);
+      const cb = h('input', { type: 'checkbox', value: id, checked: zaznaczone.has(id) });
+      const tie = h('input', { type: 'number', min: 0, max: 99, value: j.tie_liczba ?? '', placeholder: 'TIE', style: 'width:76px' });
+      const rola = h('input', { value: j.rola || '', placeholder: 'Rola', style: 'width:130px' });
+      cb.dataset.unit = String(id); tie.dataset.unit = String(id); rola.dataset.unit = String(id);
+      return h('label.mapa-gm-jednostka', cb, ` ${j.nazwa} · ${j.klasa || j.typ} `, tie, rola, j.tie_liczba == null ? h('small.slaby', 'TIE nieokreślone') : null);
+    }));
+    const zapisz = h('button.btn.glowny', { onclick: async () => {
+      await api('mg_flota_zapisz', { id: f.id, nazwa: nazwa.value, dowodca_login: dowodca.value });
+      const ids = [...czlonkowie.querySelectorAll('input[type=checkbox]:checked')].map((el) => Number(el.value));
+      const tie = {}, rola = {};
+      for (const el of czlonkowie.querySelectorAll('input[data-unit]')) {
+        const id = el.dataset.unit;
+        if (el.type === 'number') tie[id] = el.value;
+        else if (el.type !== 'checkbox') rola[id] = el.value;
+      }
+      await api('mg_flota_jednostki', { flota_id: f.id, jednostki: ids, tie, rola });
+      odswiez();
+    } }, 'Zapisz flotę i skład');
+    const nx = h('input', { type: 'number', step: '0.1', placeholder: 'X' }), ny = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
+    const powod = h('input', { placeholder: 'Powód teleportacji sesyjnej' });
+    const teleport = h('button.btn', { onclick: async () => {
+      const x = nx.value, y = ny.value;
+      if (x === '' || y === '') return glowna.prepend(msg('Podaj współrzędne docelowe.'));
+      await api('mg_mapa_teleport', { flota_id: f.id, x: Number(x), y: Number(y), powod: powod.value });
+      glowna.prepend(msg('Flota przeniesiona; operacja zapisana w dzienniku MG.', 'sukces'));
+    } }, 'Teleportuj flotę');
+    const konfiguracje = f.jednostki.map((j) => {
+      const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
+      const vals = {
+        moc_reaktora: num('Reaktor', j.moc_reaktora), moc_hipernapedu: num('Napęd', j.moc_hipernapedu), klasa_hipernapedu: num('Klasa', j.klasa_hipernapedu, '0.1'),
+        predkosc_pc_na_godzine: num('pc/godz.', j.predkosc_pc_na_godzine), paliwo: num('Paliwo', j.paliwo), paliwo_maks: num('Max paliwa', j.paliwo_maks), paliwo_na_parsek: num('Paliwo/pc', j.paliwo_na_parsek, '0.001'),
+        sprawnosc_reaktora: num('Stan reaktora %', j.sprawnosc_reaktora), sprawnosc_hipernapedu: num('Stan napędu %', j.sprawnosc_hipernapedu), szum_bazowy: num('Szum °', j.szum_bazowy, '0.01'),
+      };
+      const save = h('button.btn', { onclick: async () => {
+        const payload = { obiekt_id: j.id };
+        for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value);
+        await api('mg_naped_zapisz', payload); glowna.prepend(msg(`Zapisano napęd: ${j.nazwa}`, 'sukces'));
+      } }, 'Zapisz napęd');
+      return h('details', h('summary', `${j.nazwa} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
+    });
+    glowna.append(h('section.karta', h('h2', f.nazwa), h('div.formularz', pole('Nazwa', nazwa), pole('Dowódca', dowodca)), h('h3', 'Skład floty'), czlonkowie, zapisz,
+      h('h3', 'Teleport GM'), h('p.slaby', 'Tylko na potrzeby sesji; przerywa aktywne skoki i zapisuje autora oraz powód.'), h('div.formularz', nx, ny, powod, teleport),
+      h('h3', 'Profile napędu'), ...konfiguracje));
+  }
 }
 
 // ---------- mapa: pozycje, jednostki i dostępy ----------

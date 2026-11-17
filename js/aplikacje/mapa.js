@@ -60,14 +60,16 @@ export default {
     const karta = h('div.mapa-karta', { hidden: true });
     const wsp = h('div.mapa-wsp');
     const ladowanie = h('div.mapa-ladowanie', 'Pobieranie danych astronawigacyjnych...');
+    const panelFlot = h('section.mapa-floty-panel', { hidden: true });
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
     const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => { if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta })); } }, 'Moja pozycja');
     const przyciskCala = h('button.przycisk.maly.drugi', { onclick: () => calaGalaktyka(true) }, 'Cała galaktyka');
+    const przyciskFloty = h('button.przycisk.maly.drugi', { onclick: () => { panelFlot.hidden = !panelFlot.hidden; if (!panelFlot.hidden) odswiezFloty(); } }, 'Floty / nawigacja');
 
     w.append(plotno,
-      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki)),
-      karta, wsp, ladowanie);
+      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty)),
+      panelFlot, karta, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');
@@ -99,6 +101,7 @@ export default {
     let tuPlaneta = null, celPlaneta = null;
     let statkiNaMapie = []; // [{ planeta, statki: [...] }]
     let obiektyMapy = []; // Jednostki i postacie udostępnione temu kontu; MG otrzymuje pełną listę.
+    let mojeFloty = [];
     let brudna = true;
     let ramka = 0;
     let animacja = null;
@@ -351,6 +354,10 @@ export default {
         const [sx, sy] = naEkran(o.x, o.y);
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
         const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
+        if (o.lot) {
+          const [cx, cy] = naEkran(o.lot.x, o.lot.y);
+          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+        }
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
         c.beginPath();
         if (o.znacznik === 'trojkat') { c.moveTo(sx, sy - 7); c.lineTo(sx + 6, sy + 5); c.lineTo(sx - 6, sy + 5); c.closePath(); }
@@ -615,6 +622,60 @@ export default {
       statkiNaMapie = [...grupy].map(([planeta, statki]) => ({ planeta, statki }));
       przyciskTu.disabled = !tuPlaneta;
       if (wybrane?.planeta) wybierz(wybrane); // odśwież kartę (np. statki)
+    }
+
+    async function odswiezFloty() {
+      try {
+        const daneFlot = await api('mapa_floty_gracza');
+        mojeFloty = daneFlot.floty || [];
+        rysujPanelFlot();
+      } catch (e) { wyczysc(panelFlot).append(h('p.komunikat.blad', e.message)); }
+    }
+
+    function rysujPanelFlot() {
+      wyczysc(panelFlot);
+      panelFlot.append(h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => { panelFlot.hidden = true; } }, '×'), h('h2', 'Dowodzenie flotą'));
+      if (!mojeFloty.length) { panelFlot.append(h('p.slaby', 'Do tego konta nie przypisano flot.')); return; }
+      for (const flota of mojeFloty) {
+        const wybor = h('div.mapa-flota-jednostki', flota.jednostki.map((j) => h('label',
+          h('input', { type: 'checkbox', value: j.obiekt_id, 'data-flota': String(flota.id) }),
+          ` ${j.obiekt_nazwa} · ${j.klasa || j.typ}${j.tie_liczba == null ? '' : ` · ${j.tie_liczba} TIE`}${j.rozkaz_status ? ` · ${j.rozkaz_status}` : ''}`)));
+        const nazwaGrupy = h('input', { placeholder: 'Nazwa nowej grupy' });
+        const x = h('input', { type: 'number', step: '0.1', placeholder: 'X' });
+        const y = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
+        const cel = h('select', [h('option', { value: '' }, 'Współrzędne X/Y'), ...mojeFloty.flatMap((f) => f.jednostki.map((j) => h('option', { value: j.obiekt_id }, `${f.nazwa} · ${j.obiekt_nazwa}`)))]);
+        const info = h('p.slaby');
+        const zaznaczone = () => [...wybor.querySelectorAll('input:checked')].map((el) => Number(el.value));
+        const stan = h('p.slaby.maly-tekst', flota.opis || '');
+        const podziel = h('button.przycisk.maly', { onclick: async () => {
+          const ids = zaznaczone();
+          try { await api('mapa_flota_podziel', { flota_id: flota.id, nazwa: nazwaGrupy.value, jednostki: ids }); await odswiezFloty(); }
+          catch (e) { info.textContent = e.message; }
+        } }, 'Utwórz grupę z zaznaczonych');
+        const rozkaz = h('button.przycisk.maly.glowny', { onclick: async () => {
+          const ids = zaznaczone();
+          if (!ids.length) { info.textContent = 'Zaznacz jednostki, które mają wykonać rozkaz.'; return; }
+          if (cel.value) {
+            const j = ids.length === 1 ? { obiekt_id: ids[0] } : { flota_id: flota.id };
+            try { const wynik = await api('mapa_flota_rozkaz', { ...j, cel_obiekt_id: Number(cel.value) }); info.textContent = `Rozkaz przyjęty. ETA: ${new Date(wynik.eta * 1000).toLocaleString('pl-PL')}. Szum nawigacyjny: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
+            catch (e) { info.textContent = e.message; }
+          } else if (x.value !== '' && y.value !== '') {
+            const j = ids.length === 1 ? { obiekt_id: ids[0] } : { flota_id: flota.id };
+            try { const wynik = await api('mapa_flota_rozkaz', { ...j, x: Number(x.value), y: Number(y.value) }); info.textContent = `Rozkaz przyjęty. ETA: ${new Date(wynik.eta * 1000).toLocaleString('pl-PL')}. Szum: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
+            catch (e) { info.textContent = e.message; }
+          } else info.textContent = 'Podaj współrzędne albo wybierz jednostkę docelową.';
+        } }, 'Wyślij zaznaczone');
+        const defaultEskorta = flota.kod === 'havis-iii-eskortowa' ? h('button.przycisk.maly.drugi', { onclick: () => {
+          let krążnik = false;
+          wybor.querySelectorAll('input').forEach((el) => { const j = flota.jednostki.find((u) => u.obiekt_id === Number(el.value));
+            if (j?.obiekt_nazwa.startsWith('Arquitens') && !krążnik) { el.checked = true; krążnik = true; }
+            else if (j?.obiekt_nazwa.startsWith('Gozanti')) el.checked = Number(j.obiekt_nazwa.match(/\d+/)?.[0]) <= 3;
+            else el.checked = false;
+          });
+        } }, 'Zaznacz domyślną eskortę (1 krążownik + 3 Gozanti)') : null;
+        panelFlot.append(h('article.karta', h('h3', flota.nazwa), h('p.slaby', `Dowódca: ${flota.dowodca_efektywny || 'nieprzypisany'}`), stan, defaultEskorta, wybor,
+          h('div.mapa-flota-form', nazwaGrupy, podziel), h('div.mapa-flota-form', x, y, cel, rozkaz), info));
+      }
     }
 
     // Planety z katalogu MG spoza bazy mapy. Przebudowa tylko przy zmianie, żeby zaznaczenie

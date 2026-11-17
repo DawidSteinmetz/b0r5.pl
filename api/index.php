@@ -21,6 +21,7 @@ require __DIR__ . '/kanaly.php';
 require __DIR__ . '/sceny.php';
 require __DIR__ . '/karty.php';
 require __DIR__ . '/ruch.php';
+require __DIR__ . '/floty.php';
 require __DIR__ . '/wydarzenia.php';
 require __DIR__ . '/gielda.php';
 
@@ -47,7 +48,8 @@ function blad(string $komunikat, int $kod = 400): never
 function tabela_sql_dostepna(string $nazwa): bool
 {
     static $cache = [];
-    $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep'];
+    $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep',
+        'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {
@@ -206,6 +208,7 @@ obsluz_kanaly($akcja, $post);
 obsluz_sceny($akcja, $post);
 obsluz_karty($akcja, $post);
 obsluz_ruch($akcja, $post);
+obsluz_floty($akcja, $post);
 obsluz_gielda($akcja, $post);
 
 switch ($akcja) {

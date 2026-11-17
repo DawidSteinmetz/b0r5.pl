@@ -138,6 +138,7 @@ function mapa_dodatkowe(array $u): array
 function mapa_obiekty_widoczne(array $u): array
 {
     if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
+    if (function_exists('floty_aktualizuj_ruch')) floty_aktualizuj_ruch();
     if (($u['rola'] ?? '') === 'mg') {
         foreach (uzytkownicy() as $konto) {
             if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
@@ -148,11 +149,24 @@ function mapa_obiekty_widoczne(array $u): array
         $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?)) ORDER BY m.typ,m.nazwa");
         $q->execute([(string) $u['id'], (string) $u['login']]);
     }
-    return array_map(static fn($r) => [
+    $obiekty = array_map(static fn($r) => [
         'id' => (int) $r['id'], 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
         'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
         'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
     ], $q->fetchAll(PDO::FETCH_ASSOC));
+    if ($obiekty && tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) {
+        $ids = array_column($obiekty, 'id');
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.wyjscie_x,j.wyjscie_y,j.eta_utc,j.kat_bledu FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' AND j.obiekt_id IN ($marks)");
+        $q->execute($ids);
+        $indeks = array_column($obiekty, null, 'id');
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $lot) {
+            $id = (int) $lot['obiekt_id'];
+            if (isset($indeks[$id])) $indeks[$id]['lot'] = ['x' => (float) $lot['wyjscie_x'], 'y' => (float) $lot['wyjscie_y'], 'eta' => strtotime($lot['eta_utc'] . ' UTC'), 'szum_stopnie' => (float) $lot['kat_bledu']];
+        }
+        $obiekty = array_values($indeks);
+    }
+    return $obiekty;
 }
 
 function mapa_obiekty_mg(): array

@@ -29,6 +29,67 @@ function karta_pusta(): array
     ];
 }
 
+// Pozycja ma już zapis relacyjny; stary UID tekstowy pozostaje jako most do czasu
+// migracji kont i postaci do kluczy numerycznych.
+function pozycja_sql_zapisz(string $uid, array $poz): bool
+{
+    if (!tabela_sql_dostepna('datapad_pozycje_legacy')) return false;
+    $db = polaczenie_bazy();
+    $planetaLegacy = trim((string) ($poz['planeta'] ?? ''));
+    $planetaId = null;
+    if ($planetaLegacy !== '') {
+        if (ctype_digit($planetaLegacy)) {
+            $q = $db->prepare('SELECT id FROM mapa_planety WHERE id = ?');
+            $q->execute([(int) $planetaLegacy]);
+            $planetaId = $q->fetchColumn();
+        }
+        if (!$planetaId) {
+            foreach (katalog()['planety'] ?? [] as $p) {
+                if (($p['id'] ?? '') === $planetaLegacy) {
+                    $q = $db->prepare('SELECT id FROM mapa_planety WHERE nazwa = ?');
+                    $q->execute([(string) ($p['nazwa'] ?? '')]);
+                    $planetaId = $q->fetchColumn();
+                    break;
+                }
+            }
+        }
+        if (!$planetaId) {
+            $q = $db->prepare('SELECT id FROM mapa_planety WHERE nazwa = ?');
+            $q->execute([$planetaLegacy]);
+            $planetaId = $q->fetchColumn();
+        }
+    }
+    $lokacja = trim((string) ($poz['lokacja'] ?? ''));
+    $lokacjaId = null;
+    if (preg_match('/^sql:(\d+)$/', $lokacja, $m)) $lokacjaId = (int) $m[1];
+    elseif (str_starts_with($lokacja, 'l:')) {
+        $legacy = substr($lokacja, 2);
+        $q = $db->prepare('SELECT id FROM lokalizacje WHERE nazwa = ? AND planeta_id <=> ? LIMIT 1');
+        $q->execute([$legacy, $planetaId ?: null]);
+        $lokacjaId = $q->fetchColumn() ?: null;
+    }
+    $q = $db->prepare('INSERT INTO datapad_pozycje_legacy (legacy_uid, planeta_id, planeta_legacy_id, lokalizacja_id, lokalizacja_legacy, wspolrzedne_tekst, miejsce_opis, budynek_legacy, zmieniono_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE planeta_id=VALUES(planeta_id), planeta_legacy_id=VALUES(planeta_legacy_id), lokalizacja_id=VALUES(lokalizacja_id), lokalizacja_legacy=VALUES(lokalizacja_legacy), wspolrzedne_tekst=VALUES(wspolrzedne_tekst), miejsce_opis=VALUES(miejsce_opis), budynek_legacy=VALUES(budynek_legacy), zmieniono_ms=VALUES(zmieniono_ms)');
+    $q->execute([$uid, $planetaId ?: null, $planetaLegacy ?: null, $lokacjaId, $lokacjaId ? null : ($lokacja ?: null), (string) ($poz['wspolrzedne'] ?? ''), (string) ($poz['miejsce'] ?? ''), (string) ($poz['budynek'] ?? ''), max(0, (int) ($poz['zmieniono'] ?? teraz_ms()))]);
+    return true;
+}
+
+function pozycja_sql_odczytaj(string $uid): ?array
+{
+    if (!tabela_sql_dostepna('datapad_pozycje_legacy')) return null;
+    $q = polaczenie_bazy()->prepare('SELECT planeta_id, planeta_legacy_id, lokalizacja_id, lokalizacja_legacy, wspolrzedne_tekst, miejsce_opis, budynek_legacy, zmieniono_ms FROM datapad_pozycje_legacy WHERE legacy_uid = ?');
+    $q->execute([$uid]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) return null;
+    return [
+        'planeta' => (string) ($r['planeta_legacy_id'] ?? $r['planeta_id'] ?? ''),
+        'wspolrzedne' => (string) $r['wspolrzedne_tekst'],
+        'miejsce' => (string) $r['miejsce_opis'],
+        'budynek' => (string) $r['budynek_legacy'],
+        'lokacja' => $r['lokalizacja_id'] ? 'sql:' . $r['lokalizacja_id'] : (string) ($r['lokalizacja_legacy'] ?? ''),
+        'zmieniono' => (int) $r['zmieniono_ms'],
+    ];
+}
+
 // Pojazdy prywatne z edytora MG: lokacja po nazwie albo kluczu.
 function karta_pojazdy(array $lista): array
 {
@@ -49,7 +110,14 @@ function karta_pojazdy(array $lista): array
 function karta(string $uid): array
 {
     $k = wczytaj('karty', [])[$uid] ?? [];
-    return array_replace_recursive(karta_pusta(), $k);
+    $k = array_replace_recursive(karta_pusta(), $k);
+    $sql = pozycja_sql_odczytaj($uid);
+    if ($sql !== null) {
+        $k['pozycja'] = array_replace($k['pozycja'], $sql);
+    } else {
+        pozycja_sql_zapisz($uid, $k['pozycja']);
+    }
+    return $k;
 }
 
 // Wszystkie budynki wszystkich firm: klucz „idFirmy:idBudynku”.
@@ -59,6 +127,13 @@ function wszystkie_budynki(): array
     foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
         foreach ($f['dane']['budynki'] ?? [] as $x) {
             $b[$f['id'] . ':' . $x['id']] = $x + ['firma' => $f['nazwa']];
+        }
+    }
+    if (tabela_sql_dostepna('budynki') && tabela_sql_dostepna('lokalizacje')) {
+        $sql = polaczenie_bazy()->query('SELECT b.lokalizacja_id, l.nazwa, l.planeta_id, p.nazwa AS planeta_nazwa, l.x_km, l.y_km, l.opis FROM budynki b JOIN lokalizacje l ON l.id=b.lokalizacja_id LEFT JOIN mapa_planety p ON p.id=l.planeta_id ORDER BY l.id')->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($sql as $x) {
+            $key = 'sql:' . $x['lokalizacja_id'];
+            $b[$key] = ['id' => $key, 'nazwa' => $x['nazwa'], 'firma' => 'Administracja planety', 'planeta' => (string) ($x['planeta_id'] ?? ''), 'planeta_nazwa' => $x['planeta_nazwa'] ?? '', 'x' => $x['x_km'], 'y' => $x['y_km'], 'opis' => $x['opis'] ?? ''];
         }
     }
     return $b;
@@ -91,13 +166,17 @@ function obsluz_karty(string $akcja, bool $post): void
             foreach ($kat['planety'] as $p) {
                 if ($p['id'] === $k['pozycja']['planeta']) $planeta = ['nazwa' => $p['nazwa'], 'sektor' => $p['sektor'] ?? ''];
             }
+            if (!$planeta && ctype_digit((string) $k['pozycja']['planeta'])) {
+                $q = polaczenie_bazy()->prepare('SELECT nazwa, region FROM mapa_planety WHERE id=?');
+                $q->execute([(int) $k['pozycja']['planeta']]);
+                if ($p = $q->fetch(PDO::FETCH_ASSOC)) $planeta = ['nazwa' => $p['nazwa'], 'sektor' => 'Region ' . $p['region']];
+            }
             $budynek = $k['pozycja']['budynek'] !== '' ? (wszystkie_budynki()[$k['pozycja']['budynek']] ?? null) : null;
             if ($budynek) {
                 $pl = $budynek['planeta'] ?? '';
-                $budynek['planeta'] = '';
-                foreach ($kat['planety'] as $p) {
-                    if ($p['id'] === $pl) $budynek['planeta'] = $p['nazwa'];
-                }
+                $budynek['planeta'] = $budynek['planeta_nazwa'] ?? '';
+                foreach ($kat['planety'] as $p) if ($p['id'] === $pl) $budynek['planeta'] = $p['nazwa'];
+                unset($budynek['planeta_nazwa']);
                 unset($budynek['menedzer'], $budynek['id']);
             }
             // Szybki podgląd: saldo i firmy postaci.
@@ -141,6 +220,9 @@ function obsluz_karty(string $akcja, bool $post): void
                 $budynki[] = ['klucz' => $klucz, 'nazwa' => $b['nazwa'], 'firma' => $b['firma']];
             }
             $nazwyPlanet = array_column(katalog()['planety'], 'nazwa', 'id');
+            if (tabela_sql_dostepna('mapa_planety')) {
+                foreach (polaczenie_bazy()->query('SELECT id,nazwa FROM mapa_planety')->fetchAll(PDO::FETCH_ASSOC) as $p) $nazwyPlanet[(string) $p['id']] = $p['nazwa'];
+            }
             $lokacje = [];
             foreach (ruch_lokacje() as $klucz => $l) {
                 $lokacje[] = ['klucz' => $klucz, 'nazwa' => $l['nazwa'], 'planeta' => $nazwyPlanet[$l['planeta']] ?? '?', 'typ' => $l['typ']];
@@ -206,7 +288,18 @@ function obsluz_karty(string $akcja, bool $post): void
             $uids = array_values(array_intersect((array) ($w['uids'] ?? []), array_column(uzytkownicy(), 'id')));
             if (!$uids) blad('Wybierz co najmniej jedną postać.');
             $planeta = trim((string) ($w['planeta'] ?? ''));
-            $planeta = $planeta === '' ? '' : katalog_id(katalog()['planety'], $planeta, 'planeta');
+            if ($planeta !== '') {
+                $found = null;
+                foreach (katalog()['planety'] as $p) if (($p['id'] ?? '') === $planeta || mb_strtolower($p['nazwa']) === mb_strtolower($planeta)) { $found = $p['id']; break; }
+                if ($found !== null) $planeta = $found;
+                elseif (tabela_sql_dostepna('mapa_planety')) {
+                    $q = polaczenie_bazy()->prepare('SELECT id FROM mapa_planety WHERE CAST(id AS CHAR)=? OR LOWER(nazwa)=LOWER(?)');
+                    $q->execute([$planeta, $planeta]);
+                    $found = $q->fetchColumn();
+                    if ($found === false) blad('Nie ma takiej planety.');
+                    $planeta = (string) $found;
+                } else $planeta = katalog_id(katalog()['planety'], $planeta, 'planeta');
+            }
             $budynek = (string) ($w['budynek'] ?? '');
             if ($budynek !== '' && !isset(wszystkie_budynki()[$budynek])) blad('Nie ma takiego budynku.');
             // Lokacja (miejsce z katalogu albo budynek z x, y): ustala też planetę i budynek.
@@ -216,6 +309,7 @@ function obsluz_karty(string $akcja, bool $post): void
             if ($lokacja !== '') {
                 $planeta = $lok[$lokacja]['planeta'];
                 if (str_starts_with($lokacja, 'b:')) $budynek = substr($lokacja, 2);
+                elseif (str_starts_with($lokacja, 'sql:') && !empty($lok[$lokacja]['jest_budynkiem'])) $budynek = $lokacja;
             }
             $poz = [
                 'planeta' => $planeta,
@@ -231,6 +325,7 @@ function obsluz_karty(string $akcja, bool $post): void
                     unset($k[$uid]['podroz']); // MG przestawia postać: przerwana podróż
                 }
             });
+            foreach ($uids as $uid) pozycja_sql_zapisz($uid, $poz);
             odpowiedz(['ok' => true]);
     }
 }

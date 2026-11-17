@@ -44,6 +44,23 @@ function blad(string $komunikat, int $kod = 400): never
     odpowiedz(['blad' => $komunikat], $kod);
 }
 
+function tabela_sql_dostepna(string $nazwa): bool
+{
+    static $cache = [];
+    $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy'];
+    if (!in_array($nazwa, $dozwolone, true)) return false;
+    if (!array_key_exists($nazwa, $cache)) {
+        try {
+            $q = polaczenie_bazy()->prepare('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?');
+            $q->execute([$nazwa]);
+            $cache[$nazwa] = (bool) $q->fetchColumn();
+        } catch (Throwable $e) {
+            $cache[$nazwa] = false;
+        }
+    }
+    return $cache[$nazwa];
+}
+
 function plik(string $nazwa): string
 {
     if (!is_dir(DANE)) {

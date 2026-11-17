@@ -159,6 +159,16 @@ function ruch_lokacje(): array
             ];
         }
     }
+    if (tabela_sql_dostepna('lokalizacje')) {
+        $rows = polaczenie_bazy()->query("SELECT l.id, l.typ, l.rodzaj, l.planeta_id, p.nazwa AS planeta_nazwa, l.nazwa, l.x_km, l.y_km, l.publiczna, l.opis, (b.lokalizacja_id IS NOT NULL) AS jest_budynkiem FROM lokalizacje l LEFT JOIN mapa_planety p ON p.id=l.planeta_id LEFT JOIN budynki b ON b.lokalizacja_id=l.id WHERE l.status='aktywna' ORDER BY l.id")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $x) {
+            $key = 'sql:' . $x['id'];
+            $l[$key] = ['klucz' => $key, 'sql_id' => (int) $x['id'], 'nazwa' => $x['nazwa'], 'planeta' => (string) ($x['planeta_id'] ?? ''),
+                'planeta_nazwa' => $x['planeta_nazwa'] ?? '', 'typ' => $x['rodzaj'] ?: ($x['jest_budynkiem'] ? 'biuro' : 'inne'),
+                'x' => $x['x_km'] === null ? null : (float) $x['x_km'], 'y' => $x['y_km'] === null ? null : (float) $x['y_km'],
+                'publiczna' => (bool) $x['publiczna'], 'opis' => $x['opis'] ?? '', 'jest_budynkiem' => (bool) $x['jest_budynkiem']];
+        }
+    }
     return $l;
 }
 
@@ -301,12 +311,19 @@ function ruch_dokoncz(string $uid): void
         ]);
         unset($karty[$uid]['podroz']);
     });
+    $pozycja = wczytaj('karty', [])[$uid]['pozycja'] ?? null;
+    if (is_array($pozycja)) pozycja_sql_zapisz($uid, $pozycja);
 }
 
 function ruch_planeta(string $id): array
 {
     foreach (katalog()['planety'] as $p) {
         if ($p['id'] === $id) return $p;
+    }
+    if (ctype_digit($id) && tabela_sql_dostepna('mapa_planety')) {
+        $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa, p.x, p.y, p.region, p.grawitacja, p.slonca, p.ksiezyce, pg.typ_planety, pg.kontrola_lotow FROM mapa_planety p LEFT JOIN planety_gry pg ON pg.planeta_id=p.id WHERE p.id=?');
+        $q->execute([(int) $id]);
+        if ($p = $q->fetch(PDO::FETCH_ASSOC)) return ['id' => (string) $p['id'], 'nazwa' => $p['nazwa'], 'typ' => $p['typ_planety'] ?: 'skalista', 'x' => $p['x'], 'y' => $p['y'], 'region' => $p['region'], 'kontrola' => $p['kontrola_lotow'] ?? ''];
     }
     return ['id' => '', 'nazwa' => '?'];
 }
@@ -358,6 +375,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             $gdzie = ruch_gdzie($karta, ruch_lokacje());
             $tu = (string) ($gdzie['planeta'] ?? $karta['pozycja']['planeta'] ?? '');
             $wynik = ['tu' => $nazwy[$tu] ?? '', 'stan' => $tu !== '' ? 'powierzchnia' : '', 'cel' => '', 'statki' => []];
+            if ($wynik['tu'] === '' && ctype_digit($tu)) $wynik['tu'] = ruch_planeta($tu)['nazwa'] ?? '';
             if ($st = ruch_statek($karta['pozycja']['lokacja'] ?? '')) {
                 if (!empty($st['w_locie'])) $wynik['stan'] = ($st['cel'] ?? '') !== '' ? 'nadprzestrzen' : 'orbita';
                 $wynik['cel'] = $nazwy[$st['cel'] ?? ''] ?? '';
@@ -385,21 +403,22 @@ function obsluz_ruch(string $akcja, bool $post): void
             if ($gdzie) {
                 $pl = ruch_planeta($gdzie['planeta']);
                 $wynik['planeta'] = ['nazwa' => $pl['nazwa'], 'urbanizacja' => $pl['urbanizacja'] ?? 'brak'];
-                foreach (ruch_znane($u['id'], $karta, $lok, $gdzie['planeta']) as $l) {
-                    if ($l['klucz'] === ($gdzie['klucz'] ?? '')) continue;
+                $maKoordynaty = is_numeric($gdzie['x'] ?? null) && is_numeric($gdzie['y'] ?? null);
+                if ($maKoordynaty) foreach (ruch_znane($u['id'], $karta, $lok, $gdzie['planeta']) as $l) {
+                    if ($l['klucz'] === ($gdzie['klucz'] ?? '') || !is_numeric($l['x'] ?? null) || !is_numeric($l['y'] ?? null)) continue;
                     $wynik['miejsca'][] = ['klucz' => $l['klucz'], 'nazwa' => $l['nazwa'], 'typ' => $l['typ'], 'km' => round(ruch_odleglosc($gdzie, $l), 1), 'opis' => $l['opis'] ?? ''];
                 }
                 usort($wynik['miejsca'], fn($a, $b) => $a['km'] <=> $b['km']);
                 foreach (ruch_statki($u['id'], $gdzie['planeta'], $lok) as $s) {
                     $s['obsluga'] = ruch_obsluga(['paliwo' => $s['paliwo']], $s['hangar']);
-                    $s['km'] = round(ruch_odleglosc($gdzie, $s['hangar']), 1);
+                    $s['km'] = $maKoordynaty && is_numeric($s['hangar']['x'] ?? null) && is_numeric($s['hangar']['y'] ?? null) ? round(ruch_odleglosc($gdzie, $s['hangar']), 1) : null;
                     $s['na_miejscu'] = ($gdzie['klucz'] ?? '') === $s['hangar']['klucz'];
                     $s['hangar'] = ['klucz' => $s['hangar']['klucz'], 'nazwa' => $s['hangar']['nazwa'], 'jakosc' => (int) ($s['hangar']['jakosc'] ?? 3)];
                     $wynik['statki'][] = $s;
                 }
                 foreach (ruch_pojazdy($u['id'], $karta, $lok) as $p) {
                     $wynik['pojazdy'][] = ['nazwa' => $p['nazwa'], 'typ' => $p['typ'] ?? '', 'predkosc' => $p['predkosc'] ?? 0, 'wlasciciel' => $p['wlasciciel'],
-                        'kierowca' => $p['kierowca_imie'] ?? '', 'gdzie' => $p['gdzie']['nazwa'] ?? 'nieznane', 'km' => $p['gdzie'] && $p['gdzie']['planeta'] === $gdzie['planeta'] ? round(ruch_odleglosc($gdzie, $p['gdzie']), 1) : null];
+                        'kierowca' => $p['kierowca_imie'] ?? '', 'gdzie' => $p['gdzie']['nazwa'] ?? 'nieznane', 'km' => $maKoordynaty && $p['gdzie'] && is_numeric($p['gdzie']['x'] ?? null) && is_numeric($p['gdzie']['y'] ?? null) && $p['gdzie']['planeta'] === $gdzie['planeta'] ? round(ruch_odleglosc($gdzie, $p['gdzie']), 1) : null];
                 }
                 // Na pokładzie: stan statku (start, wznoszenie, orbita, skok).
                 if (str_starts_with($gdzie['klucz'] ?? '', 's:')) {
@@ -424,6 +443,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                 }
                 // Pojazdy z innych planet nie są tu przydatne.
                 $wynik['pojazdy'] = array_values(array_filter($wynik['pojazdy'], fn($p) => $p['km'] !== null));
+                $wynik['ruch_mozliwy'] = $maKoordynaty;
                 // Akcje w miejscu: bankomat, sklep.
                 if (($gdzie['typ'] ?? '') === 'sklep') $wynik['sklep'] = $gdzie['oferta'] ?? [];
                 $wynik['bankomat'] = ($gdzie['typ'] ?? '') === 'bankomat';
@@ -599,6 +619,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                     $k[$u['id']]['pozycja']['miejsce'] = 'Pokład: ' . $s['nazwa'];
                     $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
                 });
+                pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
                 odpowiedz(['ok' => true]);
             }
             blad('Nie ma takiego statku w pobliżu.', 404);
@@ -619,6 +640,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                         $k[$u['id']]['pozycja']['miejsce'] = $s['hangar']['nazwa'];
                         $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
                     });
+                    pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
                     odpowiedz(['ok' => true]);
                 }
             }
@@ -787,6 +809,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             zmien('karty', function (&$k) use ($zaloga, $cel) {
                 foreach ($zaloga as $uid) $k[$uid]['pozycja']['planeta'] = $cel['id'];
             });
+            foreach ($zaloga as $uid) pozycja_sql_zapisz($uid, wczytaj('karty', [])[$uid]['pozycja'] ?? []);
             odpowiedz(['ok' => true, 'hangar' => $hangar !== '']);
 
         case 'ladowanie':
@@ -833,6 +856,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             zmien('karty', function (&$k) use ($zaloga) {
                 foreach ($zaloga as $uid) $k[$uid]['pozycja']['zmieniono'] = teraz_ms();
             });
+            foreach ($zaloga as $uid) pozycja_sql_zapisz($uid, wczytaj('karty', [])[$uid]['pozycja'] ?? []);
             odpowiedz(['ok' => true]);
     }
 }

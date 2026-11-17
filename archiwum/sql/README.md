@@ -13,13 +13,17 @@ na hostingu; nie należy jednak umieszczać zrzutów w publicznym katalogu serwe
 
 Definicja przykładowych obiektów jest utrzymywana w śledzonym pliku `api/przykladowe-obiekty.sql`.
 
-## Fundament SQL v3 (2026-11-17)
+## Fundament SQL v3 i migracja lokacji (2026-11-17)
 
 - `schema_v2.sql` — poprzedni relacyjny fundament, wymaga `api/schema.sql`.
 - `migracja_v2_v3.sql` — addytywne rozszerzenie istniejącej bazy po imporcie v2. Nie kasuje
   danych. Można uruchamiać ponownie; przed pierwszym importem wykonaj kopię bazy.
 - `schema_v3.sql` — kompletny skrypt dla **pustej bazy**: `api/schema.sql` + v2 + migracja v3.
   Nie uruchamiaj go na istniejącej bazie produkcyjnej — użyj migracji v2→v3.
+- `api/migracje/004_relacyjne_lokacje_i_pozycje.sql` — migracja istniejącej bazy v2/v3;
+  dodaje władzę nad planetą, lokacje i relacyjny zapis pozycji postaci. Wymaga wcześniejszego
+  wpisu Havis III w `mapa_planety`.
+- `api/schema_v4.sql` — schemat całościowy dla **pustej bazy**, zawiera v3 i migrację 004.
 
 ### Zakres v3
 
@@ -29,9 +33,9 @@ specjalizacje i umiejętności Edge of the Empire, izolowane sesje symulacji, za
 statków, emitery ciągnikowe, hangary i przydziały jednostek, ewidencja zużycia zaopatrzenia,
 kwatery, zmiany i posiłki załogi, historia kontaktów czujników oraz rejestr rozkazów mostka.
 
-Wersja v3 przygotowuje warstwę bazy. Nie przełącza aplikacji PHP/JS na nowe tabele, nie importuje
-do bazy produkcyjnej i nie migruje automatycznie nieustrukturyzowanych dokumentów z `datapad_dane`.
-Takie przełączenie wymaga osobnej implementacji aplikacji i migracji konkretnych danych.
+Runtime używa relacyjnych tabel SQL dla lokacji i pozycji (z zachowaniem tekstowego UID konta jako
+mostu). Pozostałe domeny są jeszcze przechowywane jako dokumenty JSON w `datapad_dane` i będą
+migrowane modułami. Techniczne formaty JSON aplikacji pozostają potrzebne.
 
 W `towary_kategorie` i `planety_kategorie_ceny` zachowano powiązania wynikające ze starych
 kategorii v2. Nowe kategorie dopisuj do `kategorie_towarow`, a następnie przypisuj towarom.

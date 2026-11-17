@@ -47,7 +47,8 @@ api/karty.php            karta postaci: statystyki, reputacja, status, pozycja, 
 api/ruch.php             przemieszczanie, przygotowanie statku, gotówka (bankomat, sklep)
 js/rdzen/scena.js        animacje tła: gwiazdy, skok, tunel, wyjście, planety
 api/schema.sql           schemat bazy danych (MySQL 8 / MariaDB 10.6)
-api/schema_v3.sql        kompletny, przyszły schemat SQL v3 (nowa, pusta baza)
+api/schema_v3.sql        historyczny fundament relacyjny v3
+api/schema_v4.sql        schemat całościowy v4 (nowa, pusta baza)
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
 api/dane/                źródło importu z wcześniejszych wersji (poza gitem)
@@ -58,13 +59,18 @@ narzedzia/czcionka/      generator czcionki Aurebesh
 
 Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w jakiej są w repo.
 
-## Schemat SQL v3 — prototyp
+## Schemat SQL v4 — etap migracji danych
 
-`api/schema_v3.sql` zawiera kompletny schemat dla nowej, pustej bazy. Dla bazy, która ma już
-schemat v2, uruchom tylko `api/migracje/003_schema_v2_do_v3.sql` po wykonaniu kopii zapasowej.
-Nie importuj pełnego `schema_v3.sql` do istniejącej bazy. Pliki v3 przygotowują fundament danych;
-obecna aplikacja PHP nie została jeszcze przełączona na wszystkie nowe tabele. Zmiana runtime
-i migracja zawartości `datapad_dane` będą osobnym wdrożeniem.
+`api/schema_v4.sql` zawiera komplet skryptów dla nowej, pustej bazy. Nie importuj go do działającej
+bazy. Dla istniejącej bazy uruchamiaj kolejne migracje po kopii zapasowej: v2, v3, a następnie
+`api/migracje/004_relacyjne_lokacje_i_pozycje.sql`. Ta migracja dodaje relacyjne lokacje i most
+pozycji dla istniejących tekstowych UID; obejmuje Havis III, Moffa Darniusa Kirrę i Pałac Moffa.
+
+Runtime zapisuje i odczytuje pozycje z SQL, a równolegle utrzymuje ich kopię w dotychczasowym
+dokumencie `datapad_dane`, aby pozostałe moduły i starsze ścieżki ruchu działały podczas migracji.
+Pozostałe dokumenty aplikacji są nadal przechowywane jako JSON w kolumnie `payload` tabeli
+`datapad_dane`; ich konwersja będzie następować modułami w kolejnych migracjach. Nie usuwaj tej
+tabeli ani technicznych plików JSON (`manifest.webmanifest`, transport API, ustawienia lokalne).
 
 Waluta księgowa ma jeden kod kanoniczny `CR`; `IC` jest aliasem tego samego Credit i nie tworzy
 drugiego salda. Rachunki istniejące w v2 są przypisywane do `CR`.

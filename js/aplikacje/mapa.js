@@ -62,6 +62,7 @@ export default {
     const wsp = h('div.mapa-wsp');
     const ladowanie = h('div.mapa-ladowanie', 'Pobieranie danych astronawigacyjnych...');
     const panelFlot = h('section.mapa-floty-panel', { hidden: true });
+    const panelRadar = h('section.mapa-radar', { hidden: true });
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
     const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => { if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta })); } }, 'Moja pozycja');
@@ -70,7 +71,7 @@ export default {
 
     w.append(plotno,
       h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty)),
-      panelFlot, karta, podpowiedz, wsp, ladowanie);
+      panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');
@@ -102,6 +103,7 @@ export default {
     let tuPlaneta = null, celPlaneta = null;
     let statkiNaMapie = []; // [{ planeta, statki: [...] }]
     let obiektyMapy = []; // Jednostki i postacie udostępnione temu kontu; MG otrzymuje pełną listę.
+    let bitwyRadar = [];
     let mojeFloty = [];
     let brudna = true;
     let ramka = 0;
@@ -130,13 +132,15 @@ export default {
       const p = planetaObiektu(o);
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || o.lot) return pozycjaDomyslna;
-      const orbita = !!o.flota;
+      const orbita = !!o.flota || !!o.orbita;
       if (!orbita && o.typ !== 'postac') return pozycjaDomyslna;
+      const grupaOrbity = (x) => x.flota?.kod || (x.bitwa ? `bitwa:${x.bitwa.nazwa}` : `orbita:${norm(x.planeta)}`);
+      const grupa = grupaOrbity(o);
       const rodzina = obiektyMapy.filter((x) => planetaObiektu(x) === p && !x.lot
-        && (orbita ? x.flota?.kod === o.flota.kod : x.typ === 'postac'));
+        && (orbita ? grupaOrbity(x) === grupa : x.typ === 'postac'));
       const indeks = Math.max(0, rodzina.findIndex((x) => x.id === o.id));
-      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && x.flota && !x.lot).map((x) => x.flota.kod))];
-      const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(o.flota.kod)) : 0;
+      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !x.lot).map(grupaOrbity))];
+      const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const promien = orbita ? 18 + numerOrbity * 9 : 30;
       const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
       const [px, py] = naEkran(p.x, p.y);
@@ -151,11 +155,13 @@ export default {
         if (!floty.has(klucz)) floty.set(klucz, o.flota);
       }
       const osoby = obecni.filter((o) => o.typ === 'postac').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
+      const jednostki = obecni.filter((o) => ['statek','jednostka'].includes(o.typ));
       return h('div.mapa-obecni',
         floty.size ? [...floty.values()].map((f) => h('div.mapa-obecny',
           h('strong', f.nazwa), h('small', f.dowodca || 'Dowódca nieprzypisany'))) : null,
         osoby.length ? h('div', h('b.mapa-obecni-etykieta', 'Postacie'), osoby.map((o) => h('div.mapa-osoba', nazwaPostaci(o)))) : null,
-        !floty.size && !osoby.length ? h('span.slaby', 'Brak przypisanych postaci i flot') : null);
+        jednostki.length ? h('div', h('b.mapa-obecni-etykieta', 'Orbita'), jednostki.map((o) => h('div.mapa-osoba', o.bitwa ? `${o.nazwa} · ${o.bitwa.strona}` : o.nazwa))) : null,
+        !floty.size && !osoby.length && !jednostki.length ? h('span.slaby', 'Brak przypisanych postaci i flot') : null);
     }
 
     function pokazPodpowiedz(cel, sx, sy) {
@@ -425,12 +431,14 @@ export default {
       for (const o of obiektyMapy) {
         const [sx, sy] = punktObiektu(o);
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
-        const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
+        const kolorZnacznika = o.bitwa?.kolor || o.kolor;
+        const kolor = /^#[0-9a-f]{6}$/i.test(kolorZnacznika || '') ? kolorZnacznika : '#00ff66';
         if (o.lot) {
           const [cx, cy] = naEkran(o.lot.x, o.lot.y);
           c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
         }
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
+        if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
         if (o.znacznik === 'trojkat') { c.moveTo(sx, sy - 7); c.lineTo(sx + 6, sy + 5); c.lineTo(sx - 6, sy + 5); c.closePath(); }
         else if (o.znacznik === 'kwadrat') c.rect(sx - 5, sy - 5, 10, 10);
@@ -690,6 +698,10 @@ export default {
       if (!D) return;
       ustawDodatkowe(pozycja.dodatkowe || []);
       obiektyMapy = pozycja.obiekty || [];
+      bitwyRadar = pozycja.bitwy_radar || [];
+      wyczysc(panelRadar);
+      panelRadar.hidden = !bitwyRadar.length;
+      if (bitwyRadar.length) panelRadar.append(h('strong', `RADAR · ${pozycja.tu}`), ...bitwyRadar.map((b) => h('div', h('b', b.nazwa), h('small', b.strony.join(' ↔ ')))));
       const znajdz = (nazwa) => (nazwa ? wgKlucza.get(norm(nazwa)) || null : null);
       tuPlaneta = znajdz(pozycja.tu);
       celPlaneta = pozycja.stan === 'nadprzestrzen' ? znajdz(pozycja.cel) : null;

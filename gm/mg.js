@@ -81,7 +81,7 @@ function zalozMG() {
 function panel(u) {
   document.getElementById('kto').textContent = 'Zalogowano: ' + u.login;
   menu.hidden = false;
-  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', floty: 'Floty', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
+  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', bitwy: 'Bitwy / radar', floty: 'Floty', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
   const rysujMenu = () => wyczysc(menu).append(
     ...Object.entries(zakladki).map(([k, n]) => h('button' + (k === biezaca ? '.on' : ''), { onclick: () => { biezaca = k; rysujMenu(); otworz(); } }, n)),
     h('button', { onclick: async () => { await api('wyloguj', {}); location.reload(); } }, 'Wyloguj'));
@@ -91,7 +91,7 @@ function panel(u) {
 
 function otworz() {
   wyczysc(glowna);
-  ({ stan: stanPostaci, karty: kartyPostaci, mapa, floty, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+  ({ stan: stanPostaci, karty: kartyPostaci, mapa, bitwy: bitwyRadar, floty, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
 }
 
 async function floty() {
@@ -258,15 +258,21 @@ async function mapa() {
       wyczysc(glowna); await mapa(); glowna.prepend(msg(`Zapisano dostęp do pozycji: ${o.nazwa}.`, 'ok'));
     })));
   };
-  const wiersze = obiekty.map((o) => h('tr',
+  const wiersze = obiekty.map((o) => {
+    const status = o.typ === 'postac' ? h('div.rzad', h('select', { 'data-stan': o.id },
+      ...[['swobodna','Swobodna'],['uwieziona','Uwięziona'],['nieprzytomna','Nieprzytomna']].map(([v,n]) => h('option', { value:v, selected:(o.stan_swobody || 'swobodna') === v }, n))),
+      btn('Zapisz', bezpiecznie(async () => { const el = glowna.querySelector(`[data-stan="${o.id}"]`); await api('mg_postac_swoboda', { id:o.id, stan:el.value }); o.stan_swobody=el.value; glowna.prepend(msg(`Zapisano stan swobody: ${o.nazwa}.`, 'ok')); }))) : null;
+    return h('tr',
     h('td', h('b', o.nazwa), h('div.slaby', [o.klasa, o.wlasciciel].filter(Boolean).join(' · '))),
     h('td', o.typ),
     h('td', `${o.x ?? '—'} : ${o.y ?? '—'}`),
+    h('td', status),
     h('td', edytorDostepu(o)),
     h('td.rzad', o.typ === 'postac' ? null : btn('Edytuj', () => {
       wyczysc(glowna);
       glowna.append(form(o));
-    }))));
+    })));
+  });
   glowna.append(
     h('div.karta',
       h('h2', 'Mapa galaktyki — pozycje i udostępnienia'),
@@ -276,8 +282,42 @@ async function mapa() {
     h('div.karta.przewijana',
       h('h2', `Obiekty z pozycją (${obiekty.filter((o) => o.x !== null && o.y !== null).length})`),
       h('table',
-        h('tr', h('th', 'Obiekt'), h('th', 'Typ'), h('th', 'Współrzędne'), h('th', 'Odbiorcy'), h('th', '')),
+        h('tr', h('th', 'Obiekt'), h('th', 'Typ'), h('th', 'Współrzędne'), h('th', 'Swoboda'), h('th', 'Odbiorcy'), h('th', '')),
         ...wiersze)));
+}
+
+async function bitwyRadar() {
+  let dane = await api('mg_bitwy');
+  const nazwa = h('input', { placeholder: 'np. Starcie nad Havis III', maxlength: 160 });
+  const planeta = h('select', dane.planety.map((p) => h('option', { value:p.id }, p.nazwa)));
+  const opis = h('textarea', { placeholder: 'Notatka MG (opcjonalnie)' });
+  const odswiez = async () => { dane = await api('mg_bitwy'); wyczysc(glowna); await bitwyRadar(); };
+  const karty = dane.bitwy.map((b) => {
+    let sklad = b.uczestnicy.map((u) => ({ obiekt_id:Number(u.obiekt_id), strona:u.strona, kolor:u.kolor }));
+    const lista = h('div.siatka');
+    const rysujSklad = () => {
+      wyczysc(lista);
+      for (const [i,u] of sklad.entries()) {
+        const obiekt = h('select', dane.obiekty.map((o) => h('option', { value:o.id, selected:Number(o.id)===u.obiekt_id }, `${o.nazwa} · ${o.typ}`)));
+        const strona = h('input', { value:u.strona, placeholder:'Strona / frakcja' });
+        const kolor = h('input', { type:'color', value:/^#[0-9a-f]{6}$/i.test(u.kolor) ? u.kolor : '#ff6b55' });
+        const dodaj = () => { u.obiekt_id=Number(obiekt.value); u.strona=strona.value; u.kolor=kolor.value; };
+        obiekt.onchange = dodaj; strona.oninput = dodaj; kolor.oninput = dodaj;
+        lista.append(h('div.rzad', obiekt, strona, kolor, btn('Usuń', () => { dodaj(); sklad.splice(i,1); rysujSklad(); }, '.zly')));
+      }
+    };
+    rysujSklad();
+    return h('article.karta', h('h3', b.nazwa), h('p.slaby', `${b.planeta} · rozpoczęcie ${b.rozpoczecie_utc}`),
+      btn('Dodaj uczestnika', () => { sklad.push({ obiekt_id:Number(dane.obiekty[0]?.id || 0), strona:'', kolor:'#ff6b55' }); rysujSklad(); }),
+      lista, h('div.rzad',
+        btn('Zapisz uczestników', bezpiecznie(async () => { lista.querySelectorAll('.rzad').forEach((r,i)=>{sklad[i].strona=r.querySelectorAll('input')[0].value;}); await api('mg_bitwa_uczestnicy_zapisz', { bitwa_id:b.id, uczestnicy:sklad }); await odswiez(); }), '.glowny'),
+        btn('Zakończ bitwę', bezpiecznie(async () => { if (!confirm(`Zakończyć bitwę „${b.nazwa}”?`)) return; await api('mg_bitwa_zakoncz', { bitwa_id:b.id }); await odswiez(); }), '.zly')));
+  });
+  glowna.append(h('div.karta', h('h2','Radar planetarny i bitwy'),
+    h('p.slaby','Bitwa jest widoczna jako radar dla wszystkich swobodnych postaci na przypisanej planecie. Dodaj uczestników z ich stronami; mapa pokazuje ich bieżące pozycje z SQL.'),
+    h('div.siatka', pole('Nazwa bitwy', nazwa), pole('Planeta', planeta), pole('Opis', opis)),
+    btn('Rozpocznij bitwę', bezpiecznie(async () => { await api('mg_bitwa_zapisz',{ nazwa:nazwa.value, planeta_id:Number(planeta.value), opis:opis.value }); await odswiez(); }), '.glowny')),
+    ...karty.length ? karty : [h('div.karta', h('p.slaby','Brak aktywnych bitew.')]));
 }
 
 // ---------- konta ----------

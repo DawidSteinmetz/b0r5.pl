@@ -536,6 +536,9 @@ html.z-tlem #ekran::before {
 .mapa-obiekt-flota { display: grid; gap: 4px; margin-top: 10px; padding: 9px; border-left: 2px solid var(--akcent); background: rgba(77,226,201,.06); }
 .mapa-obiekt-flota strong { color: var(--akcent); }
 .mapa-floty-panel { position: absolute; z-index: 4; top: 64px; right: 12px; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow-y: auto; padding: 14px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.97); }
+.mapa-radar { position: absolute; z-index: 3; left: 12px; bottom: 12px; display: grid; gap: 5px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; border: 1px solid #ff6b55; border-radius: var(--promien); background: rgba(35, 10, 12, .92); color: #ff8b78; box-shadow: 0 0 18px rgba(255, 74, 55, .2); }
+.mapa-radar[hidden] { display: none; }
+.mapa-radar small { color: var(--tekst); }
 .mapa-floty-panel h2 { margin: 0 40px 12px 0; color: var(--akcent); font-size: 18px; }
 .mapa-floty-panel article { position: relative; margin: 10px 0; padding: 12px; }
 .mapa-floty-jednostki { display: grid; gap: 5px; margin: 10px 0; }

@@ -54,6 +54,7 @@ api/schema_v6.sql        schemat całościowy v6: mapa, floty i nawigacja (nowa,
 api/schema_v7.sql        historyczny schemat całościowy v7
 api/schema_v8.sql        schemat całościowy v8: profile napędu eskorty (nowa, pusta baza)
 api/schema_v9.sql        schemat całościowy v9: NPC dowódcy i flota Dromund Kaas
+api/schema_v10.sql       schemat całościowy v10: swoboda postaci i radar bitew
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/floty.php            dowodzenie flotami, podział grup i automatyczne skoki
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
@@ -540,4 +541,8 @@ dostają kształt litery podstawowej.
 
 ## Schemat SQL v9 — flota Dromund Kaas i kapitanowie NPC
 
-`api/schema_v9.sql` jest pełnym schematem dla nowej, pustej bazy. Działającą bazę po migracji 008 zaktualizuj przez import wyłącznie `api/migracje/009_flota_dromund_kaas.sql`. Migracja dodaje planetę Dromund Kaas (współrzędne przybliżone, obok Korribanu), kapitana NPC Rhalena Vosska i jego flotę: ISD I „Legacy”, dwa Arquitensy oraz sześć Gozanti z czterema standardowymi TIE każda. Edytor flot umożliwia wybranie kapitana NPC i zmianę nazw okrętów. W zakładce Mapa można edytować nazwy wszystkich jednostek, także tych nieprzydzielonych do flot.
+`api/schema_v9.sql` jest pełnym schematem v9 dla nowej, pustej bazy. Działającą bazę po migracji 008 zaktualizuj przez import `api/migracje/009_flota_dromund_kaas.sql`. Ta migracja dodaje planetę Dromund Kaas, kapitana NPC Rhalena Vosska i flotę ISD I „Legacy”, dwa Arquitensy oraz sześć Gozanti z czterema standardowymi TIE każda.
+
+## Schemat SQL v10 — radar planetarny i bitwy
+
+`api/schema_v10.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę z wcześniejszym schematem aktualizuj przez import `api/migracje/010_radar_bitwy_i_swoboda.sql`. Migracja dodaje status swobody postaci, rejestr aktywnych bitew wraz z uczestnikami i stronami oraz pole `ukryty_za_ksiezycem` zarezerwowane na później. Panel MG ma zakładkę „Bitwy / radar” do rozpoczynania i kończenia starć oraz przypisywania uczestników i stron. Swoboda postaci jest ustawiana w zakładce „Mapa”. Swobodna postać na planecie widzi jej jednostki orbitalne; podczas bitwy widzi na mapie uczestników wszystkich stron. Więzień i postać nieprzytomna nie otrzymują tych dodatkowych danych. Pole ukrycia za księżycem nie jest jeszcze używane. Mapa odświeża pozycje co 15 sekund.

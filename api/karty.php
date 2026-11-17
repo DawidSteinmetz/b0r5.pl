@@ -265,6 +265,88 @@ function obsluz_karty(string $akcja, bool $post): void
             $odbiorcy = array_values(array_map(static fn($x) => ['login' => $x['login'], 'postac' => $x['postac']], array_filter(uzytkownicy(), static fn($x) => ($x['rola'] ?? '') !== 'mg')));
             odpowiedz(['obiekty' => mapa_obiekty_mg(), 'konta' => $odbiorcy]);
 
+        case 'mg_postac_swoboda':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $stan = (string) ($w['stan'] ?? '');
+            if (!in_array($stan, ['swobodna','uwieziona','nieprzytomna'], true)) blad('Nieprawidłowy stan postaci.');
+            $q = polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET stan_swobody=? WHERE id=? AND typ='postac'");
+            $q->execute([$stan, (int) ($w['id'] ?? 0)]);
+            if (!$q->rowCount()) {
+                $q = polaczenie_bazy()->prepare("SELECT id FROM mapa_obiekty WHERE id=? AND typ='postac'");
+                $q->execute([(int) ($w['id'] ?? 0)]);
+                if (!$q->fetchColumn()) blad('Nie znaleziono postaci na mapie.', 404);
+            }
+            odpowiedz(['ok' => true]);
+
+        case 'mg_bitwy':
+            wymagaj_mg();
+            $db = polaczenie_bazy();
+            $planety = $db->query('SELECT id,nazwa FROM mapa_planety ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC);
+            $bitwy = $db->query("SELECT b.id,b.kod,b.nazwa,b.planeta_id,p.nazwa AS planeta,b.status,b.opis,b.rozpoczecie_utc,b.koniec_utc
+                FROM mapa_bitwy b JOIN mapa_planety p ON p.id=b.planeta_id WHERE b.status='aktywna' ORDER BY b.rozpoczecie_utc DESC")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($bitwy as &$b) {
+                $q = $db->prepare("SELECT u.obiekt_id,m.nazwa,m.typ,m.klasa,u.strona,u.kolor FROM mapa_bitwy_uczestnicy u JOIN mapa_obiekty m ON m.id=u.obiekt_id WHERE u.bitwa_id=? ORDER BY u.strona,m.nazwa");
+                $q->execute([(int) $b['id']]);
+                $b['uczestnicy'] = $q->fetchAll(PDO::FETCH_ASSOC);
+            }
+            unset($b);
+            $obiekty = $db->query("SELECT id,nazwa,typ,klasa,planeta_id FROM mapa_obiekty WHERE aktywny=1 AND typ IN ('statek','jednostka','pojazd','postac') ORDER BY typ,nazwa")->fetchAll(PDO::FETCH_ASSOC);
+            odpowiedz(['bitwy' => $bitwy, 'planety' => $planety, 'obiekty' => $obiekty]);
+
+        case 'mg_bitwa_zapisz':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $nazwa = mb_substr(trim((string) ($w['nazwa'] ?? '')), 0, 160);
+            $planeta = (int) ($w['planeta_id'] ?? 0);
+            if ($nazwa === '' || !$planeta) blad('Podaj nazwę bitwy i planetę.');
+            $db = polaczenie_bazy();
+            $q = $db->prepare('SELECT id FROM mapa_planety WHERE id=?');
+            $q->execute([$planeta]);
+            if (!$q->fetchColumn()) blad('Nie znaleziono planety.', 404);
+            $db->prepare("INSERT INTO mapa_bitwy (kod,nazwa,planeta_id,status,opis) VALUES (?,?,?,'aktywna',?)")
+                ->execute(['bitwa-' . bin2hex(random_bytes(8)), $nazwa, $planeta, mb_substr(trim((string) ($w['opis'] ?? '')), 0, 3000) ?: null]);
+            odpowiedz(['ok' => true, 'id' => (int) $db->lastInsertId()]);
+
+        case 'mg_bitwa_uczestnicy_zapisz':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $bitwaId = (int) ($w['bitwa_id'] ?? 0);
+            $uczestnicy = array_values((array) ($w['uczestnicy'] ?? []));
+            if (count($uczestnicy) > 100) blad('Bitwa może mieć maksymalnie 100 pozycji.');
+            $db = polaczenie_bazy();
+            $q = $db->prepare("SELECT id FROM mapa_bitwy WHERE id=? AND status='aktywna'");
+            $q->execute([$bitwaId]);
+            if (!$q->fetchColumn()) blad('Nie znaleziono aktywnej bitwy.', 404);
+            $db->beginTransaction();
+            try {
+                $db->prepare('DELETE FROM mapa_bitwy_uczestnicy WHERE bitwa_id=?')->execute([$bitwaId]);
+                $ins = $db->prepare('INSERT INTO mapa_bitwy_uczestnicy (bitwa_id,obiekt_id,strona,kolor) SELECT ?,id,?,? FROM mapa_obiekty WHERE id=? AND aktywny=1');
+                foreach ($uczestnicy as $x) {
+                    $oid = (int) ($x['obiekt_id'] ?? 0);
+                    $strona = mb_substr(trim((string) ($x['strona'] ?? '')), 0, 120);
+                    $kolor = (string) ($x['kolor'] ?? '#ff6b55');
+                    if (!$oid || $strona === '' || !preg_match('/^#[0-9a-fA-F]{6}$/', $kolor)) throw new RuntimeException('Każdy uczestnik musi mieć obiekt, stronę i poprawny kolor.');
+                    $ins->execute([$bitwaId, $strona, $kolor, $oid]);
+                    if (!$ins->rowCount()) throw new RuntimeException('Nie znaleziono aktywnego obiektu uczestniczącego w bitwie.');
+                }
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                throw $e;
+            }
+            odpowiedz(['ok' => true]);
+
+        case 'mg_bitwa_zakoncz':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $q = polaczenie_bazy()->prepare("UPDATE mapa_bitwy SET status='zakonczona',koniec_utc=UTC_TIMESTAMP() WHERE id=? AND status='aktywna'");
+            $q->execute([(int) (wejscie()['bitwa_id'] ?? 0)]);
+            odpowiedz(['ok' => true]);
+
         case 'mg_mapa_dostep_zapisz':
             if (!$post) blad('Zła metoda.', 405);
             wymagaj_mg();

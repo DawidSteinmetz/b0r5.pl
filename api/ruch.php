@@ -194,10 +194,59 @@ function mapa_obiekty_widoczne(array $u): array
     return $obiekty;
 }
 
+// Dodatkowy radar lokalny: swobodny mieszkaniec widzi okręty na orbicie oraz
+// wszystkich uczestników aktywnych bitew przypisanych do planety. Udostępnienia
+// mapy pozostają bez zmian poza tym lokalnym zasięgiem.
+function mapa_radar_lokalny(array $u, string $nazwaPlanety, array $obiekty): array
+{
+    $pusty = ['obiekty' => $obiekty, 'bitwy' => []];
+    if (($u['rola'] ?? '') === 'mg' || $nazwaPlanety === '' || !tabela_sql_dostepna('mapa_bitwy')
+        || !tabela_sql_dostepna('mapa_bitwy_uczestnicy') || !tabela_sql_dostepna('mapa_obiekty')) return $pusty;
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT id FROM mapa_planety WHERE nazwa=? LIMIT 1');
+    $q->execute([$nazwaPlanety]);
+    $planetaId = (int) $q->fetchColumn();
+    if (!$planetaId) return $pusty;
+    $q = $db->prepare("SELECT stan_swobody FROM mapa_obiekty WHERE legacy_uid=? AND typ='postac' LIMIT 1");
+    $q->execute([(string) $u['id']]);
+    if ((string) $q->fetchColumn() !== 'swobodna') return $pusty;
+
+    $sql = "SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis,
+                   b.id AS bitwa_id,b.nazwa AS bitwa_nazwa,bu.strona AS bitwa_strona,bu.kolor AS bitwa_kolor
+            FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id
+            LEFT JOIN mapa_bitwy_uczestnicy bu ON bu.obiekt_id=m.id
+            LEFT JOIN mapa_bitwy b ON b.id=bu.bitwa_id AND b.status='aktywna' AND b.planeta_id=?
+            WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL
+              AND ((m.planeta_id=? AND m.typ IN ('statek','jednostka')) OR b.id IS NOT NULL)
+            ORDER BY b.id,m.nazwa";
+    $q = $db->prepare($sql);
+    $q->execute([$planetaId, $planetaId]);
+    $indeks = array_column($obiekty, null, 'id');
+    $bitwy = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $id = (int) $r['id'];
+        if (!isset($indeks[$id])) $indeks[$id] = [
+            'id' => $id, 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
+            'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
+            'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
+        ];
+        if (in_array($r['typ'], ['statek','jednostka'], true) && (int) $r['planeta_id'] === $planetaId) $indeks[$id]['orbita'] = true;
+        if ($r['bitwa_id'] !== null) {
+            $indeks[$id]['bitwa'] = ['nazwa' => $r['bitwa_nazwa'], 'strona' => $r['bitwa_strona'], 'kolor' => $r['bitwa_kolor']];
+            $bid = (int) $r['bitwa_id'];
+            if (!isset($bitwy[$bid])) $bitwy[$bid] = ['nazwa' => $r['bitwa_nazwa'], 'strony' => []];
+            $bitwy[$bid]['strony'][$r['bitwa_strona']] = true;
+        }
+    }
+    foreach ($bitwy as &$bitwa) $bitwa['strony'] = array_keys($bitwa['strony']);
+    unset($bitwa);
+    return ['obiekty' => array_values($indeks), 'bitwy' => array_values($bitwy)];
+}
+
 function mapa_obiekty_mg(): array
 {
     if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
-    $rows = polaczenie_bazy()->query('SELECT id,kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,planeta_id,x,y,kolor,znacznik,opis,aktywny FROM mapa_obiekty ORDER BY typ,nazwa')->fetchAll(PDO::FETCH_ASSOC);
+    $rows = polaczenie_bazy()->query('SELECT id,kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,stan_swobody,planeta_id,x,y,kolor,znacznik,opis,aktywny FROM mapa_obiekty ORDER BY typ,nazwa')->fetchAll(PDO::FETCH_ASSOC);
     $q = polaczenie_bazy()->query('SELECT obiekt_id,konto_login FROM mapa_obiekty_dostep ORDER BY konto_login');
     $acl = [];
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $acl[(int) $r['obiekt_id']][] = $r['konto_login'];
@@ -459,6 +508,9 @@ function obsluz_ruch(string $akcja, bool $post): void
             }
             $wynik['dodatkowe'] = mapa_dodatkowe($u);
             $wynik['obiekty'] = mapa_obiekty_widoczne($u);
+            $radar = mapa_radar_lokalny($u, $wynik['tu'], $wynik['obiekty']);
+            $wynik['obiekty'] = $radar['obiekty'];
+            $wynik['bitwy_radar'] = $radar['bitwy'];
             $wynik['gm'] = ($u['rola'] ?? '') === 'mg';
             odpowiedz($wynik);
 

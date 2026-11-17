@@ -317,7 +317,7 @@ async function bitwyRadar() {
     h('p.slaby','Bitwa jest widoczna jako radar dla wszystkich swobodnych postaci na przypisanej planecie. Dodaj uczestników z ich stronami; mapa pokazuje ich bieżące pozycje z SQL.'),
     h('div.siatka', pole('Nazwa bitwy', nazwa), pole('Planeta', planeta), pole('Opis', opis)),
     btn('Rozpocznij bitwę', bezpiecznie(async () => { await api('mg_bitwa_zapisz',{ nazwa:nazwa.value, planeta_id:Number(planeta.value), opis:opis.value }); await odswiez(); }), '.glowny')),
-    ...karty.length ? karty : [h('div.karta', h('p.slaby','Brak aktywnych bitew.')]));
+    ...(karty.length ? karty : [h('div.karta', h('p.slaby','Brak aktywnych bitew.'))]));
 }
 
 // ---------- konta ----------

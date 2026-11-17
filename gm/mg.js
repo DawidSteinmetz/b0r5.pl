@@ -133,16 +133,26 @@ async function mapa() {
       wyczysc(glowna); await mapa(); glowna.prepend(msg(`Zapisano dostęp do pozycji: ${o.nazwa}.`, 'ok'));
     })));
   };
-  glowna.append(h('div.karta', h('h2', 'Mapa galaktyki — pozycje i udostępnienia'),
-    h('p.slaby', 'MG widzi wszystkie pozycje zapisane w SQL. Gracze widzą własną postać i obiekty udostępnione ich kontu.'),
-    btn('Otwórz mapę GM', () => window.open('mapa.html', '_blank', 'noopener')),
-    btn('Dodaj jednostkę / obiekt', () => { wyczysc(glowna); glowna.append(form()); })),
-  h('div.karta.przewijana', h('h2', `Obiekty z pozycją (${obiekty.filter((o) => o.x !== null && o.y !== null).length})`),
-    h('table', h('tr', h('th', 'Obiekt'), h('th', 'Typ'), h('th', 'Współrzędne'), h('th', 'Odbiorcy'), h('th', '')),
-      obiekty.map((o) => h('tr', h('td', h('b', o.nazwa), h('div.slaby', [o.klasa, o.wlasciciel].filter(Boolean).join(' · '))),
-        h('td', o.typ), h('td', `${o.x ?? '—'} : ${o.y ?? '—'}`),
-        h('td', edytorDostepu(o)),
-        h('td.rzad', o.typ === 'postac' ? null : btn('Edytuj', () => { wyczysc(glowna); glowna.append(form(o)); }))))))));
+  const wiersze = obiekty.map((o) => h('tr',
+    h('td', h('b', o.nazwa), h('div.slaby', [o.klasa, o.wlasciciel].filter(Boolean).join(' · '))),
+    h('td', o.typ),
+    h('td', `${o.x ?? '—'} : ${o.y ?? '—'}`),
+    h('td', edytorDostepu(o)),
+    h('td.rzad', o.typ === 'postac' ? null : btn('Edytuj', () => {
+      wyczysc(glowna);
+      glowna.append(form(o));
+    }))));
+  glowna.append(
+    h('div.karta',
+      h('h2', 'Mapa galaktyki — pozycje i udostępnienia'),
+      h('p.slaby', 'MG widzi wszystkie pozycje zapisane w SQL. Gracze widzą własną postać i obiekty udostępnione ich kontu.'),
+      btn('Otwórz mapę GM', () => window.open('mapa.html', '_blank', 'noopener')),
+      btn('Dodaj jednostkę / obiekt', () => { wyczysc(glowna); glowna.append(form()); })),
+    h('div.karta.przewijana',
+      h('h2', `Obiekty z pozycją (${obiekty.filter((o) => o.x !== null && o.y !== null).length})`),
+      h('table',
+        h('tr', h('th', 'Obiekt'), h('th', 'Typ'), h('th', 'Współrzędne'), h('th', 'Odbiorcy'), h('th', '')),
+        ...wiersze)));
 }
 
 // ---------- konta ----------

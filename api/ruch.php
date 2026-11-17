@@ -135,24 +135,32 @@ function mapa_dodatkowe(array $u): array
     return $w;
 }
 
+function mapa_obiekty_poklad_sync(): void
+{
+    if (tabela_sql_dostepna('mapa_obiekty')) polaczenie_bazy()->exec("UPDATE mapa_obiekty postac JOIN mapa_obiekty okret ON okret.id=postac.na_pokladzie_id
+        SET postac.planeta_id=okret.planeta_id,postac.x=okret.x,postac.y=okret.y WHERE postac.typ='postac' AND okret.aktywny=1");
+}
+
 function mapa_obiekty_widoczne(array $u): array
 {
     if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
     if (function_exists('floty_aktualizuj_ruch')) floty_aktualizuj_ruch();
+    mapa_obiekty_poklad_sync();
     if (($u['rola'] ?? '') === 'mg') {
         foreach (uzytkownicy() as $konto) {
             if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
         }
-        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL ORDER BY m.typ,m.nazwa");
+        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL ORDER BY m.typ,m.nazwa");
     } else {
         karta((string) $u['id']);
-        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?)) ORDER BY m.typ,m.nazwa");
-        $q->execute([(string) $u['id'], (string) $u['login']]);
+        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?) OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=? AND c.typ='postac' LIMIT 1)) ORDER BY m.typ,m.nazwa");
+        $q->execute([(string) $u['id'], (string) $u['login'], (string) $u['id']]);
     }
     $obiekty = array_map(static fn($r) => [
         'id' => (int) $r['id'], 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
         'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
         'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
+        'na_pokladzie_id' => empty($r['na_pokladzie_id']) ? null : (int)$r['na_pokladzie_id'],
     ], $q->fetchAll(PDO::FETCH_ASSOC));
     if ($obiekty && tabela_sql_dostepna('mapa_floty_jednostki') && tabela_sql_dostepna('mapa_floty')) {
         $ids = array_column($obiekty, 'id');
@@ -211,7 +219,7 @@ function mapa_radar_lokalny(array $u, string $nazwaPlanety, array $obiekty): arr
     $q->execute([(string) $u['id']]);
     if ((string) $q->fetchColumn() !== 'swobodna') return $pusty;
 
-    $sql = "SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis,
+    $sql = "SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis,
                    b.id AS bitwa_id,b.nazwa AS bitwa_nazwa,bu.strona AS bitwa_strona,bu.kolor AS bitwa_kolor
             FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id
             LEFT JOIN mapa_bitwy_uczestnicy bu ON bu.obiekt_id=m.id
@@ -229,6 +237,7 @@ function mapa_radar_lokalny(array $u, string $nazwaPlanety, array $obiekty): arr
             'id' => $id, 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
             'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
             'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
+            'na_pokladzie_id' => empty($r['na_pokladzie_id']) ? null : (int)$r['na_pokladzie_id'],
         ];
         if (in_array($r['typ'], ['statek','jednostka'], true) && (int) $r['planeta_id'] === $planetaId) $indeks[$id]['orbita'] = true;
         if ($r['bitwa_id'] !== null) {
@@ -246,7 +255,8 @@ function mapa_radar_lokalny(array $u, string $nazwaPlanety, array $obiekty): arr
 function mapa_obiekty_mg(): array
 {
     if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
-    $rows = polaczenie_bazy()->query('SELECT id,kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,stan_swobody,planeta_id,x,y,kolor,znacznik,opis,aktywny FROM mapa_obiekty ORDER BY typ,nazwa')->fetchAll(PDO::FETCH_ASSOC);
+    mapa_obiekty_poklad_sync();
+    $rows = polaczenie_bazy()->query('SELECT id,kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,stan_swobody,planeta_id,na_pokladzie_id,npc_podmiot_id,x,y,kolor,znacznik,opis,aktywny FROM mapa_obiekty ORDER BY typ,nazwa')->fetchAll(PDO::FETCH_ASSOC);
     $q = polaczenie_bazy()->query('SELECT obiekt_id,konto_login FROM mapa_obiekty_dostep ORDER BY konto_login');
     $acl = [];
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $acl[(int) $r['obiekt_id']][] = $r['konto_login'];
@@ -287,6 +297,32 @@ function ruch_lokacje(): array
                 'planeta_nazwa' => $x['planeta_nazwa'] ?? '', 'typ' => $x['rodzaj'] ?: ($x['jest_budynkiem'] ? 'biuro' : 'inne'),
                 'x' => $x['x_km'] === null ? null : (float) $x['x_km'], 'y' => $x['y_km'] === null ? null : (float) $x['y_km'],
                 'publiczna' => (bool) $x['publiczna'], 'opis' => $x['opis'] ?? '', 'jest_budynkiem' => (bool) $x['jest_budynkiem']];
+        }
+    }
+    // Okręty są też lokacjami pokładowymi. Alias flota:<id> prowadzi na okręt
+    // o najniższej kolejności w składzie (domyślnie okręt flagowy).
+    if (tabela_sql_dostepna('mapa_obiekty') && tabela_sql_dostepna('mapa_floty_jednostki') && tabela_sql_dostepna('mapa_floty')) {
+        $rows = polaczenie_bazy()->query("SELECT m.id,m.nazwa,m.planeta_id,p.nazwa AS planeta_nazwa,m.x,m.y,m.klasa
+            FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id
+            WHERE m.aktywny=1 AND m.typ='statek' AND m.x IS NOT NULL AND m.y IS NOT NULL ORDER BY m.nazwa")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $x) {
+            $key = 'okret:' . (int) $x['id'];
+            $l[$key] = ['klucz'=>$key,'okret_id'=>(int)$x['id'],'nazwa'=>'Pokład: '.$x['nazwa'],'planeta'=>(string)($x['planeta_id'] ?? ''),
+                'planeta_nazwa'=>$x['planeta_nazwa'] ?? 'przestrzeń','typ'=>'poklad','x'=>(float)$x['x'],'y'=>(float)$x['y'],
+                'publiczna'=>false,'opis'=>'Postać znajduje się na pokładzie okrętu.','klasa'=>$x['klasa'] ?? ''];
+        }
+        $floty = polaczenie_bazy()->query("SELECT f.id AS flota_id,f.nazwa AS flota_nazwa,m.id AS okret_id,m.nazwa AS okret_nazwa,
+                m.planeta_id,p.nazwa AS planeta_nazwa,m.x,m.y,m.klasa
+            FROM mapa_floty f JOIN mapa_floty_jednostki j ON j.flota_id=f.id
+            JOIN mapa_obiekty m ON m.id=j.obiekt_id LEFT JOIN mapa_planety p ON p.id=m.planeta_id
+            WHERE f.status<>'nieaktywna' AND m.aktywny=1 AND m.typ='statek' AND m.x IS NOT NULL AND m.y IS NOT NULL
+              AND j.kolejnosc=(SELECT MIN(j2.kolejnosc) FROM mapa_floty_jednostki j2 JOIN mapa_obiekty m2 ON m2.id=j2.obiekt_id WHERE j2.flota_id=f.id AND m2.aktywny=1)
+            ORDER BY f.nazwa")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($floty as $x) {
+            $key = 'flota:' . (int) $x['flota_id'];
+            $l[$key] = ['klucz'=>$key,'okret_id'=>(int)$x['okret_id'],'nazwa'=>'Flota '.$x['flota_nazwa'].' · okręt flagowy: '.$x['okret_nazwa'],
+                'planeta'=>(string)($x['planeta_id'] ?? ''),'planeta_nazwa'=>$x['planeta_nazwa'] ?? 'przestrzeń','typ'=>'poklad',
+                'x'=>(float)$x['x'],'y'=>(float)$x['y'],'publiczna'=>false,'opis'=>'Pozycja na okręcie flagowym floty.','klasa'=>$x['klasa'] ?? ''];
         }
     }
     return $l;

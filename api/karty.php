@@ -35,8 +35,16 @@ function mapa_obiekt_postac_zapisz(string $uid, array $poz, ?int $planetaId): vo
     $u = null;
     foreach (uzytkownicy() as $x) if (($x['id'] ?? '') === $uid) { $u = $x; break; }
     if (!$u || ($u['rola'] ?? '') === 'mg') return;
+    $lokacja = trim((string) ($poz['lokacja'] ?? ''));
+    $okretId = preg_match('/^okret:(\d+)$/', $lokacja, $m) ? (int) $m[1] : null;
     $x = $y = null;
-    if ($planetaId) {
+    if ($okretId) {
+        $q = polaczenie_bazy()->prepare("SELECT planeta_id,x,y FROM mapa_obiekty WHERE id=? AND typ='statek' AND aktywny=1");
+        $q->execute([$okretId]);
+        if ($r = $q->fetch(PDO::FETCH_ASSOC)) { $planetaId = $r['planeta_id'] ? (int)$r['planeta_id'] : null; $x=$r['x']; $y=$r['y']; }
+        else $okretId = null;
+    }
+    if ($x === null && $planetaId) {
         $q = polaczenie_bazy()->prepare('SELECT x,y FROM mapa_planety WHERE id=?');
         $q->execute([$planetaId]);
         if ($r = $q->fetch(PDO::FETCH_ASSOC)) { $x = $r['x']; $y = $r['y']; }
@@ -48,8 +56,8 @@ function mapa_obiekt_postac_zapisz(string $uid, array $poz, ?int $planetaId): vo
         }
     }
     $aktywny = $x !== null && $y !== null;
-    $q = polaczenie_bazy()->prepare("INSERT INTO mapa_obiekty (kod,typ,legacy_uid,nazwa,rodzaj,wlasciciel,status,planeta_id,x,y,kolor,znacznik,opis,aktywny) VALUES (?, 'postac', ?, ?, 'postać gracza', ?, ?, ?, ?, ?, '#4de2c9', 'kolo', ?, ?) ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), wlasciciel=VALUES(wlasciciel), status=VALUES(status), planeta_id=VALUES(planeta_id), x=VALUES(x), y=VALUES(y), opis=VALUES(opis), aktywny=VALUES(aktywny)");
-    $q->execute(['postac-' . $uid, $uid, (string) ($u['postac'] ?? $u['login']), (string) ($u['frakcja'] ?? ''), trim((string) (($u['oddzial'] ?? '') . ' ' . ($u['ranga'] ?? ''))), $planetaId, $x, $y, trim((string) ($poz['miejsce'] ?? '')), $aktywny ? 1 : 0]);
+    $q = polaczenie_bazy()->prepare("INSERT INTO mapa_obiekty (kod,typ,legacy_uid,nazwa,rodzaj,wlasciciel,status,planeta_id,na_pokladzie_id,x,y,kolor,znacznik,opis,aktywny) VALUES (?, 'postac', ?, ?, 'postać gracza', ?, ?, ?, ?, ?, ?, '#4de2c9', 'kolo', ?, ?) ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), wlasciciel=VALUES(wlasciciel), status=VALUES(status), planeta_id=VALUES(planeta_id), na_pokladzie_id=VALUES(na_pokladzie_id), x=VALUES(x), y=VALUES(y), opis=VALUES(opis), aktywny=VALUES(aktywny)");
+    $q->execute(['postac-' . $uid, $uid, (string) ($u['postac'] ?? $u['login']), (string) ($u['frakcja'] ?? ''), trim((string) (($u['oddzial'] ?? '') . ' ' . ($u['ranga'] ?? ''))), $planetaId, $okretId, $x, $y, trim((string) ($poz['miejsce'] ?? '')), $aktywny ? 1 : 0]);
 }
 
 // Pozycja ma już zapis relacyjny; stary UID tekstowy pozostaje jako most do czasu
@@ -58,9 +66,16 @@ function pozycja_sql_zapisz(string $uid, array $poz): bool
 {
     if (!tabela_sql_dostepna('datapad_pozycje_legacy')) return false;
     $db = polaczenie_bazy();
+    $lokacja = trim((string) ($poz['lokacja'] ?? ''));
     $planetaLegacy = trim((string) ($poz['planeta'] ?? ''));
     $planetaId = null;
-    if ($planetaLegacy !== '') {
+    if (preg_match('/^okret:(\d+)$/', $lokacja, $m)) {
+        $q = $db->prepare("SELECT planeta_id FROM mapa_obiekty WHERE id=? AND typ='statek' AND aktywny=1");
+        $q->execute([(int)$m[1]]);
+        $planetaId = $q->fetchColumn();
+        $planetaLegacy = $planetaId ? (string)$planetaId : '';
+    }
+    if (!$planetaId && $planetaLegacy !== '') {
         if (ctype_digit($planetaLegacy)) {
             $q = $db->prepare('SELECT id FROM mapa_planety WHERE id = ?');
             $q->execute([(int) $planetaLegacy]);
@@ -82,7 +97,6 @@ function pozycja_sql_zapisz(string $uid, array $poz): bool
             $planetaId = $q->fetchColumn();
         }
     }
-    $lokacja = trim((string) ($poz['lokacja'] ?? ''));
     $lokacjaId = null;
     if (preg_match('/^sql:(\d+)$/', $lokacja, $m)) $lokacjaId = (int) $m[1];
     elseif (str_starts_with($lokacja, 'l:')) {
@@ -95,6 +109,33 @@ function pozycja_sql_zapisz(string $uid, array $poz): bool
     $q->execute([$uid, $planetaId ?: null, $planetaLegacy ?: null, $lokacjaId, $lokacjaId ? null : ($lokacja ?: null), (string) ($poz['wspolrzedne'] ?? ''), (string) ($poz['miejsce'] ?? ''), (string) ($poz['budynek'] ?? ''), max(0, (int) ($poz['zmieniono'] ?? teraz_ms()))]);
     mapa_obiekt_postac_zapisz($uid, $poz, $planetaId ? (int) $planetaId : null);
     return true;
+}
+
+function mapa_obiekt_npc_pozycja_zapisz(int $npcId, string $lokacja, string $planeta, string $miejsce): void
+{
+    if (!tabela_sql_dostepna('mapa_obiekty')) return;
+    $db = polaczenie_bazy();
+    $q = $db->prepare("SELECT p.nazwa,o.rola,o.stan,COALESCE(f.nazwa,'') AS frakcja
+        FROM podmioty p JOIN osoby o ON o.podmiot_id=p.id LEFT JOIN podmioty f ON f.id=o.frakcja_id WHERE p.id=? AND o.postac_id IS NULL");
+    $q->execute([$npcId]);
+    $npc = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$npc) blad('Nie znaleziono NPC.', 404);
+    $okretId = preg_match('/^okret:(\d+)$/', $lokacja, $m) ? (int)$m[1] : null;
+    $planetaId = null;
+    if ($okretId) {
+        $q = $db->prepare("SELECT planeta_id,x,y FROM mapa_obiekty WHERE id=? AND typ='statek' AND aktywny=1");
+        $q->execute([$okretId]); $ship = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$ship) blad('Wybrany okręt nie jest dostępny.', 404);
+        $planetaId = $ship['planeta_id'] ?: null; $x = $ship['x']; $y = $ship['y'];
+    } else {
+        $q = $db->prepare('SELECT id,x,y FROM mapa_planety WHERE CAST(id AS CHAR)=? OR LOWER(nazwa)=LOWER(?) LIMIT 1');
+        $q->execute([$planeta,$planeta]); $pl=$q->fetch(PDO::FETCH_ASSOC);
+        $planetaId=$pl ? (int)$pl['id'] : null; $x=$pl['x'] ?? null; $y=$pl['y'] ?? null;
+    }
+    $q = $db->prepare("INSERT INTO mapa_obiekty (kod,typ,npc_podmiot_id,nazwa,rodzaj,wlasciciel,status,planeta_id,na_pokladzie_id,x,y,kolor,znacznik,opis,aktywny)
+        VALUES (?,'postac',?,?, 'NPC',?,?,?,?,?,?, '#f2c14e','kolo',?,1)
+        ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa),wlasciciel=VALUES(wlasciciel),status=VALUES(status),planeta_id=VALUES(planeta_id),na_pokladzie_id=VALUES(na_pokladzie_id),x=VALUES(x),y=VALUES(y),opis=VALUES(opis),aktywny=1");
+    $q->execute(['npc-'.$npcId,$npcId,$npc['nazwa'],$npc['frakcja'],$npc['stan'].' · '.$npc['rola'],$planetaId,$okretId,$x,$y,$miejsce]);
 }
 
 function pozycja_sql_odczytaj(string $uid): ?array
@@ -249,7 +290,7 @@ function obsluz_karty(string $akcja, bool $post): void
             }
             $lokacje = [];
             foreach (ruch_lokacje() as $klucz => $l) {
-                $lokacje[] = ['klucz' => $klucz, 'nazwa' => $l['nazwa'], 'planeta' => $nazwyPlanet[$l['planeta']] ?? '?', 'typ' => $l['typ']];
+                $lokacje[] = ['klucz' => $klucz, 'nazwa' => $l['nazwa'], 'planeta' => $nazwyPlanet[$l['planeta']] ?? ($l['planeta_nazwa'] ?? '?'), 'typ' => $l['typ']];
             }
             $nazwyLok = array_column($lokacje, 'nazwa', 'klucz');
             foreach ($lista as &$x) {
@@ -257,7 +298,13 @@ function obsluz_karty(string $akcja, bool $post): void
                 $x['karta']['znane'] = array_map(fn($z) => $nazwyLok[$z] ?? $z, $x['karta']['znane'] ?? []);
             }
             unset($x);
-            odpowiedz(['postacie' => $lista, 'budynki' => $budynki, 'lokacje' => $lokacje]);
+            $npc = [];
+            if (tabela_sql_dostepna('osoby') && tabela_sql_dostepna('podmioty')) {
+                $npc = polaczenie_bazy()->query("SELECT p.id,p.nazwa,o.rola,o.stan,COALESCE(f.nazwa,'') AS frakcja
+                    FROM osoby o JOIN podmioty p ON p.id=o.podmiot_id LEFT JOIN podmioty f ON f.id=o.frakcja_id
+                    WHERE o.postac_id IS NULL AND p.status='aktywny' ORDER BY p.nazwa")->fetchAll(PDO::FETCH_ASSOC);
+            }
+            odpowiedz(['postacie' => $lista, 'npc' => $npc, 'budynki' => $budynki, 'lokacje' => $lokacje]);
 
         case 'mg_mapa_obiekty':
             wymagaj_mg();
@@ -473,9 +520,13 @@ function obsluz_karty(string $akcja, bool $post): void
             wymagaj_mg();
             $w = wejscie();
             $uids = array_values(array_intersect((array) ($w['uids'] ?? []), array_column(uzytkownicy(), 'id')));
-            if (!$uids) blad('Wybierz co najmniej jedną postać.');
+            $npcIds = array_values(array_unique(array_filter(array_map('intval', (array) ($w['npc_ids'] ?? [])))));
+            if (!$uids && !$npcIds) blad('Wybierz co najmniej jedną postać lub NPC.');
+            if (count($npcIds) > 100) blad('Można jednocześnie ustawić pozycję maksymalnie 100 NPC.');
             $planeta = trim((string) ($w['planeta'] ?? ''));
-            if ($planeta !== '') {
+            $lokacjaWejsciowa = trim((string) ($w['lokacja'] ?? ''));
+            $lokacjaUstalaPlanete = $lokacjaWejsciowa !== '';
+            if ($planeta !== '' && !$lokacjaUstalaPlanete) {
                 $found = null;
                 foreach (katalog()['planety'] as $p) if (($p['id'] ?? '') === $planeta || mb_strtolower($p['nazwa']) === mb_strtolower($planeta)) { $found = $p['id']; break; }
                 if ($found !== null) $planeta = $found;
@@ -490,12 +541,18 @@ function obsluz_karty(string $akcja, bool $post): void
             $budynek = (string) ($w['budynek'] ?? '');
             if ($budynek !== '' && !isset(wszystkie_budynki()[$budynek])) blad('Nie ma takiego budynku.');
             // Lokacja (miejsce z katalogu albo budynek z x, y): ustala też planetę i budynek.
-            $lokacja = (string) ($w['lokacja'] ?? '');
+            $lokacja = $lokacjaWejsciowa;
             $lok = ruch_lokacje();
             if ($lokacja !== '' && !isset($lok[$lokacja])) blad('Nie ma takiej lokacji.');
             if ($lokacja !== '') {
+                if (str_starts_with($lokacja, 'flota:')) $lokacja = 'okret:' . (int) ($lok[$lokacja]['okret_id'] ?? 0);
+                if (!isset($lok[$lokacja])) {
+                    $alias = (string) ($w['lokacja'] ?? '');
+                    $lokacja = 'okret:' . (int) ($lok[$alias]['okret_id'] ?? 0);
+                }
                 $planeta = $lok[$lokacja]['planeta'];
-                if (str_starts_with($lokacja, 'b:')) $budynek = substr($lokacja, 2);
+                if (($lok[$lokacja]['typ'] ?? '') === 'poklad') $budynek = '';
+                elseif (str_starts_with($lokacja, 'b:')) $budynek = substr($lokacja, 2);
                 elseif (str_starts_with($lokacja, 'sql:') && !empty($lok[$lokacja]['jest_budynkiem'])) $budynek = $lokacja;
             }
             $poz = [
@@ -513,6 +570,7 @@ function obsluz_karty(string $akcja, bool $post): void
                 }
             });
             foreach ($uids as $uid) pozycja_sql_zapisz($uid, $poz);
+            foreach ($npcIds as $npcId) mapa_obiekt_npc_pozycja_zapisz($npcId, $lokacja, $planeta, $poz['miejsce']);
             odpowiedz(['ok' => true]);
     }
 }

@@ -573,7 +573,7 @@ const ODLEGLOSCI = { blisko: 'blisko (planeta wypełnia dół ekranu)', srednio:
 
 async function stanPostaci() {
   const { postacie } = await api('mg_sceny');
-  const { postacie: karty, budynki, lokacje } = await api('mg_karty');
+  const { postacie: karty, npc = [], budynki, lokacje } = await api('mg_karty');
   const pozycje = Object.fromEntries(karty.map((k) => [k.uid, k.karta.pozycja]));
   let planetyKatalogu = [];
   try { planetyKatalogu = (await api('mg_katalog')).katalog.planety.map((p) => p.nazwa); } catch { /* katalog pusty */ }
@@ -615,9 +615,11 @@ async function stanPostaci() {
     lokacja: h('select', h('option', { value: '' }, '— bez lokacji (nie może się przemieszczać) —'),
       lokacje.map((l) => h('option', { value: l.klucz }, `${l.planeta} · ${l.nazwa} (${l.typ})`))),
   };
+  const wyborNpc = h('select', { multiple:true, size:Math.min(6,Math.max(2,npc.length)), style:'min-width:260px;min-height:100px' },
+    npc.map((n) => h('option', { value:n.id }, `${n.nazwa}${n.rola ? ` · ${n.rola}` : ''}`)));
   const ustawPozycje = async () => {
     try {
-      await api('mg_pozycja_ustaw', { ...Object.fromEntries(Object.entries(poz).map(([k, el]) => [k, el.value])), uids: [...wybrane] });
+      await api('mg_pozycja_ustaw', { ...Object.fromEntries(Object.entries(poz).map(([k, el]) => [k, el.value])), uids: [...wybrane], npc_ids:[...wyborNpc.selectedOptions].map((x)=>Number(x.value)) });
       wyczysc(glowna);
       await stanPostaci();
       glowna.prepend(msg('Ustawiono pozycję.', 'ok'));
@@ -686,8 +688,9 @@ async function stanPostaci() {
       btn('Ustaw dla zaznaczonych', () => ustaw(), '.glowny')),
     h('div.karta',
       h('h2', 'Pozycja (karta postaci)'),
-      h('p.slaby', 'Gdzie dokładnie są zaznaczone postacie. Budynek (np. biuro przy kopalni, hangar) pokazuje graczowi kartę budynku z jego wymiarami. Współrzędne to na razie tekst; mapa doda później liczby.'),
+      h('p.slaby', 'Wybierz lokację, okręt albo flotę. Wybór floty umieszcza postać na jej okręcie flagowym. Możesz zaznaczyć też NPC z listy poniżej.'),
       h('div.siatka', pole('Lokacja (ustala planetę i umożliwia przemieszczanie)', poz.lokacja), pole('Planeta (gdy bez lokacji)', poz.planeta), pole('Współrzędne', poz.wspolrzedne), pole('Miejsce (opis)', poz.miejsce), pole('Budynek', poz.budynek)),
+      pole('Ustaw tę samą pozycję także NPC (Ctrl/⌘ + klik)', wyborNpc),
       btn('Ustaw pozycję dla zaznaczonych', ustawPozycje, '.glowny')),
   );
 }

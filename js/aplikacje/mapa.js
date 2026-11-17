@@ -129,6 +129,16 @@ export default {
     }
 
     function punktObiektu(o) {
+      if (o.typ === 'postac' && o.na_pokladzie_id) {
+        const okret = obiektyMapy.find((x) => x.id === o.na_pokladzie_id);
+        if (okret) {
+          const osobyNaPokladzie = obiektyMapy.filter((x) => x.typ === 'postac' && x.na_pokladzie_id === o.na_pokladzie_id);
+          const indeksOsoby = Math.max(0, osobyNaPokladzie.findIndex((x) => x.id === o.id));
+          const [sx, sy] = punktObiektu(okret);
+          const katOsoby = -Math.PI / 2 + (2 * Math.PI * indeksOsoby / Math.max(osobyNaPokladzie.length, 1));
+          return [sx + Math.cos(katOsoby) * 11, sy + Math.sin(katOsoby) * 11];
+        }
+      }
       const p = planetaObiektu(o);
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || o.lot) return pozycjaDomyslna;

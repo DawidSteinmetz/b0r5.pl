@@ -226,7 +226,7 @@ function obsluz_karty(string $akcja, bool $post): void
             ruch_dokoncz($u['id']);
             $k = karta($u['id']);
             // Pozycja w czytelnej postaci.
-            $kat = katalog();
+            $kat = katalog_dla_konta(katalog(), $u);
             $planeta = null;
             foreach ($kat['planety'] as $p) {
                 if ($p['id'] === $k['pozycja']['planeta']) $planeta = ['nazwa' => $p['nazwa'], 'sektor' => $p['sektor'] ?? ''];

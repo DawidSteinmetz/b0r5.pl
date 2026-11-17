@@ -41,11 +41,81 @@ function katalog(): array
         'ustawienia' => $k['ustawienia'] ?? ['tempo' => 1]];
 }
 
+// Dane planety z listą widoczna_dla są dostępne wyłącznie wskazanym loginom i MG.
+function katalog_dla_konta(array $k, ?array $u): array
+{
+    if (($u['rola'] ?? '') === 'mg') return $k;
+    $login = mb_strtolower((string) ($u['login'] ?? ''));
+    $ukryte = [];
+    $k['planety'] = array_values(array_filter((array) ($k['planety'] ?? []), static function ($p) use ($login, &$ukryte) {
+        $widoczni = array_values(array_filter(array_map(static fn($x) => mb_strtolower(trim((string) $x)), (array) ($p['widoczna_dla'] ?? []))));
+        if (!$widoczni || in_array($login, $widoczni, true)) return true;
+        $ukryte[] = (string) ($p['id'] ?? '');
+        return false;
+    }));
+    if ($ukryte) {
+        $k['lokacje'] = array_values(array_filter((array) ($k['lokacje'] ?? []), static fn($l) => !in_array((string) ($l['planeta'] ?? ''), $ukryte, true)));
+        $k['oferty'] = array_values(array_filter((array) ($k['oferty'] ?? []), static fn($o) => !in_array((string) ($o['planeta'] ?? ''), $ukryte, true)));
+    }
+    return $k;
+}
+
+// Ostatnia warstwa ochrony: usuwa ukryte planety i powiązane lokacje z każdej odpowiedzi API.
+function odpowiedz_bez_ukrytych_planet($dane, ?array $u)
+{
+    if (($u['rola'] ?? '') === 'mg') return $dane;
+    $pelny = katalog();
+    $ukryte = mapa_planety_ukryte_dla($u);
+    foreach ($pelny['planety'] as $p) {
+        $widoczni = array_values(array_filter(array_map(static fn($x) => mb_strtolower(trim((string) $x)), (array) ($p['widoczna_dla'] ?? []))));
+        if ($widoczni && !in_array(mb_strtolower((string) ($u['login'] ?? '')), $widoczni, true)) {
+            $ukryte[] = ['id' => (string) ($p['id'] ?? ''), 'nazwa' => (string) ($p['nazwa'] ?? '')];
+        }
+    }
+    if (!$ukryte) return $dane;
+    $oczysc = function ($wartosc) use (&$oczysc, $ukryte) {
+        if (is_array($wartosc)) {
+            foreach ($ukryte as $p) {
+                if (isset($wartosc['planeta']) && in_array((string) $wartosc['planeta'], [$p['id'], $p['nazwa']], true)) return null;
+                if (isset($wartosc['planeta_id']) && (string) $wartosc['planeta_id'] === $p['id']) return null;
+                // Samo `id` może należeć do dowolnego rekordu; nazwę traktujemy jako
+                // planetę tylko wtedy, gdy obiekt ma także pola charakterystyczne dla mapy/katalogu.
+                $nazwaToPlaneta = mb_strtolower((string) ($wartosc['nazwa'] ?? '')) === mb_strtolower($p['nazwa']);
+                if ($nazwaToPlaneta && (array_key_exists('region', $wartosc) || array_key_exists('mapa', $wartosc)
+                    || (array_key_exists('x', $wartosc) && array_key_exists('y', $wartosc)))) return null;
+            }
+            $wynik = [];
+            foreach ($wartosc as $klucz => $element) {
+                $kluczTekst = (string) $klucz;
+                $ukryj = false;
+                foreach ($ukryte as $p) {
+                    // Indeksowanie po ID jest niejednoznaczne i mogłoby usunąć np. firmę
+                    // o tym samym liczbowym ID; klucze tekstowe planet są bezpieczne.
+                    if (mb_strtolower($kluczTekst) === mb_strtolower($p['nazwa'])) { $ukryj = true; break; }
+                }
+                if ($ukryj) continue;
+                $oczyszczony = $oczysc($element);
+                if ($oczyszczony !== null) $wynik[$klucz] = $oczyszczony;
+            }
+            return $wynik;
+        }
+        if (is_string($wartosc)) {
+            foreach ($ukryte as $p) {
+                if (($p['id'] !== '' && $wartosc === $p['id']) || mb_strtolower($wartosc) === mb_strtolower($p['nazwa'])) return null;
+                if ($p['nazwa'] !== '') $wartosc = str_ireplace($p['nazwa'], 'ukryty sektor', $wartosc);
+            }
+        }
+        return $wartosc;
+    };
+    return $oczysc($dane);
+}
+
 // Katalog wysyłany do datapada: bez położenia na mapie i bez listy, kto widzi planetę.
 // Mapa dostaje te dane osobno (api/?a=mapa), tylko gdy postać jest upoważniona.
-function katalog_dla_gracza(): array
+function katalog_dla_gracza(?array $u = null): array
 {
-    $k = katalog();
+    $u ??= ja();
+    $k = katalog_dla_konta(katalog(), $u);
     unset($k['spolki'], $k['npc']);
     $k['planety'] = array_map(fn($p) => array_diff_key($p, ['mapa' => 1, 'widoczna_dla' => 1]), $k['planety']);
     return $k;
@@ -646,10 +716,10 @@ function obsluz_firmy(string $akcja, bool $post): void
                 odpowiedz([
                     'firma' => firma_dla_gracza($f),
                     'rola' => $rola ?? 'wlasciciel',
-                    'katalog' => katalog_dla_gracza(),
+                    'katalog' => katalog_dla_gracza($u),
                     'finanse' => $finanse,
                     'kandydaci' => kandydaci_dla_firmy($f),
-                    'ceny' => handel_ceny_dnia(katalog(), date('Y-m-d')),
+                    'ceny' => handel_ceny_dnia(katalog_dla_konta(katalog(), $u), date('Y-m-d')),
                 ]);
             }
             blad('Nie ma takiej firmy.', 404);

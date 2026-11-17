@@ -124,10 +124,9 @@ function lacznosc_odpowiedz_npc(string $statek, array $watek): ?array
 function mapa_dodatkowe(array $u): array
 {
     $w = [];
-    foreach (katalog()['planety'] as $p) {
+    foreach (katalog_dla_konta(katalog(), $u)['planety'] as $p) {
         if (!isset($p['mapa']['x'], $p['mapa']['y'])) continue;
         $lista = array_map('mb_strtolower', (array) ($p['widoczna_dla'] ?? []));
-        if ($lista && ($u['rola'] ?? '') !== 'mg' && !in_array(mb_strtolower($u['login']), $lista, true)) continue;
         $w[] = ['nazwa' => $p['nazwa'], 'x' => (float) $p['mapa']['x'], 'y' => (float) $p['mapa']['y'],
             'kwadrat' => $p['mapa']['kwadrat'] ?? '', 'region' => $p['mapa']['region'] ?? '', 'sektor' => $p['sektor'] ?? '',
             'zastrzezona' => (bool) $lista];
@@ -274,7 +273,9 @@ function ruch_tempo(): float
 function ruch_lokacje(): array
 {
     $l = [];
-    foreach (wczytaj('katalog', [])['lokacje'] ?? [] as $x) {
+    $u = ja();
+    $kat = katalog_dla_konta(wczytaj('katalog', []), $u);
+    foreach ($kat['lokacje'] ?? [] as $x) {
         $l['l:' . $x['id']] = $x + ['klucz' => 'l:' . $x['id']];
     }
     foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
@@ -292,6 +293,7 @@ function ruch_lokacje(): array
     if (tabela_sql_dostepna('lokalizacje')) {
         $rows = polaczenie_bazy()->query("SELECT l.id, l.typ, l.rodzaj, l.planeta_id, p.nazwa AS planeta_nazwa, l.nazwa, l.x_km, l.y_km, l.publiczna, l.opis, (b.lokalizacja_id IS NOT NULL) AS jest_budynkiem FROM lokalizacje l LEFT JOIN mapa_planety p ON p.id=l.planeta_id LEFT JOIN budynki b ON b.lokalizacja_id=l.id WHERE l.status='aktywna' ORDER BY l.id")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $x) {
+            if ($x['planeta_id'] !== null && !mapa_planeta_widoczna((int) $x['planeta_id'], $u)) continue;
             $key = 'sql:' . $x['id'];
             $l[$key] = ['klucz' => $key, 'sql_id' => (int) $x['id'], 'nazwa' => $x['nazwa'], 'planeta' => (string) ($x['planeta_id'] ?? ''),
                 'planeta_nazwa' => $x['planeta_nazwa'] ?? '', 'typ' => $x['rodzaj'] ?: ($x['jest_budynkiem'] ? 'biuro' : 'inne'),
@@ -473,13 +475,16 @@ function ruch_dokoncz(string $uid): void
 
 function ruch_planeta(string $id): array
 {
-    foreach (katalog()['planety'] as $p) {
+    foreach (katalog_dla_konta(katalog(), ja())['planety'] as $p) {
         if ($p['id'] === $id) return $p;
     }
     if (ctype_digit($id) && tabela_sql_dostepna('mapa_planety')) {
         $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa, p.x, p.y, p.region, p.grawitacja, p.slonca, p.ksiezyce, pg.typ_planety, pg.kontrola_lotow FROM mapa_planety p LEFT JOIN planety_gry pg ON pg.planeta_id=p.id WHERE p.id=?');
         $q->execute([(int) $id]);
-        if ($p = $q->fetch(PDO::FETCH_ASSOC)) return ['id' => (string) $p['id'], 'nazwa' => $p['nazwa'], 'typ' => $p['typ_planety'] ?: 'skalista', 'x' => $p['x'], 'y' => $p['y'], 'region' => $p['region'], 'kontrola' => $p['kontrola_lotow'] ?? ''];
+        if ($p = $q->fetch(PDO::FETCH_ASSOC)) {
+            if (!mapa_planeta_widoczna((int) $p['id'], ja())) return ['id' => '', 'nazwa' => '?'];
+            return ['id' => (string) $p['id'], 'nazwa' => $p['nazwa'], 'typ' => $p['typ_planety'] ?: 'skalista', 'x' => $p['x'], 'y' => $p['y'], 'region' => $p['region'], 'kontrola' => $p['kontrola_lotow'] ?? ''];
+        }
     }
     return ['id' => '', 'nazwa' => '?'];
 }
@@ -527,7 +532,19 @@ function obsluz_ruch(string $akcja, bool $post): void
         case 'mapa':
             $u = wymagaj_logowania();
             $karta = karta($u['id']);
-            $nazwy = array_column(katalog()['planety'], 'nazwa', 'id');
+            $nazwy = array_column(katalog_dla_konta(katalog(), $u)['planety'], 'nazwa', 'id');
+            if (($u['rola'] ?? '') === 'mg') {
+                $planetySql = polaczenie_bazy()->query('SELECT id,nazwa FROM mapa_planety ORDER BY id')->fetchAll(PDO::FETCH_ASSOC);
+            } elseif (tabela_sql_dostepna('planety_gry') && tabela_sql_dostepna('planety_widocznosc_konta')) {
+                $q = polaczenie_bazy()->prepare('SELECT p.id,p.nazwa FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id
+                    WHERE COALESCE(g.zastrzezona,0)=0 OR EXISTS (SELECT 1 FROM planety_widocznosc_konta d WHERE d.planeta_id=p.id AND LOWER(d.konto_login)=LOWER(?)) ORDER BY p.id');
+                $q->execute([$u['login']]);
+                $planetySql = $q->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $planetySql = polaczenie_bazy()->query('SELECT p.id,p.nazwa FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE COALESCE(g.zastrzezona,0)=0 ORDER BY p.id')
+                    ->fetchAll(PDO::FETCH_ASSOC);
+            }
+            foreach ($planetySql as $p) $nazwy[(string) $p['id']] = $p['nazwa'];
             $gdzie = ruch_gdzie($karta, ruch_lokacje());
             $tu = (string) ($gdzie['planeta'] ?? $karta['pozycja']['planeta'] ?? '');
             $wynik = ['tu' => $nazwy[$tu] ?? '', 'stan' => $tu !== '' ? 'powierzchnia' : '', 'cel' => '', 'statki' => []];

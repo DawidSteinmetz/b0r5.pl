@@ -35,6 +35,9 @@ header('Cache-Control: no-store');
 
 function odpowiedz($dane, int $kod = 200): never
 {
+    if (function_exists('odpowiedz_bez_ukrytych_planet')) {
+        $dane = odpowiedz_bez_ukrytych_planet($dane, ja());
+    }
     http_response_code($kod);
     echo json_encode($dane, JSON_UNESCAPED_UNICODE);
     exit;
@@ -49,7 +52,8 @@ function tabela_sql_dostepna(string $nazwa): bool
 {
     static $cache = [];
     $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep',
-        'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg'];
+        'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg',
+        'planety_gry', 'planety_widocznosc_konta'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {
@@ -61,6 +65,42 @@ function tabela_sql_dostepna(string $nazwa): bool
         }
     }
     return $cache[$nazwa];
+}
+
+function mapa_planeta_widoczna(int $planetaId, ?array $u = null): bool
+{
+    $u ??= ja();
+    if (($u['rola'] ?? '') === 'mg') return true;
+    static $cache = [];
+    $login = mb_strtolower((string) ($u['login'] ?? ''));
+    $klucz = $planetaId . ':' . $login;
+    if (array_key_exists($klucz, $cache)) return $cache[$klucz];
+    try {
+        $db = polaczenie_bazy();
+        if (!tabela_sql_dostepna('planety_gry')) return $cache[$klucz] = true;
+        $q = $db->prepare('SELECT COALESCE(g.zastrzezona,0) FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE p.id=?');
+        $q->execute([$planetaId]);
+        $zastrzezona = $q->fetchColumn();
+        if ($zastrzezona === false || !(int) $zastrzezona) return $cache[$klucz] = true;
+        if ($login === '' || !tabela_sql_dostepna('planety_widocznosc_konta')) return $cache[$klucz] = false;
+        $q = $db->prepare('SELECT 1 FROM planety_widocznosc_konta WHERE planeta_id=? AND LOWER(konto_login)=? LIMIT 1');
+        $q->execute([$planetaId, $login]);
+        return $cache[$klucz] = (bool) $q->fetchColumn();
+    } catch (Throwable $e) {
+        return $cache[$klucz] = false;
+    }
+}
+
+function mapa_planety_ukryte_dla(?array $u): array
+{
+    if (($u['rola'] ?? '') === 'mg' || !tabela_sql_dostepna('mapa_planety') || !tabela_sql_dostepna('planety_gry')) return [];
+    $sql = 'SELECT p.id,p.nazwa FROM mapa_planety p JOIN planety_gry g ON g.planeta_id=p.id WHERE g.zastrzezona=1';
+    $q = polaczenie_bazy()->query($sql);
+    $ukryte = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+        if (!mapa_planeta_widoczna((int) $p['id'], $u)) $ukryte[] = ['id' => (string) $p['id'], 'nazwa' => (string) $p['nazwa']];
+    }
+    return $ukryte;
 }
 
 function plik(string $nazwa): string
@@ -214,8 +254,23 @@ obsluz_gielda($akcja, $post);
 switch ($akcja) {
 
     case 'mapa_dane':
-        $planety = polaczenie_bazy()->query('SELECT nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica FROM mapa_planety ORDER BY id')
-            ->fetchAll(PDO::FETCH_NUM);
+        $u = wymagaj_logowania();
+        if (($u['rola'] ?? '') === 'mg') {
+            $planety = polaczenie_bazy()->query('SELECT nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica FROM mapa_planety ORDER BY id')
+                ->fetchAll(PDO::FETCH_NUM);
+        } elseif (tabela_sql_dostepna('planety_gry') && tabela_sql_dostepna('planety_widocznosc_konta')) {
+            $q = polaczenie_bazy()->prepare('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica
+                FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id
+                WHERE COALESCE(g.zastrzezona,0)=0 OR EXISTS (
+                    SELECT 1 FROM planety_widocznosc_konta d WHERE d.planeta_id=p.id AND LOWER(d.konto_login)=LOWER(?)
+                ) ORDER BY p.id');
+            $q->execute([$u['login']]);
+            $planety = $q->fetchAll(PDO::FETCH_NUM);
+        } else {
+            $planety = polaczenie_bazy()->query('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica
+                FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE COALESCE(g.zastrzezona,0)=0 ORDER BY p.id')
+                ->fetchAll(PDO::FETCH_NUM);
+        }
         $szlaki = polaczenie_bazy()->query('SELECT nazwa,waznosc,dlugosc,sciezki FROM mapa_szlaki ORDER BY id')->fetchAll();
         $szlaki = array_map(fn($s) => ['n' => $s['nazwa'], 'z' => (int) $s['waznosc'], 'dl' => (float) $s['dlugosc'], 'p' => json_decode($s['sciezki'], true)], $szlaki);
         odpowiedz(['planety' => $planety, 'szlaki' => $szlaki]);

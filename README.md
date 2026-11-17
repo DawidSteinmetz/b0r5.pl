@@ -551,3 +551,7 @@ dostają kształt litery podstawowej.
 ## Schemat SQL v11 — okręty jako lokacje
 
 `api/schema_v11.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę v10 aktualizuj przez import `api/migracje/011_okrety_jako_lokacje.sql`. W panelu MG, przy ustawianiu pozycji, lokacją można wybrać okręt albo flotę; flota ustawia postać na swoim pierwszym okręcie (domyślnie flagowym). Można też wskazać NPC z SQL. Pozycje graczy i NPC na pokładzie podążają za okrętem na mapie.
+
+## Schemat SQL v12 — dostęp do planet zastrzeżonych
+
+`api/schema_v12.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę v11 aktualizuj migracją `api/migracje/012_planety_widocznosc_konta.sql`. Zastrzeżone planety są zwracane na mapie i w API tylko wskazanym loginom oraz MG.

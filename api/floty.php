@@ -176,12 +176,17 @@ function floty_rozkaz(string $login, array $w): array
         $q->execute([$celObiekt]);
         $cel = $q->fetch(PDO::FETCH_ASSOC);
         if (!$cel || $cel['x'] === null || $cel['y'] === null) blad('Wskazana jednostka nie ma pozycji.');
+        if ($cel['planeta_id'] !== null && !mapa_planeta_widoczna((int) $cel['planeta_id'], ja())) blad('Nie masz dostępu do wskazanej pozycji.', 403);
         $x = (float) $cel['x']; $y = (float) $cel['y'];
     } else {
         $x = $w['x'] ?? null; $y = $w['y'] ?? null;
         if (!is_numeric($x) || !is_numeric($y)) blad('Podaj współrzędne X i Y albo wskaż inną jednostkę.');
         $x = (float) $x; $y = (float) $y;
         if (abs($x) > 1000000 || abs($y) > 1000000) blad('Współrzędne wykraczają poza zakres mapy.');
+        $q = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2) LIMIT 1');
+        $q->execute([$x,$y,$x,$y]);
+        $planetaCel = $q->fetchColumn();
+        if ($planetaCel && !mapa_planeta_widoczna((int) $planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
     }
     $ids = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,n.* FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($ids) AND o.aktywny=1");

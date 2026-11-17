@@ -1,6 +1,6 @@
 // Pliki systemu w pamięci tabletu: datapad uruchamia się nawet przy słabym zasięgu.
 // Dane gry (api/) zawsze idą z sieci. Po zmianie plików systemu podbijcie WERSJA.
-const WERSJA = 'hololink-26';
+const WERSJA = 'hololink-27';
 const PLIKI = [
   './', 'index.html', 'manifest.webmanifest', 'css/system.css', 'assets/ikona.svg', 'assets/czcionki/aurebesh.otf',
   'js/system.js', 'js/rdzen/api.js', 'js/rdzen/narzedzia.js', 'js/rdzen/urzadzenie.js', 'js/rdzen/scena.js',
@@ -26,12 +26,9 @@ const NASZE = new Set(PLIKI.map((p) => new URL(p, self.registration.scope).href)
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // Astronawigacja pochodzi z SQL, ale jej statyczne dane można odczytać offline.
+  // Odpowiedź mapy może zależeć od uprawnień konta, więc nie wolno jej współdzielić w cache offline.
   if (e.request.method === 'GET' && url.pathname.endsWith('/api/') && url.searchParams.get('a') === 'mapa_dane') {
-    e.respondWith(fetch(e.request).then((odp) => {
-      if (odp.ok) caches.open(WERSJA).then((c) => c.put(e.request, odp.clone()));
-      return odp;
-    }).catch(async () => (await caches.match(e.request)) || new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
+    e.respondWith(fetch(e.request).catch(() => new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
     return;
   }
   url.search = '';

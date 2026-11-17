@@ -47,6 +47,8 @@ api/karty.php            karta postaci: statystyki, reputacja, status, pozycja, 
 api/ruch.php             przemieszczanie, przygotowanie statku, gotówka (bankomat, sklep)
 js/rdzen/scena.js        animacje tła: gwiazdy, skok, tunel, wyjście, planety
 api/schema.sql           schemat bazy danych (MySQL 8 / MariaDB 10.6)
+api/schema_v3.sql        kompletny, przyszły schemat SQL v3 (nowa, pusta baza)
+api/migracje/            kolejne, addytywne migracje schematu SQL
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
 api/dane/                źródło importu z wcześniejszych wersji (poza gitem)
 gm/                      panel MG: konta, dokumenty, holonet, frakcje, harmonogram
@@ -55,6 +57,17 @@ narzedzia/czcionka/      generator czcionki Aurebesh
 ```
 
 Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w jakiej są w repo.
+
+## Schemat SQL v3 — prototyp
+
+`api/schema_v3.sql` zawiera kompletny schemat dla nowej, pustej bazy. Dla bazy, która ma już
+schemat v2, uruchom tylko `api/migracje/003_schema_v2_do_v3.sql` po wykonaniu kopii zapasowej.
+Nie importuj pełnego `schema_v3.sql` do istniejącej bazy. Pliki v3 przygotowują fundament danych;
+obecna aplikacja PHP nie została jeszcze przełączona na wszystkie nowe tabele. Zmiana runtime
+i migracja zawartości `datapad_dane` będą osobnym wdrożeniem.
+
+Waluta księgowa ma jeden kod kanoniczny `CR`; `IC` jest aliasem tego samego Credit i nie tworzy
+drugiego salda. Rachunki istniejące w v2 są przypisywane do `CR`.
 
 ## Aplikacje
 

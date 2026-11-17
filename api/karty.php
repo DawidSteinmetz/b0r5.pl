@@ -29,6 +29,29 @@ function karta_pusta(): array
     ];
 }
 
+function mapa_obiekt_postac_zapisz(string $uid, array $poz, ?int $planetaId): void
+{
+    if (!tabela_sql_dostepna('mapa_obiekty')) return;
+    $u = null;
+    foreach (uzytkownicy() as $x) if (($x['id'] ?? '') === $uid) { $u = $x; break; }
+    if (!$u || ($u['rola'] ?? '') === 'mg') return;
+    $x = $y = null;
+    if ($planetaId) {
+        $q = polaczenie_bazy()->prepare('SELECT x,y FROM mapa_planety WHERE id=?');
+        $q->execute([$planetaId]);
+        if ($r = $q->fetch(PDO::FETCH_ASSOC)) { $x = $r['x']; $y = $r['y']; }
+    }
+    if ($x === null) {
+        foreach (katalog()['planety'] as $p) {
+            if (($p['id'] ?? '') !== (string) ($poz['planeta'] ?? '') || !isset($p['mapa']['x'], $p['mapa']['y'])) continue;
+            $x = (float) $p['mapa']['x']; $y = (float) $p['mapa']['y']; break;
+        }
+    }
+    $aktywny = $x !== null && $y !== null;
+    $q = polaczenie_bazy()->prepare("INSERT INTO mapa_obiekty (kod,typ,legacy_uid,nazwa,rodzaj,wlasciciel,status,planeta_id,x,y,kolor,znacznik,opis,aktywny) VALUES (?, 'postac', ?, ?, 'postać gracza', ?, ?, ?, ?, ?, '#4de2c9', 'kolo', ?, ?) ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), wlasciciel=VALUES(wlasciciel), status=VALUES(status), planeta_id=VALUES(planeta_id), x=VALUES(x), y=VALUES(y), opis=VALUES(opis), aktywny=VALUES(aktywny)");
+    $q->execute(['postac-' . $uid, $uid, (string) ($u['postac'] ?? $u['login']), (string) ($u['frakcja'] ?? ''), trim((string) (($u['oddzial'] ?? '') . ' ' . ($u['ranga'] ?? ''))), $planetaId, $x, $y, trim((string) ($poz['miejsce'] ?? '')), $aktywny ? 1 : 0]);
+}
+
 // Pozycja ma już zapis relacyjny; stary UID tekstowy pozostaje jako most do czasu
 // migracji kont i postaci do kluczy numerycznych.
 function pozycja_sql_zapisz(string $uid, array $poz): bool
@@ -70,6 +93,7 @@ function pozycja_sql_zapisz(string $uid, array $poz): bool
     }
     $q = $db->prepare('INSERT INTO datapad_pozycje_legacy (legacy_uid, planeta_id, planeta_legacy_id, lokalizacja_id, lokalizacja_legacy, wspolrzedne_tekst, miejsce_opis, budynek_legacy, zmieniono_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE planeta_id=VALUES(planeta_id), planeta_legacy_id=VALUES(planeta_legacy_id), lokalizacja_id=VALUES(lokalizacja_id), lokalizacja_legacy=VALUES(lokalizacja_legacy), wspolrzedne_tekst=VALUES(wspolrzedne_tekst), miejsce_opis=VALUES(miejsce_opis), budynek_legacy=VALUES(budynek_legacy), zmieniono_ms=VALUES(zmieniono_ms)');
     $q->execute([$uid, $planetaId ?: null, $planetaLegacy ?: null, $lokacjaId, $lokacjaId ? null : ($lokacja ?: null), (string) ($poz['wspolrzedne'] ?? ''), (string) ($poz['miejsce'] ?? ''), (string) ($poz['budynek'] ?? ''), max(0, (int) ($poz['zmieniono'] ?? teraz_ms()))]);
+    mapa_obiekt_postac_zapisz($uid, $poz, $planetaId ? (int) $planetaId : null);
     return true;
 }
 
@@ -114,9 +138,9 @@ function karta(string $uid): array
     $sql = pozycja_sql_odczytaj($uid);
     if ($sql !== null) {
         $k['pozycja'] = array_replace($k['pozycja'], $sql);
-    } else {
-        pozycja_sql_zapisz($uid, $k['pozycja']);
     }
+    // Równoległe utrzymanie indeksu mapy obejmuje też pozycje zapisane przed migracją 005.
+    pozycja_sql_zapisz($uid, $k['pozycja']);
     return $k;
 }
 
@@ -234,6 +258,87 @@ function obsluz_karty(string $akcja, bool $post): void
             }
             unset($x);
             odpowiedz(['postacie' => $lista, 'budynki' => $budynki, 'lokacje' => $lokacje]);
+
+        case 'mg_mapa_obiekty':
+            wymagaj_mg();
+            foreach (uzytkownicy() as $konto) if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
+            $odbiorcy = array_values(array_map(static fn($x) => ['login' => $x['login'], 'postac' => $x['postac']], array_filter(uzytkownicy(), static fn($x) => ($x['rola'] ?? '') !== 'mg')));
+            odpowiedz(['obiekty' => mapa_obiekty_mg(), 'konta' => $odbiorcy]);
+
+        case 'mg_mapa_dostep_zapisz':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            if (!tabela_sql_dostepna('mapa_obiekty_dostep')) blad('Najpierw zaimportuj migrację 005 uniwersalnej mapy.');
+            $w = wejscie();
+            $idObiektu = (int) ($w['id'] ?? 0);
+            $q = polaczenie_bazy()->prepare('SELECT id FROM mapa_obiekty WHERE id=?');
+            $q->execute([$idObiektu]);
+            if (!$q->fetchColumn()) blad('Nie ma takiego obiektu mapy.', 404);
+            $odbiorcy = array_values(array_unique(array_map('strval', (array) ($w['odbiorcy'] ?? []))));
+            $loginy = array_column(array_filter(uzytkownicy(), static fn($x) => ($x['rola'] ?? '') !== 'mg'), 'login');
+            if (array_diff($odbiorcy, $loginy)) blad('Lista odbiorców zawiera nieznane konto.');
+            $db = polaczenie_bazy();
+            $db->beginTransaction();
+            try {
+                $db->prepare('DELETE FROM mapa_obiekty_dostep WHERE obiekt_id=?')->execute([$idObiektu]);
+                $q = $db->prepare('INSERT INTO mapa_obiekty_dostep (obiekt_id,konto_login) VALUES (?,?)');
+                foreach ($odbiorcy as $login) $q->execute([$idObiektu, $login]);
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                throw $e;
+            }
+            odpowiedz(['ok' => true]);
+
+        case 'mg_mapa_obiekt_zapisz':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            if (!tabela_sql_dostepna('mapa_obiekty')) blad('Najpierw zaimportuj migrację 005 uniwersalnej mapy.');
+            $w = wejscie();
+            $idObiektu = (int) ($w['id'] ?? 0);
+            $typ = (string) ($w['typ'] ?? 'jednostka');
+            $rodzaj = mb_substr(trim((string) ($w['rodzaj'] ?? '')), 0, 80);
+            $nazwa = mb_substr(trim((string) ($w['nazwa'] ?? '')), 0, 160);
+            $x = $w['x'] ?? null;
+            $y = $w['y'] ?? null;
+            if (!in_array($typ, ['jednostka','statek','pojazd','instalacja','inne'], true)) blad('Nieprawidłowy typ obiektu.');
+            if ($nazwa === '' || !is_numeric($x) || !is_numeric($y)) blad('Podaj nazwę oraz współrzędne X i Y.');
+            $kolor = (string) ($w['kolor'] ?? '#00ff66');
+            if (!preg_match('/^#[0-9a-fA-F]{6}$/', $kolor)) blad('Kolor musi mieć format #RRGGBB.');
+            $znacznik = (string) ($w['znacznik'] ?? 'trojkat');
+            if (!in_array($znacznik, ['kolo','trojkat','kwadrat','romb'], true)) blad('Nieprawidłowy kształt znacznika.');
+            $odbiorcyLoginy = array_values(array_unique(array_map('strval', (array) ($w['odbiorcy'] ?? []))));
+            $konta = array_column(array_filter(uzytkownicy(), static fn($x) => ($x['rola'] ?? '') !== 'mg'), 'login');
+            if (array_diff($odbiorcyLoginy, $konta)) blad('Lista odbiorców zawiera nieznane konto.');
+            $dane = [$typ, $nazwa, $rodzaj ?: null, mb_substr(trim((string) ($w['klasa'] ?? '')), 0, 120) ?: null,
+                mb_substr(trim((string) ($w['wlasciciel'] ?? '')), 0, 160) ?: null, mb_substr(trim((string) ($w['status'] ?? '')), 0, 80) ?: null,
+                (float) $x, (float) $y, $kolor, $znacznik, mb_substr(trim((string) ($w['opis'] ?? '')), 0, 5000) ?: null];
+            $db = polaczenie_bazy();
+            $db->beginTransaction();
+            try {
+                if ($idObiektu) {
+                    $q = $db->prepare("UPDATE mapa_obiekty SET typ=?,nazwa=?,rodzaj=?,klasa=?,wlasciciel=?,status=?,x=?,y=?,kolor=?,znacznik=?,opis=?,aktywny=1 WHERE id=? AND typ<>'postac'");
+                    $q->execute([...$dane, $idObiektu]);
+                    if (!$q->rowCount()) {
+                        $check = $db->prepare("SELECT id FROM mapa_obiekty WHERE id=? AND typ<>'postac'");
+                        $check->execute([$idObiektu]);
+                        if (!$check->fetchColumn()) throw new RuntimeException('Nie ma takiego obiektu do edycji.');
+                    }
+                } else {
+                    $kod = 'obiekt-' . id();
+                    $q = $db->prepare('INSERT INTO mapa_obiekty (kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,x,y,kolor,znacznik,opis,aktywny) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)');
+                    $q->execute([$kod, ...array_slice($dane, 0, 8), ...array_slice($dane, 8)]);
+                    $idObiektu = (int) $db->lastInsertId();
+                }
+                $db->prepare('DELETE FROM mapa_obiekty_dostep WHERE obiekt_id=?')->execute([$idObiektu]);
+                $q = $db->prepare('INSERT INTO mapa_obiekty_dostep (obiekt_id,konto_login) VALUES (?,?)');
+                foreach ($odbiorcyLoginy as $login) $q->execute([$idObiektu, $login]);
+                $db->commit();
+            } catch (Throwable $e) {
+                if ($db->inTransaction()) $db->rollBack();
+                throw $e;
+            }
+            odpowiedz(['ok' => true]);
 
         case 'mg_karta_zapisz':
             // Wszystko poza pozycją i notatnikiem (pozycję ustawia się razem ze sceną).

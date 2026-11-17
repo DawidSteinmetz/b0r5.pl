@@ -135,6 +135,38 @@ function mapa_dodatkowe(array $u): array
     return $w;
 }
 
+function mapa_obiekty_widoczne(array $u): array
+{
+    if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
+    if (($u['rola'] ?? '') === 'mg') {
+        foreach (uzytkownicy() as $konto) {
+            if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
+        }
+        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL ORDER BY m.typ,m.nazwa");
+    } else {
+        karta((string) $u['id']);
+        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?)) ORDER BY m.typ,m.nazwa");
+        $q->execute([(string) $u['id'], (string) $u['login']]);
+    }
+    return array_map(static fn($r) => [
+        'id' => (int) $r['id'], 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
+        'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
+        'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
+    ], $q->fetchAll(PDO::FETCH_ASSOC));
+}
+
+function mapa_obiekty_mg(): array
+{
+    if (!tabela_sql_dostepna('mapa_obiekty') || !tabela_sql_dostepna('mapa_obiekty_dostep')) return [];
+    $rows = polaczenie_bazy()->query('SELECT id,kod,typ,nazwa,rodzaj,klasa,wlasciciel,status,planeta_id,x,y,kolor,znacznik,opis,aktywny FROM mapa_obiekty ORDER BY typ,nazwa')->fetchAll(PDO::FETCH_ASSOC);
+    $q = polaczenie_bazy()->query('SELECT obiekt_id,konto_login FROM mapa_obiekty_dostep ORDER BY konto_login');
+    $acl = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $acl[(int) $r['obiekt_id']][] = $r['konto_login'];
+    foreach ($rows as &$r) $r['odbiorcy'] = $acl[(int) $r['id']] ?? [];
+    unset($r);
+    return $rows;
+}
+
 function ruch_tempo(): float
 {
     return max(0.05, min(60, (float) (wczytaj('katalog', [])['ustawienia']['tempo'] ?? 1)));
@@ -387,6 +419,8 @@ function obsluz_ruch(string $akcja, bool $post): void
                 }
             }
             $wynik['dodatkowe'] = mapa_dodatkowe($u);
+            $wynik['obiekty'] = mapa_obiekty_widoczne($u);
+            $wynik['gm'] = ($u['rola'] ?? '') === 'mg';
             odpowiedz($wynik);
 
         case 'nawigacja':

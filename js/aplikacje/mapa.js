@@ -98,6 +98,7 @@ export default {
     let pozycja = null;     // odpowiedź api('mapa')
     let tuPlaneta = null, celPlaneta = null;
     let statkiNaMapie = []; // [{ planeta, statki: [...] }]
+    let obiektyMapy = []; // Jednostki i postacie udostępnione temu kontu; MG otrzymuje pełną listę.
     let brudna = true;
     let ramka = 0;
     let animacja = null;
@@ -346,6 +347,23 @@ export default {
         if (planeta === tuPlaneta) continue;
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
+      for (const o of obiektyMapy) {
+        const [sx, sy] = naEkran(o.x, o.y);
+        if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
+        const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
+        c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
+        c.beginPath();
+        if (o.znacznik === 'trojkat') { c.moveTo(sx, sy - 7); c.lineTo(sx + 6, sy + 5); c.lineTo(sx - 6, sy + 5); c.closePath(); }
+        else if (o.znacznik === 'kwadrat') c.rect(sx - 5, sy - 5, 10, 10);
+        else if (o.znacznik === 'romb') { c.moveTo(sx, sy - 7); c.lineTo(sx + 7, sy); c.lineTo(sx, sy + 7); c.lineTo(sx - 7, sy); c.closePath(); }
+        else c.arc(sx, sy, 5, 0, Math.PI * 2);
+        c.fill();
+        if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, 10, 0, Math.PI * 2); c.stroke(); }
+        c.restore();
+        if (skala >= 0.12 || najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
+          c.font = 'bold 12px monospace'; c.fillStyle = kolor; napis(c, o.nazwa, sx + 9, sy - 7);
+        }
+      }
       if (tuPlaneta) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
       for (const [p, alfa] of [[najechane?.planeta, 0.7], [wybrane?.planeta, 1]]) {
         if (!p) continue;
@@ -364,6 +382,13 @@ export default {
     // ---------- trafienia ----------
 
     function trafienie(sx, sy) {
+      let najblizszyObiekt = null, odlObiektu = 15;
+      for (const obiekt of obiektyMapy) {
+        const [px, py] = naEkran(obiekt.x, obiekt.y);
+        const d = Math.hypot(px - sx, py - sy);
+        if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
+      }
+      if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       let najblizsza = null, odl = 16;
       for (const p of P) {
         const [px, py] = naEkran(p.x, p.y);
@@ -403,7 +428,19 @@ export default {
       const wiersz = (k, v) => h('tr', h('th', k), h('td', v));
       const nieznane = (v, tekst) => (v ? tekst : 'brak danych');
       const zamknij = h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => wybierz(null) }, '×');
-      if (obiekt.planeta) {
+      if (obiekt.obiekt) {
+        const o = obiekt.obiekt;
+        karta.append(zamknij, h('h2', o.nazwa),
+          h('div.mapa-znaczki', h('span.znaczek-cel', o.typ === 'postac' ? 'Pozycja postaci' : 'Pozycja jednostki')),
+          h('table.tabela',
+            wiersz('Typ', o.rodzaj || o.typ),
+            o.klasa ? wiersz('Klasa', o.klasa) : null,
+            o.wlasciciel ? wiersz('Właściciel / frakcja', o.wlasciciel) : null,
+            o.status ? wiersz('Status', o.status) : null,
+            o.planeta ? wiersz('Planeta', o.planeta) : null,
+            wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
+            o.opis ? wiersz('Opis', o.opis) : null));
+      } else if (obiekt.planeta) {
         const p = obiekt.planeta;
         const tutaj = statkiNaMapie.find((x) => x.planeta === p)?.statki || [];
         const odleglosc = tuPlaneta && tuPlaneta !== p ? Math.hypot(p.x - tuPlaneta.x, p.y - tuPlaneta.y) : null;
@@ -444,10 +481,13 @@ export default {
       if (!D || q.length < 2) { wyniki.hidden = true; return; }
       const zaczyna = (k) => k.startsWith(q);
       const planety = P.filter((p) => p.klucz.includes(q)).sort((a, b) => zaczyna(b.klucz) - zaczyna(a.klucz)).slice(0, 7);
+      const obiekty = obiektyMapy.filter((o) => norm(`${o.nazwa} ${o.klasa || ''} ${o.wlasciciel || ''}`).includes(q)).slice(0, 7);
       const szlaki = D.szlaki.filter((s) => norm(s.nazwa).includes(q)).slice(0, 3);
       const pozycje = [
         ...planety.map((p) => h('li', { onclick: () => { przelec(p.x, p.y, Math.max(skala, 0.6), () => wybierz({ planeta: p })); koniec(p.nazwa); } },
           h('span', p.nazwa), h('span.slaby', p.region))),
+        ...obiekty.map((o) => h('li', { onclick: () => { przelec(o.x, o.y, Math.max(skala, 0.6), () => wybierz({ obiekt: o })); koniec(o.nazwa); } },
+          h('span', o.nazwa), h('span.slaby', `${o.typ} · ${o.rodzaj || ''}`))),
         ...szlaki.map((s) => h('li', { onclick: () => { pokazSzlak(s); koniec(s.nazwa); } }, h('span', s.nazwa), h('span.slaby', 'szlak'))),
       ];
       wyniki.append(...(pozycje.length ? pozycje : [h('li.slaby', 'Brak wyników w bazie astronawigacyjnej')]));
@@ -491,7 +531,7 @@ export default {
       if (!poprzedni) {
         if (e.pointerType === 'mouse' && D) {
           const n = trafienie(e.offsetX, e.offsetY);
-          if ((n?.planeta || n?.szlak) !== (najechane?.planeta || najechane?.szlak)) najechane = n;
+          if ((n?.obiekt || n?.planeta || n?.szlak) !== (najechane?.obiekt || najechane?.planeta || najechane?.szlak)) najechane = n;
           plotno.style.cursor = n ? 'pointer' : 'grab';
         }
         return;
@@ -542,6 +582,7 @@ export default {
       }
       if (!D) return;
       ustawDodatkowe(pozycja.dodatkowe || []);
+      obiektyMapy = pozycja.obiekty || [];
       const znajdz = (nazwa) => (nazwa ? wgKlucza.get(norm(nazwa)) || null : null);
       tuPlaneta = znajdz(pozycja.tu);
       celPlaneta = pozycja.stan === 'nadprzestrzen' ? znajdz(pozycja.cel) : null;

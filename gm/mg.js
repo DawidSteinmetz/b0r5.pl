@@ -81,7 +81,7 @@ function zalozMG() {
 function panel(u) {
   document.getElementById('kto').textContent = 'Zalogowano: ' + u.login;
   menu.hidden = false;
-  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
+  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
   const rysujMenu = () => wyczysc(menu).append(
     ...Object.entries(zakladki).map(([k, n]) => h('button' + (k === biezaca ? '.on' : ''), { onclick: () => { biezaca = k; rysujMenu(); otworz(); } }, n)),
     h('button', { onclick: async () => { await api('wyloguj', {}); location.reload(); } }, 'Wyloguj'));
@@ -91,7 +91,58 @@ function panel(u) {
 
 function otworz() {
   wyczysc(glowna);
-  ({ stan: stanPostaci, karty: kartyPostaci, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+  ({ stan: stanPostaci, karty: kartyPostaci, mapa, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+}
+
+// ---------- mapa: pozycje, jednostki i dostępy ----------
+
+async function mapa() {
+  let { obiekty, konta } = await api('mg_mapa_obiekty');
+  const typy = [['jednostka', 'Jednostka'], ['statek', 'Statek'], ['pojazd', 'Pojazd'], ['instalacja', 'Instalacja'], ['inne', 'Inny obiekt']];
+  const form = (e = {}) => {
+    const nazwa = h('input', { value: e.nazwa || '', maxlength: 160 });
+    const typ = h('select', typy.map(([v, n]) => h('option', { value: v, selected: (e.typ || 'statek') === v }, n)));
+    const rodzaj = h('input', { value: e.rodzaj || '' });
+    const klasa = h('input', { value: e.klasa || '' });
+    const wlasciciel = h('input', { value: e.wlasciciel || '' });
+    const status = h('input', { value: e.status || '' });
+    const x = h('input', { type: 'number', step: '0.1', value: e.x ?? '' });
+    const y = h('input', { type: 'number', step: '0.1', value: e.y ?? '' });
+    const kolor = h('input', { type: 'color', value: e.kolor || '#00ff66' });
+    const znacznik = h('select', ['trojkat', 'kolo', 'kwadrat', 'romb'].map((v) => h('option', { value: v, selected: (e.znacznik || 'trojkat') === v }, v)));
+    const opis = h('textarea', { maxlength: 5000 }, e.opis || '');
+    const udostepnij = h('select', { multiple: true, size: Math.min(6, Math.max(2, konta.length)), style: 'min-height:90px' }, konta.map((k) => h('option', { value: k.login, selected: (e.odbiorcy || []).includes(k.login) }, `${k.login} · ${k.postac}`)));
+    const info = h('div');
+    const zapisz = bezpiecznie(async () => {
+      await api('mg_mapa_obiekt_zapisz', { id: e.id || 0, nazwa: nazwa.value, typ: typ.value, rodzaj: rodzaj.value, klasa: klasa.value,
+        wlasciciel: wlasciciel.value, status: status.value, x: Number(x.value), y: Number(y.value), kolor: kolor.value, znacznik: znacznik.value,
+        opis: opis.value, odbiorcy: [...udostepnij.selectedOptions].map((o) => o.value) });
+      wyczysc(glowna); await mapa();
+      glowna.prepend(msg('Zapisano obiekt mapy.', 'ok'));
+    });
+    return h('div.karta', h('h2', e.id ? `Edycja: ${e.nazwa}` : 'Nowa jednostka lub obiekt'),
+      e.typ === 'postac' ? h('p.slaby', 'Pozycję postaci pobieramy z jej karty. Edytuj ją w zakładce Karty postaci.') : null,
+      e.typ === 'postac' ? null : h('div.siatka', pole('Nazwa', nazwa), pole('Typ', typ), pole('Rodzaj', rodzaj), pole('Klasa', klasa), pole('Właściciel / frakcja', wlasciciel), pole('Status', status), pole('X galaktyczne', x), pole('Y galaktyczne', y), pole('Kolor znacznika', kolor), pole('Kształt znacznika', znacznik), pole('Opis', opis), pole('Udostępnij pozycję kontom (Ctrl/⌘ + klik)', udostepnij)),
+      e.typ === 'postac' ? null : h('div.rzad', btn('Zapisz', zapisz, '.glowny'), e.id ? btn('Anuluj', () => { wyczysc(glowna); mapa(); }) : null), info);
+  };
+  const edytorDostepu = (o) => {
+    const wybor = h('select', { multiple: true, size: Math.min(4, Math.max(2, konta.length)), style: 'min-width:150px' },
+      konta.map((k) => h('option', { value: k.login, selected: (o.odbiorcy || []).includes(k.login) }, k.login)));
+    return h('div', wybor, btn('Zapisz dostęp', bezpiecznie(async () => {
+      await api('mg_mapa_dostep_zapisz', { id: o.id, odbiorcy: [...wybor.selectedOptions].map((x) => x.value) });
+      wyczysc(glowna); await mapa(); glowna.prepend(msg(`Zapisano dostęp do pozycji: ${o.nazwa}.`, 'ok'));
+    })));
+  };
+  glowna.append(h('div.karta', h('h2', 'Mapa galaktyki — pozycje i udostępnienia'),
+    h('p.slaby', 'MG widzi wszystkie pozycje zapisane w SQL. Gracze widzą własną postać i obiekty udostępnione ich kontu.'),
+    btn('Otwórz mapę GM', () => window.open('mapa.html', '_blank', 'noopener')),
+    btn('Dodaj jednostkę / obiekt', () => { wyczysc(glowna); glowna.append(form()); })),
+  h('div.karta.przewijana', h('h2', `Obiekty z pozycją (${obiekty.filter((o) => o.x !== null && o.y !== null).length})`),
+    h('table', h('tr', h('th', 'Obiekt'), h('th', 'Typ'), h('th', 'Współrzędne'), h('th', 'Odbiorcy'), h('th', '')),
+      obiekty.map((o) => h('tr', h('td', h('b', o.nazwa), h('div.slaby', [o.klasa, o.wlasciciel].filter(Boolean).join(' · '))),
+        h('td', o.typ), h('td', `${o.x ?? '—'} : ${o.y ?? '—'}`),
+        h('td', edytorDostepu(o)),
+        h('td.rzad', o.typ === 'postac' ? null : btn('Edytuj', () => { wyczysc(glowna); glowna.append(form(o)); }))))))));
 }
 
 // ---------- konta ----------

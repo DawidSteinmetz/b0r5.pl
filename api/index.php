@@ -47,7 +47,7 @@ function blad(string $komunikat, int $kod = 400): never
 function tabela_sql_dostepna(string $nazwa): bool
 {
     static $cache = [];
-    $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy'];
+    $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {

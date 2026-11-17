@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#05080a">
+  <title>Mapa GM — HOLOLINK</title>
+  <link rel="stylesheet" href="../css/system.css">
+</head>
+<body>
+  <div id="ekran">
+    <header id="pasek" hidden></header>
+    <main id="pulpit"><section class="widok"></section></main>
+    <nav id="dok" hidden></nav>
+  </div>
+  <script type="module">
+    import mapa from '../js/aplikacje/mapa.js';
+    const widok = document.querySelector('.widok');
+    const sprzataj = mapa.uruchom(widok, { ustawWstecz() {} });
+    window.addEventListener('pagehide', () => sprzataj?.(), { once: true });
+  </script>
+</body>
+</html>

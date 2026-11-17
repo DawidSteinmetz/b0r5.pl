@@ -49,6 +49,7 @@ js/rdzen/scena.js        animacje tła: gwiazdy, skok, tunel, wyjście, planety
 api/schema.sql           schemat bazy danych (MySQL 8 / MariaDB 10.6)
 api/schema_v3.sql        historyczny fundament relacyjny v3
 api/schema_v4.sql        schemat całościowy v4 (nowa, pusta baza)
+api/schema_v5.sql        schemat całościowy v5 (nowa, pusta baza)
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
 api/dane/                źródło importu z wcześniejszych wersji (poza gitem)
@@ -59,15 +60,18 @@ narzedzia/czcionka/      generator czcionki Aurebesh
 
 Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w jakiej są w repo.
 
-## Schemat SQL v4 — etap migracji danych
+## Schemat SQL v5 — mapa obiektów i udostępnianie pozycji
 
-`api/schema_v4.sql` zawiera komplet skryptów dla nowej, pustej bazy. Nie importuj go do działającej
-bazy. Dla istniejącej bazy uruchamiaj kolejne migracje po kopii zapasowej: v2, v3, a następnie
-`api/migracje/004_relacyjne_lokacje_i_pozycje.sql`. Ta migracja dodaje relacyjne lokacje i most
-pozycji dla istniejących tekstowych UID; obejmuje Havis III, Moffa Darniusa Kirrę i Pałac Moffa.
+`api/schema_v5.sql` zawiera komplet skryptów dla nowej, pustej bazy. Nie importuj go do działającej
+bazy. Dla istniejącej bazy v4 po kopii zapasowej zaimportuj wyłącznie
+`api/migracje/005_uniwersalna_mapa.sql`. Baza ze starszym schematem wymaga wcześniejszych migracji
+zgodnie z `archiwum/sql/README.md`. Migracja 004 dodaje relacyjne lokacje i most pozycji; migracja 005 dodaje uniwersalne obiekty mapy,
+udostępnienia pozycji oraz ISD I „Walako” dla GOV-5401 i ISB-2137.
 
 Runtime zapisuje i odczytuje pozycje z SQL, a równolegle utrzymuje ich kopię w dotychczasowym
 dokumencie `datapad_dane`, aby pozostałe moduły i starsze ścieżki ruchu działały podczas migracji.
+Mapa synchronizuje pozycje postaci z SQL i pokazuje MG wszystkie postacie z pozycją; jednostki i
+inne obiekty mają własne rekordy w `mapa_obiekty` oraz listę odbiorców w `mapa_obiekty_dostep`.
 Pozostałe dokumenty aplikacji są nadal przechowywane jako JSON w kolumnie `payload` tabeli
 `datapad_dane`; ich konwersja będzie następować modułami w kolejnych migracjach. Nie usuwaj tej
 tabeli ani technicznych plików JSON (`manifest.webmanifest`, transport API, ustawienia lokalne).

@@ -37,6 +37,14 @@ Runtime używa relacyjnych tabel SQL dla lokacji i pozycji (z zachowaniem teksto
 mostu). Pozostałe domeny są jeszcze przechowywane jako dokumenty JSON w `datapad_dane` i będą
 migrowane modułami. Techniczne formaty JSON aplikacji pozostają potrzebne.
 
+## Mapa obiektów v5
+
+- `api/migracje/005_uniwersalna_mapa.sql` — migracja istniejącej bazy; pozycje postaci synchronizuje
+  API, a jednostki i obiekty zapisuje w `mapa_obiekty`. Dostępy dla kont przechowuje
+  `mapa_obiekty_dostep`. Seed dodaje ISD I „Walako” (8400, 3130) dla GOV-5401 i ISB-2137.
+- `api/schema_v5.sql` — kompletny skrypt dla nowej, pustej bazy, zawiera migrację 005.
+- W panelu MG → Mapa można zarządzać jednostkami i odbiorcami oraz otworzyć pełną mapę GM.
+
 W `towary_kategorie` i `planety_kategorie_ceny` zachowano powiązania wynikające ze starych
 kategorii v2. Nowe kategorie dopisuj do `kategorie_towarow`, a następnie przypisuj towarom.
 Nowe rachunki muszą dostać wiersz w `rachunki_waluty`; na obecnym etapie używaj kodu `CR`.

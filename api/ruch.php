@@ -154,6 +154,31 @@ function mapa_obiekty_widoczne(array $u): array
         'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
         'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
     ], $q->fetchAll(PDO::FETCH_ASSOC));
+    if ($obiekty && tabela_sql_dostepna('mapa_floty_jednostki') && tabela_sql_dostepna('mapa_floty')) {
+        $ids = array_column($obiekty, 'id');
+        $marks = implode(',', array_fill(0, count($ids), '?'));
+        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.rola,j.tie_liczba,f.kod AS flota_kod,f.nazwa AS flota_nazwa,
+                rodzic.nazwa AS flota_glowna,COALESCE(NULLIF(f.dowodca_login,''),NULLIF(rodzic.dowodca_login,'')) AS dowodca_login
+            FROM mapa_floty_jednostki j JOIN mapa_floty f ON f.id=j.flota_id
+            LEFT JOIN mapa_floty rodzic ON rodzic.id=f.rodzic_id WHERE j.obiekt_id IN ($marks)");
+        $q->execute($ids);
+        $konta = [];
+        foreach (uzytkownicy() as $konto) $konta[mb_strtolower((string) ($konto['login'] ?? ''))] = $konto;
+        $indeks = array_column($obiekty, null, 'id');
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $f) {
+            $id = (int) $f['obiekt_id'];
+            if (!isset($indeks[$id])) continue;
+            $dowodca = $konta[mb_strtolower((string) $f['dowodca_login'])] ?? [];
+            $indeks[$id]['flota'] = [
+                'kod' => $f['flota_kod'], 'nazwa' => $f['flota_glowna'] ?: $f['flota_nazwa'],
+                'grupa' => $f['flota_glowna'] ? $f['flota_nazwa'] : null,
+                'dowodca' => (string) ($dowodca['postac'] ?? $f['dowodca_login'] ?? ''),
+                'dowodca_login' => (string) ($f['dowodca_login'] ?? ''), 'rola' => $f['rola'],
+                'tie_liczba' => $f['tie_liczba'] === null ? null : (int) $f['tie_liczba'],
+            ];
+        }
+        $obiekty = array_values($indeks);
+    }
     if ($obiekty && tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) {
         $ids = array_column($obiekty, 'id');
         $marks = implode(',', array_fill(0, count($ids), '?'));

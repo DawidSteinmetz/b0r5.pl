@@ -58,6 +58,7 @@ export default {
     const szukaj = h('input.mapa-szukaj', { placeholder: 'Szukaj planety lub szlaku', spellcheck: 'false', autocorrect: 'off', autocomplete: 'off', enterkeyhint: 'search' });
     const wyniki = h('ul.mapa-wyniki', { hidden: true });
     const karta = h('div.mapa-karta', { hidden: true });
+    const podpowiedz = h('div.mapa-hover', { hidden: true });
     const wsp = h('div.mapa-wsp');
     const ladowanie = h('div.mapa-ladowanie', 'Pobieranie danych astronawigacyjnych...');
     const panelFlot = h('section.mapa-floty-panel', { hidden: true });
@@ -69,7 +70,7 @@ export default {
 
     w.append(plotno,
       h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty)),
-      panelFlot, karta, wsp, ladowanie);
+      panelFlot, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');
@@ -109,6 +110,71 @@ export default {
     const naEkran = (x, y) => [x * skala + ox, -y * skala + oy];
     const naMape = (sx, sy) => [(sx - ox) / skala, -(sy - oy) / skala];
     const odswiez = () => { brudna = true; };
+
+    function planetaObiektu(o) {
+      return o?.planeta ? wgKlucza.get(norm(o.planeta)) || null : null;
+    }
+
+    function obiektyNaPlanecie(p) {
+      return obiektyMapy.filter((o) => norm(o.planeta || '') === p.klucz);
+    }
+
+    function nazwaPostaci(o) {
+      if (o.typ !== 'postac') return o.nazwa;
+      const stopien = String(o.status || '').trim().split(/\s+/).filter(Boolean).at(-1) || '';
+      const rangi = new Set(['moff', 'kapitan', 'admiral', 'general', 'major', 'komandor', 'porucznik', 'polkownik', 'dowodca']);
+      return rangi.has(norm(stopien)) && !norm(o.nazwa).startsWith(norm(stopien)) ? `${stopien} ${o.nazwa}` : o.nazwa;
+    }
+
+    function punktObiektu(o) {
+      const p = planetaObiektu(o);
+      const pozycjaDomyslna = naEkran(o.x, o.y);
+      if (!p || o.lot) return pozycjaDomyslna;
+      const orbita = !!o.flota;
+      if (!orbita && o.typ !== 'postac') return pozycjaDomyslna;
+      const rodzina = obiektyMapy.filter((x) => planetaObiektu(x) === p && !x.lot
+        && (orbita ? x.flota?.kod === o.flota.kod : x.typ === 'postac'));
+      const indeks = Math.max(0, rodzina.findIndex((x) => x.id === o.id));
+      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && x.flota && !x.lot).map((x) => x.flota.kod))];
+      const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(o.flota.kod)) : 0;
+      const promien = orbita ? 18 + numerOrbity * 9 : 30;
+      const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
+      const [px, py] = naEkran(p.x, p.y);
+      return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
+    }
+
+    function listaObecnych(p) {
+      const obecni = obiektyNaPlanecie(p);
+      const floty = new Map();
+      for (const o of obecni) if (o.flota) {
+        const klucz = `${norm(o.flota.nazwa)}:${norm(o.flota.dowodca)}`;
+        if (!floty.has(klucz)) floty.set(klucz, o.flota);
+      }
+      const osoby = obecni.filter((o) => o.typ === 'postac').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
+      return h('div.mapa-obecni',
+        floty.size ? [...floty.values()].map((f) => h('div.mapa-obecny',
+          h('strong', f.nazwa), h('small', f.dowodca || 'Dowódca nieprzypisany'))) : null,
+        osoby.length ? h('div', h('b.mapa-obecni-etykieta', 'Postacie'), osoby.map((o) => h('div.mapa-osoba', nazwaPostaci(o)))) : null,
+        !floty.size && !osoby.length ? h('span.slaby', 'Brak przypisanych postaci i flot') : null);
+    }
+
+    function pokazPodpowiedz(cel, sx, sy) {
+      if (!cel || cel.szlak) { podpowiedz.hidden = true; return; }
+      wyczysc(podpowiedz);
+      if (cel.planeta) {
+        podpowiedz.append(h('strong.mapa-hover-tytul', cel.planeta.nazwa), listaObecnych(cel.planeta));
+      } else if (cel.obiekt) {
+        const o = cel.obiekt;
+        podpowiedz.append(h('strong.mapa-hover-tytul', o.nazwa),
+          o.flota ? h('div', o.flota.nazwa, h('small', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`)) : null,
+          o.typ === 'postac' ? h('small', nazwaPostaci(o)) : h('small', `${o.klasa || o.rodzaj || o.typ}${o.planeta ? ` · ${o.planeta}` : ''}`));
+      }
+      podpowiedz.hidden = false;
+      const lewo = Math.min(Math.max(8, sx + 16), Math.max(8, szer - Math.min(330, szer - 16) - 8));
+      const gora = Math.min(Math.max(68, sy + 14), Math.max(68, wys - 210));
+      podpowiedz.style.left = `${lewo}px`;
+      podpowiedz.style.top = `${gora}px`;
+    }
 
     function rozmiar() {
       const r = plotno.getBoundingClientRect();
@@ -244,7 +310,7 @@ export default {
         napis(g, p.nazwa, sx + 8, sy + 4);
       }
       // Nazwy: tylko z bliska i bez nakładania się. Zajęte prostokąty trzymamy w kubełkach 100 px.
-      if (skala < 0.12) return;
+      if (skala < 0.09) return;
       g.font = `11px ${kroj}`;
       g.fillStyle = kolory.slaby;
       const kubly = new Map();
@@ -279,7 +345,13 @@ export default {
         const b = [sx - r - 2, sy - 8, sx + r + 6 + g.measureText(p.nazwa).width, sy + 7];
         if (zajety(...b)) continue;
         zajmij(b);
-        g.fillText(p.nazwa, sx + r + 4, sy + 4);
+        const tx = sx + r + 7, ty = sy + 4, szerTekstu = g.measureText(p.nazwa).width;
+        g.fillStyle = 'rgba(5, 12, 14, 0.84)';
+        g.fillRect(tx - 4, ty - 12, szerTekstu + 8, 17);
+        g.strokeStyle = 'rgba(77, 226, 201, 0.25)'; g.lineWidth = 0.7;
+        g.strokeRect(tx - 4, ty - 12, szerTekstu + 8, 17);
+        g.fillStyle = kolory.slaby;
+        g.fillText(p.nazwa, tx, ty);
       }
     }
 
@@ -351,7 +423,7 @@ export default {
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
       for (const o of obiektyMapy) {
-        const [sx, sy] = naEkran(o.x, o.y);
+        const [sx, sy] = punktObiektu(o);
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
         const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
         if (o.lot) {
@@ -367,8 +439,10 @@ export default {
         c.fill();
         if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, 10, 0, Math.PI * 2); c.stroke(); }
         c.restore();
-        if (skala >= 0.12 || najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
-          c.font = 'bold 12px monospace'; c.fillStyle = kolor; napis(c, o.nazwa, sx + 9, sy - 7);
+        if (najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
+          c.font = 'bold 12px monospace'; c.fillStyle = kolor;
+          const label = nazwaPostaci(o);
+          napis(c, label, sx + 10, sy - 7);
         }
       }
       if (tuPlaneta) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
@@ -391,7 +465,7 @@ export default {
     function trafienie(sx, sy) {
       let najblizszyObiekt = null, odlObiektu = 15;
       for (const obiekt of obiektyMapy) {
-        const [px, py] = naEkran(obiekt.x, obiekt.y);
+        const [px, py] = punktObiektu(obiekt);
         const d = Math.hypot(px - sx, py - sy);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
       }
@@ -429,6 +503,7 @@ export default {
 
     function wybierz(obiekt) {
       wybrane = obiekt;
+      podpowiedz.hidden = true;
       wyczysc(karta);
       karta.hidden = !obiekt;
       if (!obiekt) return;
@@ -449,7 +524,7 @@ export default {
         : postac ? widoki.findIndex((w) => w.obiekt?.id === postac.id) : -1;
       if (obiekt.obiekt) {
         const o = obiekt.obiekt;
-        karta.append(zamknij, h('h2', o.nazwa),
+        karta.append(zamknij, h('h2', nazwaPostaci(o)),
           h('div.mapa-znaczki', h('span.znaczek-cel', o.typ === 'postac' ? 'Pozycja postaci' : 'Pozycja jednostki')),
           h('table.tabela',
             wiersz('Typ', o.rodzaj || o.typ),
@@ -458,7 +533,10 @@ export default {
             o.status ? wiersz('Status', o.status) : null,
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
-            o.opis ? wiersz('Opis', o.opis) : null));
+            o.opis ? wiersz('Opis', o.opis) : null),
+          o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
+            h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
+            o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null);
       } else if (obiekt.planeta) {
         const p = obiekt.planeta;
         const tutaj = statkiNaMapie.find((x) => x.planeta === p)?.statki || [];
@@ -479,6 +557,7 @@ export default {
             wiersz('Słońca · księżyce', nieznane(p.doba, `${p.slonca} · ${p.ksiezyce}`)),
             wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
             p.srednica > 0 ? wiersz('Średnica', `${liczba(p.srednica)} km`) : null),
+          listaObecnych(p),
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
               s.w_locie ? h('span.slaby', s.cel ? ` · w nadprzestrzeni → ${s.cel}` : ' · na orbicie') : null)))) : null);
@@ -557,7 +636,9 @@ export default {
       if (!poprzedni) {
         if (e.pointerType === 'mouse' && D) {
           const n = trafienie(e.offsetX, e.offsetY);
-          if ((n?.obiekt || n?.planeta || n?.szlak) !== (najechane?.obiekt || najechane?.planeta || najechane?.szlak)) najechane = n;
+          const zmienilSieCel = (n?.obiekt || n?.planeta || n?.szlak) !== (najechane?.obiekt || najechane?.planeta || najechane?.szlak);
+          if (zmienilSieCel) { najechane = n; pokazPodpowiedz(n, e.offsetX, e.offsetY); odswiez(); }
+          else if (n) { podpowiedz.style.left = `${Math.min(Math.max(8, e.offsetX + 16), Math.max(8, szer - 340))}px`; podpowiedz.style.top = `${Math.min(Math.max(68, e.offsetY + 14), Math.max(68, wys - 210))}px`; }
           plotno.style.cursor = n ? 'pointer' : 'grab';
         }
         return;
@@ -583,7 +664,7 @@ export default {
     };
     plotno.addEventListener('pointerup', pusc);
     plotno.addEventListener('pointercancel', pusc);
-    plotno.addEventListener('pointerleave', () => { najechane = null; });
+    plotno.addEventListener('pointerleave', () => { najechane = null; podpowiedz.hidden = true; odswiez(); });
     plotno.addEventListener('wheel', (e) => {
       e.preventDefault();
       animacja = null;

@@ -9,6 +9,8 @@ function floty_gotowe(): void
         || !tabela_sql_dostepna('mapa_naped_jednostki') || !tabela_sql_dostepna('mapa_rozkazy_skokow')) {
         blad('Najpierw zaimportuj api/migracje/006_floty_i_nawigacja.sql.');
     }
+    try { polaczenie_bazy()->query('SELECT kolejnosc FROM mapa_floty_jednostki LIMIT 0'); }
+    catch (Throwable $e) { blad('Zaimportuj jeszcze api/migracje/007_kolejnosc_okretow_floty.sql.'); }
 }
 
 function floty_dowodca(int $flotaId): ?string
@@ -93,19 +95,19 @@ function floty_lista(string $login, bool $mg = false): array
     foreach ($all as $f) if ($mg || floty_czy_dowodca((int) $f['id'], $login)) $dozwolone[(int) $f['id']] = true;
     $out = [];
     $q = $db->prepare("SELECT o.id AS obiekt_id,o.kod AS obiekt_kod,o.nazwa AS obiekt_nazwa,o.typ,o.rodzaj,o.klasa,o.status AS stan,o.planeta_id,p.nazwa AS planeta,o.x,o.y,
-        j.flota_id,j.rola,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,
+        j.flota_id,j.rola,j.kolejnosc,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
         LEFT JOIN mapa_rozkazy_skokow_jednostki rj ON rj.obiekt_id=o.id AND rj.status='w_nadprzestrzeni'
         LEFT JOIN mapa_rozkazy_skokow r ON r.id=rj.rozkaz_id AND r.status='w_nadprzestrzeni'
-        WHERE j.flota_id=? ORDER BY o.nazwa");
+        WHERE j.flota_id=? ORDER BY j.kolejnosc,o.nazwa");
     foreach ($all as $f) {
         if (!isset($dozwolone[(int) $f['id']])) continue;
         $q->execute([(int) $f['id']]);
         $units = $q->fetchAll(PDO::FETCH_ASSOC);
         foreach ($units as &$u) {
-            foreach (['obiekt_id','flota_id','tie_liczba','planeta_id','rozkaz_id'] as $k) if ($u[$k] !== null) $u[$k] = (int) $u[$k];
+            foreach (['obiekt_id','flota_id','tie_liczba','kolejnosc','planeta_id','rozkaz_id'] as $k) if ($u[$k] !== null) $u[$k] = (int) $u[$k];
             foreach (['x','y','moc_reaktora','moc_hipernapedu','klasa_hipernapedu','predkosc_pc_na_godzine','paliwo','paliwo_maks','szum_bazowy','cel_x','cel_y'] as $k) if ($u[$k] !== null) $u[$k] = (float) $u[$k];
             if ($u['eta_utc']) $u['eta'] = strtotime($u['eta_utc'] . ' UTC');
         }
@@ -282,7 +284,7 @@ function obsluz_floty(string $akcja, bool $post): void
 
         case 'mg_floty':
             wymagaj_mg();
-            $jednostki = polaczenie_bazy()->query("SELECT o.id,o.kod,o.nazwa,o.typ,o.rodzaj,o.klasa,o.status,o.x,o.y,j.flota_id,j.rola,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,n.paliwo_na_parsek
+            $jednostki = polaczenie_bazy()->query("SELECT o.id,o.kod,o.nazwa,o.typ,o.rodzaj,o.klasa,o.status,o.x,o.y,j.flota_id,j.rola,j.kolejnosc,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,n.paliwo_na_parsek
                 FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki j ON j.obiekt_id=o.id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
                 WHERE o.aktywny=1 AND o.typ IN ('statek','jednostka','pojazd') ORDER BY o.nazwa")->fetchAll(PDO::FETCH_ASSOC);
             odpowiedz(['floty' => floty_lista('', true), 'jednostki' => $jednostki,
@@ -297,8 +299,8 @@ function obsluz_floty(string $akcja, bool $post): void
             if ($login !== '' && !in_array(mb_strtolower($login), array_map('mb_strtolower', array_column(uzytkownicy(), 'login')), true)) blad('Nie ma takiego konta dowódcy.');
             $db = polaczenie_bazy();
             if ($id) $db->prepare('UPDATE mapa_floty SET nazwa=?,dowodca_login=? WHERE id=?')->execute([$nazwa, $login ?: null, $id]);
-            else $db->prepare('INSERT INTO mapa_floty (kod,nazwa,dowodca_login,opis) VALUES (?,?,?,?)')->execute(['flota-' . bin2hex(random_bytes(8)),$nazwa,$login ?: null,mb_substr(trim((string) ($w['opis'] ?? '')),0,4000) ?: null]);
-            odpowiedz(['ok' => true]);
+            else { $db->prepare('INSERT INTO mapa_floty (kod,nazwa,dowodca_login,opis) VALUES (?,?,?,?)')->execute(['flota-' . bin2hex(random_bytes(8)),$nazwa,$login ?: null,mb_substr(trim((string) ($w['opis'] ?? '')),0,4000) ?: null]); $id = (int) $db->lastInsertId(); }
+            odpowiedz(['ok' => true, 'flota_id' => $id]);
 
         case 'mg_flota_jednostki':
             if (!$post) blad('Zła metoda.', 405);
@@ -313,15 +315,18 @@ function obsluz_floty(string $akcja, bool $post): void
                 if ((int) $q->fetchColumn()) blad('Nie można zmieniać składu podczas skoku.');
                 $q = $db->prepare("SELECT COUNT(*) FROM mapa_obiekty WHERE id IN ($marks) AND typ IN ('statek','jednostka','pojazd')"); $q->execute($ids);
                 if ((int) $q->fetchColumn() !== count($ids)) blad('Wybierz poprawne obiekty mapy.');
+                $q = $db->prepare("SELECT j.obiekt_id,f.nazwa FROM mapa_floty_jednostki j JOIN mapa_floty f ON f.id=j.flota_id WHERE j.obiekt_id IN ($marks) AND j.flota_id<>?");
+                $q->execute([...$ids,$flota]);
+                if ($zajete = $q->fetch(PDO::FETCH_ASSOC)) blad('Ten okręt jest już przypisany do floty „' . $zajete['nazwa'] . '”. Najpierw usuń go z tamtego składu.');
             }
             $db->beginTransaction();
             try {
                 $db->prepare('DELETE FROM mapa_floty_jednostki WHERE flota_id=?')->execute([$flota]);
                 if ($ids) {
-                    $q = $db->prepare('INSERT INTO mapa_floty_jednostki (obiekt_id,flota_id,rola,tie_liczba) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE flota_id=VALUES(flota_id)');
-                    foreach ($ids as $objectId) {
+                    $q = $db->prepare('INSERT INTO mapa_floty_jednostki (obiekt_id,flota_id,rola,kolejnosc,tie_liczba) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE flota_id=VALUES(flota_id),rola=VALUES(rola),kolejnosc=VALUES(kolejnosc),tie_liczba=VALUES(tie_liczba)');
+                    foreach ($ids as $index => $objectId) {
                         $tie = max(0, min(99, (int) (($w['tie'][$objectId] ?? '') === '' ? 0 : $w['tie'][$objectId])));
-                        $q->execute([$objectId,$flota,mb_substr(trim((string) ($w['rola'][$objectId] ?? '')),0,80),$tie ?: null]);
+                        $q->execute([$objectId,$flota,mb_substr(trim((string) ($w['rola'][$objectId] ?? '')),0,80),$index,$tie ?: null]);
                     }
                     $q = $db->prepare('SELECT dowodca_login FROM mapa_floty WHERE id=?'); $q->execute([$flota]); $dowodca = $q->fetchColumn();
                     if ($dowodca) {

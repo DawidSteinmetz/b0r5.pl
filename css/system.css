@@ -525,6 +525,16 @@ html.z-tlem #ekran::before {
 .mapa-karta h2 { margin: 0 32px 8px 0; font-size: 18px; font-weight: normal; letter-spacing: 0.08em; color: var(--akcent-2); }
 .mapa-karta .tabela th, .mapa-karta .tabela td { padding: 6px 4px; font-size: 13px; }
 .mapa-karta .lista li { padding: 8px 2px; font-size: 13px; }
+.mapa-hover { position: absolute; z-index: 5; width: min(310px, calc(100% - 24px)); max-height: 220px; overflow-y: auto; padding: 11px 14px; border: 1px solid var(--linia-mocna); border-left: 3px solid var(--akcent); border-radius: 8px; background: rgba(7, 15, 17, 0.97); box-shadow: 0 8px 24px rgba(0,0,0,.38); pointer-events: none; color: var(--tekst); font-size: 13px; }
+.mapa-hover-tytul { display: block; margin-bottom: 6px; color: var(--akcent); font-size: 15px; letter-spacing: .04em; }
+.mapa-obecni { display: grid; gap: 6px; }
+.mapa-obecny, .mapa-osoba { display: grid; gap: 2px; padding: 5px 0 0 9px; border-left: 1px solid var(--linia-mocna); }
+.mapa-obecny strong { color: var(--tekst); }
+.mapa-obecny small { color: var(--akcent-2); }
+.mapa-obecni-etykieta { margin-top: 2px; color: var(--tekst-slaby); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
+.mapa-osoba { color: var(--tekst); }
+.mapa-obiekt-flota { display: grid; gap: 4px; margin-top: 10px; padding: 9px; border-left: 2px solid var(--akcent); background: rgba(77,226,201,.06); }
+.mapa-obiekt-flota strong { color: var(--akcent); }
 .mapa-floty-panel { position: absolute; z-index: 4; top: 64px; right: 12px; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow-y: auto; padding: 14px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.97); }
 .mapa-floty-panel h2 { margin: 0 40px 12px 0; color: var(--akcent); font-size: 18px; }
 .mapa-floty-panel article { position: relative; margin: 10px 0; padding: 12px; }
@@ -533,6 +543,8 @@ html.z-tlem #ekran::before {
 .mapa-flota-form { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .mapa-flota-form input, .mapa-flota-form select { min-width: 75px; flex: 1 1 80px; }
 .mapa-gm-jednostka { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.mapa-gm-slot { display: grid; grid-template-columns: minmax(120px, 170px) minmax(220px, 1fr); align-items: center; gap: 12px; margin: 8px 0; }
+.mapa-gm-slot span { color: var(--akcent); letter-spacing: .05em; }
 .mapa-gm-naped { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
 .mapa-gm-naped label { display: grid; gap: 3px; font-size: 11px; color: var(--tekst-slaby); }
 .mapa-statki { margin-top: 12px; }

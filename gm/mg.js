@@ -95,45 +95,81 @@ function otworz() {
 }
 
 async function floty() {
-  const dane = await api('mg_floty');
-  const { floty: lista, jednostki, konta } = dane;
-  const odswiez = () => { biezaca = 'floty'; floty(); };
+  let dane = await api('mg_floty');
+  let flotaId = Number(dane.floty[0]?.id || 0);
+  const status = h('div');
+  const widok = h('div');
   const nowaNazwa = h('input', { placeholder: 'Nazwa nowej floty' });
-  const nowyDowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...konta.map((k) => h('option', { value: k.login }, `${k.login} · ${k.postac}`))]);
-  const nowa = h('button.btn.glowny', { onclick: async () => { await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value }); odswiez(); } }, 'Utwórz flotę');
-  wyczysc(glowna).append(h('h1', 'Floty i napędy'), h('p.slaby', 'Przydziel dowódcę i jednostki. Profil techniczny napędu służy do obliczania czasu, paliwa i odchylenia skoku.'),
-    h('section.karta', h('h2', 'Nowa flota'), nowaNazwa, nowyDowodca, nowa));
-  for (const f of lista) {
+  const nowyDowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...dane.konta.map((k) => h('option', { value: k.login }, `${k.postac} · ${k.login}`))]);
+  const selektor = h('select');
+
+  async function przeladuj(id = flotaId) {
+    dane = await api('mg_floty');
+    flotaId = Number(id || dane.floty[0]?.id || 0);
+    render();
+  }
+
+  function render() {
+    wyczysc(glowna).append(h('h1', 'Edytor flot'), h('p.slaby', 'Każdy okręt może należeć tylko do jednej floty. Kolejne pola dodają okręty do składu w ustalonej kolejności.'),
+      h('section.karta', h('h2', 'Nowa flota'), nowaNazwa, nowyDowodca,
+        h('button.btn.glowny', { onclick: async () => { try { const r = await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value }); nowaNazwa.value = ''; await przeladuj(r.flota_id); } catch (e) { wyczysc(status).append(msg(e.message)); } } }, 'Utwórz flotę')),
+      h('section.karta', h('h2', 'Wybierz flotę'), pole('Flota', selektor), status, widok));
+    wyczysc(selektor).append(...dane.floty.map((f) => h('option', { value: f.id, selected: Number(f.id) === flotaId }, f.nazwa)));
+    selektor.onchange = () => { flotaId = Number(selektor.value); render(); };
+    const f = dane.floty.find((x) => Number(x.id) === flotaId);
+    wyczysc(widok);
+    if (!f) { widok.append(h('p.slaby', 'Nie ma jeszcze floty do edycji.')); return; }
+
     const nazwa = h('input', { value: f.nazwa, maxlength: 160 });
-    const dowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...konta.map((k) => h('option', { value: k.login, selected: k.login === f.dowodca_login }, `${k.login} · ${k.postac}`))]);
-    const zaznaczone = new Set(f.jednostki.map((j) => Number(j.obiekt_id)));
-    const czlonkowie = h('div.mapa-flota-jednostki', jednostki.map((j) => {
-      const id = Number(j.id);
-      const cb = h('input', { type: 'checkbox', value: id, checked: zaznaczone.has(id) });
-      const tie = h('input', { type: 'number', min: 0, max: 99, value: j.tie_liczba ?? '', placeholder: 'TIE', style: 'width:76px' });
-      const rola = h('input', { value: j.rola || '', placeholder: 'Rola', style: 'width:130px' });
-      cb.dataset.unit = String(id); tie.dataset.unit = String(id); rola.dataset.unit = String(id);
-      return h('label.mapa-gm-jednostka', cb, ` ${j.nazwa} · ${j.klasa || j.typ} `, tie, rola, j.tie_liczba == null ? h('small.slaby', 'TIE nieokreślone') : null);
-    }));
+    const dowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...dane.konta.map((k) => h('option', { value: k.login, selected: k.login === f.dowodca_login }, `${k.postac} · ${k.login}`))]);
+    const sloty = h('div');
+    const kolejnosc = [...f.jednostki].sort((a, b) => Number(a.kolejnosc || 0) - Number(b.kolejnosc || 0));
+    let wybrane = kolejnosc.map((j) => Number(j.obiekt_id));
+    if (!wybrane.length) wybrane = [0];
+
+    function renderSlotow() {
+      wyczysc(sloty);
+      if (wybrane.length && wybrane.at(-1)) wybrane.push(0);
+      wybrane.forEach((wartosc, indeks) => {
+        const select = h('select');
+        const opcje = [h('option', { value: 0 }, '— wybierz okręt —')];
+        for (const j of dane.jednostki) {
+          const id = Number(j.id);
+          const aktualnaFlota = dane.floty.find((z) => Number(z.id) === Number(j.flota_id));
+          const zajetaGdziesIndziej = j.flota_id && Number(j.flota_id) !== flotaId;
+          const duplikat = wybrane.some((inny, i) => i !== indeks && Number(inny) === id);
+          const stan = zajetaGdziesIndziej ? ` · już w: ${aktualnaFlota?.nazwa || 'innej flocie'}` : (Number(j.flota_id) === flotaId ? ' · w tej flocie' : ' · wolny');
+          opcje.push(h('option', { value: id, selected: id === Number(wartosc), disabled: zajetaGdziesIndziej || duplikat }, `${j.nazwa} · ${j.klasa || j.typ}${stan}`));
+        }
+        select.append(...opcje);
+        select.value = String(wartosc || 0);
+        select.addEventListener('change', () => { wybrane[indeks] = Number(select.value); renderSlotow(); });
+        sloty.append(h('label.mapa-gm-slot', h('span', indeks === 0 ? 'Okręt flagowy' : `Okręt ${indeks + 1}`), select));
+      });
+    }
+    renderSlotow();
+
     const zapisz = h('button.btn.glowny', { onclick: async () => {
-      await api('mg_flota_zapisz', { id: f.id, nazwa: nazwa.value, dowodca_login: dowodca.value });
-      const ids = [...czlonkowie.querySelectorAll('input[type=checkbox]:checked')].map((el) => Number(el.value));
-      const tie = {}, rola = {};
-      for (const el of czlonkowie.querySelectorAll('input[data-unit]')) {
-        const id = el.dataset.unit;
-        if (el.type === 'number') tie[id] = el.value;
-        else if (el.type !== 'checkbox') rola[id] = el.value;
-      }
-      await api('mg_flota_jednostki', { flota_id: f.id, jednostki: ids, tie, rola });
-      odswiez();
-    } }, 'Zapisz flotę i skład');
+      try {
+        const r = await api('mg_flota_zapisz', { id: f.id, nazwa: nazwa.value, dowodca_login: dowodca.value });
+        const ids = [...new Set(wybrane.filter(Boolean).map(Number))];
+        const tie = {}, rola = {};
+        const kolejnosc = {};
+        ids.forEach((id, index) => { const j = dane.jednostki.find((x) => Number(x.id) === id); tie[id] = j?.tie_liczba ?? ''; rola[id] = index === 0 ? 'okręt flagowy' : `okręt ${index + 1}`; kolejnosc[id] = index; });
+        await api('mg_flota_jednostki', { flota_id: f.id, jednostki: ids, tie, rola, kolejnosc });
+        wyczysc(status).append(msg('Zapisano skład floty.', 'sukces'));
+        await przeladuj(f.id);
+      } catch (e) { wyczysc(status).append(msg(e.message)); }
+    } }, 'Zapisz flotę');
+
     const nx = h('input', { type: 'number', step: '0.1', placeholder: 'X' }), ny = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
     const powod = h('input', { placeholder: 'Powód teleportacji sesyjnej' });
     const teleport = h('button.btn', { onclick: async () => {
-      const x = nx.value, y = ny.value;
-      if (x === '' || y === '') return glowna.prepend(msg('Podaj współrzędne docelowe.'));
-      await api('mg_mapa_teleport', { flota_id: f.id, x: Number(x), y: Number(y), powod: powod.value });
-      glowna.prepend(msg('Flota przeniesiona; operacja zapisana w dzienniku MG.', 'sukces'));
+      try {
+        if (nx.value === '' || ny.value === '') throw new Error('Podaj współrzędne docelowe.');
+        await api('mg_mapa_teleport', { flota_id: f.id, x: Number(nx.value), y: Number(ny.value), powod: powod.value });
+        wyczysc(status).append(msg('Flota przeniesiona; operacja zapisana w dzienniku MG.', 'sukces'));
+      } catch (e) { wyczysc(status).append(msg(e.message)); }
     } }, 'Teleportuj flotę');
     const konfiguracje = f.jednostki.map((j) => {
       const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
@@ -143,16 +179,16 @@ async function floty() {
         sprawnosc_reaktora: num('Stan reaktora %', j.sprawnosc_reaktora), sprawnosc_hipernapedu: num('Stan napędu %', j.sprawnosc_hipernapedu), szum_bazowy: num('Szum °', j.szum_bazowy, '0.01'),
       };
       const save = h('button.btn', { onclick: async () => {
-        const payload = { obiekt_id: j.id };
-        for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value);
-        await api('mg_naped_zapisz', payload); glowna.prepend(msg(`Zapisano napęd: ${j.nazwa}`, 'sukces'));
+        try { const payload = { obiekt_id: j.id }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.nazwa}`, 'sukces')); }
+        catch (e) { wyczysc(status).append(msg(e.message)); }
       } }, 'Zapisz napęd');
       return h('details', h('summary', `${j.nazwa} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
     });
-    glowna.append(h('section.karta', h('h2', f.nazwa), h('div.formularz', pole('Nazwa', nazwa), pole('Dowódca', dowodca)), h('h3', 'Skład floty'), czlonkowie, zapisz,
-      h('h3', 'Teleport GM'), h('p.slaby', 'Tylko na potrzeby sesji; przerywa aktywne skoki i zapisuje autora oraz powód.'), h('div.formularz', nx, ny, powod, teleport),
-      h('h3', 'Profile napędu'), ...konfiguracje));
+    wyczysc(widok).append(h('h2', f.nazwa), h('div.formularz', pole('Nazwa floty', nazwa), pole('Dowódca', dowodca)),
+      h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
+      h('div.formularz', nx, ny, powod, teleport), h('h3', 'Profile napędu'), ...konfiguracje);
   }
+  render();
 }
 
 // ---------- mapa: pozycje, jednostki i dostępy ----------

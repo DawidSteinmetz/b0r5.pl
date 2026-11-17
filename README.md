@@ -51,6 +51,7 @@ api/schema_v3.sql        historyczny fundament relacyjny v3
 api/schema_v4.sql        schemat całościowy v4 (nowa, pusta baza)
 api/schema_v5.sql        schemat całościowy v5 (nowa, pusta baza)
 api/schema_v6.sql        schemat całościowy v6: mapa, floty i nawigacja (nowa, pusta baza)
+api/schema_v7.sql        schemat całościowy v7: kolejność okrętów flot (nowa, pusta baza)
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/floty.php            dowodzenie flotami, podział grup i automatyczne skoki
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
@@ -70,11 +71,11 @@ bazy. Dla istniejącej bazy v4 po kopii zapasowej zaimportuj wyłącznie
 zgodnie z `archiwum/sql/README.md`. Migracja 004 dodaje relacyjne lokacje i most pozycji; migracja 005 dodaje uniwersalne obiekty mapy,
 udostępnienia pozycji oraz ISD I „Walako” dla GOV-5401 i ISB-2137.
 
-## Schemat SQL v6 — floty i nawigacja
+## Schemat SQL v7 — skład okrętów flot
 
-`api/schema_v6.sql` jest pełnym schematem dla nowej, pustej bazy. Przy działającej bazie v5
-zaimportuj wyłącznie `api/migracje/006_floty_i_nawigacja.sql`; nie importuj ponownie pełnego
-schematu. Migracja zakłada wcześniejszą migrację `005_uniwersalna_mapa.sql`.
+`api/schema_v7.sql` jest pełnym schematem dla nowej, pustej bazy. Baza z flotami v6 wymaga
+jednorazowego importu `api/migracje/007_kolejnosc_okretow_floty.sql`. Nie importuj pełnego
+schematu do działającej bazy.
 
 Dodatek tworzy Flotę Eskortową Havis III (2 Arquitensy i 6 Gozanti; każda Gozanti ma 4 standardowe
 TIE) oraz Flotę Zephyria z ISD I „Walako”. Liczba planetarnych myśliwców TIE Moffa Kirry pozostaje
@@ -86,6 +87,11 @@ lub pozycję widocznej jednostki. Skok liczy czas według ustawionego tempa gry,
 reaktora i hipernapędu, sprawności oraz paliwa; uszkodzenia zwiększają odchylenie wyjścia. Mapa
 rysuje trasę aktywnego skoku. Panel GM pozwala przenieść jednostkę albo flotę na sesję; każdy taki
 skok jest przerywany, a teleport trafia do dziennika `mapa_teleporty_mg`.
+
+Panel GM pozwala budować skład kolejno: okręt flagowy, okręt 2, okręt 3 itd. Selektor pokazuje,
+do której floty przypisany jest zajęty okręt, a API blokuje ponowne przydzielenie go do innego
+składu. Mapa pokazuje nazwy planet, postaci z rangą oraz flotę i jej dowódcę w krótkiej karcie
+po najechaniu kursorem.
 
 Runtime zapisuje i odczytuje pozycje z SQL, a równolegle utrzymuje ich kopię w dotychczasowym
 dokumencie `datapad_dane`, aby pozostałe moduły i starsze ścieżki ruchu działały podczas migracji.

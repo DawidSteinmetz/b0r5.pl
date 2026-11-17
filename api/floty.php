@@ -96,7 +96,10 @@ function floty_lista(string $login, bool $mg = false): array
     foreach ($all as $f) if ($mg || floty_czy_dowodca((int) $f['id'], $login)) $dozwolone[(int) $f['id']] = true;
     $out = [];
     $q = $db->prepare("SELECT o.id AS obiekt_id,o.kod AS obiekt_kod,o.nazwa AS obiekt_nazwa,o.typ,o.rodzaj,o.klasa,o.status AS stan,o.planeta_id,p.nazwa AS planeta,o.x,o.y,
-        j.flota_id,j.rola,j.kolejnosc,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,
+        j.flota_id,j.rola,j.kolejnosc,j.tie_liczba,
+        COALESCE(n.moc_reaktora,100) AS moc_reaktora,COALESCE(n.moc_hipernapedu,80) AS moc_hipernapedu,COALESCE(n.klasa_hipernapedu,1) AS klasa_hipernapedu,
+        COALESCE(n.predkosc_pc_na_godzine,1000) AS predkosc_pc_na_godzine,COALESCE(n.paliwo,100000) AS paliwo,COALESCE(n.paliwo_maks,100000) AS paliwo_maks,
+        COALESCE(n.paliwo_na_parsek,0.01) AS paliwo_na_parsek,COALESCE(n.sprawnosc_reaktora,100) AS sprawnosc_reaktora,COALESCE(n.sprawnosc_hipernapedu,100) AS sprawnosc_hipernapedu,COALESCE(n.szum_bazowy,0.05) AS szum_bazowy,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id

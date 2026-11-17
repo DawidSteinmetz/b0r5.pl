@@ -177,26 +177,28 @@ async function floty() {
       } catch (e) { wyczysc(status).append(msg(e.message)); }
     } }, 'Teleportuj flotę');
     const konfiguracje = f.jednostki.map((j) => {
-      const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
+        const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
       const vals = {
         moc_reaktora: num('Reaktor', j.moc_reaktora), moc_hipernapedu: num('Napęd', j.moc_hipernapedu), klasa_hipernapedu: num('Klasa', j.klasa_hipernapedu, '0.1'),
         predkosc_pc_na_godzine: num('pc/godz.', j.predkosc_pc_na_godzine), paliwo: num('Paliwo', j.paliwo), paliwo_maks: num('Max paliwa', j.paliwo_maks), paliwo_na_parsek: num('Paliwo/pc', j.paliwo_na_parsek, '0.001'),
         sprawnosc_reaktora: num('Stan reaktora %', j.sprawnosc_reaktora), sprawnosc_hipernapedu: num('Stan napędu %', j.sprawnosc_hipernapedu), szum_bazowy: num('Szum °', j.szum_bazowy, '0.01'),
       };
-      const save = h('button.btn', { onclick: async () => {
-        try { const payload = { obiekt_id: j.id }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.nazwa}`, 'sukces')); }
+      const save = h('button.btn', { type: 'button', onclick: async () => {
+        try { const payload = { obiekt_id: j.obiekt_id }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.obiekt_nazwa}`, 'sukces')); }
         catch (e) { wyczysc(status).append(msg(e.message)); }
       } }, 'Zapisz napęd');
-      return h('details', h('summary', `${j.nazwa} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
+      return h('details', h('summary', `${j.obiekt_nazwa || 'Jednostka'} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
     });
     const usunFlote = h('section.mapa-gm-usun-flote', h('h3', 'Usuń flotę'),
       h('p.slaby', 'Zwalnia okręty z tej floty i jej podgrup. Jednostki oraz historia rozkazów pozostaną w bazie.'),
-      h('button.btn.zly', { onclick: async () => {
+      h('button.btn.zly.mapa-gm-przycisk-usun', { type: 'button', onclick: async (ev) => {
+        const przycisk = ev.currentTarget;
+        przycisk.disabled = true;
         try {
           await api('mg_flota_usun', { id: f.id });
           await przeladuj(0);
           wyczysc(status).append(msg(`Usunięto flotę „${f.nazwa}”. Jej jednostki są wolne.`, 'sukces'));
-        } catch (e) { wyczysc(status).append(msg(e.message)); }
+        } catch (e) { przycisk.disabled = false; wyczysc(status).append(msg(e.message)); }
       } }, 'Usuń flotę i zwolnij jej jednostki'));
     wyczysc(widok).append(h('h2', f.nazwa), h('div.formularz', pole('Nazwa floty', nazwa), pole('Dowódca', dowodca)),
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),

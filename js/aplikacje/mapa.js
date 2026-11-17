@@ -428,6 +428,18 @@ export default {
       const wiersz = (k, v) => h('tr', h('th', k), h('td', v));
       const nieznane = (v, tekst) => (v ? tekst : 'brak danych');
       const zamknij = h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => wybierz(null) }, '×');
+      const postac = obiekt.obiekt?.typ === 'postac' ? obiekt.obiekt : null;
+      const planetaKontekstu = obiekt.planeta || (postac
+        ? P.find((p) => p.klucz === norm(postac.planeta))
+        : null);
+      const osobyNaPlanecie = planetaKontekstu
+        ? obiektyMapy.filter((o) => o.typ === 'postac' && norm(o.planeta) === planetaKontekstu.klucz)
+          .sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'))
+        : [];
+      const widoki = planetaKontekstu ? [{ planeta: planetaKontekstu }, ...osobyNaPlanecie.map((o) => ({ obiekt: o }))] : [];
+      const indeksWidoku = obiekt.planeta
+        ? 0
+        : postac ? widoki.findIndex((w) => w.obiekt?.id === postac.id) : -1;
       if (obiekt.obiekt) {
         const o = obiekt.obiekt;
         karta.append(zamknij, h('h2', o.nazwa),
@@ -470,6 +482,13 @@ export default {
           h('table.tabela',
             wiersz('Klasa', s.z <= 1 ? 'szlak główny' : s.z <= 3 ? 'szlak drugorzędny' : 'szlak lokalny'),
             wiersz('Długość', `${liczba(s.dl)} pc`)));
+      }
+      if (widoki.length > 1 && indeksWidoku >= 0) {
+        const etykieta = (widok) => widok.planeta ? `Planeta: ${widok.planeta.nazwa}` : widok.obiekt.nazwa;
+        karta.append(h('div.mapa-przelaczanie',
+          h('button.mapa-przelacz', { type: 'button', 'aria-label': 'Poprzednia karta', onclick: () => wybierz(widoki[(indeksWidoku - 1 + widoki.length) % widoki.length]) }, '‹'),
+          h('span', `${indeksWidoku + 1} / ${widoki.length} · ${etykieta(widoki[indeksWidoku])}`),
+          h('button.mapa-przelacz', { type: 'button', 'aria-label': 'Następna karta', onclick: () => wybierz(widoki[(indeksWidoku + 1) % widoki.length]) }, '›')));
       }
     }
 

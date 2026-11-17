@@ -100,8 +100,13 @@ async function floty() {
   const status = h('div');
   const widok = h('div');
   const nowaNazwa = h('input', { placeholder: 'Nazwa nowej floty' });
-  const nowyDowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...dane.konta.map((k) => h('option', { value: k.login }, `${k.postac} · ${k.login}`))]);
+  const opcjeNpc = () => [h('option', { value: '' }, 'Bez kapitana NPC'), ...dane.npc.map((n) => h('option', { value: n.id }, `${n.nazwa} · NPC`))];
+  const nowyDowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy gracza'), ...dane.konta.map((k) => h('option', { value: k.login }, `${k.postac} · ${k.login}`))]);
+  const nowyDowodcaNpc = h('select', opcjeNpc());
+  nowyDowodca.addEventListener('change', () => { if (nowyDowodca.value) nowyDowodcaNpc.value = ''; });
+  nowyDowodcaNpc.addEventListener('change', () => { if (nowyDowodcaNpc.value) nowyDowodca.value = ''; });
   const selektor = h('select');
+  const nazwyStatkow = new Map(dane.jednostki.map((j) => [Number(j.id), j.nazwa]));
 
   async function przeladuj(id = flotaId) {
     dane = await api('mg_floty');
@@ -110,9 +115,10 @@ async function floty() {
   }
 
   function render() {
-    wyczysc(glowna).append(h('h1', 'Edytor flot'), h('p.slaby', 'Każdy okręt może należeć tylko do jednej floty. Kolejne pola dodają okręty do składu w ustalonej kolejności.'),
+    wyczysc(glowna).append(h('h1', 'Edytor flot'), h('p.slaby', 'Każdy okręt może należeć tylko do jednej floty. Nazwy zmienisz tutaj dla składów flot, a dowolnego statku także w zakładce Mapa → Edytuj.'),
       h('section.karta', h('h2', 'Nowa flota'), nowaNazwa, nowyDowodca,
-        h('button.btn.glowny', { onclick: async () => { try { const r = await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value }); nowaNazwa.value = ''; await przeladuj(r.flota_id); } catch (e) { wyczysc(status).append(msg(e.message)); } } }, 'Utwórz flotę')),
+        pole('Kapitan NPC (opcjonalnie)', nowyDowodcaNpc),
+        h('button.btn.glowny', { onclick: async () => { try { const r = await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value, dowodca_osoba_id: Number(nowyDowodcaNpc.value || 0) }); nowaNazwa.value = ''; await przeladuj(r.flota_id); } catch (e) { wyczysc(status).append(msg(e.message)); } } }, 'Utwórz flotę')),
       h('section.karta', h('h2', 'Wybierz flotę'), pole('Flota', selektor), status, widok));
     wyczysc(selektor).append(...dane.floty.map((f) => h('option', { value: f.id, selected: Number(f.id) === flotaId }, f.nazwa)));
     selektor.onchange = () => { flotaId = Number(selektor.value); render(); };
@@ -122,6 +128,9 @@ async function floty() {
 
     const nazwa = h('input', { value: f.nazwa, maxlength: 160 });
     const dowodca = h('select', [h('option', { value: '' }, 'Bez dowódcy'), ...dane.konta.map((k) => h('option', { value: k.login, selected: k.login === f.dowodca_login }, `${k.postac} · ${k.login}`))]);
+    const dowodcaNpc = h('select', [h('option', { value: '' }, 'Bez kapitana NPC'), ...dane.npc.map((n) => h('option', { value: n.id, selected: Number(n.id) === Number(f.dowodca_osoba_id) }, `${n.nazwa} · NPC`))]);
+    dowodca.addEventListener('change', () => { if (dowodca.value) dowodcaNpc.value = ''; });
+    dowodcaNpc.addEventListener('change', () => { if (dowodcaNpc.value) dowodca.value = ''; });
     const sloty = h('div');
     const kolejnosc = [...f.jednostki].sort((a, b) => Number(a.kolejnosc || 0) - Number(b.kolejnosc || 0));
     let wybrane = kolejnosc.map((j) => Number(j.obiekt_id));
@@ -144,24 +153,27 @@ async function floty() {
         select.append(...opcje);
         select.value = String(wartosc || 0);
         select.addEventListener('change', () => { wybrane[indeks] = Number(select.value); renderSlotow(); });
+        const jednostka = dane.jednostki.find((j) => Number(j.id) === Number(wartosc));
+        const nazwaStatku = jednostka ? h('label', 'Nazwa statku', h('input', { maxlength: 160, value: nazwyStatkow.get(Number(wartosc)) || jednostka.nazwa, oninput: (ev) => nazwyStatkow.set(Number(wartosc), ev.currentTarget.value) })) : null;
         const usun = wartosc ? h('button.btn.zly', { type: 'button', onclick: () => {
           wybrane.splice(indeks, 1);
           if (!wybrane.length) wybrane = [0];
           renderSlotow();
         } }, 'Usuń z floty') : null;
-        sloty.append(h('div.mapa-gm-slot', h('span', indeks === 0 ? 'Okręt flagowy' : `Okręt ${indeks + 1}`), select, usun));
+        sloty.append(h('div.mapa-gm-slot', h('span', indeks === 0 ? 'Okręt flagowy' : `Okręt ${indeks + 1}`), select, nazwaStatku, usun));
       });
     }
     renderSlotow();
 
     const zapisz = h('button.btn.glowny', { onclick: async () => {
       try {
-        const r = await api('mg_flota_zapisz', { id: f.id, nazwa: nazwa.value, dowodca_login: dowodca.value });
+        const r = await api('mg_flota_zapisz', { id: f.id, nazwa: nazwa.value, dowodca_login: dowodca.value, dowodca_osoba_id: Number(dowodcaNpc.value || 0) });
         const ids = [...new Set(wybrane.filter(Boolean).map(Number))];
         const tie = {}, rola = {};
         const kolejnosc = {};
         ids.forEach((id, index) => { const j = dane.jednostki.find((x) => Number(x.id) === id); tie[id] = j?.tie_liczba ?? ''; rola[id] = index === 0 ? 'okręt flagowy' : `okręt ${index + 1}`; kolejnosc[id] = index; });
-        await api('mg_flota_jednostki', { flota_id: f.id, jednostki: ids, tie, rola, kolejnosc });
+        const nazwy = Object.fromEntries(ids.map((id) => [id, nazwyStatkow.get(id) || dane.jednostki.find((j) => Number(j.id) === id)?.nazwa || '']));
+        await api('mg_flota_jednostki', { flota_id: f.id, jednostki: ids, tie, rola, kolejnosc, nazwy });
         wyczysc(status).append(msg('Zapisano skład floty.', 'sukces'));
         await przeladuj(f.id);
       } catch (e) { wyczysc(status).append(msg(e.message)); }

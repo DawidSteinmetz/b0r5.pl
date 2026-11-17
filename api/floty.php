@@ -11,6 +11,8 @@ function floty_gotowe(): void
     }
     try { polaczenie_bazy()->query('SELECT kolejnosc FROM mapa_floty_jednostki LIMIT 0'); }
     catch (Throwable $e) { blad('Zaimportuj jeszcze api/migracje/007_kolejnosc_okretow_floty.sql.'); }
+    try { polaczenie_bazy()->query('SELECT dowodca_osoba_id FROM mapa_floty LIMIT 0'); }
+    catch (Throwable $e) { blad('Zaimportuj jeszcze api/migracje/009_flota_dromund_kaas.sql.'); }
 }
 
 function floty_dowodca(int $flotaId): ?string
@@ -19,12 +21,13 @@ function floty_dowodca(int $flotaId): ?string
     $seen = [];
     while ($flotaId > 0 && !isset($seen[$flotaId])) {
         $seen[$flotaId] = true;
-        $q = $db->prepare('SELECT dowodca_login,rodzic_id,status FROM mapa_floty WHERE id=?');
+        $q = $db->prepare('SELECT f.dowodca_login,f.dowodca_osoba_id,f.rodzic_id,f.status,p.nazwa AS npc_nazwa FROM mapa_floty f LEFT JOIN osoby o ON o.podmiot_id=f.dowodca_osoba_id LEFT JOIN podmioty p ON p.id=o.podmiot_id WHERE f.id=?');
         $q->execute([$flotaId]);
         $r = $q->fetch(PDO::FETCH_ASSOC);
         if (!$r) return null;
         if (($r['status'] ?? '') === 'nieaktywna') return null;
         if (trim((string) ($r['dowodca_login'] ?? '')) !== '') return (string) $r['dowodca_login'];
+        if (trim((string) ($r['npc_nazwa'] ?? '')) !== '') return (string) $r['npc_nazwa'] . ' (NPC)';
         $flotaId = (int) ($r['rodzic_id'] ?? 0);
     }
     return null;
@@ -91,7 +94,7 @@ function floty_lista(string $login, bool $mg = false): array
 {
     floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
-    $all = $db->query("SELECT id,kod,nazwa,dowodca_login,rodzic_id,status,opis FROM mapa_floty WHERE status<>'nieaktywna' ORDER BY nazwa")->fetchAll(PDO::FETCH_ASSOC);
+    $all = $db->query("SELECT f.id,f.kod,f.nazwa,f.dowodca_login,f.dowodca_osoba_id,p.nazwa AS dowodca_npc_nazwa,f.rodzic_id,f.status,f.opis FROM mapa_floty f LEFT JOIN osoby o ON o.podmiot_id=f.dowodca_osoba_id LEFT JOIN podmioty p ON p.id=o.podmiot_id WHERE f.status<>'nieaktywna' ORDER BY f.nazwa")->fetchAll(PDO::FETCH_ASSOC);
     $dozwolone = [];
     foreach ($all as $f) if ($mg || floty_czy_dowodca((int) $f['id'], $login)) $dozwolone[(int) $f['id']] = true;
     $out = [];
@@ -291,7 +294,8 @@ function obsluz_floty(string $akcja, bool $post): void
             $jednostki = polaczenie_bazy()->query("SELECT o.id,o.kod,o.nazwa,o.typ,o.rodzaj,o.klasa,o.status,o.x,o.y,j.flota_id,j.rola,j.kolejnosc,j.tie_liczba,n.moc_reaktora,n.moc_hipernapedu,n.klasa_hipernapedu,n.predkosc_pc_na_godzine,n.paliwo,n.paliwo_maks,n.sprawnosc_reaktora,n.sprawnosc_hipernapedu,n.szum_bazowy,n.paliwo_na_parsek
                 FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki j ON j.obiekt_id=o.id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
                 WHERE o.aktywny=1 AND o.typ IN ('statek','jednostka','pojazd') ORDER BY o.nazwa")->fetchAll(PDO::FETCH_ASSOC);
-            odpowiedz(['floty' => floty_lista('', true), 'jednostki' => $jednostki,
+            $npc = polaczenie_bazy()->query("SELECT o.podmiot_id AS id,p.nazwa,o.rola FROM osoby o JOIN podmioty p ON p.id=o.podmiot_id WHERE p.status='aktywny' AND o.stan<>'polegly' ORDER BY p.nazwa")->fetchAll(PDO::FETCH_ASSOC);
+            odpowiedz(['floty' => floty_lista('', true), 'jednostki' => $jednostki, 'npc' => $npc,
                 'konta' => array_values(array_map(static fn($x) => ['login' => $x['login'], 'postac' => $x['postac']], array_filter(uzytkownicy(), static fn($x) => ($x['rola'] ?? '') !== 'mg')))]);
 
         case 'mg_flota_zapisz':
@@ -299,11 +303,14 @@ function obsluz_floty(string $akcja, bool $post): void
             wymagaj_mg(); $w = wejscie();
             $id = (int) ($w['id'] ?? 0); $nazwa = mb_substr(trim((string) ($w['nazwa'] ?? '')), 0, 160);
             $login = trim((string) ($w['dowodca_login'] ?? ''));
+            $npcId = (int) ($w['dowodca_osoba_id'] ?? 0);
             if ($nazwa === '') blad('Nazwa floty jest wymagana.');
+            if ($login !== '' && $npcId) blad('Wybierz dowódcę gracza albo kapitana NPC.');
             if ($login !== '' && !in_array(mb_strtolower($login), array_map('mb_strtolower', array_column(uzytkownicy(), 'login')), true)) blad('Nie ma takiego konta dowódcy.');
             $db = polaczenie_bazy();
-            if ($id) $db->prepare('UPDATE mapa_floty SET nazwa=?,dowodca_login=? WHERE id=?')->execute([$nazwa, $login ?: null, $id]);
-            else { $db->prepare('INSERT INTO mapa_floty (kod,nazwa,dowodca_login,opis) VALUES (?,?,?,?)')->execute(['flota-' . bin2hex(random_bytes(8)),$nazwa,$login ?: null,mb_substr(trim((string) ($w['opis'] ?? '')),0,4000) ?: null]); $id = (int) $db->lastInsertId(); }
+            if ($npcId) { $q=$db->prepare("SELECT COUNT(*) FROM osoby o JOIN podmioty p ON p.id=o.podmiot_id WHERE o.podmiot_id=? AND p.status='aktywny' AND o.stan<>'polegly'"); $q->execute([$npcId]); if (!(int)$q->fetchColumn()) blad('Nie ma takiego aktywnego NPC.'); }
+            if ($id) $db->prepare('UPDATE mapa_floty SET nazwa=?,dowodca_login=?,dowodca_osoba_id=? WHERE id=?')->execute([$nazwa, $login ?: null, $npcId ?: null, $id]);
+            else { $db->prepare('INSERT INTO mapa_floty (kod,nazwa,dowodca_login,dowodca_osoba_id,opis) VALUES (?,?,?,?,?)')->execute(['flota-' . bin2hex(random_bytes(8)),$nazwa,$login ?: null,$npcId ?: null,mb_substr(trim((string) ($w['opis'] ?? '')),0,4000) ?: null]); $id = (int) $db->lastInsertId(); }
             odpowiedz(['ok' => true, 'flota_id' => $id]);
 
         case 'mg_flota_usun':
@@ -356,6 +363,15 @@ function obsluz_floty(string $akcja, bool $post): void
                     if ($dowodca) {
                         $q = $db->prepare('INSERT IGNORE INTO mapa_obiekty_dostep (obiekt_id,konto_login) VALUES (?,?)');
                         foreach ($ids as $objectId) $q->execute([$objectId,$dowodca]);
+                    }
+                }
+                if ($ids && !empty($w['nazwy']) && is_array($w['nazwy'])) {
+                    $rename = $db->prepare('UPDATE mapa_obiekty SET nazwa=? WHERE id=? AND aktywny=1');
+                    foreach ($ids as $objectId) {
+                        if (!array_key_exists((string)$objectId, $w['nazwy']) && !array_key_exists($objectId, $w['nazwy'])) continue;
+                        $shipName = mb_substr(trim((string)($w['nazwy'][$objectId] ?? $w['nazwy'][(string)$objectId] ?? '')),0,160);
+                        if ($shipName === '') blad('Każdy przydzielony statek musi mieć nazwę.');
+                        $rename->execute([$shipName,$objectId]);
                     }
                 }
                 $db->commit();

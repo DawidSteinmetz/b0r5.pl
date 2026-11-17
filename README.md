@@ -53,6 +53,7 @@ api/schema_v5.sql        schemat całościowy v5 (nowa, pusta baza)
 api/schema_v6.sql        schemat całościowy v6: mapa, floty i nawigacja (nowa, pusta baza)
 api/schema_v7.sql        historyczny schemat całościowy v7
 api/schema_v8.sql        schemat całościowy v8: profile napędu eskorty (nowa, pusta baza)
+api/schema_v9.sql        schemat całościowy v9: NPC dowódcy i flota Dromund Kaas
 api/migracje/            kolejne, addytywne migracje schematu SQL
 api/floty.php            dowodzenie flotami, podział grup i automatyczne skoki
 api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
@@ -536,3 +537,7 @@ dostają kształt litery podstawowej.
 ## Schemat SQL v8 — napędy Arquitens i Gozanti
 
 `api/schema_v8.sql` jest pełnym schematem dla nowej, pustej bazy. Do działającej bazy po migracji 007 zaimportuj wyłącznie `api/migracje/008_profile_napedu_arquitens_gozanti.sql`. Migracja dopisuje brakujące profile napędu dla sześciu Gozanti i dwóch Arquitensów; istniejących ustawień napędu nie nadpisuje. Usunięcie floty w panelu MG zwalnia jej okręty i podgrupy, a same jednostki oraz historię ich rozkazów pozostawia w bazie.
+
+## Schemat SQL v9 — flota Dromund Kaas i kapitanowie NPC
+
+`api/schema_v9.sql` jest pełnym schematem dla nowej, pustej bazy. Działającą bazę po migracji 008 zaktualizuj przez import wyłącznie `api/migracje/009_flota_dromund_kaas.sql`. Migracja dodaje planetę Dromund Kaas (współrzędne przybliżone, obok Korribanu), kapitana NPC Rhalena Vosska i jego flotę: ISD I „Legacy”, dwa Arquitensy oraz sześć Gozanti z czterema standardowymi TIE każda. Edytor flot umożliwia wybranie kapitana NPC i zmianę nazw okrętów. W zakładce Mapa można edytować nazwy wszystkich jednostek, także tych nieprzydzielonych do flot.

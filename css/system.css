@@ -543,7 +543,7 @@ html.z-tlem #ekran::before {
 .mapa-flota-form { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .mapa-flota-form input, .mapa-flota-form select { min-width: 75px; flex: 1 1 80px; }
 .mapa-gm-jednostka { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-.mapa-gm-slot { display: grid; grid-template-columns: minmax(120px, 170px) minmax(220px, 1fr) auto; align-items: center; gap: 12px; margin: 8px 0; }
+.mapa-gm-slot { display: grid; grid-template-columns: minmax(120px, 170px) minmax(220px, 1fr) minmax(150px, 220px) auto; align-items: center; gap: 12px; margin: 8px 0; }
 .mapa-gm-slot span { color: var(--akcent); letter-spacing: .05em; }
 .mapa-gm-usun-flote { margin-top: 24px; padding: 14px; border: 1px solid var(--zly); border-radius: var(--promien); }
 @media (max-width: 620px) { .mapa-gm-slot { grid-template-columns: 1fr; gap: 6px; } }

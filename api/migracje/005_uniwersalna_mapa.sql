@@ -1,5 +1,5 @@
 -- Uniwersalna mapa obiektów i dostępów do ich położenia.
--- Wymaga schema.sql, migracji v2/v3 oraz 004_relacyjne_lokacje_i_pozycje.sql.
+-- Wymaga 001_podstawa.sql, migracji v2/v3 oraz 004_relacyjne_lokacje_i_pozycje.sql.
 -- Nie usuwa istniejących danych. Pozycje postaci synchronizuje API z datapad_pozycje_legacy.
 
 SET NAMES utf8mb4;

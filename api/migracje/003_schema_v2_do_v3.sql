@@ -1,5 +1,5 @@
 -- HOLOLINK: rozszerzenie fundamentu schema_v2 -> v3
--- Wymaga wcześniejszego importu api/schema.sql oraz archiwum/sql/schema_v2.sql.
+-- Wymaga wcześniejszego importu api/migracje/001_podstawa.sql oraz api/migracje/002_schema_v2.sql.
 -- MySQL 8.0.16+ / MariaDB 10.6+. Addytywne, nie usuwa ani nie nadpisuje danych v2.
 -- Można uruchamiać ponownie: tabele mają IF NOT EXISTS, słowniki INSERT IGNORE.
 -- Po imporcie sprawdź komunikaty phpMyAdmin i wpis schema_migracje.

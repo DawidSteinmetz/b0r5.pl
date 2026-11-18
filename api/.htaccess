@@ -3,3 +3,7 @@ RedirectMatch 404 /api/dane/
 <Files "konfiguracja-bazy.php">
   Require all denied
 </Files>
+# Skrypty SQL nie są zasobem publicznym (schemat, migracje, dane startowe mapy).
+<FilesMatch "\.sql$">
+  Require all denied
+</FilesMatch>

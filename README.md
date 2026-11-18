@@ -46,38 +46,56 @@ gm/wydarzenia.js         komponent wydarzeń osadzany w kilku zakładkach panelu
 api/karty.php            karta postaci: statystyki, reputacja, status, pozycja, notatnik
 api/ruch.php             przemieszczanie, przygotowanie statku, gotówka (bankomat, sklep)
 js/rdzen/scena.js        animacje tła: gwiazdy, skok, tunel, wyjście, planety
-api/schema.sql           schemat bazy danych (MySQL 8 / MariaDB 10.6)
-api/schema_v3.sql        historyczny fundament relacyjny v3
-api/schema_v4.sql        schemat całościowy v4 (nowa, pusta baza)
-api/schema_v5.sql        schemat całościowy v5 (nowa, pusta baza)
-api/schema_v6.sql        schemat całościowy v6: mapa, floty i nawigacja (nowa, pusta baza)
-api/schema_v7.sql        historyczny schemat całościowy v7
-api/schema_v8.sql        schemat całościowy v8: profile napędu eskorty (nowa, pusta baza)
-api/schema_v9.sql        schemat całościowy v9: NPC dowódcy i flota Dromund Kaas
-api/schema_v10.sql       schemat całościowy v10: swoboda postaci i radar bitew
-api/schema_v11.sql       schemat całościowy v11: okręty jako lokacje i pozycje NPC
-api/migracje/            kolejne, addytywne migracje schematu SQL
+api/schema.sql           pełny schemat dla nowej, pustej bazy — plik WYNIKOWY, nie edytować
+api/migracje/            źródło schematu: migracje 001… (001 = podstawa), addytywne
 api/floty.php            dowodzenie flotami, podział grup i automatyczne skoki
-api/mapa_seed.sql        dane startowe planet i szlaków w postaci poleceń SQL
+api/mapa_seed.sql        publiczna mapa: planety i szlaki (wbudowana w api/schema.sql po 001)
 api/dane/                źródło importu z wcześniejszych wersji (poza gitem)
 gm/                      panel MG: konta, dokumenty, holonet, frakcje, harmonogram
 assets/czcionki/         czcionka Aurebesh
 narzedzia/czcionka/      generator czcionki Aurebesh
+narzedzia/sql/           budowa api/schema.sql z migracji i raport migracji JSON → SQL
 ```
 
 Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w jakiej są w repo.
 
+## Baza danych SQL
+
+Docelowo cały stan gry leży w tabelach SQL, a dokumenty JSON w `datapad_dane` znikają moduł
+po module. Schemat jest celowo rozległy: tabele bez kodu to fundament pod przyszłe moduły.
+
+- **Bazę na serwerze zmienia się wyłącznie w phpMyAdmin** (Import pliku `.sql`). Pliki SQL
+  wgrane na serwer leżą tam tylko archiwalnie; serwer sam niczego z nich nie wykonuje.
+- **Źródłem schematu są migracje** w `api/migracje/` (`001_podstawa.sql`, `002_…`, kolejne numery
+  bez luk). Każda zmiana schematu to nowa migracja; starych migracji się nie edytuje.
+- `api/schema.sql` to **plik wynikowy**: wszystkie migracje po kolei, do importu do nowej, pustej
+  bazy. Po dodaniu migracji: `node narzedzia/sql/zbuduj.js` (sprawdzenie: `--sprawdz`).
+- **Działającą bazę** aktualizuje się tylko kolejnymi migracjami, po kopii zapasowej.
+- **Postęp przenoszenia JSON → SQL:** `node narzedzia/sql/stan.js` tworzy
+  `narzedzia/sql/STAN.md` (które dokumenty JSON są jeszcze używane i które tabele już mają kod).
+- Pliki `.sql` są zablokowane dla przeglądarki (`api/.htaccess`).
+- `api/schema.sql` zawiera też publiczną mapę z `api/mapa_seed.sql` (zaraz po 001), bo kolejne
+  migracje odwołują się do planet. Mapa zawiera Havis III (id 2538), więc Dromund Kaas z migracji
+  009 dostaje id 2539 — tak jak w bazie na serwerze.
+- **Prywatne paczki danych** (np. planety Severiana, Nar Shaddaa) leżą w `archiwum/sql/` poza
+  gitem, bo repo jest publiczne. Odtworzenie bazy od zera: `api/schema.sql`, potem te paczki
+  w kolejności dat — wszystko importem w phpMyAdmin. Najprościej i najpewniej: import
+  najnowszego zrzutu phpMyAdmin z `_kopia/` (też poza gitem), który zawiera schemat i dane.
+- Skrypty `api/importuj_mape.php` i `api/importuj_dane.php` to narzędzia lokalne (CLI), nie część
+  wdrożenia. `importuj_mape.php` tylko **dopisuje brakujące** planety i niczego nie kasuje.
+- Dawne pełne migawki `schema_v3` … `schema_v12` są w historii gita; `api/schema.sql` ma te same
+  polecenia co `schema_v12.sql`, plus mapę.
+
 ## Schemat SQL v5 — mapa obiektów i udostępnianie pozycji
 
-`api/schema_v5.sql` zawiera komplet skryptów dla nowej, pustej bazy. Nie importuj go do działającej
-bazy. Dla istniejącej bazy v4 po kopii zapasowej zaimportuj wyłącznie
+Stan v5 odpowiada migracjom do 005 (pełny schemat: `api/schema.sql`). Dla istniejącej bazy v4 po kopii zapasowej zaimportuj wyłącznie
 `api/migracje/005_uniwersalna_mapa.sql`. Baza ze starszym schematem wymaga wcześniejszych migracji
 zgodnie z `archiwum/sql/README.md`. Migracja 004 dodaje relacyjne lokacje i most pozycji; migracja 005 dodaje uniwersalne obiekty mapy,
 udostępnienia pozycji oraz ISD I „Walako” dla GOV-5401 i ISB-2137.
 
 ## Schemat SQL v7 — skład okrętów flot
 
-`api/schema_v7.sql` jest pełnym schematem dla nowej, pustej bazy. Baza z flotami v6 wymaga
+Stan v7 odpowiada migracjom do 007 (pełny schemat: `api/schema.sql`). Baza z flotami v6 wymaga
 jednorazowego importu `api/migracje/007_kolejnosc_okretow_floty.sql`. Nie importuj pełnego
 schematu do działającej bazy.
 
@@ -490,8 +508,8 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 Najpierw utwórz bazę SQL, wykonaj `api/schema.sql`, skopiuj
 `api/konfiguracja-bazy.example.php` do `api/konfiguracja-bazy.php` i wpisz dane bazy.
-Następnie uruchom `php api/importuj_mape.php`. Jeśli przenosisz istniejącą instalację, uruchom również
-`php api/importuj_dane.php` przed pierwszym wejściem graczy.
+Mapa jest już w `api/schema.sql`. Lokalną kopię bazy z serwera najłatwiej odtworzyć, importując
+zrzut phpMyAdmin z `_kopia/`.
 
 ```bash
 php -S 127.0.0.1:8080
@@ -502,14 +520,16 @@ Przy pierwszym wejściu panel MG pozwala założyć konto MG. W panelu MG zakła
 
 ## Wdrożenie na b0r5.pl
 
-1. Wgrać zawartość repo do korzenia domeny, **bez ruszania `/_/` i `/__/`**.
+1. Wgrać zawartość repo do korzenia domeny, **bez ruszania `/_/` i `/__/`**. Nie wgrywać
+   `_kopia/` (zrzuty bazy z hashami haseł).
 2. Utworzyć bazę MySQL 8.0+ lub MariaDB 10.6+ i włączyć rozszerzenie PHP PDO MySQL.
 3. Utworzyć plik `api/konfiguracja-bazy.php` na serwerze, kopiując
    `api/konfiguracja-bazy.example.php`; wpisać host, nazwę bazy, użytkownika i hasło z panelu.
    Plik jest wykluczony z gita. Nie umieszczać go w publicznym repozytorium.
-4. Wykonać `api/schema.sql`, a następnie uruchomić `php api/importuj_mape.php` z katalogu repo.
-   Przy przenoszeniu istniejącej instalacji uruchomić także `php api/importuj_dane.php`.
-   Po sprawdzeniu importu wykonaj kopię zapasową, a potem usuń stare pliki serwerowe.
+4. **Tylko dla nowej, pustej bazy:** wykonać `api/schema.sql` (zawiera mapę). Działającej bazy nie
+   ruszać — aktualizuje się ją wyłącznie kolejnymi migracjami, po kopii zapasowej.
+   Zmiany w działającej bazie: phpMyAdmin → Eksport (kopia do `_kopia/`), potem phpMyAdmin →
+   Import pliku nowej migracji z `api/migracje/`. Migracja zapisuje się w tabeli `schema_migracje`.
 5. Wejść na `/gm/`, założyć konto MG, potem konta graczy.
 6. Na tabletach: Chrome → „Dodaj do ekranu głównego”. Uruchomiony z ikony datapad działa na
    pełnym ekranie, bez paska przeglądarki.
@@ -538,20 +558,20 @@ dostają kształt litery podstawowej.
 
 ## Schemat SQL v8 — napędy Arquitens i Gozanti
 
-`api/schema_v8.sql` jest pełnym schematem dla nowej, pustej bazy. Do działającej bazy po migracji 007 zaimportuj wyłącznie `api/migracje/008_profile_napedu_arquitens_gozanti.sql`. Migracja dopisuje brakujące profile napędu dla sześciu Gozanti i dwóch Arquitensów; istniejących ustawień napędu nie nadpisuje. Usunięcie floty w panelu MG zwalnia jej okręty i podgrupy, a same jednostki oraz historię ich rozkazów pozostawia w bazie.
+Stan v8 odpowiada migracjom do 008 (pełny schemat: `api/schema.sql`). Do działającej bazy po migracji 007 zaimportuj wyłącznie `api/migracje/008_profile_napedu_arquitens_gozanti.sql`. Migracja dopisuje brakujące profile napędu dla sześciu Gozanti i dwóch Arquitensów; istniejących ustawień napędu nie nadpisuje. Usunięcie floty w panelu MG zwalnia jej okręty i podgrupy, a same jednostki oraz historię ich rozkazów pozostawia w bazie.
 
 ## Schemat SQL v9 — flota Dromund Kaas i kapitanowie NPC
 
-`api/schema_v9.sql` jest pełnym schematem v9 dla nowej, pustej bazy. Działającą bazę po migracji 008 zaktualizuj przez import `api/migracje/009_flota_dromund_kaas.sql`. Ta migracja dodaje planetę Dromund Kaas, kapitana NPC Rhalena Vosska i flotę ISD I „Legacy”, dwa Arquitensy oraz sześć Gozanti z czterema standardowymi TIE każda.
+Stan v9 odpowiada migracjom do 009 (pełny schemat: `api/schema.sql`). Działającą bazę po migracji 008 zaktualizuj przez import `api/migracje/009_flota_dromund_kaas.sql`. Ta migracja dodaje planetę Dromund Kaas, kapitana NPC Rhalena Vosska i flotę ISD I „Legacy”, dwa Arquitensy oraz sześć Gozanti z czterema standardowymi TIE każda.
 
 ## Schemat SQL v10 — radar planetarny i bitwy
 
-`api/schema_v10.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę z wcześniejszym schematem aktualizuj przez import `api/migracje/010_radar_bitwy_i_swoboda.sql`. Migracja dodaje status swobody postaci, rejestr aktywnych bitew wraz z uczestnikami i stronami oraz pole `ukryty_za_ksiezycem` zarezerwowane na później. Panel MG ma zakładkę „Bitwy / radar” do rozpoczynania i kończenia starć oraz przypisywania uczestników i stron. Swoboda postaci jest ustawiana w zakładce „Mapa”. Swobodna postać na planecie widzi jej jednostki orbitalne; podczas bitwy widzi na mapie uczestników wszystkich stron. Więzień i postać nieprzytomna nie otrzymują tych dodatkowych danych. Pole ukrycia za księżycem nie jest jeszcze używane. Mapa odświeża pozycje co 15 sekund.
+Stan v10 odpowiada migracjom do 010 (pełny schemat: `api/schema.sql`). Bazę z wcześniejszym schematem aktualizuj przez import `api/migracje/010_radar_bitwy_i_swoboda.sql`. Migracja dodaje status swobody postaci, rejestr aktywnych bitew wraz z uczestnikami i stronami oraz pole `ukryty_za_ksiezycem` zarezerwowane na później. Panel MG ma zakładkę „Bitwy / radar” do rozpoczynania i kończenia starć oraz przypisywania uczestników i stron. Swoboda postaci jest ustawiana w zakładce „Mapa”. Swobodna postać na planecie widzi jej jednostki orbitalne; podczas bitwy widzi na mapie uczestników wszystkich stron. Więzień i postać nieprzytomna nie otrzymują tych dodatkowych danych. Pole ukrycia za księżycem nie jest jeszcze używane. Mapa odświeża pozycje co 15 sekund.
 
 ## Schemat SQL v11 — okręty jako lokacje
 
-`api/schema_v11.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę v10 aktualizuj przez import `api/migracje/011_okrety_jako_lokacje.sql`. W panelu MG, przy ustawianiu pozycji, lokacją można wybrać okręt albo flotę; flota ustawia postać na swoim pierwszym okręcie (domyślnie flagowym). Można też wskazać NPC z SQL. Pozycje graczy i NPC na pokładzie podążają za okrętem na mapie.
+Stan v11 odpowiada migracjom do 011 (pełny schemat: `api/schema.sql`). Bazę v10 aktualizuj przez import `api/migracje/011_okrety_jako_lokacje.sql`. W panelu MG, przy ustawianiu pozycji, lokacją można wybrać okręt albo flotę; flota ustawia postać na swoim pierwszym okręcie (domyślnie flagowym). Można też wskazać NPC z SQL. Pozycje graczy i NPC na pokładzie podążają za okrętem na mapie.
 
 ## Schemat SQL v12 — dostęp do planet zastrzeżonych
 
-`api/schema_v12.sql` jest pełnym schematem dla nowej, pustej bazy. Bazę v11 aktualizuj migracją `api/migracje/012_planety_widocznosc_konta.sql`. Zastrzeżone planety są zwracane na mapie i w API tylko wskazanym loginom oraz MG.
+Stan v12 odpowiada migracjom do 012 (pełny schemat: `api/schema.sql`). Bazę v11 aktualizuj migracją `api/migracje/012_planety_widocznosc_konta.sql`. Zastrzeżone planety są zwracane na mapie i w API tylko wskazanym loginom oraz MG.

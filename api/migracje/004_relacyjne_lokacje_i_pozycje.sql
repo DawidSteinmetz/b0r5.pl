@@ -1,5 +1,5 @@
 -- HOLOLINK: etap 1 migracji danych JSON -> SQL
--- Wymaga api/schema.sql oraz api/migracje/002_schema_v2.sql.
+-- Wymaga api/migracje/001_podstawa.sql oraz api/migracje/002_schema_v2.sql.
 -- Bezpieczne do ponownego uruchomienia; nie kasuje datapad_dane ani danych postaci.
 -- Pozycje zapisuje przejściowo pod dotychczasowym tekstowym UID. Gdy konta zostaną
 -- przeniesione do tabel konta/postacie, wpisy przejdą do postacie_pozycja.

@@ -2,7 +2,7 @@
 -- HOLOLINK — schemat docelowy v2 (relacyjny)
 -- MySQL 8.0.16+ / MariaDB 10.6+ (wymagane CHECK i klucze obce).
 --
--- Dopisuje tabele do istniejącego schema.sql. Nie rusza datapad_dane,
+-- Dopisuje tabele do istniejącej bazy z 001_podstawa.sql. Nie rusza datapad_dane,
 -- mapa_planety ani mapa_szlaki: datapad_dane zostaje jako archiwum
 -- dokumentów do czasu migracji modułów, planety i szlaki są już relacyjne.
 -- Skrypt jest powtarzalny (CREATE TABLE IF NOT EXISTS).

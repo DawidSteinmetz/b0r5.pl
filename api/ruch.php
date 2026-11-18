@@ -6,8 +6,8 @@
 // jakością obsługi (hangar 1–5), zapasem paliwa, ofertą sklepu. Budynki firm z x, y też są
 // lokacjami. Gracz zna: lokacje publiczne, budynki swoich firm i „znane miejsca” z karty.
 //
-// CZAS. Podróże liczone są w minutach świata gry. Licznik na tablecie biegnie szybciej:
-// „tempo” (ustawienie MG) to liczba sekund rzeczywistych na minutę świata (domyślnie 1).
+// CZAS. Podróże liczone są w minutach świata gry, a czas świata płynie 1:1 z rzeczywistym
+// (api/czas.php). MG przyspiesza pojedyncze procesy przez resynchronizację, nie globalnym tempem.
 //
 // KLUCZE LOKACJI: l:<id> (katalog), b:<id firmy>:<id budynku>, s:<id firmy>:<id statku> (pokład).
 
@@ -264,10 +264,6 @@ function mapa_obiekty_mg(): array
     return $rows;
 }
 
-function ruch_tempo(): float
-{
-    return max(0.05, min(60, (float) (wczytaj('katalog', [])['ustawienia']['tempo'] ?? 1)));
-}
 
 // Wszystkie lokacje (katalog + budynki firm), klucz => dane.
 function ruch_lokacje(): array
@@ -575,7 +571,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             $gdzie = ruch_gdzie($karta, $lok);
             $bank = wczytaj('bank', ['konta' => []]);
             $wynik = [
-                'tempo' => ruch_tempo(), 'gotowka' => (int) ($karta['gotowka'] ?? 0), 'saldo' => $bank['konta'][$u['id']]['saldo'] ?? 0,
+                'gotowka' => (int) ($karta['gotowka'] ?? 0), 'saldo' => $bank['konta'][$u['id']]['saldo'] ?? 0,
                 'podroz' => $karta['podroz'] ?? null, 'teraz' => time(), 'gdzie' => $gdzie, 'planeta' => null, 'miejsca' => [], 'statki' => [], 'pojazdy' => [],
             ];
             if ($gdzie) {
@@ -671,7 +667,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                     if ($wyn !== 'ok') blad('Karta odrzucona: brak środków.');
                 }
             }
-            $sekundy = max(3, (int) round($wybor['minuty'] * ruch_tempo()));
+            $sekundy = czas_trwania($wybor['minuty']);
             zmien('karty', function (&$k) use ($u, $cel, $wybor, $sekundy) {
                 $k[$u['id']]['podroz'] = [
                     'cel' => $cel['klucz'], 'cel_nazwa' => $cel['nazwa'], 'planeta' => $cel['planeta'],
@@ -772,7 +768,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                             if ($wyn !== 'ok') blad('Rachunek firmy nie pokrywa kosztu paliwa (' . $o['koszt'] . ' kr).');
                         }
                         $s['paliwo'] = 100;
-                        $s['przygotowanie'] = ['start' => time(), 'gotowy' => time() + max(3, (int) round($o['minuty'] * ruch_tempo())), 'minuty' => $o['minuty']];
+                        $s['przygotowanie'] = ['start' => time(), 'gotowy' => time() + czas_trwania($o['minuty']), 'minuty' => $o['minuty']];
                         return $o + ['gotowy' => $s['przygotowanie']['gotowy']];
                     }
                 }

@@ -4,6 +4,7 @@
 import { h, wyczysc } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 import { panelWydarzen } from './wydarzenia.js';
+import { panelCzasu } from './czas.js';
 
 const FRAKCJE = ['Rebelia', 'Imperium', 'Syndykat'];
 const glowna = document.getElementById('glowna');
@@ -81,7 +82,7 @@ function zalozMG() {
 function panel(u) {
   document.getElementById('kto').textContent = 'Zalogowano: ' + u.login;
   menu.hidden = false;
-  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', bitwy: 'Bitwy / radar', floty: 'Floty', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
+  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', bitwy: 'Bitwy / radar', floty: 'Floty', czas: 'Czas', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
   const rysujMenu = () => wyczysc(menu).append(
     ...Object.entries(zakladki).map(([k, n]) => h('button' + (k === biezaca ? '.on' : ''), { onclick: () => { biezaca = k; rysujMenu(); otworz(); } }, n)),
     h('button', { onclick: async () => { await api('wyloguj', {}); location.reload(); } }, 'Wyloguj'));
@@ -91,7 +92,7 @@ function panel(u) {
 
 function otworz() {
   wyczysc(glowna);
-  ({ stan: stanPostaci, karty: kartyPostaci, mapa, bitwy: bitwyRadar, floty, konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+  ({ stan: stanPostaci, karty: kartyPostaci, mapa, bitwy: bitwyRadar, floty, czas: () => panelCzasu(glowna), konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
 }
 
 async function floty() {
@@ -475,7 +476,6 @@ async function katalog() {
   const pl = Object.fromEntries(k.planety.map((p) => [p.id, p.nazwa]));
   const oferty = h('textarea', { style: 'min-height:200px' }, JSON.stringify(k.oferty.map((o) => ({ ...o, planeta: pl[o.planeta] || '' })), null, 2));
   const lokacje = h('textarea', { style: 'min-height:260px' }, JSON.stringify((k.lokacje || []).map((l) => ({ ...l, planeta: pl[l.planeta] || '' })), null, 2));
-  const tempo = h('input', { type: 'number', min: 0.05, max: 60, step: 0.05, value: k.ustawienia?.tempo ?? 1, style: 'max-width:140px' });
   const info = h('div');
   const spolki = (k.spolki || []).map((s) => ({ ...s }));
   const npc = (k.npc || []).map((n) => ({ ...n }));
@@ -531,14 +531,14 @@ async function katalog() {
     h('label', 'Lokacje — miejsca na planetach, do których postacie mogą się przemieszczać: nazwa, planeta, typ (hangar, platforma, port, hotel, bankomat, sklep, kantyna, biuro, garaz, inne; lądowiska: hangar, platforma, port), '
       + 'x i y (km na mapie planety), publiczna (true = każdy zna; false = tylko postacie z „znane miejsca” w karcie). Hangar: jakosc 1–5 (szybkość obsługi), paliwo (zapas w %; brak = bez ograniczeń), cena_paliwa (kr za 1%). '
       + 'Sklep: oferta [{"nazwa": "...", "cena": 0}]. Budynki firm z x i y są lokacjami automatycznie.', lokacje), h('br'),
-    h('label', 'Tempo czasu: sekundy rzeczywiste na minutę świata gry (1 = 30-minutowy przejazd trwa 30 s). Planety: urbanizacja brak / niska / wysoka (taksówki), taksowka = kr za km.', tempo), h('br'),
+    h('p.slaby', 'Czas świata płynie 1:1 z rzeczywistym; pojedyncze procesy przyspiesza się w zakładce Czas. Planety: urbanizacja brak / niska / wysoka (taksówki), taksowka = kr za km.'),
     h('label', 'Rynek nieruchomości — oferty budynków do kupienia przez firmy (nazwa, typ, planeta po nazwie, wspolrzedne, powierzchnia w m², pietra nad ziemią, szyby = poziomy pod ziemią, cena, pojemnosc, pensja na pracownika, opis). Kupiona oferta znika.', oferty), h('br'),
     h('div.rzad',
       btn('Zapisz katalog', async () => {
         try {
           await api('mg_katalog_zapisz', { towary: JSON.parse(towary.value), spolki: [...listaSpolek.children].map((x) => x._dane()),
             npc: [...listaSpolek.children].map((x) => x._npc()).filter((n) => n.imie.trim()),
-            planety: JSON.parse(planety.value), oferty: JSON.parse(oferty.value), lokacje: JSON.parse(lokacje.value), tempo: Number(tempo.value) });
+            planety: JSON.parse(planety.value), oferty: JSON.parse(oferty.value), lokacje: JSON.parse(lokacje.value) });
           wyczysc(glowna); await katalog();
           glowna.prepend(msg('Zapisano katalog.', 'ok'));
         } catch (e) {

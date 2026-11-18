@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **193**, z czego używane przez PHP: **20**
+- Tabele w `api/schema.sql`: **194**, z czego używane przez PHP: **21**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -12,10 +12,10 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 
 | Dokument | odczyty | zmiany | pliki PHP |
 |---|---:|---:|---|
-| `firmy` | 15 | 12 | agencja.php, bank.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php |
+| `firmy` | 16 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php |
 | `bank` | 5 | 21 | agencja.php, bank.php, firmy.php, gielda.php, handel.php, karty.php, ruch.php |
-| `karty` | 8 | 16 | karty.php, ruch.php |
-| `katalog` | 6 | 5 | firmy.php, gielda.php, ruch.php |
+| `karty` | 9 | 17 | czas.php, karty.php, ruch.php |
+| `katalog` | 5 | 5 | firmy.php, gielda.php, ruch.php |
 | `kanaly` | 5 | 5 | kanaly.php, wydarzenia.php |
 | `sceny` | 6 | 4 | karty.php, ruch.php, sceny.php |
 | `lacznosc` | 3 | 5 | ruch.php |
@@ -101,6 +101,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | rachunki | — | `rachunki`, `rachunki_waluty` |
 | raporty | — | `raporty_wywiadowcze`, `raporty_wiarygodnosc_historia` |
 | regiony | — | `regiony` |
+| resynchronizacje | `resynchronizacje` | — |
 | rozkazy | — | `rozkazy_mostka`, `rozkazy_mostka_zmiany` |
 | sceny | — | `sceny_postaci` |
 | schema | — | `schema_migracje` |

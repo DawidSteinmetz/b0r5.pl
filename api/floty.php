@@ -193,7 +193,7 @@ function floty_rozkaz(string $login, array $w): array
     $q->execute($odbiorcy);
     $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
     if (count($jednostki) !== count($odbiorcy)) blad('Brak pozycji lub parametrów napędu jednej z jednostek.');
-    $teraz = time(); $wyliczone = []; $najpozniej = $teraz;
+    $teraz = czas_teraz(); $wyliczone = []; $najpozniej = $teraz;
     foreach ($jednostki as $j) {
         if ($j['x'] === null || $j['y'] === null) blad('Jednostka „' . $j['nazwa'] . '” nie ma pozycji mapowej.');
         $aktywny = $db->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki WHERE obiekt_id=? AND status='w_nadprzestrzeni' LIMIT 1");
@@ -209,7 +209,7 @@ function floty_rozkaz(string $login, array $w): array
         $mnoznikMocy = min(1, $mocWzgl);
         $szybkosc = max(0.01, (float) $j['predkosc_pc_na_godzine']) / max(0.1, (float) $j['klasa_hipernapedu']) * $mnoznikMocy * max(0.1, $stanNapedu);
         $czasGryGodz = $dystans / $szybkosc;
-        $eta = $teraz + (int) ceil($czasGryGodz * 60 * ruch_tempo());
+        $eta = $teraz + czas_trwania($czasGryGodz * 60);
         $paliwoZuzyte = $dystans * (float) $j['paliwo_na_parsek'];
         if ((float) $j['paliwo'] < $paliwoZuzyte) blad('Jednostka „' . $j['nazwa'] . '” ma za mało paliwa.');
         $bladMax = max((float) $j['szum_bazowy'], 0) + (100 - min((int) $j['sprawnosc_reaktora'], (int) $j['sprawnosc_hipernapedu'])) * 0.3 + (1 - $mnoznikMocy) * 10;
@@ -225,12 +225,12 @@ function floty_rozkaz(string $login, array $w): array
     try {
         $kod = 'skok-' . bin2hex(random_bytes(8));
         $q = $db->prepare("INSERT INTO mapa_rozkazy_skokow (kod,wydajacy_login,flota_id,cel_obiekt_id,cel_x,cel_y,status,wydano_utc,eta_utc,opis)
-            VALUES (?,?,?,?,?,?,'w_nadprzestrzeni',UTC_TIMESTAMP(),FROM_UNIXTIME(?),?)");
-        $q->execute([$kod, $login, $flotaId ?: null, $celObiekt ?: null, $x, $y, gmdate('Y-m-d H:i:s', $najpozniej), 'Automatyczny skok: reaktor, moc hipernapędu i odchylenie nawigacyjne.']);
+            VALUES (?,?,?,?,?,?,'w_nadprzestrzeni',?,?,?)");
+        $q->execute([$kod, $login, $flotaId ?: null, $celObiekt ?: null, $x, $y, czas_utc($teraz), czas_utc($najpozniej), 'Automatyczny skok: reaktor, moc hipernapędu i odchylenie nawigacyjne.']);
         $rozkazId = (int) $db->lastInsertId();
         $q = $db->prepare("INSERT INTO mapa_rozkazy_skokow_jednostki (rozkaz_id,obiekt_id,start_x,start_y,wyjscie_x,wyjscie_y,planeta_id,kat_bledu,moc_wzgl,paliwo_zuzyte,eta_utc,status)
-            VALUES (?,?,?,?,?,?,?, ?,?,?,FROM_UNIXTIME(?),'w_nadprzestrzeni')");
-        foreach ($wyliczone as $j) $q->execute([$rozkazId,$j['id'],$j['x0'],$j['y0'],$j['x1'],$j['y1'],$celObiekt ? ($cel['planeta_id'] ?: null) : null,$j['kat'],$j['moc'],$j['paliwo'],gmdate('Y-m-d H:i:s', $j['eta'])]);
+            VALUES (?,?,?,?,?,?,?, ?,?,?,?,'w_nadprzestrzeni')");
+        foreach ($wyliczone as $j) $q->execute([$rozkazId,$j['id'],$j['x0'],$j['y0'],$j['x1'],$j['y1'],$celObiekt ? ($cel['planeta_id'] ?: null) : null,$j['kat'],$j['moc'],$j['paliwo'],czas_utc($j['eta'])]);
         $db->commit();
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();

@@ -59,6 +59,23 @@ narzedzia/sql/           budowa api/schema.sql z migracji i raport migracji JSON
 
 Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w jakiej są w repo.
 
+## Czas świata i resynchronizacja
+
+- Czas w grze płynie **1:1** z rzeczywistym. Jedno źródło czasu dla mechanik: `api/czas.php`
+  (`czas_teraz()`, `czas_trwania(minuty_swiata)`). Globalnego „tempa” już nie ma.
+- Procesy w czasie mają swój koniec liczony z reguł gry: **skok floty** (`mapa_rozkazy_skokow`),
+  **podróż postaci** i **obsługa naziemna statku**. Koniec rozlicza się leniwie, przy pierwszym
+  odczycie po terminie (bez crona).
+- **Resynchronizacja (ingerencja mocy):** panel MG → **Czas** pokazuje procesy w toku i pozwala
+  ustawić „zakończ za N minut” (także 0 = teraz albo dłużej niż wynika z reguł). Gracze widzą tylko
+  skutek, gra niczego nie tłumaczy — np. Walako ocenia skok na 3 h, a statek wychodzi po 5 min.
+  Każda ingerencja trafia do dziennika `resynchronizacje` (widzi go tylko MG).
+- Skok floty: wszystkie jednostki rozkazu dostają nowy termin w tej samej proporcji co wcześniej,
+  a pozycja na mapie przesuwa się zgodnie z nowym postępem.
+- Skok statku postaci z Nawigacji nie ma jeszcze wyliczonego czasu — nadal kończy go MG
+  („Zakończ skok” w Stanie postaci).
+- Wymaga migracji `api/migracje/013_czas_i_resynchronizacje.sql` (import w phpMyAdmin).
+
 ## Baza danych SQL
 
 Docelowo cały stan gry leży w tabelach SQL, a dokumenty JSON w `datapad_dane` znikają moduł
@@ -105,7 +122,7 @@ nieokreślona. Profile napędu startują jako sprawne, profesjonalne jednostki o
 zmienić ich reaktor, hipernapęd, paliwo, sprawność i szum bazowy.
 
 Dowódca może wybierać jednostki, dzielić flotę na grupy i wysyłać wybrane jednostki na współrzędne
-lub pozycję widocznej jednostki. Skok liczy czas według ustawionego tempa gry, dostępnej mocy
+lub pozycję widocznej jednostki. Skok liczy czas (1:1 z rzeczywistym) według dostępnej mocy
 reaktora i hipernapędu, sprawności oraz paliwa; uszkodzenia zwiększają odchylenie wyjścia. Mapa
 rysuje trasę aktywnego skoku. Panel GM pozwala przenieść jednostkę albo flotę na sesję; każdy taki
 skok jest przerywany, a teleport trafia do dziennika `mapa_teleporty_mg`.
@@ -415,8 +432,8 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
     i pozycją. Jeśli pojazd stoi gdzie indziej, najpierw trzeba do niego dojść, a potem jedzie
     razem z postacią. „Prowadzisz sam” zależy od umiejętności Pilotaż z karty (0 → wolno, 5 → szybko),
     „z kierowcą” od ukrytego pilotażu kierowcy z załogi firmy.
-- **Czas:** podróże liczone są w minutach świata. Licznik na tablecie biegnie w tempie z katalogu
-  (`tempo` = sekundy rzeczywiste na minutę świata; 1 = 30-minutowy przejazd trwa 30 s).
+- **Czas:** podróże liczone są w minutach świata, a czas świata płynie 1:1 z rzeczywistym
+  (30-minutowy przejazd trwa 30 minut). Szybciej tylko przez resynchronizację MG (sekcja „Czas świata”).
 - **Przygotuj statek do lotu:** dla statków firm postaci stojących w hangarze (`hangar`
   w edytorze firmy). Czas obsługi naziemnej = kontrola zależna od **jakości hangaru**
   (`jakosc` 1–5: 3 h … 40 min) + **tankowanie** brakującego paliwa (`paliwo` statku w %)

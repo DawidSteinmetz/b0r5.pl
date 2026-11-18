@@ -38,7 +38,7 @@ function katalog(): array
     $k = wczytaj('katalog', []);
     return ['towary' => $k['towary'] ?? [], 'planety' => $k['planety'] ?? [], 'oferty' => $k['oferty'] ?? [],
         'lokacje' => $k['lokacje'] ?? [], 'spolki' => $k['spolki'] ?? [], 'npc' => $k['npc'] ?? [],
-        'ustawienia' => $k['ustawienia'] ?? ['tempo' => 1]];
+        'ustawienia' => $k['ustawienia'] ?? []];
 }
 
 // Dane planety z listą widoczna_dla są dostępne wyłącznie wskazanym loginom i MG.
@@ -920,14 +920,13 @@ function obsluz_firmy(string $akcja, bool $post): void
                 $l['oferta'] = array_values(array_map(fn($o) => ['nazwa' => mb_substr((string) ($o['nazwa'] ?? '?'), 0, 80), 'cena' => max(0, (int) ($o['cena'] ?? 0))], (array) ($l['oferta'] ?? [])));
             }
             unset($l);
-            $tempo = max(0.05, min(60, (float) ($w['tempo'] ?? 1)));
             $instrumenty = gielda_towary_z_katalogu($towary, $gielda['instrumenty'], $gielda['gieldy']);
             $instrumenty = gielda_spolki_do_instrumentow($spolki, $instrumenty, $gielda['gieldy']);
             $nowaGielda = gielda_z_wejscia(['gieldy' => $gielda['gieldy'], 'instrumenty' => $instrumenty, 'ustawienia' => $gielda['ustawienia']]);
             zmien('gielda', function (&$g) use ($nowaGielda) { $g = $nowaGielda; }, []);
-            zmien('katalog', function (&$k) use ($towary, $planety, $oferty, $lokacje, $spolki, $npc, $tempo) {
+            zmien('katalog', function (&$k) use ($towary, $planety, $oferty, $lokacje, $spolki, $npc) {
                 $k = ['towary' => $towary, 'planety' => $planety, 'oferty' => $oferty, 'lokacje' => $lokacje,
-                    'spolki' => $spolki, 'npc' => $npc, 'ustawienia' => ['tempo' => $tempo]];
+                    'spolki' => $spolki, 'npc' => $npc, 'ustawienia' => $k['ustawienia'] ?? []];
             });
             firma_uzgodnij_spolki();
             odpowiedz(['ok' => true]);

@@ -167,18 +167,31 @@ function wielokat(g, pkt, r) {
 
 // Okno mostka ISD: ciemne poszycie z trzema oknami (środkowe — trapez rozszerzający się ku dołowi,
 // boczne — lustrzane, równoległe do jego skosów) i wielowarstwową, fazowaną ramą.
+// Geometria okien mostka. Poziomo: trzy okna (środkowe trapez, boczne lustrzane). Pionowo (telefon):
+// tylko środkowe okno na prawie całą szerokość, w tych samych proporcjach, wyśrodkowane w pionie —
+// nad i pod nim rośnie poszycie mostka.
+function geometriaOknaIsd(w, h) {
+  const sx = w / 2;
+  if (h > w) {
+    const pDol = w * 0.47, pGora = pDol * 0.563, wys = pDol * 2 * 0.6;
+    const gora = (h - wys) / 2, dol = gora + wys;
+    return { pion: true, gora, dol, okna: [[[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]]] };
+  }
+  const gora = h * 0.08, dol = h * 0.84;
+  const pGora = w * 0.2, pDol = w * 0.355, przerwa = w * 0.05, bok = w * 0.32;
+  return { pion: false, gora, dol, okna: [
+    [[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]],
+    [[sx - pGora - przerwa - bok, gora], [sx - pGora - przerwa, gora], [sx - pDol - przerwa, dol], [sx - pDol - przerwa - bok, dol]],
+    [[sx + pGora + przerwa, gora], [sx + pGora + przerwa + bok, gora], [sx + pDol + przerwa + bok, dol], [sx + pDol + przerwa, dol]],
+  ] };
+}
+
 function rysujOknoIsd(w, h, dpr) {
   const c = document.createElement('canvas');
   c.width = Math.max(1, w * dpr); c.height = Math.max(1, h * dpr);
   const g = c.getContext('2d');
   g.scale(dpr, dpr);
-  const gora = h * 0.08, dol = h * 0.84, sx = w / 2;
-  const pGora = w * 0.2, pDol = w * 0.355, przerwa = w * 0.05, bok = w * 0.32;
-  const okna = [
-    [[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]],
-    [[sx - pGora - przerwa - bok, gora], [sx - pGora - przerwa, gora], [sx - pDol - przerwa, dol], [sx - pDol - przerwa - bok, dol]],
-    [[sx + pGora + przerwa, gora], [sx + pGora + przerwa + bok, gora], [sx + pDol + przerwa + bok, dol], [sx + pDol + przerwa, dol]],
-  ];
+  const { gora, dol, okna } = geometriaOknaIsd(w, h);
   const r = Math.min(w, h) * 0.045;
   // poszycie
   const kad = g.createLinearGradient(0, 0, 0, h);
@@ -332,6 +345,14 @@ export function utworzScene(canvas) {
     }
   }
 
+  // Wysokość na ekranie dla ułamka „poziomego” projektu (okno 0,08–0,84 h). W pionie z oknem ISD
+  // liczona względem środkowego okna, żeby planeta i słońce nie chowały się pod poszyciem.
+  const yWidoku = (u) => {
+    if (stan.okno !== 'isd' || h <= w) return h * u;
+    const { gora, dol } = geometriaOknaIsd(w, h);
+    return gora + (u - 0.08) / 0.76 * (dol - gora);
+  };
+
   // Kierunki z mostka (stopnie w układzie mapy) liczone z `stan.widok` w danej chwili.
   function kierunki() {
     const v = stan.widok;
@@ -379,7 +400,7 @@ export function utworzScene(canvas) {
     if (!k || !lista?.length) return;
     for (const g of lista) {
       if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 2) continue;
-      const x = xKierunku(k.kurs, g.k), y = h * (0.42 - g.w * 0.3);
+      const x = xKierunku(k.kurs, g.k), y = yWidoku(0.42 - g.w * 0.3);
       const [r, gr, b] = g.rgb || ODCIENIE[g.o] || ODCIENIE[0];
       // Odległość pozorna (jasny olbrzym z daleka świeci jak bliska gwiazda).
       const d = g.de ?? g.d;
@@ -406,7 +427,7 @@ export function utworzScene(canvas) {
       const kier = k.slonce + (gw.przesuniecie || 0);
       if (Math.abs(norm180(kier - k.kurs)) > POLE_WIDZENIA / 2 + 15) continue;
       const [cr, cg, cb] = gw.rgb;
-      const x = xKierunku(k.kurs, kier), y = h * (0.3 + (gw.wysokosc || 0)), r = Math.min(w, h) * 0.022 * gw.rozmiar;
+      const x = xKierunku(k.kurs, kier), y = yWidoku(0.3 + (gw.wysokosc || 0)), r = Math.min(w, h) * 0.022 * gw.rozmiar;
       const R = Math.min(w, h) * 0.022 * 14 * gw.jasnosc;
       const g = ctx.createRadialGradient(x, y, 0, x, y, R);
       g.addColorStop(0, 'rgba(255, 253, 248, 1)'); g.addColorStop(0.07, `rgba(${cr}, ${cg}, ${cb}, 0.9)`);
@@ -458,7 +479,7 @@ export function utworzScene(canvas) {
       if (Math.abs(norm180(k.doPlanety - k.kurs)) > POLE_WIDZENIA / 2 + 40) return;
       cx = xKierunku(k.kurs, k.doPlanety);
     }
-    const cy = blisko ? h * 0.98 : h * 0.55;
+    const cy = blisko ? yWidoku(0.98) : yWidoku(0.55);
     const skala = 0.85 + 0.15 * pojawienie;
     const R = r * skala;
     if (cx + R * 1.3 < 0 || cx - R * 1.3 > w) return;

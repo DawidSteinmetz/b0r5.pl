@@ -630,6 +630,12 @@ export function utworzScene(canvas) {
     const swiatla = [];
     const horyzont = h * 0.58;
 
+    if (p.styl === 'pionowe' && (w < 20 || h < 20)) {
+      // Ukryte albo zwinięte tło (np. aplikacja na pełnym ekranie): nie budujemy miasta,
+      // bo krok wież liczony z szerokości byłby zerowy i pętle nigdy by się nie skończyły.
+      krajobraz = { klucz, plotno: c, swiatla, pionowe: true };
+      return;
+    }
     if (p.styl === 'pionowe') {
       // Pionowe miasto: warstwy wież od dalekich (jasnych od mgły) do bliskich (ciemnych, sięgających
       // ponad kadr), kładki między wieżami, okna i neony; nocą łuna miasta od dołu.
@@ -639,7 +645,7 @@ export function utworzScene(canvas) {
         const glebia = i / (p.teren.length - 1);
         const baza = mieszaj(kolor, mgla, (1 - glebia) * 0.55);
         g.fillStyle = noc() ? mieszaj(baza, '#05070d', ciemno * (0.4 + glebia * 0.5)) : baza;
-        const krok = w * (0.035 + glebia * 0.05);
+        const krok = Math.max(8, w * (0.035 + glebia * 0.05));
         for (let x = -krok * los(); x < w + krok; x += krok * (0.7 + los() * 0.9)) {
           const sz = krok * (0.55 + los() * 0.6);
           const gora = glebia > 0.6 ? -h * 0.1 : h * (0.08 + (1 - glebia) * 0.25 * los());
@@ -677,7 +683,7 @@ export function utworzScene(canvas) {
       g.fillStyle = noc() ? '#0b0c10' : '#2a2c31';
       g.fillRect(0, h * 0.86, w, h * 0.14);
       g.fillStyle = noc() ? '#16181d' : '#3a3d44';
-      for (let x = 0; x < w; x += w * 0.06) g.fillRect(x, h * 0.8, 3, h * 0.06);
+      for (let x = 0; x < w; x += Math.max(8, w * 0.06)) g.fillRect(x, h * 0.8, 3, h * 0.06);
       g.fillRect(0, h * 0.8, w, 3);
       krajobraz = { klucz, plotno: c, swiatla, pionowe: true };
       return;

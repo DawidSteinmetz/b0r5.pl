@@ -56,6 +56,7 @@ export async function panelCzasu(kontener) {
     h('p.slaby', 'Czas świata płynie 1:1 z rzeczywistym. Resynchronizacja (ingerencja mocy) przesuwa koniec jednego procesu: '
       + 'można go skrócić albo wydłużyć. Gracze widzą tylko skutek — gra niczego nie wyjaśnia.'),
     dane.dziennik_dostepny ? null : msg('Brak tabeli resynchronizacje: zaimportuj w phpMyAdmin api/migracje/013_czas_i_resynchronizacje.sql.'),
+    ...(dane.ostrzezenia || []).map((t) => msg(t + ' Zaimportuj brakujące pliki z api/migracje/ w phpMyAdmin.')),
     info,
     btn('Odśwież', odswiez),
     ...(dane.procesy.length ? dane.procesy.map(wiersz) : [h('p.slaby', 'Nic nie trwa.')]),

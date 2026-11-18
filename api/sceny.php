@@ -32,6 +32,26 @@ const PODEJSCIE_DALEKO_MIN = 5;
 const PODEJSCIE_SREDNIO_MIN = 15;
 const PODEJSCIE_KONIEC_MIN = 25;
 
+// Planeta, w której układzie leżą współrzędne (do 2 jednostek mapy), widoczna dla konta.
+function scena_planeta_przy(float $x, float $y): ?array
+{
+    if (!tabela_sql_dostepna('mapa_planety')) return null;
+    $gry = tabela_sql_dostepna('planety_gry');
+    $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa' . ($gry ? ', g.typ_planety' : '') . ' FROM mapa_planety p'
+        . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=p.id' : '')
+        . ' WHERE ABS(p.x-?) < 2 AND ABS(p.y-?) < 2 ORDER BY POW(p.x-?,2)+POW(p.y-?,2) LIMIT 1');
+    $q->execute([$x, $y, $x, $y]);
+    $p = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$p || !mapa_planeta_widoczna((int) $p['id'])) return null;
+    return ['nazwa' => (string) $p['nazwa'], 'typ' => (string) (($p['typ_planety'] ?? '') ?: 'skalista')];
+}
+
+// Okręt to ISD (okno mostka), jeśli klasa albo nazwa na to wskazuje.
+function scena_jest_isd(string $tekst): bool
+{
+    return (bool) preg_match('/imperial|\bisd\b|niszczyciel/i', $tekst);
+}
+
 function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
 {
     if (!function_exists('floty_orbita_dostepna') || !tabela_sql_dostepna('mapa_obiekty')
@@ -39,15 +59,20 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     if (tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
     $gry = tabela_sql_dostepna('planety_gry');
-    $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.przylot_utc,p.nazwa AS planeta' . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
+    $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.x,m.y,m.przylot_utc,p.nazwa AS planeta' . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
         FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id'
         . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=m.planeta_id' : '') . ' WHERE m.id=?');
     $q->execute([$okretId]);
     $o = $q->fetch(PDO::FETCH_ASSOC);
     if (!$o) return null;
+    // Okręt bez przypisanej planety, ale stojący w jej układzie (te same współrzędne): to ta planeta.
+    if (empty($o['planeta']) && empty($o['planeta_id'])) {
+        $pl = scena_planeta_przy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
+        if ($pl) { $o['planeta'] = $pl['nazwa']; $o['typ_planety'] = $pl['typ']; }
+    }
 
     $teraz = czas_teraz();
-    $isd = (bool) preg_match('/imperial|\bisd\b|niszczyciel/i', $o['klasa'] . ' ' . $o['nazwa']);
+    $isd = scena_jest_isd($o['klasa'] . ' ' . $o['nazwa']);
     $baza = ['okno' => $isd ? 'isd' : '', 'wnetrze' => '', 'opis' => (string) $o['nazwa']];
     $typ = (string) (($o['typ_planety'] ?? '') ?: 'skalista');
     $planeta = (string) ($o['planeta'] ?? '');
@@ -88,8 +113,21 @@ function scena_efektywna(string $uid): array
     $gdzie = ruch_gdzie($karta, ruch_lokacje());
     // Na pokładzie okrętu z SQL: scena ze stanu okrętu. Ręczna scena MG wygrywa, jeśli jest nowsza.
     if ($gdzie && !empty($gdzie['okret_id'])) {
-        $okret = scena_okretu((int) $gdzie['okret_id'], (int) ($karta['pozycja']['zmieniono'] ?? 0));
-        if ($okret) return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;
+        $zmianaPozycji = (int) ($karta['pozycja']['zmieniono'] ?? 0);
+        $okret = scena_okretu((int) $gdzie['okret_id'], $zmianaPozycji);
+        if (!$okret) {
+            // Bez migracji 015/016: pokład nigdy nie pokazuje powierzchni ani hangaru, tylko przestrzeń
+            // albo orbitę planety, przy której stoi okręt.
+            $pl = ($gdzie['planeta'] ?? '') !== '' ? ruch_planeta((string) $gdzie['planeta']) : null;
+            if (!$pl || ($pl['id'] ?? '') === '') {
+                $przy = scena_planeta_przy((float) ($gdzie['x'] ?? 0), (float) ($gdzie['y'] ?? 0));
+                $pl = $przy ? ['nazwa' => $przy['nazwa'], 'typ' => $przy['typ']] : null;
+            }
+            $okret = ['scena' => $pl ? 'orbita' : 'kosmos', 'planeta' => $pl['typ'] ?? 'skalista', 'odleglosc' => 'blisko',
+                'miejsce' => $pl['nazwa'] ?? 'Przestrzeń', 'opis' => (string) ($gdzie['nazwa'] ?? ''), 'wnetrze' => '',
+                'okno' => scena_jest_isd(($gdzie['klasa'] ?? '') . ' ' . ($gdzie['nazwa'] ?? '')) ? 'isd' : '', 'zmieniono' => $zmianaPozycji];
+        }
+        return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;
     }
     if ($gdzie && !ruch_w_locie($karta['pozycja']['lokacja'] ?? '')) {
         $pl = ruch_planeta($gdzie['planeta']);

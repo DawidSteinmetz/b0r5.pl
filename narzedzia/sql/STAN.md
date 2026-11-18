@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **194**, z czego używane przez PHP: **21**
+- Tabele w `api/schema.sql`: **195**, z czego używane przez PHP: **22**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -12,7 +12,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 
 | Dokument | odczyty | zmiany | pliki PHP |
 |---|---:|---:|---|
-| `firmy` | 16 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php |
+| `firmy` | 18 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php |
 | `bank` | 5 | 21 | agencja.php, bank.php, firmy.php, gielda.php, handel.php, karty.php, ruch.php |
 | `karty` | 9 | 17 | czas.php, karty.php, ruch.php |
 | `katalog` | 5 | 5 | firmy.php, gielda.php, ruch.php |
@@ -76,7 +76,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | lokalizacje | `lokalizacje` | — |
 | magazyn | — | `magazyn_partie` |
 | magazyny | — | `magazyny` |
-| mapa | `mapa_planety`, `mapa_szlaki`, `mapa_obiekty`, `mapa_obiekty_dostep`, `mapa_floty`, `mapa_floty_jednostki`, `mapa_naped_jednostki`, `mapa_rozkazy_skokow`, `mapa_rozkazy_skokow_jednostki`, `mapa_teleporty_mg`, `mapa_bitwy`, `mapa_bitwy_uczestnicy` | — |
+| mapa | `mapa_planety`, `mapa_szlaki`, `mapa_obiekty`, `mapa_obiekty_dostep`, `mapa_floty`, `mapa_floty_jednostki`, `mapa_naped_jednostki`, `mapa_rozkazy_skokow`, `mapa_rozkazy_skokow_jednostki`, `mapa_teleporty_mg`, `mapa_bitwy`, `mapa_bitwy_uczestnicy`, `mapa_wykrycia_skokow` | — |
 | misje | — | `misje`, `misje_jednostki`, `misje_osoby`, `misje_zmiany_magazynow` |
 | obiegi | — | `obiegi_automatow` |
 | odbiorcy | — | `odbiorcy_stali` |

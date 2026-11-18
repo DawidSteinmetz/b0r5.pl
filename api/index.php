@@ -25,6 +25,7 @@ require __DIR__ . '/floty.php';
 require __DIR__ . '/wydarzenia.php';
 require __DIR__ . '/gielda.php';
 require __DIR__ . '/czas.php';
+require __DIR__ . '/radar.php';
 
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'secure' => !empty($_SERVER['HTTPS'])]);
 session_name('dp_sesja');
@@ -54,7 +55,7 @@ function tabela_sql_dostepna(string $nazwa): bool
     static $cache = [];
     $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep',
         'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg',
-        'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje'];
+        'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje', 'mapa_wykrycia_skokow'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {

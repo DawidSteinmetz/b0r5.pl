@@ -6,7 +6,7 @@
 // z reguł gry. MG może ten koniec przesunąć — to resynchronizacja (ingerencja mocy). Gracze
 // widzą tylko skutek, bez wyjaśnienia; zapis trafia do dziennika `resynchronizacje` dla MG.
 //
-// Nowy rodzaj procesu: dopisz go w czas_procesy() (lista dla MG) i czas_przestaw() (zmiana końca),
+// Rodzaje: skok_floty, skok_statku, podroz, obsluga_statku. Nowy rodzaj procesu: dopisz go w czas_procesy() (lista dla MG) i czas_przestaw() (zmiana końca),
 // a w migracji do ENUM `resynchronizacje.rodzaj`.
 
 declare(strict_types=1);
@@ -56,6 +56,16 @@ function czas_procesy(): array
             $lista[] = ['rodzaj' => 'skok_floty', 'obiekt' => (string) $r['id'],
                 'opis' => 'Skok: ' . ($r['flota'] ?: ($r['jednostki'] ?: 'jednostka')),
                 'start' => czas_z_utc($r['wydano_utc']), 'koniec' => czas_z_utc($r['eta_utc'])];
+        }
+    }
+
+    foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
+        foreach ($f['dane']['flota'] ?? [] as $s) {
+            $p = $s['skok'] ?? null;
+            if (empty($s['cel']) || !$p || (int) $p['eta'] <= $teraz) continue;
+            $lista[] = ['rodzaj' => 'skok_statku', 'obiekt' => 's:' . $f['id'] . ':' . $s['id'],
+                'opis' => 'Skok: ' . $s['nazwa'] . ' (' . $f['nazwa'] . ') → ' . (ruch_planeta((string) $s['cel'])['nazwa'] ?? '?'),
+                'start' => (int) $p['start'], 'koniec' => (int) $p['eta']];
         }
     }
 
@@ -114,6 +124,14 @@ function czas_przestaw(string $rodzaj, string $obiekt, int $nowyKoniec): array
                 throw $e;
             }
             return [$przed, 'Skok rozkazu #' . $obiekt];
+
+        case 'skok_statku':
+            $statek = ruch_statek($obiekt);
+            if (!$statek || empty($statek['cel']) || empty($statek['skok'])) blad('Ten statek nie jest w skoku z wyliczonym czasem.');
+            $przed = (int) $statek['skok']['eta'];
+            ruch_zmien_statek($obiekt, function (&$s) use ($nowyKoniec) { $s['skok']['eta'] = $nowyKoniec; });
+            if ($nowyKoniec <= $teraz) ruch_wyjscie_ze_skoku($obiekt, $teraz);
+            return [$przed, 'Skok statku: ' . $statek['nazwa']];
 
         case 'podroz':
             return zmien('karty', function (&$k) use ($obiekt, $nowyKoniec, $teraz) {

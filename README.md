@@ -72,9 +72,18 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   Każda ingerencja trafia do dziennika `resynchronizacje` (widzi go tylko MG).
 - Skok floty: wszystkie jednostki rozkazu dostają nowy termin w tej samej proporcji co wcześniej,
   a pozycja na mapie przesuwa się zgodnie z nowym postępem.
-- Skok statku postaci z Nawigacji nie ma jeszcze wyliczonego czasu — nadal kończy go MG
-  („Zakończ skok” w Stanie postaci).
-- Wymaga migracji `api/migracje/013_czas_i_resynchronizacje.sql` (import w phpMyAdmin).
+- **Skok statku postaci** (Nawigacja): czas i paliwo z odległości na mapie galaktyki i napędu
+  statku (pola w edytorze firmy: `hipernaped` — klasa, domyślnie 2; `predkosc_pc_h` — domyślnie
+  1000; `paliwo_na_pc` — % zbiornika na parsek, domyślnie 0,005; minimum 5 minut). Statek sam
+  wychodzi z nadprzestrzeni w terminie. Planeta bez współrzędnych mapy: 60 minut i 20% paliwa.
+  „Zakończ skok” w Stanie postaci działa jak resynchronizacja „teraz”.
+- **Radar:** gdy statek albo flota skacze przy planecie, każda jednostka mapy (statek/jednostka)
+  przy tej planecie zapisuje wykrycie w `mapa_wykrycia_skokow`: kierunek, szacowany punkt wyjścia
+  z marginesem błędu (5–20% odległości) i szacowany czas przylotu (±25%). Wykrycie widzą ci, którzy
+  widzą tę jednostkę (MG wszystkie) — na mapie jako pomarańczowa linia z okręgiem niepewności,
+  przez 24 h po szacowanym przylocie. Statek gracza radar opisuje polem `transponder` statku
+  (puste = „Niezidentyfikowany statek”). Resynchronizacja nie zmienia wykrycia.
+- Wymaga migracji 013 i 014 z `api/migracje/` (import w phpMyAdmin, w tej kolejności).
 
 ## Baza danych SQL
 

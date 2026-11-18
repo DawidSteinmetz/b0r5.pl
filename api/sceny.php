@@ -50,6 +50,7 @@ function obsluz_sceny(string $akcja, bool $post): void
         case 'scena':
             $u = wymagaj_logowania();
             ruch_dokoncz($u['id']);
+            ruch_skoki_dokoncz();
             odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms()]);
 
         case 'mg_sceny':

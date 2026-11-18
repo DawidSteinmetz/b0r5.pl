@@ -2,8 +2,10 @@
 // dokąd leci i gdzie stoją statki jej firm. Dane astronawigacyjne są pobierane z SQL
 // przez API i buforowane przez service worker do pracy bez zasięgu.
 
-import { h, wyczysc } from '../rdzen/narzedzia.js';
+import { h, wyczysc, godzina } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
+
+const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
 
 const REGIONY = ['Głębokie Jądro', 'Światy Jądra', 'Kolonie', 'Wewnętrzne Rubieże', 'Obszar Ekspansji',
   'Środkowe Rubieże', 'Zewnętrzne Rubieże', 'Przestrzeń Huttów', 'Nieznane Regiony', 'Dzika Przestrzeń'];
@@ -462,6 +464,19 @@ export default {
           const label = nazwaPostaci(o);
           napis(c, label, sx + 10, sy - 7);
         }
+      }
+      // Wykrycia radarowe skoków: kierunek, szacowany punkt wyjścia z marginesem błędu i ETA.
+      for (const w of pozycja?.wykrycia || []) {
+        const [ax, ay] = naEkran(w.x0, w.y0);
+        const [bx, by] = naEkran(w.x, w.y);
+        const r = Math.max(4, w.margines * skala);
+        c.save(); c.strokeStyle = KOLOR_WYKRYCIA; c.fillStyle = KOLOR_WYKRYCIA; c.lineWidth = 1.2;
+        c.globalAlpha = 0.8; c.setLineDash([2, 6]); c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+        c.setLineDash([]); c.globalAlpha = 0.18; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 0.7; c.stroke(); c.restore();
+        c.font = '11px monospace'; c.fillStyle = KOLOR_WYKRYCIA;
+        const eta = w.eta * 1000 > Date.now() ? `ETA ~${godzina(new Date(w.eta * 1000))}` : 'wyjście szacowane';
+        napis(c, `Skok · ${w.nazwa} · ${eta}`, bx + Math.min(r, 40) + 6, by + 4);
       }
       if (tuPlaneta) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
       for (const [p, alfa] of [[najechane?.planeta, 0.7], [wybrane?.planeta, 1]]) {

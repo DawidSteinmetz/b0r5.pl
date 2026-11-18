@@ -517,10 +517,75 @@ function ruch_obsluga(array $statek, array $hangar): array
 const AKCJE_RUCHU = ['mapa', 'nawigacja','trasa', 'podroz', 'bankomat', 'sklep_kup', 'statek_przygotuj', 'na_poklad', 'zejdz_z_pokladu', 'start', 'skok', 'ladowanie', 'lacznosc_wyslij'];
 const CZAS_WZNOSZENIA_MS = 300000;
 
+// SKOK STATKU POSTACI. Czas i paliwo z odległości na mapie galaktyki (pc) i napędu statku.
+// Pola statku w edytorze firmy (opcjonalne): hipernaped (klasa, mniejsza = szybciej; domyślnie 2),
+// predkosc_pc_h (domyślnie 1000), paliwo_na_pc (% zbiornika na parsek), transponder (jak widzi go radar).
+const SKOK_KLASA_DOMYSLNA = 2.0;
+const SKOK_PREDKOSC_PC_H = 1000.0;
+const SKOK_PALIWO_NA_PC = 0.005;
+const SKOK_MIN_MINUT = 5;
+const SKOK_BEZ_MAPY_MINUT = 60;   // planeta bez współrzędnych mapy: stały czas i paliwo
+const SKOK_BEZ_MAPY_PALIWO = 20;
+
+// Wylicza skok między planetami katalogu. Zwraca minuty, paliwo (%) i punkty na mapie (albo null).
+function ruch_skok_wylicz(array $statek, array $z, array $do): array
+{
+    $a = radar_planeta_mapy($z);
+    $b = radar_planeta_mapy($do);
+    if (!$a || !$b) return ['minuty' => SKOK_BEZ_MAPY_MINUT, 'paliwo' => SKOK_BEZ_MAPY_PALIWO, 'z' => $a, 'do' => $b, 'pc' => null];
+    $pc = hypot($b['x'] - $a['x'], $b['y'] - $a['y']);
+    $klasa = max(0.5, (float) ($statek['hipernaped'] ?? SKOK_KLASA_DOMYSLNA));
+    $predkosc = max(1.0, (float) ($statek['predkosc_pc_h'] ?? SKOK_PREDKOSC_PC_H)) / $klasa;
+    $minuty = max(SKOK_MIN_MINUT, $pc / $predkosc * 60);
+    $paliwo = (int) ceil($pc * max(0.0, (float) ($statek['paliwo_na_pc'] ?? SKOK_PALIWO_NA_PC)));
+    return ['minuty' => $minuty, 'paliwo' => $paliwo, 'z' => $a, 'do' => $b, 'pc' => $pc];
+}
+
+// Wyjście z nadprzestrzeni przy celu: statek „jest” przy nowej planecie bez lądowiska,
+// załoga widzi wyjście z nadprzestrzeni. $kiedy: chwila wyjścia (sekundy UTC).
+function ruch_wyjscie_ze_skoku(string $klucz, int $kiedy): void
+{
+    $statek = ruch_statek($klucz);
+    if (!$statek || empty($statek['cel'])) return;
+    $cel = ruch_planeta($statek['cel']);
+    ruch_zmien_statek($klucz, function (&$s) use ($cel) {
+        if (empty($s['cel'])) return;
+        $s['lokalizacja'] = $cel['id'];
+        $s['hangar'] = ''; // lądowisko trzeba wybrać, wpisać albo dostać od kontroli lotów
+        $s['paliwo'] = max(0, (int) ($s['paliwo'] ?? 100) - (int) ($s['skok']['paliwo'] ?? SKOK_BEZ_MAPY_PALIWO));
+        unset($s['cel'], $s['skok']);
+    });
+    lacznosc_nowa($klucz, $cel);
+    $zaloga = ruch_na_pokladzie($klucz);
+    $scena = ['scena' => 'wyjscie', 'planeta' => $cel['typ'] ?? 'skalista', 'odleglosc' => 'srednio',
+        'miejsce' => $cel['nazwa'], 'opis' => 'Wyjście z nadprzestrzeni', 'wnetrze' => '', 'zmieniono' => $kiedy * 1000];
+    zmien('sceny', function (&$s) use ($zaloga, $scena) {
+        foreach ($zaloga as $uid) $s[$uid] = $scena;
+    });
+    // Pozycja postaci na pokładzie przenosi się na nową planetę.
+    zmien('karty', function (&$k) use ($zaloga, $cel) {
+        foreach ($zaloga as $uid) $k[$uid]['pozycja']['planeta'] = $cel['id'];
+    });
+    foreach ($zaloga as $uid) pozycja_sql_zapisz($uid, wczytaj('karty', [])[$uid]['pozycja'] ?? []);
+}
+
+// Domyka skoki, których termin minął (bez crona: przy odczytach nawigacji, mapy i sceny).
+function ruch_skoki_dokoncz(): void
+{
+    $teraz = czas_teraz();
+    foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
+        foreach ($f['dane']['flota'] ?? [] as $s) {
+            $eta = (int) ($s['skok']['eta'] ?? 0);
+            if (!empty($s['cel']) && $eta > 0 && $eta <= $teraz) ruch_wyjscie_ze_skoku('s:' . $f['id'] . ':' . $s['id'], $eta);
+        }
+    }
+}
+
 function obsluz_ruch(string $akcja, bool $post): void
 {
     // Każda akcja najpierw domyka podróż, która w międzyczasie dobiegła końca.
     if (in_array($akcja, AKCJE_RUCHU, true) && ($ja = ja())) ruch_dokoncz($ja['id']);
+    if (in_array($akcja, AKCJE_RUCHU, true) || $akcja === 'mg_statki_w_locie') ruch_skoki_dokoncz();
     switch ($akcja) {
 
         // Mapa galaktyki: gdzie jest postać, dokąd leci i gdzie stoją statki jej firm.
@@ -560,6 +625,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             $radar = mapa_radar_lokalny($u, $wynik['tu'], $wynik['obiekty']);
             $wynik['obiekty'] = $radar['obiekty'];
             $wynik['bitwy_radar'] = $radar['bitwy'];
+            $wynik['wykrycia'] = radar_wykrycia($u, array_column(array_filter($wynik['obiekty'],
+                fn($o) => in_array($o['typ'], ['statek', 'jednostka'], true)), 'id'));
             $wynik['gm'] = ($u['rola'] ?? '') === 'mg';
             odpowiedz($wynik);
 
@@ -845,8 +912,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             odpowiedz(['ok' => true, 'na_pokladzie' => count($zaloga)]);
 
         case 'skok':
-            // Współrzędne skoku. Na razie: współrzędne planet z katalogu (pole „wspolrzedne”).
-            // Pełne astronawigacyjne zasady dopiszemy razem z mapą.
+            // Współrzędne skoku: współrzędne planet z katalogu (pole „wspolrzedne”). Czas i paliwo
+            // liczone z odległości na mapie (ruch_skok_wylicz); wyjście następuje samo w terminie.
             if (!$post) blad('Zła metoda.', 405);
             $u = wymagaj_logowania();
             $klucz = karta($u['id'])['pozycja']['lokacja'] ?? '';
@@ -864,9 +931,19 @@ function obsluz_ruch(string $akcja, bool $post): void
             }
             if (!$cel) blad('Komputer nawigacyjny nie rozpoznaje tych współrzędnych.');
             if ($cel['id'] === ($statek['lokalizacja'] ?? '')) blad('Jesteś już przy tej planecie.');
-            ruch_zmien_statek($klucz, function (&$s) use ($cel) {
+            $z = ruch_planeta($statek['lokalizacja'] ?? '');
+            $obl = ruch_skok_wylicz($statek, $z, $cel);
+            if ((int) ($statek['paliwo'] ?? 100) < $obl['paliwo']) blad('Za mało paliwa na ten skok (potrzeba ' . $obl['paliwo'] . '%).');
+            $start = czas_teraz();
+            $eta = $start + czas_trwania($obl['minuty']);
+            ruch_zmien_statek($klucz, function (&$s) use ($cel, $start, $eta, $obl) {
                 $s['cel'] = $cel['id'];
+                $s['skok'] = ['start' => $start, 'eta' => $eta, 'paliwo' => $obl['paliwo']];
             });
+            if ($obl['z'] && $obl['do']) {
+                radar_wykryj_skok($obl['z']['id'], $obl['z']['x'], $obl['z']['y'], $obl['do']['x'], $obl['do']['y'], $eta,
+                    'statek_postaci', $klucz, trim((string) ($statek['transponder'] ?? '')) ?: 'Niezidentyfikowany statek');
+            }
             lacznosc_zamknij($klucz);
             $scena = ['scena' => 'wejscie', 'planeta' => $cel['typ'] ?? 'skalista', 'odleglosc' => 'srednio',
                 'miejsce' => $cel['nazwa'], 'opis' => 'Kurs: ' . $cel['nazwa'], 'wnetrze' => '', 'zmieniono' => teraz_ms()];
@@ -874,7 +951,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             zmien('sceny', function (&$s) use ($zaloga, $scena) {
                 foreach ($zaloga as $uid) $s[$uid] = $scena;
             });
-            odpowiedz(['ok' => true, 'cel' => $cel['nazwa']]);
+            odpowiedz(['ok' => true, 'cel' => $cel['nazwa'], 'eta' => $eta]);
 
         case 'lacznosc_wyslij':
             // Gracz wywołuje kontrolę lotów planety, przy której jest (jeśli planeta ją ma).
@@ -949,7 +1026,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                     }
                     $watek = $lacznosc[$klucz] ?? null;
                     $lista[] = ['klucz' => $klucz, 'nazwa' => $s['nazwa'], 'firma' => $f['nazwa'], 'przy' => $pl[$s['lokalizacja'] ?? ''] ?? '?',
-                        'cel' => $pl[$s['cel'] ?? ''] ?? '', 'zaloga' => array_map(fn($uid) => $postacie[$uid] ?? '?', ruch_na_pokladzie($klucz)),
+                        'cel' => $pl[$s['cel'] ?? ''] ?? '', 'eta' => (int) ($s['skok']['eta'] ?? 0), 'zaloga' => array_map(fn($uid) => $postacie[$uid] ?? '?', ruch_na_pokladzie($klucz)),
                         'kontrola' => trim((string) ($planeta['kontrola'] ?? '')), 'ladowiska' => $lad,
                         'watek' => $watek ? ['wiadomosci' => $watek['wiadomosci'], 'czeka' => !empty($watek['czeka']), 'przydzial' => $watek['przydzial']] : null];
                 }
@@ -957,34 +1034,14 @@ function obsluz_ruch(string $akcja, bool $post): void
             odpowiedz(['statki' => $lista]);
 
         case 'mg_skok_koniec':
-            // Wyjście z nadprzestrzeni przy celu: statek „jest” przy nowej planecie (hangar: pierwszy
-            // hangar/port tej planety), załoga widzi wyjście z nadprzestrzeni z planetą.
+            // Natychmiastowe wyjście z nadprzestrzeni (to samo, co resynchronizacja „Zakończ teraz”).
             if (!$post) blad('Zła metoda.', 405);
             wymagaj_mg();
             $klucz = (string) (wejscie()['statek'] ?? '');
             $statek = ruch_statek($klucz);
             if (!$statek || empty($statek['cel'])) blad('Ten statek nie jest w skoku.');
-            $cel = ruch_planeta($statek['cel']);
-            ruch_zmien_statek($klucz, function (&$s) use ($cel) {
-                $s['lokalizacja'] = $cel['id'];
-                $s['hangar'] = ''; // lądowisko trzeba wybrać, wpisać albo dostać od kontroli lotów
-                $s['paliwo'] = max(0, (int) ($s['paliwo'] ?? 100) - 20);
-                unset($s['cel']);
-            });
-            lacznosc_nowa($klucz, $cel);
-            $hangar = true;
-            $zaloga = ruch_na_pokladzie($klucz);
-            $scena = ['scena' => 'wyjscie', 'planeta' => $cel['typ'] ?? 'skalista', 'odleglosc' => 'srednio',
-                'miejsce' => $cel['nazwa'], 'opis' => 'Wyjście z nadprzestrzeni', 'wnetrze' => '', 'zmieniono' => teraz_ms()];
-            zmien('sceny', function (&$s) use ($zaloga, $scena) {
-                foreach ($zaloga as $uid) $s[$uid] = $scena;
-            });
-            // Pozycja postaci na pokładzie przenosi się na nową planetę.
-            zmien('karty', function (&$k) use ($zaloga, $cel) {
-                foreach ($zaloga as $uid) $k[$uid]['pozycja']['planeta'] = $cel['id'];
-            });
-            foreach ($zaloga as $uid) pozycja_sql_zapisz($uid, wczytaj('karty', [])[$uid]['pozycja'] ?? []);
-            odpowiedz(['ok' => true, 'hangar' => $hangar !== '']);
+            ruch_wyjscie_ze_skoku($klucz, czas_teraz());
+            odpowiedz(['ok' => true]);
 
         case 'ladowanie':
             // Automat: lądowisko z listy znanych (albo przydzielone przez kontrolę lotów).

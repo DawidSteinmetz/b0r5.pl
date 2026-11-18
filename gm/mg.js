@@ -639,7 +639,7 @@ async function stanPostaci() {
       const przydzial = h('select', h('option', { value: '' }, '— bez przydziału —'), s.ladowiska.map((l) => h('option', { value: l.klucz, selected: s.watek?.przydzial === l.klucz }, `${l.nazwa} (${l.typ}, ${l.x} / ${l.y})`)));
       return h('div', { style: 'border-top:1px solid var(--linia);padding:12px 0' },
         h('div.rzad',
-          h('div', { style: 'flex:1' }, h('b', s.nazwa), h('span.slaby', `  ${s.firma} · przy: ${s.przy}${s.cel ? ' · SKOK DO: ' + s.cel : ''} · na pokładzie: ${s.zaloga.join(', ') || '—'}`)),
+          h('div', { style: 'flex:1' }, h('b', s.nazwa), h('span.slaby', `  ${s.firma} · przy: ${s.przy}${s.cel ? ' · SKOK DO: ' + s.cel + (s.eta ? ' · wyjście ' + new Date(s.eta * 1000).toLocaleTimeString('pl-PL') + ' (zmiana: zakładka Czas)' : ' · bez wyliczonego czasu') : ''} · na pokładzie: ${s.zaloga.join(', ') || '—'}`)),
           s.cel ? btn('Zakończ skok', bezpiecznie(async () => {
             await api('mg_skok_koniec', { statek: s.klucz });
             wyczysc(glowna); await stanPostaci();

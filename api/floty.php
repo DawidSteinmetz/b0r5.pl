@@ -189,7 +189,7 @@ function floty_rozkaz(string $login, array $w): array
         if ($planetaCel && !mapa_planeta_widoczna((int) $planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
     }
     $ids = implode(',', array_fill(0, count($odbiorcy), '?'));
-    $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,n.* FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($ids) AND o.aktywny=1");
+    $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id AS planeta_startu,n.* FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($ids) AND o.aktywny=1");
     $q->execute($odbiorcy);
     $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
     if (count($jednostki) !== count($odbiorcy)) blad('Brak pozycji lub parametrów napędu jednej z jednostek.');
@@ -219,7 +219,8 @@ function floty_rozkaz(string $login, array $w): array
         $koniecY = (float) $j['y'] + $dystans * sin($kierunek);
         $najpozniej = max($najpozniej, $eta);
         $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => (float) $j['x'], 'y0' => (float) $j['y'],
-            'x1' => $koniecX, 'y1' => $koniecY, 'kat' => $kat, 'moc' => $mnoznikMocy, 'paliwo' => $paliwoZuzyte, 'eta' => $eta];
+            'x1' => $koniecX, 'y1' => $koniecY, 'kat' => $kat, 'moc' => $mnoznikMocy, 'paliwo' => $paliwoZuzyte, 'eta' => $eta,
+            'planeta' => (int) ($j['planeta_startu'] ?? 0)];
     }
     $db->beginTransaction();
     try {
@@ -236,6 +237,13 @@ function floty_rozkaz(string $login, array $w): array
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
     }
+    // Radar: jednostki przy planecie startu widzą skok całego zgrupowania jako jedno wykrycie.
+    $pierwsza = $wyliczone[0];
+    $ile = count($wyliczone);
+    radar_wykryj_skok($pierwsza['planeta'], $pierwsza['x0'], $pierwsza['y0'],
+        array_sum(array_column($wyliczone, 'x1')) / $ile, array_sum(array_column($wyliczone, 'y1')) / $ile, $najpozniej,
+        'flota', (string) $rozkazId, $ile === 1 ? 'Sygnatura: ' . $pierwsza['nazwa'] : "Zgrupowanie: {$ile} jednostek",
+        array_column($wyliczone, 'id'));
     return ['ok' => true, 'rozkaz_id' => $rozkazId, 'cel' => ['x' => $x, 'y' => $y], 'eta' => $najpozniej,
         'jednostki' => array_map(static fn($j) => ['id' => $j['id'],'nazwa' => $j['nazwa'],'szum_stopnie' => $j['kat'],'eta' => $j['eta']], $wyliczone)];
 }

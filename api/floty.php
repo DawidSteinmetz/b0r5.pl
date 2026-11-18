@@ -387,7 +387,7 @@ function floty_lista(string $login, bool $mg = false): array
         COALESCE(n.moc_reaktora,100) AS moc_reaktora,COALESCE(n.moc_hipernapedu,80) AS moc_hipernapedu,COALESCE(n.klasa_hipernapedu,1) AS klasa_hipernapedu,
         COALESCE(n.predkosc_pc_na_godzine,1000) AS predkosc_pc_na_godzine,COALESCE(n.paliwo,100000) AS paliwo,COALESCE(n.paliwo_maks,100000) AS paliwo_maks,
         COALESCE(n.paliwo_na_parsek,0.01) AS paliwo_na_parsek,COALESCE(n.sprawnosc_reaktora,100) AS sprawnosc_reaktora,COALESCE(n.sprawnosc_hipernapedu,100) AS sprawnosc_hipernapedu,COALESCE(n.szum_bazowy,0.05) AS szum_bazowy,
-        COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,COALESCE(n.komputer_klasa,3) AS komputer_klasa,COALESCE(n.komputer_stan,'sprawny') AS komputer_stan,
+        COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,COALESCE(n.komputer_klasa,3) AS komputer_klasa,COALESCE(n.komputer_stan,'sprawny') AS komputer_stan," . (liczniki_dostepne() ? 'COALESCE(n.oslony,100) AS oslony,COALESCE(n.kadlub,100) AS kadlub,' : '') . "
         o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,o.orbita_deg,o.rozbity," . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
@@ -539,6 +539,10 @@ function floty_rozkaz(string $login, array $w): array
             VALUES (?,?,?,?,?,?,?,?,?,'w_nadprzestrzeni',?,?,?,?)");
         $q->execute([$kod, $login, $flotaId ?: null, $celObiekt ?: null, $x, $y, round($wyliczone[0]['kurs'], 2), $wariant, $tryb, czas_utc($teraz), czas_utc($wejscie), czas_utc($najpozniej), 'Automatyczny skok: reaktor, moc hipernapędu i odchylenie nawigacyjne.']);
         $rozkazId = (int) $db->lastInsertId();
+        // ETA z planu (szacunek komputera); resynchronizacja zmienia tylko eta_utc.
+        if (function_exists('liczniki_dostepne') && liczniki_dostepne()) {
+            $db->prepare('UPDATE mapa_rozkazy_skokow SET eta_plan_utc=eta_utc WHERE id=?')->execute([$rozkazId]);
+        }
         $q = $db->prepare("INSERT INTO mapa_rozkazy_skokow_jednostki (rozkaz_id,obiekt_id,start_x,start_y,wyjscie_x,wyjscie_y,planeta_id,kat_bledu,moc_wzgl,paliwo_zuzyte,eta_utc,status)
             VALUES (?,?,?,?,?,?,?, ?,?,?,?,'w_nadprzestrzeni')");
         foreach ($wyliczone as $j) floty_ustaw_manewr($db, $j['id'], $j['kurs0'], $j['kurs'], $start, $start + $j['manewr']);
@@ -767,7 +771,12 @@ function obsluz_floty(string $akcja, bool $post): void
                 in_array($w['komputer_stan'] ?? '', ['sprawny','zhakowany','przejety','brak'], true) ? $w['komputer_stan'] : 'sprawny'];
             if (!$id || min($params[0],$params[1],$params[2],$params[3],$params[5]) <= 0 || $params[4] < 0 || $params[4] > $params[5] || $params[6] < 0) blad('Sprawdź dodatnie parametry napędu i poziom paliwa.');
             $q = polaczenie_bazy()->prepare('INSERT INTO mapa_naped_jednostki (obiekt_id,moc_reaktora,moc_hipernapedu,klasa_hipernapedu,predkosc_pc_na_godzine,paliwo,paliwo_maks,paliwo_na_parsek,sprawnosc_reaktora,sprawnosc_hipernapedu,szum_bazowy,obrot_deg_na_min,komputer_klasa,komputer_stan) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE obrot_deg_na_min=VALUES(obrot_deg_na_min),komputer_klasa=VALUES(komputer_klasa),komputer_stan=VALUES(komputer_stan), moc_reaktora=VALUES(moc_reaktora),moc_hipernapedu=VALUES(moc_hipernapedu),klasa_hipernapedu=VALUES(klasa_hipernapedu),predkosc_pc_na_godzine=VALUES(predkosc_pc_na_godzine),paliwo=VALUES(paliwo),paliwo_maks=VALUES(paliwo_maks),paliwo_na_parsek=VALUES(paliwo_na_parsek),sprawnosc_reaktora=VALUES(sprawnosc_reaktora),sprawnosc_hipernapedu=VALUES(sprawnosc_hipernapedu),szum_bazowy=VALUES(szum_bazowy)');
-            $q->execute([$id,...$params]); odpowiedz(['ok' => true]);
+            $q->execute([$id,...$params]);
+            if (liczniki_dostepne()) {
+                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET oslony=?, kadlub=? WHERE obiekt_id=?')
+                    ->execute([max(0, min(100, (int) ($w['oslony'] ?? 100))), max(0, min(100, (int) ($w['kadlub'] ?? 100))), $id]);
+            }
+            odpowiedz(['ok' => true]);
 
         case 'mg_mapa_teleport':
             if (!$post) blad('Zła metoda.', 405);

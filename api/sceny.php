@@ -142,6 +142,96 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     ];
 }
 
+// LICZNIKI POKŁADOWE na pulpicie (tylko na pokładzie): odliczanie bieżącego procesu, paliwo,
+// obciążenie reaktora, osłony i kadłub (okręty z SQL); statki firm graczy: odliczanie i paliwo.
+function liczniki_dostepne(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT oslony, kadlub FROM mapa_naped_jednostki LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function liczniki_okretu(int $id): ?array
+{
+    if (!function_exists('floty_kurs_dostepny') || !floty_kurs_dostepny()) return null;
+    $db = polaczenie_bazy();
+    $nav = floty_nawigacja_dostepna();
+    $l = liczniki_dostepne();
+    $q = $db->prepare('SELECT o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc' . ($nav ? ',o.podlot_cel,o.podlot_do_utc' : '') . ',
+            n.paliwo,n.paliwo_maks,n.moc_reaktora,n.moc_hipernapedu,n.sprawnosc_reaktora' . ($l ? ',n.oslony,n.kadlub' : '') . '
+        FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id=?');
+    $q->execute([$id]);
+    $o = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$o) return null;
+    $teraz = czas_teraz();
+    $q = $db->prepare('SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie, ' . ($l ? 'COALESCE(r.eta_plan_utc, j.eta_utc)' : 'j.eta_utc') . " AS eta
+        FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id
+        WHERE j.obiekt_id=? AND j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' LIMIT 1");
+    $q->execute([$id]);
+    $skok = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    $odliczanie = null;
+    $reaktor = 15; // postój
+    $manewrOd = czas_z_utc($o['manewr_od_utc'] ?? null);
+    $manewrDo = czas_z_utc($o['manewr_do_utc'] ?? null);
+    $wariantNazwy = ['bliska' => 'bliską orbitę', 'srednia' => 'średnią orbitę', 'daleka' => 'daleką orbitę', 'krawedz' => 'krawędź układu'];
+    if ($skok) {
+        $wejscie = czas_z_utc($skok['wejscie']);
+        if ($teraz >= $wejscie) {
+            $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => czas_z_utc($skok['eta'])];
+            $wzgl = (float) ($o['moc_hipernapedu'] ?? 80) / max(1, (float) ($o['moc_reaktora'] ?? 100) * max(0.1, (int) ($o['sprawnosc_reaktora'] ?? 100) / 100));
+            $reaktor = (int) round(70 + 25 * min(1, $wzgl));
+        } elseif ($manewrOd && $teraz < $manewrOd) {
+            $odliczanie = ['etykieta' => 'Obliczenia skoku', 'koniec' => $manewrOd];
+            $reaktor = 25;
+        } else {
+            $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => $wejscie];
+            $reaktor = 40;
+        }
+    } elseif ($manewrDo > $teraz) {
+        $odliczanie = ['etykieta' => 'Obrót na kurs ' . round((float) $o['kurs_cel_deg']) . '°', 'koniec' => $manewrDo];
+        $reaktor = 40;
+    } elseif ($nav && czas_z_utc($o['podlot_do_utc'] ?? null) > $teraz) {
+        $odliczanie = ['etykieta' => 'Dolot na ' . ($wariantNazwy[$o['podlot_cel']] ?? 'orbitę'), 'koniec' => czas_z_utc($o['podlot_do_utc'])];
+        $reaktor = 55;
+    }
+    $maks = (float) ($o['paliwo_maks'] ?? 0);
+    return array_filter([
+        'odliczanie' => $odliczanie,
+        'paliwo' => $maks > 0 ? (int) round(100 * (float) $o['paliwo'] / $maks) : null,
+        'reaktor' => $reaktor,
+        'oslony' => $l ? (int) $o['oslony'] : null,
+        'kadlub' => $l ? (int) $o['kadlub'] : null,
+    ], fn($v) => $v !== null);
+}
+
+function liczniki_statku(string $klucz): ?array
+{
+    $s = ruch_statek($klucz);
+    if (!$s) return null;
+    $teraz = czas_teraz();
+    $odliczanie = null;
+    if (!empty($s['cel']) && !empty($s['skok'])) {
+        $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => (int) ($s['skok']['eta_plan'] ?? $s['skok']['eta'])];
+    } elseif (!empty($s['przygotowanie']) && (int) $s['przygotowanie']['gotowy'] > $teraz) {
+        $odliczanie = ['etykieta' => 'Obsługa naziemna', 'koniec' => (int) $s['przygotowanie']['gotowy']];
+    }
+    return array_filter(['odliczanie' => $odliczanie, 'paliwo' => (int) ($s['paliwo'] ?? 100)], fn($v) => $v !== null);
+}
+
+function liczniki_postaci(string $uid): ?array
+{
+    $karta = karta($uid);
+    $klucz = (string) ($karta['pozycja']['lokacja'] ?? '');
+    if (str_starts_with($klucz, 's:')) return liczniki_statku($klucz);
+    $gdzie = ruch_gdzie($karta, ruch_lokacje());
+    if ($gdzie && !empty($gdzie['okret_id'])) return liczniki_okretu((int) $gdzie['okret_id']);
+    return null;
+}
+
 function scena_efektywna(string $uid): array
 {
     $zapisana = (wczytaj('sceny', [])[$uid] ?? []) + scena_domyslna();
@@ -195,7 +285,9 @@ function obsluz_sceny(string $akcja, bool $post): void
             $u = wymagaj_logowania();
             ruch_dokoncz($u['id']);
             ruch_skoki_dokoncz();
-            odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms()]);
+            $liczniki = null;
+            try { $liczniki = liczniki_postaci($u['id']); } catch (Throwable $e) {}
+            odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms(), 'liczniki' => $liczniki]);
 
         case 'mg_sceny':
             wymagaj_mg();

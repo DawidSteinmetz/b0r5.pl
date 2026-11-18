@@ -144,6 +144,19 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   imporcie wybraną bazę). Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
   `narzedzia/sql/zbuduj.js` pomija linie `USE` w pełnym schemacie. Wymagana migracja 018.
 
+## Liczniki pokładowe na pulpicie
+
+- Na pokładzie statku albo okrętu pulpit pokazuje dyskretny pasek w prawym dolnym rogu
+  (`liczniki_postaci()` w `api/sceny.php`, odświeżany ze sceną co 6 s, odliczanie co sekundę):
+  odliczanie bieżącego procesu (obliczenia skoku, obrót, wyjście z nadprzestrzeni, dolot, obsługa
+  naziemna), paliwo, obciążenie reaktora (postój ok. 15%, obrót 40%, dolot 55%, skok 70–95%),
+  osłony i kadłub. Statki firm graczy: odliczanie i paliwo.
+- Wyjście z nadprzestrzeni liczy się do **ETA z planu** (`eta_plan_utc`, szacunek komputera w chwili
+  rozkazu) — resynchronizacja zmienia tylko rzeczywiste `eta_utc`, więc licznik jej nie zdradza.
+- Kolory: pomarańczowy przy paliwie ≤ 15%, osłonach ≤ 25%, kadłubie ≤ 40%, reaktorze ≥ 85%;
+  czerwony przy paliwie ≤ 5%, osłonach ≤ 10%, kadłubie ≤ 20%, reaktorze ≥ 95%.
+- Osłony i kadłub ustawia MG w profilu napędu jednostki (migracja 019).
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

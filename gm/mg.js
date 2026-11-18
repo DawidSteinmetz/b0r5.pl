@@ -213,6 +213,7 @@ async function floty() {
         sprawnosc_reaktora: num('Stan reaktora %', j.sprawnosc_reaktora), sprawnosc_hipernapedu: num('Stan napędu %', j.sprawnosc_hipernapedu), szum_bazowy: num('Szum °', j.szum_bazowy, '0.01'),
         obrot_deg_na_min: num('Obrót °/min', j.obrot_deg_na_min, '1'),
         komputer_klasa: num('Komputer (1–5)', j.komputer_klasa, '1'),
+        oslony: num('Osłony %', j.oslony ?? 100, '1'), kadlub: num('Kadłub %', j.kadlub ?? 100, '1'),
       };
       // Stan komputera: zhakowany = automat działa, ale po cichu daje duży rozrzut; przejęty/brak = mostek liczy ręcznie.
       const stanKomputera = h('select', ['sprawny', 'zhakowany', 'przejety', 'brak'].map((v) => h('option', { value: v, selected: (j.komputer_stan || 'sprawny') === v }, v)));

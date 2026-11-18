@@ -160,10 +160,52 @@ function opisMiejsca() {
   return [NAZWY_SCEN[sc], miejsce, stanSceny.opis].filter(Boolean).join(' · ');
 }
 
+// Liczniki pokładowe (tylko na pokładzie): odliczanie bieżącego procesu i stany: paliwo,
+// reaktor, osłony, kadłub. Dyskretny pasek w prawym dolnym rogu pulpitu; odświeżany ze sceną.
+let liczniki = null;
+const NAZWY_LICZNIKOW = [['paliwo', 'Paliwo'], ['reaktor', 'Reaktor'], ['oslony', 'Osłony'], ['kadlub', 'Kadłub']];
+// Progi ostrzeżeń: [pomarańczowy, czerwony]; reaktor ostrzega przy wysokim obciążeniu.
+const PROGI = { paliwo: [15, 5], oslony: [25, 10], kadlub: [40, 20] };
+
+function poziomLicznika(klucz, v) {
+  if (klucz === 'reaktor') return v >= 95 ? 'kryt' : v >= 85 ? 'ostrz' : '';
+  const [o, k] = PROGI[klucz] || [0, 0];
+  return v <= k ? 'kryt' : v <= o ? 'ostrz' : '';
+}
+
+function pozostalo(koniec) {
+  const s = Math.max(0, Math.round(koniec - (Date.now() + przesuniecieZegara) / 1000));
+  const p = (n) => String(n).padStart(2, '0');
+  return s <= 0 ? 'teraz' : `${Math.floor(s / 3600)}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
+}
+
+function rysujLiczniki() {
+  document.querySelectorAll('[data-liczniki]').forEach((el) => {
+    wyczysc(el);
+    el.hidden = !liczniki;
+    if (!liczniki) return;
+    const o = liczniki.odliczanie;
+    if (o) el.append(h('div.licznik-odliczanie', h('span', o.etykieta), h('b', { 'data-koniec': String(o.koniec) }, pozostalo(o.koniec))));
+    for (const [k, nazwa] of NAZWY_LICZNIKOW) {
+      if (liczniki[k] == null) continue;
+      const v = Math.max(0, Math.min(100, Number(liczniki[k])));
+      el.append(h('div.licznik' + (poziomLicznika(k, v) ? '.' + poziomLicznika(k, v) : ''),
+        h('span', nazwa), h('i', h('i', { style: `width:${v}%` })), h('b', `${v}%`)));
+    }
+  });
+}
+setInterval(() => document.querySelectorAll('[data-koniec]').forEach((el) => {
+  const koniec = Number(el.dataset.koniec);
+  el.textContent = pozostalo(koniec);
+  el.classList.toggle('ostrz', koniec - (Date.now() + przesuniecieZegara) / 1000 < 60);
+}), 1000);
+
 async function sprawdzScene() {
   if (!stan.uzytkownik) return;
   try {
-    const { scena: s, teraz } = await api('scena');
+    const { scena: s, teraz, liczniki: l } = await api('scena');
+    liczniki = l || null;
+    rysujLiczniki();
     przesuniecieZegara = teraz - Date.now();
     stanSceny = s;
     pamiec.zapisz('scena', s);
@@ -358,12 +400,14 @@ function ekranPulpitu() {
         h('div', [u.frakcja, u.oddzial].filter(Boolean).join(' · ')),
         u.ranga ? h('div', u.ranga) : null)),
     szybkieAkcje,
+    h('div.pulpit-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
     h('div.siatka-aplikacji',
       APLIKACJE.map((a) => h('button.ikona-aplikacji', { onclick: () => otworz(a.id) },
         ikona(a.ikona), h('span', a.nazwa)))),
   );
   odswiezZegar();
   rysujSzybkieAkcje();
+  rysujLiczniki();
 }
 
 // ================================================================

@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–018 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–019 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -6013,4 +6013,30 @@ ALTER TABLE mapa_obiekty
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v18-frakcja-jednostek', 'Frakcja jednostek mapy: kolory sojusznik/wróg/neutralny')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/019_oslony_kadlub_eta_plan.sql
+-- =====================================================================
+
+-- Liczniki pokładowe: osłony i kadłub jednostek (ustawia MG; później walka) oraz ETA z planu skoku
+-- (szacunek komputera w chwili rozkazu; resynchronizacja zmienia tylko rzeczywiste eta_utc,
+-- więc odliczanie na pulpicie załogi nie zdradza ingerencji).
+--
+-- Wymaga migracji 018. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz;
+-- ponowny import zatrzyma się na „Duplicate column”.
+
+SET NAMES utf8mb4;
+
+ALTER TABLE mapa_naped_jednostki
+  ADD COLUMN oslony TINYINT UNSIGNED NOT NULL DEFAULT 100 AFTER komputer_stan,
+  ADD COLUMN kadlub TINYINT UNSIGNED NOT NULL DEFAULT 100 AFTER oslony;
+
+ALTER TABLE mapa_rozkazy_skokow
+  ADD COLUMN eta_plan_utc DATETIME NULL AFTER eta_utc;
+
+UPDATE mapa_rozkazy_skokow SET eta_plan_utc = eta_utc WHERE eta_plan_utc IS NULL;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v19-oslony-kadlub-eta-plan', 'Osłony i kadłub jednostek, ETA z planu skoku dla liczników pokładowych')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

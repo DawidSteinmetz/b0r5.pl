@@ -537,8 +537,8 @@ html.z-tlem #ekran::before {
 .mapa-osoba { color: var(--tekst); }
 .mapa-obiekt-flota { display: grid; gap: 4px; margin-top: 10px; padding: 9px; border-left: 2px solid var(--akcent); background: rgba(77,226,201,.06); }
 .mapa-obiekt-flota strong { color: var(--akcent); }
-.mapa-floty-panel { position: absolute; z-index: 4; top: 64px; right: 12px; width: min(560px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow-y: auto; padding: 14px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.97); }
-.mapa-radar { position: absolute; z-index: 3; left: 12px; bottom: 12px; display: grid; gap: 5px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; border: 1px solid #ff6b55; border-radius: var(--promien); background: rgba(35, 10, 12, .92); color: #ff8b78; box-shadow: 0 0 18px rgba(255, 74, 55, .2); }
+.mapa-floty-panel { position: absolute; z-index: 4; top: 64px; left: 12px; width: min(470px, calc(100% - 24px)); max-height: calc(100% - 110px); overflow-y: auto; padding: 14px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.97); }
+.mapa-radar { position: absolute; z-index: 3; left: 50%; top: 64px; transform: translateX(-50%); display: grid; gap: 5px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; border: 1px solid #ff6b55; border-radius: var(--promien); background: rgba(35, 10, 12, .92); color: #ff8b78; box-shadow: 0 0 18px rgba(255, 74, 55, .2); }
 .mapa-radar[hidden] { display: none; }
 .mapa-radar small { color: var(--tekst); }
 .mapa-floty-panel h2 { margin: 0 40px 12px 0; color: var(--akcent); font-size: 18px; }
@@ -566,7 +566,20 @@ html.z-tlem #ekran::before {
 .znaczek-cel { color: var(--zph); }
 .mapa-wsp { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--tekst-slaby); pointer-events: none; }
 .mapa-ladowanie { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--tlo); color: var(--akcent); letter-spacing: 0.12em; text-align: center; }
-@media (max-width: 760px) { .mapa-przyciski { margin-left: 0; } }
+@media (max-width: 760px) {
+  .mapa-przyciski { margin-left: 0; }
+  .mapa-floty-panel { max-height: 44%; }
+  .mapa-karta { max-height: 48%; }
+  .mapa-radar { top: auto; bottom: 34px; }
+}
+/* Karta planety: nawigacja floty (skok z automatu / ręcznie, dolot na inną orbitę) */
+.mapa-nawigacja:empty { display: none; }
+.mapa-nawigacja { display: grid; gap: 8px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--linia); }
+.mapa-nawigacja select { width: 100%; }
+.mapa-nawigacja-blok { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(77, 226, 201, 0.04); }
+.mapa-nawigacja-blok b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
+.mapa-nawigacja-przyciski { display: flex; flex-wrap: wrap; gap: 6px; }
+.mapa-nawigacja .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
 
 /* ---------- Giełda CDEX ---------- */
 

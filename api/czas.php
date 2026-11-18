@@ -78,6 +78,25 @@ function czas_procesy(): array
         array_push($lista, ...array_values($grupy));
     }
 
+    if (function_exists('floty_nawigacja_dostepna') && floty_nawigacja_dostepna()) {
+        // Dolot na inną orbitę (napęd podświetlny), po flocie albo pojedynczej jednostce.
+        $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.podlot_cel, o.podlot_od_utc, o.podlot_do_utc, f.id AS flota_id, f.nazwa AS flota
+            FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki j ON j.obiekt_id = o.id LEFT JOIN mapa_floty f ON f.id = j.flota_id
+            WHERE o.podlot_do_utc > ?");
+        $q->execute([czas_utc($teraz)]);
+        $grupy = [];
+        $nazwy = ['bliska' => 'bliską orbitę', 'srednia' => 'średnią orbitę', 'daleka' => 'daleką orbitę', 'krawedz' => 'krawędź układu'];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
+            $k = $o['flota_id'] ? 'f:' . $o['flota_id'] : 'o:' . $o['id'];
+            $g = $grupy[$k] ?? ['rodzaj' => 'dolot', 'obiekt' => $k,
+                'opis' => 'Dolot na ' . ($nazwy[$o['podlot_cel']] ?? $o['podlot_cel']) . ': ' . ($o['flota'] ?: $o['nazwa']),
+                'start' => czas_z_utc($o['podlot_od_utc']), 'koniec' => 0];
+            $g['koniec'] = max($g['koniec'], czas_z_utc($o['podlot_do_utc']));
+            $grupy[$k] = $g;
+        }
+        array_push($lista, ...array_values($grupy));
+    }
+
     foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
         foreach ($f['dane']['flota'] ?? [] as $s) {
             $p = $s['skok'] ?? null;
@@ -165,6 +184,19 @@ function czas_przestaw(string $rodzaj, string $obiekt, int $nowyKoniec): array
             if ($nowyKoniec <= $teraz) floty_domknij_manewry();
             return [czas_z_utc((string) $do), 'Manewr ' . ($typ === 'f' ? 'floty #' : 'jednostki #') . $id];
 
+        case 'dolot':
+            [$typ, $id] = explode(':', $obiekt) + ['', '0'];
+            $db = polaczenie_bazy();
+            $warunek = $typ === 'f' ? 'id IN (SELECT obiekt_id FROM mapa_floty_jednostki WHERE flota_id = ?)' : 'id = ?';
+            $q = $db->prepare("SELECT MAX(podlot_do_utc) FROM mapa_obiekty WHERE podlot_do_utc > ? AND $warunek");
+            $q->execute([czas_utc($teraz), (int) $id]);
+            $do = $q->fetchColumn();
+            if (!$do) blad('Ten dolot już się zakończył.');
+            $db->prepare("UPDATE mapa_obiekty SET podlot_do_utc = GREATEST(podlot_od_utc, ?) WHERE podlot_do_utc > ? AND $warunek")
+                ->execute([czas_utc($nowyKoniec), czas_utc($teraz), (int) $id]);
+            if ($nowyKoniec <= $teraz) floty_domknij_manewry();
+            return [czas_z_utc((string) $do), 'Dolot ' . ($typ === 'f' ? 'floty #' : 'jednostki #') . $id];
+
         case 'skok_statku':
             $statek = ruch_statek($obiekt);
             if (!$statek || empty($statek['cel']) || empty($statek['skok'])) blad('Ten statek nie jest w skoku z wyliczonym czasem.');
@@ -215,6 +247,7 @@ function obsluz_czas(string $akcja, bool $post): void
             if (!tabela_sql_dostepna('mapa_wykrycia_skokow')) $ostrzezenia[] = 'Brak migracji 014 (radar, skok statku postaci).';
             if (function_exists('floty_kurs_dostepny') && !floty_kurs_dostepny()) $ostrzezenia[] = 'Brak migracji 015 (kurs, manewry, cykle planet): floty i sceny okrętów nie działają.';
             if (function_exists('floty_orbita_dostepna') && !floty_orbita_dostepna()) $ostrzezenia[] = 'Brak migracji 016 (orbita, przylot, rozbicie): sceny okrętów i okno ISD nie działają.';
+            if (function_exists('floty_nawigacja_dostepna') && !floty_nawigacja_dostepna()) $ostrzezenia[] = 'Brak migracji 017 (komputer nawigacyjny, warianty orbity, dolot): floty nie przyjmą rozkazów.';
             odpowiedz(['teraz' => czas_teraz(), 'procesy' => czas_procesy(), 'dziennik' => $dziennik,
                 'dziennik_dostepny' => tabela_sql_dostepna('resynchronizacje'), 'ostrzezenia' => $ostrzezenia]);
 

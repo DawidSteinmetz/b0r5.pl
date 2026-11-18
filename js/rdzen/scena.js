@@ -29,7 +29,7 @@ export const TYPY_PLANET = {
   skalista: { nazwa: 'skalista', kolory: ['#8a8580', '#6b6661', '#a39e98'], atmosfera: '#d0d0d0', chmury: 0.05 },
 };
 
-export const ODLEGLOSCI = { blisko: 1.15, srednio: 0.5, daleko: 0.16 };
+export const ODLEGLOSCI = { blisko: 1.15, srednio: 0.5, daleko: 0.16, krawedz: 0.012 };
 
 // Niebo i krajobraz z powierzchni: [góra nieba, horyzont], warstwy terenu (od dalekiej do bliskiej), styl terenu.
 const POWIERZCHNIE = {

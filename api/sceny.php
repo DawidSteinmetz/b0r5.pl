@@ -86,7 +86,9 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     if (tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
     $gry = tabela_sql_dostepna('planety_gry');
-    $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.x,m.y,m.przylot_utc,p.nazwa AS planeta' . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
+    $nav = floty_nawigacja_dostepna();
+    $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.x,m.y,m.przylot_utc,p.nazwa AS planeta'
+        . ($nav ? ',m.podejscie,m.podlot_start,m.podlot_cel,m.podlot_od_utc,m.podlot_do_utc' : '') . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
         FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id'
         . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=m.planeta_id' : '') . ' WHERE m.id=?');
     $q->execute([$okretId]);
@@ -125,10 +127,15 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
             'opis' => 'Wrak: ' . $o['nazwa'], 'zmieniono' => $zmieniono, 'swiatlo' => astro_swiatlo($planeta, ['x' => 0, 'y' => 0])];
     }
     $minuty = $przylot ? ($teraz - $przylot) / 60 : PODEJSCIE_KONIEC_MIN;
+    // Wariant orbity (po skoku z automatu albo dolocie): bliska → duża planeta, krawędź układu → punkt.
+    $podejscie = $nav ? floty_podejscie_teraz($o, $teraz) : null;
+    $odleglosc = $podejscie !== null
+        ? ['bliska' => 'blisko', 'srednia' => 'srednio', 'daleka' => 'daleko', 'krawedz' => 'krawedz'][$podejscie] ?? 'blisko'
+        : ($minuty < PODEJSCIE_DALEKO_MIN ? 'daleko' : ($minuty < PODEJSCIE_SREDNIO_MIN ? 'srednio' : 'blisko'));
     return $baza + [
-        'scena' => $minuty < PODEJSCIE_KONIEC_MIN ? 'wyjscie' : 'orbita',
+        'scena' => $minuty < ($podejscie !== null ? 2 : PODEJSCIE_KONIEC_MIN) ? 'wyjscie' : 'orbita',
         'planeta' => $typ,
-        'odleglosc' => $minuty < PODEJSCIE_DALEKO_MIN ? 'daleko' : ($minuty < PODEJSCIE_SREDNIO_MIN ? 'srednio' : 'blisko'),
+        'odleglosc' => $odleglosc,
         'miejsce' => $planeta,
         'zmieniono' => $zmieniono,
         'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta), 'gwiazdy' => $gwiazdy],

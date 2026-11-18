@@ -158,6 +158,17 @@ export default {
       return rangi.has(norm(stopien)) && !norm(o.nazwa).startsWith(norm(stopien)) ? `${stopien} ${o.nazwa}` : o.nazwa;
     }
 
+    // Przy oddaleniu flota na orbicie to jedna strzałka z liczbą okrętów; po przybliżeniu wachlarz.
+    const PROG_ROZWINIECIA = 3;
+    function grupaZwinieta(o) {
+      if (skala >= PROG_ROZWINIECIA || !o?.flota || o.typ === 'postac') return null;
+      const p = planetaObiektu(o);
+      if (!p || wNadprzestrzeni(o)) return null;
+      const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac'
+        && planetaObiektu(x) === p && !wNadprzestrzeni(x));
+      return { glowny: czlonkowie[0]?.id === o.id, ile: czlonkowie.length };
+    }
+
     function punktObiektu(o) {
       if (o.typ === 'postac' && o.na_pokladzie_id) {
         const okret = obiektyMapy.find((x) => x.id === o.na_pokladzie_id);
@@ -181,11 +192,12 @@ export default {
       const indeks = Math.max(0, rodzina.findIndex((x) => x.id === o.id));
       const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !wNadprzestrzeni(x)).map(grupaOrbity))];
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
-      const promien = orbita ? 18 + numerOrbity * 9 : 30;
+      const zwinieta = !!grupaZwinieta(o);
+      const promien = orbita ? (zwinieta ? 18 + numerOrbity * 10 : 26 + numerOrbity * 14) : 30;
       const [px, py] = naEkran(p.x, p.y);
       if (orbita && (o.orbita != null || o.kurs != null)) {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
-        const rozrzut = Math.min(14, 140 / Math.max(rodzina.length, 1));
+        const rozrzut = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
         const kat = -((o.orbita ?? kursTeraz(o)) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
         return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
       }
@@ -475,8 +487,15 @@ export default {
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
       for (const o of obiektyMapy) {
+        const zw = grupaZwinieta(o);
+        if (zw && !zw.glowny) continue;
         const [sx, sy] = punktObiektu(o);
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
+        if (zw && zw.ile > 1) {
+          c.save(); c.font = `bold 10px ${kroj}`; c.fillStyle = kolory.tekst;
+          napis(c, `${o.flota.grupa || o.flota.nazwa} ×${zw.ile}`, sx + 9, sy + 12);
+          c.restore();
+        }
         const kolorZnacznika = o.bitwa?.kolor || o.kolor;
         const kolor = /^#[0-9a-f]{6}$/i.test(kolorZnacznika || '') ? kolorZnacznika : '#00ff66';
         let kursRys = kursTeraz(o);
@@ -534,6 +553,8 @@ export default {
     function trafienie(sx, sy) {
       let najblizszyObiekt = null, odlObiektu = 15;
       for (const obiekt of obiektyMapy) {
+        const zw = grupaZwinieta(obiekt);
+        if (zw && !zw.glowny) continue;
         const [px, py] = punktObiektu(obiekt);
         const d = Math.hypot(px - sx, py - sy);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
@@ -647,6 +668,89 @@ export default {
       return sekcja;
     }
 
+    const NAZWY_WARIANTOW = { bliska: 'Bliska orbita', srednia: 'Średnia orbita', daleka: 'Daleka orbita', krawedz: 'Krawędź układu' };
+    const czasTrwania = (s) => {
+      s = Math.max(0, Math.round(s));
+      const g = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+      return g ? `${g} h ${m} min` : m ? `${m} min` : `${s} s`;
+    };
+
+    // Sekcja w karcie planety dla dowódcy floty: skok do tego układu (automat: wariant orbity;
+    // bez komputera: mostek liczy ręcznie współrzędne) albo dolot na inną orbitę, gdy flota już tu jest.
+    function sekcjaNawigacji(p) {
+      const sekcja = h('div.mapa-nawigacja');
+      api('mapa_floty_gracza').then((dane) => {
+        const floty = dane.floty || [];
+        if (!floty.length) return;
+        const wybor = h('select', floty.map((f) => h('option', { value: f.id }, f.nazwa)));
+        const tresc = h('div');
+        const rysuj = () => {
+          const f = floty.find((x) => String(x.id) === wybor.value) || floty[0];
+          const jednostki = f.jednostki || [];
+          const tutaj = jednostki.filter((j) => norm(j.planeta || '') === p.klucz && !j.rozkaz_id);
+          const automat = jednostki[0]?.automat !== false;
+          const info = h('p.slaby.maly-tekst');
+          wyczysc(tresc);
+          if (tutaj.length) {
+            const obecna = tutaj[0].podejscie_teraz || 'bliska';
+            const doloty = Object.keys(NAZWY_WARIANTOW).filter((k) => k !== obecna).map((k) => h('button.przycisk.maly', { onclick: async () => {
+              try {
+                const w = await api('mapa_flota_dolot', { flota_id: f.id, jednostki: tutaj.map((j) => j.obiekt_id), cel: k });
+                info.textContent = w.koniec > teraz() ? `Dolot na: ${NAZWY_WARIANTOW[k].toLowerCase()}. Koniec ${czasGry(w.koniec)}.` : `${NAZWY_WARIANTOW[k]}.`;
+                await pobierzPozycje();
+              } catch (e) { info.textContent = e.message; }
+            } }, NAZWY_WARIANTOW[k]));
+            tresc.append(h('div.mapa-nawigacja-blok',
+              h('b', `Orbita: ${NAZWY_WARIANTOW[obecna] || obecna}`),
+              tutaj[0].podlot_do > teraz() ? h('div.slaby.maly-tekst', `Trwa dolot (koniec ${czasGry(tutaj[0].podlot_do)}).`) : null,
+              h('div.mapa-nawigacja-przyciski', ...doloty)));
+          }
+          if (tutaj.length < jednostki.length) {
+            let wariant = 'bliska';
+            const warianty = h('div.mapa-nawigacja-przyciski', Object.entries(NAZWY_WARIANTOW).map(([k, n]) => {
+              const b = h('button.przycisk.maly' + (k === wariant ? '.wl' : ''), { onclick: () => {
+                wariant = k; warianty.querySelectorAll('button').forEach((x) => x.classList.toggle('wl', x === b)); wynik.textContent = ''; wykonaj.hidden = true;
+              } }, n);
+              return b;
+            }));
+            const x = h('input', { type: 'number', step: '0.1', placeholder: 'X' });
+            const y = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
+            const wynik = h('p.maly-tekst');
+            const dane = () => (automat ? { flota_id: f.id, cel_planeta: p.nazwa, wariant } : { flota_id: f.id, x: Number(x.value), y: Number(y.value) });
+            const wykonaj = h('button.przycisk.glowny', { hidden: true, onclick: async () => {
+              try {
+                const w = await api('mapa_flota_rozkaz', dane());
+                wynik.textContent = `Rozkaz przyjęty. Wejście w nadprzestrzeń ${czasGry(w.wejscie)}, ETA ${czasGry(w.eta)}.`;
+                wykonaj.hidden = true;
+                await pobierzPozycje();
+              } catch (e) { wynik.textContent = e.message; }
+            } }, 'Wykonaj skok');
+            const oblicz = h('button.przycisk', { onclick: async () => {
+              if (!automat && (x.value === '' || y.value === '')) { wynik.textContent = 'Mostek: podaj wyliczone współrzędne X i Y.'; return; }
+              try {
+                const w = await api('mapa_flota_rozkaz', { ...dane(), plan: true });
+                wynik.textContent = `${w.tryb === 'reczny' ? 'Obliczenia mostka' : 'Komputer'}: ${czasTrwania(w.obliczenia_s)} · obrót: ${czasTrwania(w.manewr_s)}`
+                  + ` · lot: ${czasTrwania(w.lot_s)} · wejście ${czasGry(w.wejscie)} · ETA ${czasGry(w.eta)}`
+                  + ` · paliwo: ${w.jednostki.map((j) => `${j.nazwa} ${j.paliwo}`).join(', ')}`;
+                wykonaj.hidden = false;
+              } catch (e) { wynik.textContent = e.message; wykonaj.hidden = true; }
+            } }, automat ? 'Oblicz skok' : 'Sprawdź skok');
+            tresc.append(h('div.mapa-nawigacja-blok',
+              h('b', `Skok do układu ${p.nazwa}`),
+              automat ? warianty : h('div',
+                h('p.slaby.maly-tekst', 'Komputer nawigacyjny nie odpowiada. Mostek musi wyliczyć skok sam: podaj współrzędne wyjścia.'),
+                h('div.mapa-flota-form', x, y)),
+              h('div.mapa-nawigacja-przyciski', oblicz, wykonaj), wynik));
+          }
+          tresc.append(info);
+        };
+        wybor.onchange = rysuj;
+        sekcja.append(h('div.slaby.maly-tekst', 'Nawigacja floty'), floty.length > 1 ? wybor : null, tresc);
+        rysuj();
+      }).catch(() => {});
+      return sekcja;
+    }
+
     function wybierz(obiekt) {
       wybrane = obiekt;
       podpowiedz.hidden = true;
@@ -704,6 +808,7 @@ export default {
             wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
             p.srednica > 0 ? wiersz('Średnica', `${liczba(p.srednica)} km`) : null),
           listaObecnych(p),
+          sekcjaNawigacji(p),
           widokUkladu(p),
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
@@ -878,11 +983,18 @@ export default {
       return czesci.join(' · ');
     }
 
+    let wybranaFlota = null;
     function rysujPanelFlot() {
       wyczysc(panelFlot);
       panelFlot.append(h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => { panelFlot.hidden = true; } }, '×'), h('h2', 'Dowodzenie flotą'));
       if (!mojeFloty.length) { panelFlot.append(h('p.slaby', 'Do tego konta nie przypisano flot.')); return; }
-      for (const flota of mojeFloty) {
+      // Jedna flota naraz: wybór na górze zamiast długiej listy formularzy.
+      if (!mojeFloty.some((f) => f.id === wybranaFlota)) wybranaFlota = mojeFloty[0].id;
+      if (mojeFloty.length > 1) {
+        panelFlot.append(h('select.mapa-floty-wybor', { onchange: (e) => { wybranaFlota = Number(e.target.value); rysujPanelFlot(); } },
+          mojeFloty.map((f) => h('option', { value: f.id, selected: f.id === wybranaFlota }, f.nazwa))));
+      }
+      for (const flota of mojeFloty.filter((f) => f.id === wybranaFlota)) {
         const wybor = h('div.mapa-flota-jednostki', flota.jednostki.map((j) => h('label',
           h('input', { type: 'checkbox', value: j.obiekt_id, 'data-flota': String(flota.id) }),
           ` ${j.obiekt_nazwa} · ${j.klasa || j.typ}${j.tie_liczba == null ? '' : ` · ${j.tie_liczba} TIE`} · ${stanJednostki(j)}`)));
@@ -930,9 +1042,11 @@ export default {
           });
         } }, 'Zaznacz domyślną eskortę (1 krążownik + 3 Gozanti)') : null;
         panelFlot.append(h('article.karta', h('h3', flota.nazwa), h('p.slaby', `Dowódca: ${flota.dowodca_efektywny || 'nieprzypisany'}`), stan, defaultEskorta, wybor,
-          h('div.mapa-flota-form', nazwaGrupy, podziel), h('div.mapa-flota-form', kurs, ustawKurs),
+          h('div.mapa-flota-form', kurs, ustawKurs),
           h('p.slaby.maly-tekst', 'Kurs to kierunek dziobu: 0° = wschód, 90° = północ. Miejsce na orbicie się nie zmienia, okręty tylko obracają dziób. Przed skokiem flota sama obraca się na kurs skoku.'),
-          h('div.mapa-flota-form', x, y, cel, rozkaz), info));
+          h('p.slaby.maly-tekst', 'Skok do planety z wyborem orbity: kliknij planetę na mapie → „Nawigacja floty”. Tu: skok na współrzędne albo do innej jednostki.'),
+          h('div.mapa-flota-form', x, y, cel, rozkaz), info,
+          h('details', h('summary.slaby.maly-tekst', 'Podział na grupy'), h('div.mapa-flota-form', nazwaGrupy, podziel))));
       }
     }
 

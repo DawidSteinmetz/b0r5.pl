@@ -105,6 +105,27 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   przyleciała, dziobem ku planecie (`przylot_utc` = chwila wyjścia); w pustej przestrzeni zostaje
   z dziobem w kierunku lotu. MG w zakładce Floty ustawia od razu kurs, orbitę i rozbicie.
 
+## Skok z karty planety, komputer nawigacyjny i dolot
+
+- **Karta planety → „Nawigacja floty”** (dla dowódcy floty): wybór floty, potem **skok do układu**
+  z wariantem: bliska / średnia / daleka orbita albo krawędź układu. „Oblicz skok” pokazuje plan
+  (obliczenia, obrót, lot, wejście w nadprzestrzeń, ETA w dacie gry, paliwo), „Wykonaj skok” wydaje
+  rozkaz. Gdy flota już jest w układzie: **dolot** na inną orbitę (napęd podświetlny).
+- **Komputer nawigacyjny** (`mapa_naped_jednostki.komputer_klasa` 1–5, `komputer_stan`), liczy się
+  komputer okrętu flagowego. Klasa zmniejsza rozrzut wyjścia (5: ÷3) i czas obliczeń (5: 30 s).
+  ISD = 5, Arquitens = 4, reszta = 3. **Przejęty / brak:** automatu nie ma, mostek liczy sam —
+  tylko ręczne współrzędne, 20 min obliczeń, rozrzut ×2,5 (skok może trafić obok układu).
+  **Zhakowany:** automat działa, ale po cichu daje rozrzut ×6; gracz tego nie widzi.
+- **Wariant orbity** (`mapa_obiekty.podejscie`) decyduje o widoku z mostka: bliska → duża planeta,
+  średnia → średnia, daleka → mała, krawędź układu → planeta jako punkt. Skok na współrzędne albo
+  do jednostki kończy się na dalekiej orbicie.
+- **Dolot** (`podlot_*`): krawędź ↔ daleka 60 min, daleka ↔ średnia 15 min, średnia ↔ bliska 8 min,
+  mnożone przez zwrotność (ISD ×1,5 ≈ 2 h z krawędzi na bliską orbitę, małe okręty ×0,5). Dolot jest
+  procesem w zakładce Czas (resynchronizacja).
+- **Mapa:** przy oddaleniu flota na orbicie to jedna strzałka z liczbą okrętów (po przybliżeniu
+  wachlarz); panel dowodzenia po lewej z wyborem floty, karta planety po prawej, radar u góry.
+- Wymaga migracji `017_komputer_nawigacyjny_i_dolot.sql`.
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

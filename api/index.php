@@ -252,6 +252,49 @@ function ja(): ?array
     return null;
 }
 
+// Planety pod władzą frakcji z rejestru SQL (planety_wladza): frakcja zarządcy z jego tytułu
+// (np. „Moff” → Imperium). Dołącza lokacje na planecie i okręty frakcji na orbicie; łączy się
+// z planetami wpisanymi ręcznie przez MG (po nazwie).
+function frakcja_planety_z_rejestru(string $frakcja, array $planety, array $u): array
+{
+    if (!tabela_sql_dostepna('mapa_planety') || !function_exists('mapa_frakcja_z_opisu')) return $planety;
+    try {
+        $db = polaczenie_bazy();
+        $wiersze = $db->query("SELECT w.planeta_id, p.nazwa, w.nazwa_zarzadcy, w.funkcja FROM planety_wladza w
+            JOIN mapa_planety p ON p.id = w.planeta_id WHERE w.do_utc IS NULL OR w.do_utc > UTC_TIMESTAMP()")->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { return $planety; }
+    $indeks = [];
+    foreach ($planety as $i => $p) $indeks[mb_strtolower((string) ($p['nazwa'] ?? ''))] = $i;
+    foreach ($wiersze as $w) {
+        if (mapa_frakcja_z_opisu($w['nazwa_zarzadcy'] . ' ' . $w['funkcja']) !== $frakcja) continue;
+        if (!mapa_planeta_widoczna((int) $w['planeta_id'], $u)) continue;
+        $instalacje = [['nazwa' => $w['nazwa_zarzadcy'], 'typ' => $w['funkcja'], 'stan' => 'władza planetarna']];
+        if (tabela_sql_dostepna('lokalizacje')) {
+            $q = $db->prepare("SELECT nazwa, COALESCE(NULLIF(rodzaj,''), typ) AS typ FROM lokalizacje WHERE planeta_id = ? AND status = 'aktywna' ORDER BY nazwa");
+            $q->execute([(int) $w['planeta_id']]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $l) $instalacje[] = ['nazwa' => $l['nazwa'], 'typ' => $l['typ'], 'stan' => ''];
+        }
+        if (tabela_sql_dostepna('mapa_obiekty')) {
+            $q = $db->prepare("SELECT nazwa, klasa, wlasciciel" . (function_exists('mapa_frakcja_dostepna') && mapa_frakcja_dostepna() ? ', frakcja' : '') . "
+                FROM mapa_obiekty WHERE planeta_id = ? AND aktywny = 1 AND typ IN ('statek','jednostka') ORDER BY nazwa");
+            $q->execute([(int) $w['planeta_id']]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
+                $fr = ($o['frakcja'] ?? null) ?: mapa_frakcja_z_opisu((string) $o['wlasciciel']);
+                if ($fr === $frakcja) $instalacje[] = ['nazwa' => $o['nazwa'], 'typ' => $o['klasa'] ?: 'okręt', 'stan' => 'na orbicie'];
+            }
+        }
+        $klucz = mb_strtolower($w['nazwa']);
+        if (isset($indeks[$klucz])) {
+            $i = $indeks[$klucz];
+            $planety[$i]['instalacje'] = array_merge($planety[$i]['instalacje'] ?? [], $instalacje);
+        } else {
+            $planety[] = ['nazwa' => $w['nazwa'], 'opis' => 'Planeta pod władzą frakcji.', 'instalacje' => $instalacje];
+            $indeks[$klucz] = count($planety) - 1;
+        }
+    }
+    return $planety;
+}
+
 function wymagaj_logowania(): array
 {
     $u = ja();
@@ -515,6 +558,7 @@ switch ($akcja) {
     case 'frakcja':
         $u = wymagaj_logowania();
         $f = wczytaj('frakcje')[$u['frakcja']] ?? ['planety' => [], 'zasoby' => [], 'kadry' => []];
+        $f['planety'] = frakcja_planety_z_rejestru((string) $u['frakcja'], $f['planety'] ?? [], $u);
         odpowiedz(['frakcja' => $u['frakcja'], 'dane' => $f]);
 
     case 'frakcja_zasob':

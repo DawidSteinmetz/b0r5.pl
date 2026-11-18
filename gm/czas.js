@@ -2,10 +2,10 @@
 // Czas świata płynie 1:1. MG może skrócić albo wydłużyć pojedynczy proces; gracze widzą tylko
 // skutek (np. statek wychodzi z nadprzestrzeni wcześniej), bez wyjaśnienia. Logika: api/czas.php.
 
-import { h, wyczysc } from '../js/rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 
-const RODZAJE = { skok_floty: 'Skok floty', skok_statku: 'Skok statku', podroz: 'Podróż postaci', obsluga_statku: 'Obsługa naziemna' };
+const RODZAJE = { skok_floty: 'Skok floty', manewr: 'Manewr (kurs)', skok_statku: 'Skok statku', podroz: 'Podróż postaci', obsluga_statku: 'Obsługa naziemna' };
 
 const msg = (t, rodzaj = 'blad') => h('div.msg.' + rodzaj, t);
 const btn = (tekst, fn, klasa = '') => h('button.btn' + klasa, { type: 'button', onclick: fn }, tekst);
@@ -16,7 +16,7 @@ function ileZostalo(sekundy) {
   return g ? `${g} h ${m} min` : m ? `${m} min ${s} s` : `${s} s`;
 }
 
-const godzina = (t) => new Date(t * 1000).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' });
+const godzina = (t) => czasGry(t);
 
 export async function panelCzasu(kontener) {
   const dane = await api('mg_procesy');

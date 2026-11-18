@@ -83,7 +83,51 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   widzą tę jednostkę (MG wszystkie) — na mapie jako pomarańczowa linia z okręgiem niepewności,
   przez 24 h po szacowanym przylocie. Statek gracza radar opisuje polem `transponder` statku
   (puste = „Niezidentyfikowany statek”). Resynchronizacja nie zmienia wykrycia.
-- Wymaga migracji 013 i 014 z `api/migracje/` (import w phpMyAdmin, w tej kolejności).
+- **Daty gry:** czasy przylotów (ETA) i manewrów datapad i panel MG pokazują jako `DD|MM|RR GG:MM`,
+  gdzie rok gry = rok realny − 2010 (np. `18|11|16 17:27`); funkcja `czasGry()` w `js/rdzen/narzedzia.js`.
+- Wymaga migracji 013, 014 i 015 z `api/migracje/` (import w phpMyAdmin, w tej kolejności).
+
+## Kurs flot i manewry
+
+- Każda jednostka mapy ma **kurs** (`mapa_obiekty.kurs_deg`): 0° = wschód, 90° = północ, przeciwnie
+  do ruchu wskazówek zegara. Strzałka floty na mapie wskazuje kurs.
+- **Na orbicie** kurs to jednocześnie strona planety: jednostka stoi po stronie wskazanej kątem,
+  dziobem od planety (rufa ku planecie). Jednostki jednej floty ustawiają się wachlarzem wokół
+  tego kąta.
+- **Manewr:** zmiana kursu (na orbicie: przelot na inną stronę planety) trwa zależnie od
+  różnicy kątów i tempa **Obrót °/min** w profilu napędu (`mapa_naped_jednostki.obrot_deg_na_min`;
+  domyślnie ISD 30, Arquitens 60, reszta 90). Flota manewruje tempem najwolniejszej jednostki.
+  Dowódca ustawia kurs w panelu „Floty / nawigacja” na mapie; MG w zakładce Floty ustawia go od razu.
+- **Przed skokiem** flota najpierw staje na kursie skoku (strzałką w stronę celu), dopiero potem
+  wchodzi w nadprzestrzeń (`mapa_rozkazy_skokow.wejscie_utc`). ETA = manewr + lot, więc cel
+  „po drugiej stronie” przesuwa ETA. Radar widzi skok dopiero w chwili wejścia w nadprzestrzeń.
+- Po wyjściu z nadprzestrzeni przy planecie jednostka staje na orbicie po stronie, z której
+  przyleciała; w pustej przestrzeni zostaje z dziobem w kierunku lotu.
+- Manewry są procesami w zakładce **Czas** (resynchronizacja); resynchronizacja skoku floty
+  skraca też manewr, jeśli nowy koniec wypada wcześniej.
+
+## Układy planetarne, dzień i noc
+
+- **Współrzędne planety na mapie to położenie jej słońca.** Planeta krąży wokół słońca, księżyce
+  wokół planety, a planeta się obraca. Epoka 0 = `1|1|0 00:00` (1.01.2010 00:00 czasu polskiego).
+- Parametry planety (`api/astro.php`, tabela `planety_cykle`, NULL = domyślne): doba (h), rok (dni),
+  nachylenie osi (amplituda pór roku), faza obrotu, faza pór roku, faza i promień orbity wokół
+  słońca, średnica. Księżyce: `planety_ksiezyce` (promień orbity w km, okres w dniach, faza w epoce).
+  Planeta bez wpisów dostaje **powtarzalne wartości z nazwy**: nachylenie 0–30°, fazy, a księżyce
+  według liczby z mapy (do 6). Doba i rok — z mapy (brak: 24 h i 365 dni).
+- **Zephyria = Ziemia** (migracja 015): doba 24 h, rok 365,2422 dnia, nachylenie 23,44°, Księżyc.
+  Wschody i zachody słońca zgadzają się z prawdziwymi z dokładnością do ok. kwadransa (pomijamy
+  równanie czasu).
+- **Dzień i noc w lokacji** liczy tablet (`js/rdzen/astro.js`): wysokość słońca z deklinacji (pory
+  roku), kąta godzinnego (obrót planety) i współrzędnych lokacji. Lokacja może mieć `szer`/`dl`
+  (stopnie, np. Warszawa na Zephyrii: 52.23 / 21.01); bez nich liczy się je z `x`/`y` (km od punktu
+  0/0 na równiku, 1° = obwód/360). Wynik: dzień, zmierzch (słońce do 6° pod horyzontem), noc.
+  Widok za oknem na pulpicie używa tego zamiast zegara tabletu.
+- **Widok układu** w karcie planety na mapie: planeta z dzienną i nocną stroną, kierunek słońca,
+  księżyce na orbitach, jednostki ze strzałkami oraz opis: strona dzienna/nocna i czy jednostka
+  wisi między planetą a księżycem. W ramce: położenie planety na orbicie wokół słońca.
+  Odległości księżyców są schematyczne (nie w skali).
+- API: `?a=uklad&planeta=<nazwa>` zwraca cykl planety; scena powierzchni zawiera `swiatlo`.
 
 ## Baza danych SQL
 

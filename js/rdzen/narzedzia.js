@@ -68,6 +68,14 @@ export function rokGST(d = new Date()) {
   return d.getFullYear() - PRZESUNIECIE_GST;
 }
 
+// Data i godzina gry: DD|MM|RR GG:MM, rok gry = rok realny − 2010 (np. 18|11|16 17:27).
+// Przyjmuje Date albo znacznik czasu w sekundach.
+export function czasGry(d = new Date()) {
+  const t = d instanceof Date ? d : new Date(Number(d) * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(t.getDate())}|${p(t.getMonth() + 1)}|${p(rokGST(t))} ${p(t.getHours())}:${p(t.getMinutes())}`;
+}
+
 export function godzina(d = new Date()) {
   return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 }

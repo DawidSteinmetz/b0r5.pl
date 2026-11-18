@@ -6,7 +6,7 @@
 // z reguł gry. MG może ten koniec przesunąć — to resynchronizacja (ingerencja mocy). Gracze
 // widzą tylko skutek, bez wyjaśnienia; zapis trafia do dziennika `resynchronizacje` dla MG.
 //
-// Rodzaje: skok_floty, skok_statku, podroz, obsluga_statku. Nowy rodzaj procesu: dopisz go w czas_procesy() (lista dla MG) i czas_przestaw() (zmiana końca),
+// Rodzaje: skok_floty, manewr, skok_statku, podroz, obsluga_statku. Nowy rodzaj procesu: dopisz go w czas_procesy() (lista dla MG) i czas_przestaw() (zmiana końca),
 // a w migracji do ENUM `resynchronizacje.rodzaj`.
 
 declare(strict_types=1);
@@ -59,6 +59,25 @@ function czas_procesy(): array
         }
     }
 
+    if (tabela_sql_dostepna('mapa_obiekty') && function_exists('floty_kurs_dostepny') && floty_kurs_dostepny()) {
+        // Manewry poza skokiem (zmiana kursu / strony orbity). Manewr przed skokiem jest częścią skoku.
+        $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.manewr_od_utc, o.manewr_do_utc, o.kurs_cel_deg, f.id AS flota_id, f.nazwa AS flota
+            FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki j ON j.obiekt_id = o.id LEFT JOIN mapa_floty f ON f.id = j.flota_id
+            WHERE o.manewr_do_utc > ? AND NOT EXISTS (SELECT 1 FROM mapa_rozkazy_skokow_jednostki s
+                WHERE s.obiekt_id = o.id AND s.status = 'w_nadprzestrzeni')");
+        $q->execute([czas_utc($teraz)]);
+        $grupy = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
+            $k = $o['flota_id'] ? 'f:' . $o['flota_id'] : 'o:' . $o['id'];
+            $g = $grupy[$k] ?? ['rodzaj' => 'manewr', 'obiekt' => $k,
+                'opis' => 'Manewr na kurs ' . round((float) $o['kurs_cel_deg']) . '°: ' . ($o['flota'] ?: $o['nazwa']),
+                'start' => czas_z_utc($o['manewr_od_utc']), 'koniec' => 0];
+            $g['koniec'] = max($g['koniec'], czas_z_utc($o['manewr_do_utc']));
+            $grupy[$k] = $g;
+        }
+        array_push($lista, ...array_values($grupy));
+    }
+
     foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
         foreach ($f['dane']['flota'] ?? [] as $s) {
             $p = $s['skok'] ?? null;
@@ -101,29 +120,50 @@ function czas_przestaw(string $rodzaj, string $obiekt, int $nowyKoniec): array
             $db = polaczenie_bazy();
             $db->beginTransaction();
             try {
-                $q = $db->prepare("SELECT eta_utc FROM mapa_rozkazy_skokow WHERE id = ? AND status = 'w_nadprzestrzeni' FOR UPDATE");
+                $q = $db->prepare("SELECT * FROM mapa_rozkazy_skokow WHERE id = ? AND status = 'w_nadprzestrzeni' FOR UPDATE");
                 $q->execute([(int) $obiekt]);
-                $eta = $q->fetchColumn();
-                if ($eta === false) blad('Ten skok już się zakończył.');
-                // Wszystkie jednostki rozkazu wychodzą z nadprzestrzeni w nowym terminie, w tej samej
-                // proporcji co dotąd (ta, która miała dotrzeć wcześniej, nadal dotrze wcześniej).
-                $przed = czas_z_utc((string) $eta);
+                $r = $q->fetch(PDO::FETCH_ASSOC);
+                if (!$r) blad('Ten skok już się zakończył.');
+                $przed = czas_z_utc((string) $r['eta_utc']);
+                // Manewr przed skokiem też się skraca, jeśli nowy koniec wypada przed wejściem w nadprzestrzeń.
+                $wejscie = czas_z_utc((string) (($r['wejscie_utc'] ?? null) ?: $r['wydano_utc']));
+                if ($nowyKoniec < $wejscie) {
+                    $wejscie = max(czas_z_utc((string) $r['wydano_utc']), $nowyKoniec);
+                    $db->prepare('UPDATE mapa_rozkazy_skokow SET wejscie_utc = ? WHERE id = ?')->execute([czas_utc($wejscie), (int) $obiekt]);
+                    $db->prepare("UPDATE mapa_obiekty o JOIN mapa_rozkazy_skokow_jednostki j ON j.obiekt_id = o.id
+                        SET o.manewr_do_utc = LEAST(o.manewr_do_utc, ?) WHERE j.rozkaz_id = ? AND o.manewr_do_utc IS NOT NULL")
+                        ->execute([czas_utc($wejscie), (int) $obiekt]);
+                }
+                // Jednostki wychodzą z nadprzestrzeni w nowym terminie, w tej samej proporcji co dotąd
+                // (ta, która miała dotrzeć wcześniej, nadal dotrze wcześniej).
                 $q = $db->prepare("SELECT obiekt_id, eta_utc FROM mapa_rozkazy_skokow_jednostki WHERE rozkaz_id = ? AND status = 'w_nadprzestrzeni'");
                 $q->execute([(int) $obiekt]);
-                $start = czas_z_utc((string) $db->query('SELECT wydano_utc FROM mapa_rozkazy_skokow WHERE id = ' . (int) $obiekt)->fetchColumn());
                 $u = $db->prepare('UPDATE mapa_rozkazy_skokow_jednostki SET eta_utc = ? WHERE rozkaz_id = ? AND obiekt_id = ?');
-                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $j) {
-                    $etaJ = czas_z_utc($j['eta_utc']);
-                    $udzial = $przed > $start ? max(0, min(1, ($etaJ - $start) / ($przed - $start))) : 1;
-                    $u->execute([czas_utc((int) max($teraz, round($start + ($nowyKoniec - $start) * $udzial))), (int) $obiekt, $j['obiekt_id']]);
+                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $jd) {
+                    $etaJ = czas_z_utc($jd['eta_utc']);
+                    $udzial = $przed > $wejscie ? max(0, min(1, ($etaJ - $wejscie) / ($przed - $wejscie))) : 1;
+                    $u->execute([czas_utc((int) max($teraz, $wejscie, round($wejscie + ($nowyKoniec - $wejscie) * $udzial))), (int) $obiekt, $jd['obiekt_id']]);
                 }
-                $db->prepare('UPDATE mapa_rozkazy_skokow SET eta_utc = ? WHERE id = ?')->execute([czas_utc($nowyKoniec), (int) $obiekt]);
+                $db->prepare('UPDATE mapa_rozkazy_skokow SET eta_utc = ? WHERE id = ?')->execute([czas_utc(max($nowyKoniec, $wejscie)), (int) $obiekt]);
                 $db->commit();
             } catch (Throwable $e) {
                 if ($db->inTransaction()) $db->rollBack();
                 throw $e;
             }
             return [$przed, 'Skok rozkazu #' . $obiekt];
+
+        case 'manewr':
+            [$typ, $id] = explode(':', $obiekt) + ['', '0'];
+            $db = polaczenie_bazy();
+            $warunek = $typ === 'f' ? 'id IN (SELECT obiekt_id FROM mapa_floty_jednostki WHERE flota_id = ?)' : 'id = ?';
+            $q = $db->prepare("SELECT MAX(manewr_do_utc) FROM mapa_obiekty WHERE manewr_do_utc > ? AND $warunek");
+            $q->execute([czas_utc($teraz), (int) $id]);
+            $do = $q->fetchColumn();
+            if (!$do) blad('Ten manewr już się zakończył.');
+            $db->prepare("UPDATE mapa_obiekty SET manewr_do_utc = GREATEST(manewr_od_utc, ?) WHERE manewr_do_utc > ? AND $warunek")
+                ->execute([czas_utc($nowyKoniec), czas_utc($teraz), (int) $id]);
+            if ($nowyKoniec <= $teraz) floty_domknij_manewry();
+            return [czas_z_utc((string) $do), 'Manewr ' . ($typ === 'f' ? 'floty #' : 'jednostki #') . $id];
 
         case 'skok_statku':
             $statek = ruch_statek($obiekt);

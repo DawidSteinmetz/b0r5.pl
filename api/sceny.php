@@ -33,6 +33,11 @@ function scena_efektywna(string $uid): array
             'miejsce' => $pl['nazwa'], 'opis' => $gdzie['nazwa'], 'wnetrze' => $gdzie['typ'],
             'zmieniono' => (int) ($karta['pozycja']['zmieniono'] ?? 0),
         ];
+        // Dzień i noc liczone z cyklu planety i współrzędnych lokacji (js/rdzen/astro.js).
+        $nazwaPlanety = (string) ($pl['nazwa'] ?? ($gdzie['planeta_nazwa'] ?? ''));
+        if ($nazwaPlanety !== '') {
+            try { $ziemia['swiatlo'] = astro_swiatlo($nazwaPlanety, $gdzie); } catch (Throwable $e) {}
+        }
         if ($ziemia['zmieniono'] >= (int) $zapisana['zmieniono']) return $ziemia;
     }
     return $zapisana;

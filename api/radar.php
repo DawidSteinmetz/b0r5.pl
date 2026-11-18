@@ -14,7 +14,7 @@ const RADAR_WIDOCZNE_H = 24;   // jak długo wykrycie wisi na mapie po szacowany
 
 // Zapisuje wykrycia skoku. $pomin: id obiektów mapy, które same skaczą (nie wykrywają siebie).
 function radar_wykryj_skok(int $planetaId, float $x0, float $y0, float $x1, float $y1, int $eta,
-                           string $rodzaj, string $klucz, string $nazwa, array $pomin = []): int
+                           string $rodzaj, string $klucz, string $nazwa, array $pomin = [], ?int $wejscie = null): int
 {
     if ($planetaId <= 0 || !tabela_sql_dostepna('mapa_wykrycia_skokow') || !tabela_sql_dostepna('mapa_obiekty')) return 0;
     $db = polaczenie_bazy();
@@ -23,7 +23,8 @@ function radar_wykryj_skok(int $planetaId, float $x0, float $y0, float $x1, floa
     $wykrywajace = array_diff(array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)), array_map('intval', $pomin));
     if (!$wykrywajace) return 0;
 
-    $teraz = czas_teraz();
+    // Skok floty zaczyna się po manewrze: radar zobaczy go dopiero w chwili wejścia w nadprzestrzeń.
+    $teraz = $wejscie ?? czas_teraz();
     $dystans = hypot($x1 - $x0, $y1 - $y0);
     $ins = $db->prepare('INSERT INTO mapa_wykrycia_skokow (obiekt_id, cel_rodzaj, cel_klucz, cel_nazwa, start_x, start_y,
         szac_x, szac_y, margines_pc, szac_eta_utc, wiarygodnosc, wykryto_utc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -51,8 +52,8 @@ function radar_wykrycia(array $u, array $obiektyWidoczne): array
     $q = polaczenie_bazy()->prepare("SELECT w.id, w.cel_nazwa, w.start_x, w.start_y, w.szac_x, w.szac_y, w.margines_pc,
             w.szac_eta_utc, w.wiarygodnosc, w.wykryto_utc, o.nazwa AS wykryl
         FROM mapa_wykrycia_skokow w JOIN mapa_obiekty o ON o.id = w.obiekt_id
-        WHERE w.szac_eta_utc > ? $warunek ORDER BY w.wykryto_utc DESC LIMIT 50");
-    $q->execute([czas_utc(czas_teraz() - RADAR_WIDOCZNE_H * 3600)]);
+        WHERE w.szac_eta_utc > ? AND w.wykryto_utc <= ? $warunek ORDER BY w.wykryto_utc DESC LIMIT 50");
+    $q->execute([czas_utc(czas_teraz() - RADAR_WIDOCZNE_H * 3600), czas_utc(czas_teraz())]);
     return array_map(fn($w) => [
         'id' => (int) $w['id'], 'nazwa' => $w['cel_nazwa'], 'wykryl' => $w['wykryl'],
         'x0' => (float) $w['start_x'], 'y0' => (float) $w['start_y'], 'x' => (float) $w['szac_x'], 'y' => (float) $w['szac_y'],

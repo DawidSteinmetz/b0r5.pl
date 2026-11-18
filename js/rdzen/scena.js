@@ -11,6 +11,8 @@
 // Wszystko rysowane kodem na <canvas>, bez obrazków. Animacja zatrzymuje się, gdy scena
 // jest niewidoczna (otwarta aplikacja, wygaszony ekran), żeby nie drenować baterii.
 
+import { pora as poraAstro } from './astro.js';
+
 export const TYPY_PLANET = {
   pustynna: { nazwa: 'pustynna', kolory: ['#d9a35b', '#b97834', '#e8c58a'], atmosfera: '#f3c27a', chmury: 0.15 },
   lodowa: { nazwa: 'lodowa', kolory: ['#dbe9f4', '#9fc2dc', '#ffffff'], atmosfera: '#bfe3ff', chmury: 0.35 },
@@ -327,13 +329,22 @@ export function utworzScene(canvas) {
 
   // ---------- widok z powierzchni ----------
 
-  // Noc według zegara tabletu (21:00–6:00); `stan.pora` może to wymusić ('dzien' / 'noc').
-  const noc = () => { if (stan.pora) return stan.pora === 'noc'; const g = new Date().getHours(); return g >= 21 || g < 6; };
+  // Pora dnia: z cyklu planety i współrzędnych lokacji (`stan.swiatlo`, js/rdzen/astro.js);
+  // bez tych danych według zegara tabletu (21:00–6:00). `stan.pora` może ją wymusić.
+  const poraTeraz = () => {
+    if (stan.pora) return stan.pora;
+    const sw = stan.swiatlo;
+    if (sw?.cykl) return poraAstro(sw.cykl, sw.szer, sw.dl, (Date.now() + (stan.przesuniecie || 0)) / 1000);
+    const g = new Date().getHours();
+    return g >= 21 || g < 6 ? 'noc' : 'dzien';
+  };
+  const noc = () => poraTeraz() === 'noc';
+  const zmierzch = () => poraTeraz() === 'zmierzch';
 
   // Teren jako statyczny obraz (liczony raz na rozmiar / planetę / porę dnia).
   function przygotujKrajobraz() {
     const typ = POWIERZCHNIE[stan.planeta] ? stan.planeta : 'skalista';
-    const klucz = `${typ}|${w}x${h}|${noc()}|${stan.miejsce || ''}`;
+    const klucz = `${typ}|${w}x${h}|${poraTeraz()}|${stan.miejsce || ''}`;
     if (krajobraz?.klucz === klucz) return;
     const p = POWIERZCHNIE[typ];
     const c = document.createElement('canvas');
@@ -342,7 +353,7 @@ export function utworzScene(canvas) {
     const g = c.getContext('2d');
     g.scale(dpr, dpr);
     const los = losowe(hash(typ + (stan.miejsce || '')));
-    const ciemno = noc() ? 0.72 : 0;
+    const ciemno = noc() ? 0.72 : zmierzch() ? 0.4 : 0;
     const swiatla = [];
     const horyzont = h * 0.58;
 
@@ -406,7 +417,7 @@ export function utworzScene(canvas) {
           if (los() < 0.3) g.fillRect(x + sz / 2 - 1, y0 - 18, 2, 18);
           for (let wy = y0 + 6; wy < yAt(x) - 4; wy += 7) {
             for (let wx = x + 3; wx < x + sz - 3; wx += 5) {
-              if (los() < (noc() ? 0.35 : 0.08)) swiatla.push([wx, wy]);
+              if (los() < (noc() ? 0.35 : zmierzch() ? 0.2 : 0.08)) swiatla.push([wx, wy]);
             }
           }
         }
@@ -432,7 +443,7 @@ export function utworzScene(canvas) {
 
   function rysujNiebo(typ, ciemnosc = 0) {
     const p = POWIERZCHNIE[typ] || POWIERZCHNIE.skalista;
-    const d = Math.max(ciemnosc, noc() ? 0.82 : 0);
+    const d = Math.max(ciemnosc, noc() ? 0.82 : zmierzch() ? 0.5 : 0);
     const g = ctx.createLinearGradient(0, 0, 0, h * 0.62);
     g.addColorStop(0, mieszaj(p.niebo[0], '#020309', d));
     g.addColorStop(1, mieszaj(p.niebo[1], '#0a0d18', d * 0.9));

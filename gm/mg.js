@@ -1,7 +1,7 @@
 // Panel MG: konta graczy, dokumenty dekodera, komunikaty holonetu, dane frakcji, harmonogram.
 // To narzędzie poza światem gry, więc mówi normalnym językiem.
 
-import { h, wyczysc } from '../js/rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 import { panelWydarzen } from './wydarzenia.js';
 import { panelCzasu } from './czas.js';
@@ -189,18 +189,26 @@ async function floty() {
         wyczysc(status).append(msg('Flota przeniesiona; operacja zapisana w dzienniku MG.', 'sukces'));
       } catch (e) { wyczysc(status).append(msg(e.message)); }
     } }, 'Teleportuj flotę');
+    const kursMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °', style: 'max-width:110px' });
+    const ustawKursMg = h('button.btn', { type: 'button', onclick: async () => {
+      try {
+        await api('mg_flota_kurs', { flota_id: f.id, kurs: Number(kursMg.value) });
+        wyczysc(status).append(msg(`Kurs floty ustawiony na ${Math.round(Number(kursMg.value)) % 360}° (bez manewru).`, 'sukces'));
+      } catch (e) { wyczysc(status).append(msg(e.message)); }
+    } }, 'Ustaw kurs od razu');
     const konfiguracje = f.jednostki.map((j) => {
         const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
       const vals = {
         moc_reaktora: num('Reaktor', j.moc_reaktora), moc_hipernapedu: num('Napęd', j.moc_hipernapedu), klasa_hipernapedu: num('Klasa', j.klasa_hipernapedu, '0.1'),
         predkosc_pc_na_godzine: num('pc/godz.', j.predkosc_pc_na_godzine), paliwo: num('Paliwo', j.paliwo), paliwo_maks: num('Max paliwa', j.paliwo_maks), paliwo_na_parsek: num('Paliwo/pc', j.paliwo_na_parsek, '0.001'),
         sprawnosc_reaktora: num('Stan reaktora %', j.sprawnosc_reaktora), sprawnosc_hipernapedu: num('Stan napędu %', j.sprawnosc_hipernapedu), szum_bazowy: num('Szum °', j.szum_bazowy, '0.01'),
+        obrot_deg_na_min: num('Obrót °/min', j.obrot_deg_na_min, '1'),
       };
       const save = h('button.btn', { type: 'button', onclick: async () => {
         try { const payload = { obiekt_id: j.obiekt_id }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.obiekt_nazwa}`, 'sukces')); }
         catch (e) { wyczysc(status).append(msg(e.message)); }
       } }, 'Zapisz napęd');
-      return h('details', h('summary', `${j.obiekt_nazwa || 'Jednostka'} · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
+      return h('details', h('summary', `${j.obiekt_nazwa || 'Jednostka'} · kurs ${Math.round(j.kurs ?? 90)}° · profil napędu`), h('div.mapa-gm-naped', ...Object.values(vals), save));
     });
     const usunFlote = h('section.mapa-gm-usun-flote', h('h3', 'Usuń flotę'),
       h('p.slaby', 'Zwalnia okręty z tej floty i jej podgrup. Jednostki oraz historia rozkazów pozostaną w bazie.'),
@@ -215,7 +223,9 @@ async function floty() {
       } }, 'Usuń flotę i zwolnij jej jednostki'));
     wyczysc(widok).append(h('h2', f.nazwa), h('div.formularz', pole('Nazwa floty', nazwa), pole('Dowódca', dowodca)),
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
-      h('div.formularz', nx, ny, powod, teleport), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
+      h('div.formularz', nx, ny, powod, teleport),
+      h('p.slaby', 'Kurs: 0° = wschód, 90° = północ. Na orbicie kurs to też strona planety (rufa ku planecie). Tu zmiana jest natychmiastowa; gracz-dowódca zmienia kurs manewrem (czas zależy od „Obrót °/min” najwolniejszej jednostki).'),
+      h('div.formularz', kursMg, ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
   }
   render();
 }
@@ -639,7 +649,7 @@ async function stanPostaci() {
       const przydzial = h('select', h('option', { value: '' }, '— bez przydziału —'), s.ladowiska.map((l) => h('option', { value: l.klucz, selected: s.watek?.przydzial === l.klucz }, `${l.nazwa} (${l.typ}, ${l.x} / ${l.y})`)));
       return h('div', { style: 'border-top:1px solid var(--linia);padding:12px 0' },
         h('div.rzad',
-          h('div', { style: 'flex:1' }, h('b', s.nazwa), h('span.slaby', `  ${s.firma} · przy: ${s.przy}${s.cel ? ' · SKOK DO: ' + s.cel + (s.eta ? ' · wyjście ' + new Date(s.eta * 1000).toLocaleTimeString('pl-PL') + ' (zmiana: zakładka Czas)' : ' · bez wyliczonego czasu') : ''} · na pokładzie: ${s.zaloga.join(', ') || '—'}`)),
+          h('div', { style: 'flex:1' }, h('b', s.nazwa), h('span.slaby', `  ${s.firma} · przy: ${s.przy}${s.cel ? ' · SKOK DO: ' + s.cel + (s.eta ? ' · wyjście ' + czasGry(s.eta) + ' (zmiana: zakładka Czas)' : ' · bez wyliczonego czasu') : ''} · na pokładzie: ${s.zaloga.join(', ') || '—'}`)),
           s.cel ? btn('Zakończ skok', bezpiecznie(async () => {
             await api('mg_skok_koniec', { statek: s.klucz });
             wyczysc(glowna); await stanPostaci();

@@ -2,10 +2,38 @@
 // dokąd leci i gdzie stoją statki jej firm. Dane astronawigacyjne są pobierane z SQL
 // przez API i buforowane przez service worker do pracy bez zasięgu.
 
-import { h, wyczysc, godzina } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
+import { stanUkladu, stronaOrbity } from '../rdzen/astro.js';
 import { api } from '../rdzen/api.js';
 
 const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
+const RAD = Math.PI / 180;
+const teraz = () => Date.now() / 1000;
+
+// Kurs jednostki teraz (stopnie, układ mapy: 0° = wschód, 90° = północ), z trwającym manewrem.
+export function kursTeraz(o, t = teraz()) {
+  const m = o?.manewr;
+  if (m && t < m.do) {
+    const p = Math.max(0, Math.min(1, (t - m.od) / Math.max(1, m.do - m.od)));
+    const r = ((m.cel - m.start + 540) % 360) - 180;
+    return (m.start + r * p + 360) % 360;
+  }
+  if (m) return m.cel;
+  return o?.kurs ?? 90;
+}
+
+// Jednostka jest w nadprzestrzeni dopiero po manewrze (wejście w skok).
+const wNadprzestrzeni = (o, t = teraz()) => !!o?.lot && t >= (o.lot.wejscie || 0);
+
+// Strzałka (dziób w kierunku kursu); ekran ma oś y w dół, stąd minus przy kącie.
+function strzalka(g, x, y, kurs, r = 8) {
+  const a = -kurs * RAD;
+  g.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+  g.lineTo(x + Math.cos(a + 2.45) * r * 0.85, y + Math.sin(a + 2.45) * r * 0.85);
+  g.lineTo(x + Math.cos(a + Math.PI) * r * 0.3, y + Math.sin(a + Math.PI) * r * 0.3);
+  g.lineTo(x + Math.cos(a - 2.45) * r * 0.85, y + Math.sin(a - 2.45) * r * 0.85);
+  g.closePath();
+}
 
 const REGIONY = ['Głębokie Jądro', 'Światy Jądra', 'Kolonie', 'Wewnętrzne Rubieże', 'Obszar Ekspansji',
   'Środkowe Rubieże', 'Zewnętrzne Rubieże', 'Przestrzeń Huttów', 'Nieznane Regiony', 'Dzika Przestrzeń'];
@@ -143,19 +171,25 @@ export default {
       }
       const p = planetaObiektu(o);
       const pozycjaDomyslna = naEkran(o.x, o.y);
-      if (!p || o.lot) return pozycjaDomyslna;
+      if (!p || wNadprzestrzeni(o)) return pozycjaDomyslna;
       const orbita = !!o.flota || !!o.orbita;
       if (!orbita && o.typ !== 'postac') return pozycjaDomyslna;
       const grupaOrbity = (x) => x.flota?.kod || (x.bitwa ? `bitwa:${x.bitwa.nazwa}` : `orbita:${norm(x.planeta)}`);
       const grupa = grupaOrbity(o);
-      const rodzina = obiektyMapy.filter((x) => planetaObiektu(x) === p && !x.lot
+      const rodzina = obiektyMapy.filter((x) => planetaObiektu(x) === p && !wNadprzestrzeni(x)
         && (orbita ? grupaOrbity(x) === grupa : x.typ === 'postac'));
       const indeks = Math.max(0, rodzina.findIndex((x) => x.id === o.id));
-      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !x.lot).map(grupaOrbity))];
+      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !wNadprzestrzeni(x)).map(grupaOrbity))];
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const promien = orbita ? 18 + numerOrbity * 9 : 30;
-      const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
       const [px, py] = naEkran(p.x, p.y);
+      if (orbita && o.kurs != null) {
+        // Kurs = strona orbity: jednostki floty wachlarzem wokół kursu, każda rufą ku planecie.
+        const rozrzut = Math.min(14, 140 / Math.max(rodzina.length, 1));
+        const kat = -(kursTeraz(o) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
+        return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
+      }
+      const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
       return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
     }
 
@@ -445,14 +479,16 @@ export default {
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
         const kolorZnacznika = o.bitwa?.kolor || o.kolor;
         const kolor = /^#[0-9a-f]{6}$/i.test(kolorZnacznika || '') ? kolorZnacznika : '#00ff66';
+        let kursRys = kursTeraz(o);
         if (o.lot) {
           const [cx, cy] = naEkran(o.lot.x, o.lot.y);
           c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+          if (wNadprzestrzeni(o)) kursRys = Math.atan2(-(cy - sy), cx - sx) / RAD;
         }
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
         if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
-        if (o.znacznik === 'trojkat') { c.moveTo(sx, sy - 7); c.lineTo(sx + 6, sy + 5); c.lineTo(sx - 6, sy + 5); c.closePath(); }
+        if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys);
         else if (o.znacznik === 'kwadrat') c.rect(sx - 5, sy - 5, 10, 10);
         else if (o.znacznik === 'romb') { c.moveTo(sx, sy - 7); c.lineTo(sx + 7, sy); c.lineTo(sx, sy + 7); c.lineTo(sx - 7, sy); c.closePath(); }
         else c.arc(sx, sy, 5, 0, Math.PI * 2);
@@ -475,7 +511,7 @@ export default {
         c.setLineDash([]); c.globalAlpha = 0.18; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill();
         c.globalAlpha = 0.7; c.stroke(); c.restore();
         c.font = '11px monospace'; c.fillStyle = KOLOR_WYKRYCIA;
-        const eta = w.eta * 1000 > Date.now() ? `ETA ~${godzina(new Date(w.eta * 1000))}` : 'wyjście szacowane';
+        const eta = w.eta * 1000 > Date.now() ? `ETA ~${czasGry(w.eta)}` : 'wyjście szacowane';
         napis(c, `Skok · ${w.nazwa} · ${eta}`, bx + Math.min(r, 40) + 6, by + 4);
       }
       if (tuPlaneta) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
@@ -534,6 +570,83 @@ export default {
 
     // ---------- karta wybranego obiektu ----------
 
+    // Widok układu w karcie planety: planeta z dzienną i nocną stroną, kierunek słońca, księżyce
+    // na orbitach i jednostki na orbicie ze strzałkami (rufa ku planecie). Liczone na żywo
+    // z cyklu planety (api ?a=uklad, js/rdzen/astro.js); w małej ramce: obieg planety wokół słońca.
+    function widokUkladu(p) {
+      const W = 300, H = 220;
+      const plotnoUkladu = h('canvas.mapa-uklad', { width: W * 2, height: H * 2, style: `width:${W}px;height:${H}px;max-width:100%` });
+      const opis = h('div.slaby.maly-tekst');
+      const sekcja = h('div.mapa-uklad-sekcja', h('div.slaby.maly-tekst', 'Układ planetarny'), plotnoUkladu, opis);
+      let cykl = null;
+      const g = plotnoUkladu.getContext('2d');
+      g.scale(2, 2);
+      const rysuj = () => {
+        if (!plotnoUkladu.isConnected) { clearInterval(zegar); return; }
+        if (!cykl) return;
+        const t = teraz();
+        const u = stanUkladu(cykl, t);
+        const cx = W * 0.56, cy = H * 0.54, rp = 15;
+        const ekr = (kat) => -kat * RAD;
+        g.clearRect(0, 0, W, H);
+        // kierunek słońca: smuga światła od strony słońca
+        const as = ekr(u.katSlonca);
+        g.save(); g.strokeStyle = 'rgba(255, 214, 120, 0.35)'; g.lineWidth = 1;
+        for (let i = -3; i <= 3; i++) {
+          const dx = Math.cos(as), dy = Math.sin(as), px = -dy * i * 7, py = dx * i * 7;
+          g.beginPath(); g.moveTo(cx + dx * 140 + px, cy + dy * 140 + py); g.lineTo(cx + dx * (rp + 6) + px, cy + dy * (rp + 6) + py); g.stroke();
+        }
+        g.fillStyle = 'rgba(255, 214, 120, 0.9)'; g.font = '10px monospace';
+        g.fillText('Słońce', Math.max(4, Math.min(W - 44, cx + Math.cos(as) * 120 - 18)), Math.max(12, Math.min(H - 4, cy + Math.sin(as) * 90)));
+        g.restore();
+        // księżyce: orbity w skali logarytmicznej
+        // (kolejność od najbliższego; odległości schematyczne, nie w skali)
+        u.ksiezyce.forEach((k, i) => {
+          const r = 38 + (Math.min(W, H) / 2 - 48) * (i + 1) / u.ksiezyce.length;
+          g.strokeStyle = 'rgba(160, 190, 220, 0.25)'; g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+          const a = ekr(k.kat), mx = cx + Math.cos(a) * r, my = cy + Math.sin(a) * r;
+          g.fillStyle = '#9fb2c4'; g.beginPath(); g.arc(mx, my, 3.5, 0, Math.PI * 2); g.fill();
+          g.fillStyle = 'rgba(30, 30, 40, 0.8)'; g.beginPath(); g.arc(mx, my, 3.5, as + Math.PI / 2, as - Math.PI / 2); g.fill();
+          g.fillStyle = '#9fb2c4'; g.font = '9px monospace'; g.fillText(k.nazwa, mx + 5, my - 4);
+        });
+        // planeta: noc i oświetlona połowa od strony słońca
+        g.fillStyle = '#1b2433'; g.beginPath(); g.arc(cx, cy, rp, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#6fa8d8'; g.beginPath(); g.arc(cx, cy, rp, as - Math.PI / 2, as + Math.PI / 2); g.closePath(); g.fill();
+        // jednostki na orbicie
+        const jednostki = obiektyMapy.filter((o) => planetaObiektu(o) === p && ['statek', 'jednostka'].includes(o.typ) && !wNadprzestrzeni(o, t));
+        const grupy = new Map();
+        for (const o of jednostki) {
+          const klucz = o.flota?.kod || `o:${o.id}`;
+          if (!grupy.has(klucz)) grupy.set(klucz, []);
+          grupy.get(klucz).push(o);
+        }
+        const linie = [];
+        [...grupy.values()].forEach((lista, nr) => {
+          lista.forEach((o, i) => {
+            const kurs = kursTeraz(o, t) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
+            const r = rp + 9 + nr * 6, a = ekr(kurs);
+            const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
+            g.fillStyle = kolor; g.beginPath(); strzalka(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, kurs, 6); g.fill();
+          });
+          const o = lista[0];
+          const st = stronaOrbity(cykl, kursTeraz(o, t), t);
+          linie.push(`${o.flota?.nazwa || o.nazwa}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · kurs ${Math.round(kursTeraz(o, t))}°`);
+        });
+        // ramka: obieg planety wokół słońca
+        g.strokeStyle = 'rgba(255,255,255,0.15)'; g.strokeRect(4, 4, 62, 62);
+        g.fillStyle = '#ffd678'; g.beginPath(); g.arc(35, 35, 3.5, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = 'rgba(255,255,255,0.2)'; g.beginPath(); g.arc(35, 35, 24, 0, Math.PI * 2); g.stroke();
+        const ap = ekr(u.katPlanety);
+        g.fillStyle = '#6fa8d8'; g.beginPath(); g.arc(35 + Math.cos(ap) * 24, 35 + Math.sin(ap) * 24, 3, 0, Math.PI * 2); g.fill();
+        wyczysc(opis).append(...[`Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie]
+          .map((l) => h('div', l)));
+      };
+      const zegar = setInterval(rysuj, 1000);
+      api('uklad', undefined, { planeta: p.nazwa }).then((d) => { cykl = d.cykl; rysuj(); })
+        .catch(() => { wyczysc(opis).append(h('div', 'Brak danych astronawigacyjnych układu.')); });
+      return sekcja;
+    }
+
     function wybierz(obiekt) {
       wybrane = obiekt;
       podpowiedz.hidden = true;
@@ -591,6 +704,7 @@ export default {
             wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
             p.srednica > 0 ? wiersz('Średnica', `${liczba(p.srednica)} km`) : null),
           listaObecnych(p),
+          widokUkladu(p),
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
               s.w_locie ? h('span.slaby', s.cel ? ` · w nadprzestrzeni → ${s.cel}` : ' · na orbicie') : null)))) : null);
@@ -750,6 +864,20 @@ export default {
       } catch (e) { wyczysc(panelFlot).append(h('p.komunikat.blad', e.message)); }
     }
 
+    function opisSkoku(w) {
+      const manewr = w.manewr_s > 0 ? `Manewr na kurs skoku: ${Math.ceil(w.manewr_s / 60)} min, wejście w nadprzestrzeń ${czasGry(w.wejscie)}. ` : '';
+      return `${manewr}ETA: ${czasGry(w.eta)}`;
+    }
+
+    function stanJednostki(j) {
+      const t = teraz();
+      const czesci = [`kurs ${Math.round(j.kurs ?? 90)}°`];
+      if (j.manewr_do > t) czesci.push(`manewr → ${Math.round(j.kurs_cel)}° do ${czasGry(j.manewr_do)}`);
+      if (j.wejscie > t) czesci.push(`skok od ${czasGry(j.wejscie)}`);
+      if (j.eta) czesci.push(`ETA ${czasGry(j.eta)}`);
+      return czesci.join(' · ');
+    }
+
     function rysujPanelFlot() {
       wyczysc(panelFlot);
       panelFlot.append(h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => { panelFlot.hidden = true; } }, '×'), h('h2', 'Dowodzenie flotą'));
@@ -757,7 +885,7 @@ export default {
       for (const flota of mojeFloty) {
         const wybor = h('div.mapa-flota-jednostki', flota.jednostki.map((j) => h('label',
           h('input', { type: 'checkbox', value: j.obiekt_id, 'data-flota': String(flota.id) }),
-          ` ${j.obiekt_nazwa} · ${j.klasa || j.typ}${j.tie_liczba == null ? '' : ` · ${j.tie_liczba} TIE`}${j.rozkaz_status ? ` · ${j.rozkaz_status}` : ''}`)));
+          ` ${j.obiekt_nazwa} · ${j.klasa || j.typ}${j.tie_liczba == null ? '' : ` · ${j.tie_liczba} TIE`} · ${stanJednostki(j)}`)));
         const nazwaGrupy = h('input', { placeholder: 'Nazwa nowej grupy' });
         const x = h('input', { type: 'number', step: '0.1', placeholder: 'X' });
         const y = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
@@ -775,14 +903,24 @@ export default {
           if (!ids.length) { info.textContent = 'Zaznacz jednostki, które mają wykonać rozkaz.'; return; }
           if (cel.value) {
             const j = ids.length === 1 ? { obiekt_id: ids[0] } : { flota_id: flota.id };
-            try { const wynik = await api('mapa_flota_rozkaz', { ...j, cel_obiekt_id: Number(cel.value) }); info.textContent = `Rozkaz przyjęty. ETA: ${new Date(wynik.eta * 1000).toLocaleString('pl-PL')}. Szum nawigacyjny: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
+            try { const wynik = await api('mapa_flota_rozkaz', { ...j, cel_obiekt_id: Number(cel.value) }); info.textContent = `Rozkaz przyjęty. ${opisSkoku(wynik)}. Szum nawigacyjny: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
             catch (e) { info.textContent = e.message; }
           } else if (x.value !== '' && y.value !== '') {
             const j = ids.length === 1 ? { obiekt_id: ids[0] } : { flota_id: flota.id };
-            try { const wynik = await api('mapa_flota_rozkaz', { ...j, x: Number(x.value), y: Number(y.value) }); info.textContent = `Rozkaz przyjęty. ETA: ${new Date(wynik.eta * 1000).toLocaleString('pl-PL')}. Szum: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
+            try { const wynik = await api('mapa_flota_rozkaz', { ...j, x: Number(x.value), y: Number(y.value) }); info.textContent = `Rozkaz przyjęty. ${opisSkoku(wynik)}. Szum: ${wynik.jednostki.map((a) => `${a.nazwa} ${a.szum_stopnie}°`).join(', ')}`; await pobierzPozycje(); }
             catch (e) { info.textContent = e.message; }
           } else info.textContent = 'Podaj współrzędne albo wybierz jednostkę docelową.';
         } }, 'Wyślij zaznaczone');
+        const kurs = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °' });
+        const ustawKurs = h('button.przycisk.maly', { onclick: async () => {
+          if (kurs.value === '') { info.textContent = 'Podaj kurs w stopniach: 0 = wschód, 90 = północ.'; return; }
+          const ids = zaznaczone();
+          try {
+            const w = await api('mapa_flota_kurs', { flota_id: flota.id, ...(ids.length ? { jednostki: ids } : {}), kurs: Number(kurs.value) });
+            info.textContent = w.koniec > teraz() ? `Manewr na kurs ${Math.round(w.kurs)}° zakończy się ${czasGry(w.koniec)}.` : `Kurs ${Math.round(w.kurs)}°.`;
+            await odswiezFloty(); await pobierzPozycje();
+          } catch (e) { info.textContent = e.message; }
+        } }, 'Ustaw kurs');
         const defaultEskorta = flota.kod === 'havis-iii-eskortowa' ? h('button.przycisk.maly.drugi', { onclick: () => {
           let krążnik = false;
           wybor.querySelectorAll('input').forEach((el) => { const j = flota.jednostki.find((u) => u.obiekt_id === Number(el.value));
@@ -792,7 +930,9 @@ export default {
           });
         } }, 'Zaznacz domyślną eskortę (1 krążownik + 3 Gozanti)') : null;
         panelFlot.append(h('article.karta', h('h3', flota.nazwa), h('p.slaby', `Dowódca: ${flota.dowodca_efektywny || 'nieprzypisany'}`), stan, defaultEskorta, wybor,
-          h('div.mapa-flota-form', nazwaGrupy, podziel), h('div.mapa-flota-form', x, y, cel, rozkaz), info));
+          h('div.mapa-flota-form', nazwaGrupy, podziel), h('div.mapa-flota-form', kurs, ustawKurs),
+          h('p.slaby.maly-tekst', 'Kurs: 0° = wschód, 90° = północ. Na orbicie kurs wyznacza też stronę planety (rufa ku planecie). Przed skokiem flota sama staje na kursie skoku.'),
+          h('div.mapa-flota-form', x, y, cel, rozkaz), info));
       }
     }
 

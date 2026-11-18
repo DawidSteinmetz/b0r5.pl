@@ -524,6 +524,8 @@ html.z-tlem #ekran::before {
 }
 .mapa-karta h2 { margin: 0 32px 8px 0; font-size: 18px; font-weight: normal; letter-spacing: 0.08em; color: var(--akcent-2); }
 .mapa-karta .tabela th, .mapa-karta .tabela td { padding: 6px 4px; font-size: 13px; }
+.mapa-uklad-sekcja { margin: 10px 0; }
+.mapa-uklad { display: block; margin: 6px 0; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--linia); border-radius: 4px; }
 .mapa-karta .lista li { padding: 8px 2px; font-size: 13px; }
 .mapa-hover { position: absolute; z-index: 5; width: min(310px, calc(100% - 24px)); max-height: 220px; overflow-y: auto; padding: 11px 14px; border: 1px solid var(--linia-mocna); border-left: 3px solid var(--akcent); border-radius: 8px; background: rgba(7, 15, 17, 0.97); box-shadow: 0 8px 24px rgba(0,0,0,.38); pointer-events: none; color: var(--tekst); font-size: 13px; }
 .mapa-hover-tytul { display: block; margin-bottom: 6px; color: var(--akcent); font-size: 15px; letter-spacing: .04em; }

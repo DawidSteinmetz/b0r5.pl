@@ -1,6 +1,6 @@
 // Nawigacja: gdzie jestem, dokąd i czym mogę się dostać, mój statek, portfel, akcje w miejscu.
 
-import { h, wyczysc } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 
 const TYPY = {
@@ -147,7 +147,9 @@ export default {
             h('button.przycisk.drugi', { onclick: () => akcja('zejdz_z_pokladu', {}, 'Zszedłeś do hangaru.') }, 'Zejdź z pokładu')));
       }
       if (['wejscie', 'nadswietlna'].includes(p.scena) || p.cel) {
-        return panel(paliwo, h('p', 'Lot w nadprzestrzeni. Wyjście z nadprzestrzeni ustala kontrola lotu.'));
+        return panel(paliwo, h('p', p.eta
+          ? `Lot w nadprzestrzeni. Komputer nawigacyjny szacuje wyjście na ${czasGry(p.eta)}.`
+          : 'Lot w nadprzestrzeni. Wyjście z nadprzestrzeni ustala kontrola lotu.'));
       }
       const wznoszenie = p.scena === 'start' && p.od_zmiany_ms < p.wznoszenie_ms;
       if (wznoszenie) {
@@ -159,7 +161,7 @@ export default {
         panel(paliwo,
           h('p.slaby.maly-tekst', 'Statek na orbicie. Komputer nawigacyjny czeka na współrzędne skoku.'),
           h('div.rzad', h('div.pole.rozpycha', { style: 'margin:0' }, h('label', 'Współrzędne skoku'), wsp),
-            h('button.przycisk', { style: 'align-self:flex-end', onclick: () => akcja('skok', { wspolrzedne: wsp.value }, (r) => `Obliczono skok. Kurs: ${r.cel}.`) }, 'Skok'))),
+            h('button.przycisk', { style: 'align-self:flex-end', onclick: () => akcja('skok', { wspolrzedne: wsp.value }, (r) => `Obliczono skok. Kurs: ${r.cel}.${r.eta ? ` Wyjście z nadprzestrzeni: ${czasGry(r.eta)}.` : ''}`) }, 'Skok'))),
         ladowanie(p),
         lacznosc(p));
     }

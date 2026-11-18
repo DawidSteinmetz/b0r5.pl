@@ -220,6 +220,7 @@ export function utworzScene(canvas) {
   let krajobraz = null; // { klucz, plotno, swiatla: [{x, y}] }
   let chmury = [];
   let oknoIsd = null; // { w, h, plotno }
+  let panorama = null; // { ziarno, gwiazdy: [{ k, y, r, a, m, f }] } — niebo 360° widziane z mostka
   const spokojnie = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function rozmiar() {
@@ -344,6 +345,30 @@ export function utworzScene(canvas) {
   }
   // Pozioma pozycja na ekranie obiektu w danym kierunku (cel na lewo od dziobu → na lewo w oknie).
   const xKierunku = (kurs, kierunek) => w / 2 - norm180(kierunek - kurs) * (w / POLE_WIDZENIA);
+
+  // Panorama tła z mostka: losowe (ale stałe dla okrętu) gwiazdy w pełnym kole 360°. Przy obrocie
+  // dziobu całe niebo przesuwa się razem z planetą, słońcem i gwiazdami sąsiednich układów.
+  function rysujPanorame(t) {
+    const k = kierunki();
+    if (!k) return false;
+    const ziarno = hash(String(stan.opis || stan.miejsce || 'niebo'));
+    if (panorama?.ziarno !== ziarno) {
+      const los = losowe(ziarno);
+      panorama = { ziarno, gwiazdy: Array.from({ length: 900 }, () => {
+        const jasna = los() < 0.06;
+        return { k: los() * 360, y: los(), r: jasna ? 1.1 + los() * 0.8 : 0.5 + los() * 0.6,
+          a: jasna ? 0.75 + los() * 0.25 : 0.2 + los() * 0.5, m: 0.5 + los() * 2, f: los() * Math.PI * 2 };
+      }) };
+    }
+    tlo();
+    const migot = spokojnie ? 0 : 0.18;
+    for (const g of panorama.gwiazdy) {
+      if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 1) continue;
+      ctx.fillStyle = `rgba(220, 232, 255, ${g.a * (1 - migot + migot * Math.sin(t * 0.0015 * g.m + g.f))})`;
+      ctx.fillRect(xKierunku(k.kurs, g.k), g.y * h, g.r, g.r);
+    }
+    return true;
+  }
 
   // Gwiazdy sąsiednich układów (`widok.gwiazdy`): w swoim kierunku względem dziobu, jasność
   // według odległości: do 50 pc jasna z poświatą, 50–300 pc jasny punkt, 300–1000 pc słaby punkt.
@@ -785,8 +810,7 @@ export function utworzScene(canvas) {
         break;
       }
       case 'orbita':
-        tlo();
-        rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05);
+        if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05); }
         rysujSasiednieGwiazdy();
         rysujSlonce();
         rysujPlanete(t, 1);
@@ -798,8 +822,7 @@ export function utworzScene(canvas) {
         rysujStart(dt * ruch);
         break;
       default:
-        tlo();
-        rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05);
+        if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05); }
         rysujSasiednieGwiazdy();
     }
     if (stan.okno === 'isd') {

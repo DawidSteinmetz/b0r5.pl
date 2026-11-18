@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **197**, z czego używane przez PHP: **24**
+- Tabele w `api/schema.sql`: **198**, z czego używane przez PHP: **25**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -12,7 +12,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 
 | Dokument | odczyty | zmiany | pliki PHP |
 |---|---:|---:|---|
-| `firmy` | 18 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php |
+| `firmy` | 19 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php, sceny.php |
 | `bank` | 5 | 21 | agencja.php, bank.php, firmy.php, gielda.php, handel.php, karty.php, ruch.php |
 | `karty` | 9 | 17 | czas.php, karty.php, ruch.php |
 | `katalog` | 5 | 5 | firmy.php, gielda.php, ruch.php |
@@ -124,6 +124,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | uprawnienia | — | `uprawnienia_zawartosci` |
 | ustawienia | — | `ustawienia` |
 | waluty | — | `waluty`, `waluty_aliasy` |
+| wskazniki | `wskazniki_zgody` | — |
 | wtyczki | — | `wtyczki_postaci` |
 | wydarzenia | — | `wydarzenia`, `wydarzenia_skutki_cen` |
 | wykrycia | — | `wykrycia_nadprzestrzenne` |

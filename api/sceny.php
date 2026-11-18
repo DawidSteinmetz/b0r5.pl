@@ -222,14 +222,88 @@ function liczniki_statku(string $klucz): ?array
     return array_filter(['odliczanie' => $odliczanie, 'paliwo' => (int) ($s['paliwo'] ?? 100)], fn($v) => $v !== null);
 }
 
-function liczniki_postaci(string $uid): ?array
+// ZGODY NA WSKAŹNIKI: liczniki widzi kapitan swojego okrętu (dowódca floty okrętu; na statku firmy
+// właściciel albo menedżer). Gość na pokładzie — nawet wyższy stopniem — tylko za zgodą kapitana
+// albo MG (tabela wskazniki_zgody). Bez zgody serwer w ogóle nie wysyła liczników.
+
+// Okręt, na którego pokładzie jest postać: klucz okret:<id> albo s:<firma>:<statek>.
+function wskazniki_klucz_postaci(string $uid, ?array $lokacje = null): ?string
 {
     $karta = karta($uid);
     $klucz = (string) ($karta['pozycja']['lokacja'] ?? '');
-    if (str_starts_with($klucz, 's:')) return liczniki_statku($klucz);
-    $gdzie = ruch_gdzie($karta, ruch_lokacje());
-    if ($gdzie && !empty($gdzie['okret_id'])) return liczniki_okretu((int) $gdzie['okret_id']);
-    return null;
+    if (str_starts_with($klucz, 's:')) return $klucz;
+    $gdzie = ruch_gdzie($karta, $lokacje ?? ruch_lokacje());
+    return $gdzie && !empty($gdzie['okret_id']) ? 'okret:' . (int) $gdzie['okret_id'] : null;
+}
+
+function wskazniki_kapitan(string $klucz, array $u): bool
+{
+    if (str_starts_with($klucz, 'okret:')) {
+        if (!tabela_sql_dostepna('mapa_obiekty') || !function_exists('floty_czy_dowodca')) return false;
+        $q = polaczenie_bazy()->prepare('SELECT flota_id FROM mapa_floty_jednostki WHERE obiekt_id=?');
+        $q->execute([(int) substr($klucz, 6)]);
+        $fid = (int) $q->fetchColumn();
+        return $fid > 0 && floty_czy_dowodca($fid, (string) $u['login']);
+    }
+    if (str_starts_with($klucz, 's:')) {
+        [, $fid] = explode(':', $klucz) + ['', ''];
+        foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
+            if ($f['id'] === $fid) return in_array(firma_rola($f, (string) $u['id']), ['wlasciciel', 'menedzer'], true);
+        }
+    }
+    return false;
+}
+
+function wskazniki_zgoda(string $klucz, string $login): bool
+{
+    if (!tabela_sql_dostepna('wskazniki_zgody')) return false;
+    $q = polaczenie_bazy()->prepare('SELECT 1 FROM wskazniki_zgody WHERE klucz=? AND LOWER(konto_login)=LOWER(?)');
+    $q->execute([$klucz, $login]);
+    return (bool) $q->fetchColumn();
+}
+
+function wskazniki_nazwa(string $klucz): string
+{
+    if (str_starts_with($klucz, 'okret:')) {
+        $q = polaczenie_bazy()->prepare('SELECT nazwa FROM mapa_obiekty WHERE id=?');
+        $q->execute([(int) substr($klucz, 6)]);
+        return (string) ($q->fetchColumn() ?: 'Okręt');
+    }
+    return (string) (ruch_statek($klucz)['nazwa'] ?? 'Statek');
+}
+
+function liczniki_postaci(string $uid): ?array
+{
+    $klucz = wskazniki_klucz_postaci($uid);
+    if ($klucz === null) return null;
+    $u = null;
+    foreach (uzytkownicy() as $k) if ($k['id'] === $uid) $u = $k;
+    if (!$u || (!wskazniki_kapitan($klucz, $u) && !wskazniki_zgoda($klucz, (string) $u['login']))) return null;
+    return str_starts_with($klucz, 's:') ? liczniki_statku($klucz) : liczniki_okretu((int) substr($klucz, 6));
+}
+
+// Okręty z gośćmi na pokładzie, którymi zarządza konto (MG: wszystkie): [{klucz, nazwa, goscie}].
+function wskazniki_poklad(array $u): array
+{
+    $mg = ($u['rola'] ?? '') === 'mg';
+    $lokacje = ruch_lokacje();
+    $okrety = [];
+    foreach (uzytkownicy() as $k) {
+        if (($k['rola'] ?? '') === 'mg') continue;
+        $klucz = wskazniki_klucz_postaci((string) $k['id'], $lokacje);
+        if ($klucz !== null) $okrety[$klucz][] = $k;
+    }
+    $wynik = [];
+    foreach ($okrety as $klucz => $osoby) {
+        if (!$mg && !wskazniki_kapitan($klucz, $u)) continue;
+        $goscie = [];
+        foreach ($osoby as $k) {
+            if (wskazniki_kapitan($klucz, $k)) continue;
+            $goscie[] = ['login' => $k['login'], 'postac' => $k['postac'] ?? $k['login'], 'zgoda' => wskazniki_zgoda($klucz, (string) $k['login'])];
+        }
+        if ($goscie) $wynik[] = ['klucz' => $klucz, 'nazwa' => wskazniki_nazwa($klucz), 'goscie' => $goscie];
+    }
+    return $wynik;
 }
 
 function scena_efektywna(string $uid): array
@@ -288,6 +362,28 @@ function obsluz_sceny(string $akcja, bool $post): void
             $liczniki = null;
             try { $liczniki = liczniki_postaci($u['id']); } catch (Throwable $e) {}
             odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms(), 'liczniki' => $liczniki]);
+
+        case 'wskazniki_poklad':
+            $u = wymagaj_logowania();
+            odpowiedz(['okrety' => wskazniki_poklad($u), 'dostepne' => tabela_sql_dostepna('wskazniki_zgody')]);
+
+        case 'wskazniki_zgoda':
+            // Kapitan (albo MG) udziela albo cofa gościowi zgodę na wskaźniki pokładowe.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            if (!tabela_sql_dostepna('wskazniki_zgody')) blad('Brak tabeli wskazniki_zgody — zaimportuj migrację 020.');
+            $w = wejscie();
+            $klucz = mb_substr(trim((string) ($w['klucz'] ?? '')), 0, 120);
+            $login = mb_substr(trim((string) ($w['login'] ?? '')), 0, 64);
+            if ($klucz === '' || $login === '') blad('Brak okrętu albo osoby.');
+            if (($u['rola'] ?? '') !== 'mg' && !wskazniki_kapitan($klucz, $u)) blad('Tylko kapitan tego okrętu może udostępniać wskaźniki.', 403);
+            if (!empty($w['zgoda'])) {
+                polaczenie_bazy()->prepare('INSERT INTO wskazniki_zgody (klucz, konto_login, nadal_login, nadano_utc) VALUES (?, ?, ?, UTC_TIMESTAMP())
+                    ON DUPLICATE KEY UPDATE nadal_login = ?, nadano_utc = UTC_TIMESTAMP()')->execute([$klucz, $login, $u['login'], $u['login']]);
+            } else {
+                polaczenie_bazy()->prepare('DELETE FROM wskazniki_zgody WHERE klucz=? AND LOWER(konto_login)=LOWER(?)')->execute([$klucz, $login]);
+            }
+            odpowiedz(['ok' => true]);
 
         case 'mg_sceny':
             wymagaj_mg();

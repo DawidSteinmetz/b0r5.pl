@@ -594,6 +594,12 @@ html.z-tlem #ekran::before {
 .mapa-nawigacja-blok b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
 .mapa-nawigacja-przyciski { display: flex; flex-wrap: wrap; gap: 6px; }
 .mapa-nawigacja .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
+/* Zgody na wskaźniki pokładowe */
+.wskazniki-zgody:empty { display: none; }
+.wskazniki-zgody { display: grid; gap: 6px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--linia); }
+.wskazniki-okret { display: grid; gap: 4px; }
+.wskazniki-okret b { color: var(--akcent); font-weight: normal; }
+.wskazniki-gosc { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 /* Tarcza kursu floty */
 .mapa-tarcza-blok { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 10px 0; }
 .mapa-tarcza { touch-action: none; cursor: grab; border-radius: 50%; background: rgba(0, 0, 0, 0.3); }

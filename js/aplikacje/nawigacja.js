@@ -1,6 +1,7 @@
 // Nawigacja: gdzie jestem, dokąd i czym mogę się dostać, mój statek, portfel, akcje w miejscu.
 
 import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
+import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
 
 const TYPY = {
@@ -136,7 +137,8 @@ export default {
 
     // Pokład: start, wznoszenie, orbita, współrzędne skoku, lądowanie.
     function poklad(p) {
-      const panel = (...x) => h('div.panel', { style: 'border-color:var(--akcent)' }, h('h2', `Pokład: ${p.nazwa}`), ...x);
+      const panel = (...x) => h('div.panel', { style: 'border-color:var(--akcent)' }, h('h2', `Pokład: ${p.nazwa}`), ...x,
+        panelZgod({ filtr: (o) => o.klucz.startsWith('s:') }));
       const paliwo = h('div.slaby.maly-tekst', `Paliwo: ${p.paliwo}%`);
       if (!p.w_locie) {
         return panel(paliwo,

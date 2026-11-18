@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–019 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–020 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -6039,4 +6039,31 @@ UPDATE mapa_rozkazy_skokow SET eta_plan_utc = eta_utc WHERE eta_plan_utc IS NULL
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v19-oslony-kadlub-eta-plan', 'Osłony i kadłub jednostek, ETA z planu skoku dla liczników pokładowych')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/020_zgody_wskazniki_pokladowe.sql
+-- =====================================================================
+
+-- Zgody kapitana na wskaźniki pokładowe dla gości na pokładzie.
+-- Kapitan (dowódca floty okrętu; na statku firmy: właściciel albo menedżer) widzi liczniki zawsze.
+-- Gość — tylko gdy kapitan (albo MG) udzielił mu zgody. Zgoda działa, dopóki gość jest na pokładzie
+-- tego okrętu, i obowiązuje do cofnięcia.
+-- klucz: okret:<id mapa_obiekty> albo s:<id firmy>:<id statku>.
+--
+-- Wymaga migracji 019. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz.
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS wskazniki_zgody (
+  klucz VARCHAR(120) NOT NULL,
+  konto_login VARCHAR(64) NOT NULL,
+  nadal_login VARCHAR(64) NOT NULL,
+  nadano_utc DATETIME NOT NULL,
+  PRIMARY KEY (klucz, konto_login),
+  KEY ix_wskazniki_zgody_login (konto_login)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v20-zgody-wskazniki', 'Zgody kapitana na wskaźniki pokładowe dla gości')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

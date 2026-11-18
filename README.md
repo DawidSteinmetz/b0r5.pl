@@ -156,6 +156,11 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - Kolory: pomarańczowy przy paliwie ≤ 15%, osłonach ≤ 25%, kadłubie ≤ 40%, reaktorze ≥ 85%;
   czerwony przy paliwie ≤ 5%, osłonach ≤ 10%, kadłubie ≤ 20%, reaktorze ≥ 95%.
 - Osłony i kadłub ustawia MG w profilu napędu jednostki (migracja 019).
+- **Tylko na własnym okręcie:** liczniki widzi kapitan — dowódca floty okrętu (NPC: zgody daje MG),
+  na statku firmy właściciel albo menedżer. **Gość** na pokładzie, nawet wyższy stopniem, dostaje je
+  tylko za zgodą kapitana (tabela `wskazniki_zgody`, migracja 020); bez zgody serwer ich nie wysyła.
+  Zgody: panel dowodzenia na mapie, Nawigacja na pokładzie statku firmy, MG w zakładce Floty.
+  Zgoda działa, gdy gość jest na pokładzie tego okrętu, i obowiązuje do cofnięcia.
 
 ## Widok z mostka i sceny na okrętach
 

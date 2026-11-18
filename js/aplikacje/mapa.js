@@ -4,6 +4,7 @@
 
 import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
 import { stanUkladu, stronaOrbity } from '../rdzen/astro.js';
+import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
 
 const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
@@ -1162,7 +1163,8 @@ export default {
           h('p.slaby.maly-tekst', 'Kurs to kierunek dziobu: 0° = wschód, 90° = północ. Miejsce na orbicie się nie zmienia, okręty tylko obracają dziób. Przed skokiem flota sama obraca się na kurs skoku.'),
           h('p.slaby.maly-tekst', 'Skok do planety z wyborem orbity: kliknij planetę na mapie → „Nawigacja floty”. Tu: skok na współrzędne albo do innej jednostki.'),
           h('div.mapa-flota-form', x, y, cel, rozkaz), info,
-          h('details', h('summary.slaby.maly-tekst', 'Podział na grupy'), h('div.mapa-flota-form', nazwaGrupy, podziel))));
+          h('details', h('summary.slaby.maly-tekst', 'Podział na grupy'), h('div.mapa-flota-form', nazwaGrupy, podziel)),
+          panelZgod({ filtr: (o) => flota.jednostki.some((j) => `okret:${j.obiekt_id}` === o.klucz) })));
       }
     }
 

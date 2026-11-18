@@ -5,6 +5,7 @@ import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 import { panelWydarzen } from './wydarzenia.js';
 import { panelCzasu } from './czas.js';
+import { panelZgod } from '../js/rdzen/wskazniki.js';
 
 const FRAKCJE = ['Rebelia', 'Imperium', 'Syndykat'];
 const glowna = document.getElementById('glowna');
@@ -117,6 +118,7 @@ async function floty() {
 
   function render() {
     wyczysc(glowna).append(h('h1', 'Edytor flot'), h('p.slaby', 'Każdy okręt może należeć tylko do jednej floty. Nazwy zmienisz tutaj dla składów flot, a dowolnego statku także w zakładce Mapa → Edytuj.'),
+      panelZgod({ tytul: 'Wskaźniki pokładowe — goście na wszystkich okrętach (MG)' }),
       h('section.karta', h('h2', 'Nowa flota'), nowaNazwa, nowyDowodca,
         pole('Kapitan NPC (opcjonalnie)', nowyDowodcaNpc),
         h('button.btn.glowny', { onclick: async () => { try { const r = await api('mg_flota_zapisz', { nazwa: nowaNazwa.value, dowodca_login: nowyDowodca.value, dowodca_osoba_id: Number(nowyDowodcaNpc.value || 0) }); nowaNazwa.value = ''; await przeladuj(r.flota_id); } catch (e) { wyczysc(status).append(msg(e.message)); } } }, 'Utwórz flotę')),

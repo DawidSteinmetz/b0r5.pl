@@ -9,6 +9,42 @@ declare(strict_types=1);
 const DANE = __DIR__ . '/dane';
 const FRAKCJE = ['Rebelia', 'Imperium', 'Syndykat'];
 const STRAZNIK = "<?php http_response_code(404); exit; ?>\n";
+const DZIENNIK_BLEDOW = __DIR__ . '/dane/bledy.log';
+
+// DZIENNIK BŁĘDÓW: ostrzeżenia i błędy PHP nie trafiają do odpowiedzi (psułyby JSON i tablet widziałby
+// „Węzeł holonetu nie odpowiada”), tylko do api/dane/bledy.log (katalog zablokowany dla przeglądarki).
+// MG widzi ostatnie wpisy w zakładce Czas. Gracz dostaje komunikat w języku świata.
+function dziennik_bledow(string $tekst): void
+{
+    $akcja = (string) ($_GET['a'] ?? '');
+    $wpis = date('Y-m-d H:i:s') . " [{$akcja}] " . preg_replace('/\s+/', ' ', $tekst) . "\n";
+    if (@filesize(DZIENNIK_BLEDOW) > 300000) {
+        $stare = (string) @file_get_contents(DZIENNIK_BLEDOW);
+        @file_put_contents(DZIENNIK_BLEDOW, substr($stare, -100000), LOCK_EX);
+    }
+    if (@file_put_contents(DZIENNIK_BLEDOW, $wpis, FILE_APPEND | LOCK_EX) === false) error_log('HOLOLINK ' . $wpis);
+}
+ini_set('display_errors', '0');
+ob_start();
+set_error_handler(function (int $nr, string $tresc, string $plik, int $linia): bool {
+    if (!(error_reporting() & $nr)) return false;
+    dziennik_bledow("ostrzeżenie: {$tresc} w " . basename($plik) . ":{$linia}");
+    return true;
+});
+set_exception_handler(function (Throwable $e): void {
+    dziennik_bledow(get_class($e) . ': ' . $e->getMessage() . ' w ' . basename($e->getFile()) . ':' . $e->getLine());
+    while (ob_get_level()) ob_end_clean();
+    if (!headers_sent()) { http_response_code(500); header('Content-Type: application/json; charset=utf-8'); }
+    echo json_encode(['blad' => 'Węzeł holonetu nie odpowiada. Spróbuj ponownie.'], JSON_UNESCAPED_UNICODE);
+});
+register_shutdown_function(function (): void {
+    $e = error_get_last();
+    if (!$e || !in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) return;
+    dziennik_bledow("błąd krytyczny: {$e['message']} w " . basename($e['file']) . ":{$e['line']}");
+    while (ob_get_level()) ob_end_clean();
+    if (!headers_sent()) { http_response_code(500); header('Content-Type: application/json; charset=utf-8'); }
+    echo json_encode(['blad' => 'Węzeł holonetu nie odpowiada. Spróbuj ponownie.'], JSON_UNESCAPED_UNICODE);
+});
 require_once __DIR__ . '/polaczenie.php';
 
 date_default_timezone_set('Europe/Warsaw');
@@ -42,6 +78,7 @@ function odpowiedz($dane, int $kod = 200): never
     if (function_exists('odpowiedz_bez_ukrytych_planet')) {
         $dane = odpowiedz_bez_ukrytych_planet($dane, ja());
     }
+    while (ob_get_level()) ob_end_clean(); // przypadkowe wyjście (ostrzeżenia) nie psuje JSON
     http_response_code($kod);
     echo json_encode($dane, JSON_UNESCAPED_UNICODE);
     exit;

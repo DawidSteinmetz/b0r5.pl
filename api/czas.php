@@ -255,6 +255,12 @@ function obsluz_czas(string $akcja, bool $post): void
             odpowiedz(['teraz' => czas_teraz(), 'procesy' => czas_procesy(), 'dziennik' => $dziennik,
                 'dziennik_dostepny' => tabela_sql_dostepna('resynchronizacje'), 'ostrzezenia' => $ostrzezenia]);
 
+        case 'mg_bledy':
+            // Ostatnie wpisy dziennika błędów serwera (api/dane/bledy.log).
+            wymagaj_mg();
+            $linie = is_file(DZIENNIK_BLEDOW) ? array_slice(file(DZIENNIK_BLEDOW, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [], -40) : [];
+            odpowiedz(['wpisy' => array_reverse($linie)]);
+
         case 'mg_resynchronizuj':
             if (!$post) blad('Zła metoda.', 405);
             $mg = wymagaj_mg();

@@ -131,6 +131,7 @@ function obsluz_gwiazdy(string $akcja, bool $post): void
             $q->execute([(int) ($_GET['id'] ?? 0)]);
             $z = $q->fetch(PDO::FETCH_ASSOC);
             if (!$z || (mb_strtolower($z['konto_login']) !== mb_strtolower((string) $u['login']) && ($u['rola'] ?? '') !== 'mg')) blad('Brak zdjęcia.', 404);
+            while (ob_get_level()) ob_end_clean();
             header('Content-Type: image/jpeg');
             header('Cache-Control: private, max-age=86400');
             echo $z['miniatura'];

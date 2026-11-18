@@ -51,6 +51,11 @@ export async function panelCzasu(kontener) {
         h('td', d.koniec_przed_utc), h('td', d.koniec_po_utc), h('td', d.mg_login), h('td', d.notatka))))
     : h('p.slaby', 'Brak ingerencji.');
 
+  // Ostatnie błędy PHP (gracz widzi wtedy „Węzeł holonetu nie odpowiada”).
+  const dziennikBledow = h('div.slaby', 'Ładowanie...');
+  api('mg_bledy').then((b) => {
+    wyczysc(dziennikBledow).append(b.wpisy.length ? h('pre', { style: 'white-space:pre-wrap;font-size:12px;max-height:320px;overflow:auto' }, b.wpisy.join('\n')) : 'Brak błędów.');
+  }).catch((e) => wyczysc(dziennikBledow).append(e.message));
   kontener.append(
     h('h2', `Procesy w toku (${dane.procesy.length})`),
     h('p.slaby', 'Czas świata płynie 1:1 z rzeczywistym. Resynchronizacja (ingerencja mocy) przesuwa koniec jednego procesu: '
@@ -61,5 +66,6 @@ export async function panelCzasu(kontener) {
     btn('Odśwież', odswiez),
     ...(dane.procesy.length ? dane.procesy.map(wiersz) : [h('p.slaby', 'Nic nie trwa.')]),
     h('h2', 'Dziennik resynchronizacji'), dziennik,
+    h('h2', 'Dziennik błędów serwera'), dziennikBledow,
   );
 }

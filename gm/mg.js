@@ -5,6 +5,7 @@ import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 import { panelWydarzen } from './wydarzenia.js';
 import { panelCzasu } from './czas.js';
+import { panelWyczynow } from './wyczyny.js';
 import { panelZgod } from '../js/rdzen/wskazniki.js';
 
 const FRAKCJE = ['Rebelia', 'Imperium', 'Syndykat'];
@@ -83,7 +84,7 @@ function zalozMG() {
 function panel(u) {
   document.getElementById('kto').textContent = 'Zalogowano: ' + u.login;
   menu.hidden = false;
-  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', bitwy: 'Bitwy / radar', floty: 'Floty', czas: 'Czas', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
+  const zakladki = { stan: 'Stan postaci', karty: 'Karty postaci', mapa: 'Mapa', bitwy: 'Bitwy / radar', floty: 'Floty', czas: 'Czas', wyczyny: 'Wyczyny', konta: 'Konta', bank: 'Bank', gielda: 'Giełda', wydarzenia: 'Wydarzenia', rekrutacja: 'Rekrutacja', katalog: 'Katalog', dokumenty: 'Dokumenty', kanaly: 'Kanały', holonet: 'Holonet', frakcje: 'Frakcje', harmonogram: 'Kalendarz' };
   const rysujMenu = () => wyczysc(menu).append(
     ...Object.entries(zakladki).map(([k, n]) => h('button' + (k === biezaca ? '.on' : ''), { onclick: () => { biezaca = k; rysujMenu(); otworz(); } }, n)),
     h('button', { onclick: async () => { await api('wyloguj', {}); location.reload(); } }, 'Wyloguj'));
@@ -93,7 +94,7 @@ function panel(u) {
 
 function otworz() {
   wyczysc(glowna);
-  ({ stan: stanPostaci, karty: kartyPostaci, mapa, bitwy: bitwyRadar, floty, czas: () => panelCzasu(glowna), konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
+  ({ stan: stanPostaci, karty: kartyPostaci, mapa, bitwy: bitwyRadar, floty, czas: () => panelCzasu(glowna), wyczyny: () => panelWyczynow(glowna), konta, bank, gielda, wydarzenia, firmy, rekrutacja, katalog, dokumenty, kanaly, holonet, frakcje, harmonogram }[biezaca])().catch((e) => glowna.prepend(msg(e.message)));
 }
 
 async function floty() {

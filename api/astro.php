@@ -12,6 +12,58 @@ declare(strict_types=1);
 
 const ASTRO_EPOKA = 1262300400; // 2010-01-01 00:00 Europe/Warsaw = 2009-12-31 23:00 UTC
 
+// Rodzaje gwiazd: nazwa, udział w losowaniu (%), kolor, wielkość tarczy, siła łuny i jasność
+// względem Słońca (L; do widoczności z daleka). Udziały zbliżone do prawdziwych.
+const ASTRO_GWIAZDY = [
+    'O'  => ['błękitny olbrzym',  1, [155, 176, 255], 2.4, 3.0, 30.0],
+    'B'  => ['błękitna',          3, [170, 191, 255], 1.8, 2.2, 10.0],
+    'A'  => ['biała',             5, [202, 215, 255], 1.4, 1.6, 4.0],
+    'F'  => ['żółtobiała',        8, [248, 247, 255], 1.15, 1.25, 2.0],
+    'G'  => ['żółta',            15, [255, 244, 225], 1.0, 1.0, 1.0],
+    'K'  => ['pomarańczowa',     25, [255, 210, 161], 0.85, 0.75, 0.5],
+    'M'  => ['czerwony karzeł',  40, [255, 170, 120], 0.6, 0.45, 0.15],
+    'WD' => ['biały karzeł',      2, [235, 240, 255], 0.35, 0.6, 0.1],
+    'RG' => ['czerwony olbrzym',  1, [255, 140, 90], 3.0, 1.4, 6.0],
+];
+
+// Typ gwiazdy wylosowany z nazwy (powtarzalnie), według udziałów.
+function astro_typ_gwiazdy(string $nazwa, int $sol = 7): string
+{
+    $los = astro_hash($nazwa, $sol) % 100;
+    foreach (ASTRO_GWIAZDY as $typ => $g) {
+        if ($los < $g[1]) return $typ;
+        $los -= $g[1];
+    }
+    return 'G';
+}
+
+function astro_gwiazda(string $typ, int $i = 0): array
+{
+    $g = ASTRO_GWIAZDY[$typ] ?? ASTRO_GWIAZDY['G'];
+    // Towarzysze w układach wielokrotnych: lekko obok głównej gwiazdy (kąt i wysokość w oknie).
+    $obok = [[0, 0], [2.6, -0.05], [-3.4, 0.06]][$i] ?? [0, 0];
+    return ['typ' => $typ, 'nazwa' => $g[0], 'rgb' => $g[2], 'rozmiar' => $g[3], 'jasnosc' => $g[4], 'L' => $g[5],
+        'przesuniecie' => $obok[0], 'wysokosc' => $obok[1]];
+}
+
+// Kierunek od planety do słońca (stopnie, układ mapy) w chwili $t.
+function astro_kat_slonca(array $cykl, int $t): float
+{
+    $d = ($t - $cykl['epoka']) / 86400;
+    return fmod($cykl['faza_orbity'] + 360 * $d / $cykl['rok_dni'] + 180 + 3600, 360);
+}
+
+// Wysokość słońca nad horyzontem w lokacji (stopnie) — to samo co js/rdzen/astro.js.
+function astro_wysokosc_slonca(array $cykl, float $szer, float $dl, int $t): float
+{
+    $d = ($t - $cykl['epoka']) / 86400;
+    $dek = deg2rad($cykl['nachylenie'] * sin(deg2rad(360 * $d / $cykl['rok_dni'] + $cykl['faza_roku'])));
+    $H = fmod($cykl['faza_obrotu'] + 360 * ($t - $cykl['epoka']) / ($cykl['doba_h'] * 3600) + $dl + 180, 360);
+    $H = deg2rad(($H < 0 ? $H + 360 : $H) - 180);
+    $fi = deg2rad($szer);
+    return rad2deg(asin(sin($fi) * sin($dek) + cos($fi) * cos($dek) * cos($H)));
+}
+
 function astro_hash(string $nazwa, int $sol): int
 {
     return crc32($sol . '|' . mb_strtolower(trim($nazwa)));
@@ -28,7 +80,7 @@ function astro_cykl(string $nazwa): array
     $nadpisy = [];
     $ksiezyce = [];
     if (tabela_sql_dostepna('mapa_planety')) {
-        $q = polaczenie_bazy()->prepare("SELECT id, doba, rok, ksiezyce, srednica FROM mapa_planety WHERE REPLACE(nazwa, ' ', '') = ? LIMIT 1");
+        $q = polaczenie_bazy()->prepare("SELECT id, doba, rok, ksiezyce, srednica, slonca FROM mapa_planety WHERE REPLACE(nazwa, ' ', '') = ? LIMIT 1");
         $q->execute([str_replace(' ', '', trim($nazwa))]);
         $mapa = $q->fetch(PDO::FETCH_ASSOC) ?: null;
     }
@@ -72,6 +124,12 @@ function astro_cykl(string $nazwa): array
         }
     }
     $cykl['ksiezyce'] = $ksiezyce;
+    // Słońca układu: główna gwiazda (nadpis MG albo losowanie z nazwy) i towarzysze (do 3 słońc).
+    $ile = max(1, min(3, (int) ($mapa['slonca'] ?? 1)));
+    $glowna = $nadpisy['gwiazda_typ'] ?? astro_typ_gwiazdy($nazwa);
+    $cykl['gwiazdy'] = [astro_gwiazda($glowna, 0)];
+    for ($i = 1; $i < $ile; $i++) $cykl['gwiazdy'][] = astro_gwiazda(astro_typ_gwiazdy($nazwa, 30 + $i), $i);
+    $cykl['mapa_id'] = (int) ($mapa['id'] ?? 0);
     return $cache[$klucz] = $cykl;
 }
 

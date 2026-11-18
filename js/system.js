@@ -200,6 +200,34 @@ setInterval(() => document.querySelectorAll('[data-koniec]').forEach((el) => {
   el.classList.toggle('ostrz', koniec - (Date.now() + przesuniecieZegara) / 1000 < 60);
 }), 1000);
 
+// Aparat: przycisk „Zdjęcie” na pulpicie, gdy słońce układu jest w kadrze (wyczyn Fotograf gwiazd).
+const IKONA_APARATU = '<rect x="8" y="16" width="32" height="22" rx="3"/><circle cx="24" cy="27" r="6"/><path d="M18 16l3-5h6l3 5"/>';
+function komunikatPulpitu(tekst) {
+  const el = h('div.pulpit-komunikat', tekst);
+  document.getElementById('pulpit')?.append(el);
+  setTimeout(() => el.remove(), 6000);
+}
+async function zrobZdjecie(e) {
+  const przycisk = e.currentTarget;
+  przycisk.disabled = true;
+  const obraz = scena.zdjecie();
+  const blysk = h('div.pulpit-blysk');
+  document.getElementById('pulpit')?.append(blysk);
+  setTimeout(() => blysk.remove(), 450);
+  try {
+    const w = await api('zdjecie_slonca', { obraz });
+    const p = w.postep;
+    komunikatPulpitu(w.nowe
+      ? `Sfotografowano słońce układu ${w.uklad} (${w.gwiazda}). Album: ${p.liczba} z ${p.wszystkie} układów (${p.procent}%)${p.prog ? ` · ${p.prog.nazwa}` : ''}.`
+      : `Słońce układu ${w.uklad} jest już w albumie.`);
+  } catch (err) { komunikatPulpitu(err.message); }
+  przycisk.disabled = false;
+}
+setInterval(() => {
+  const widac = !!stan.uzytkownik && scena.slonceWidoczne();
+  document.querySelectorAll('[data-aparat]').forEach((el) => { el.hidden = !widac; });
+}, 1000);
+
 async function sprawdzScene() {
   if (!stan.uzytkownik) return;
   try {
@@ -401,6 +429,7 @@ function ekranPulpitu() {
         u.ranga ? h('div', u.ranga) : null)),
     szybkieAkcje,
     h('div.pulpit-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
+    h('button.pulpit-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie')),
     h('div.siatka-aplikacji',
       APLIKACJE.map((a) => h('button.ikona-aplikacji', { onclick: () => otworz(a.id) },
         ikona(a.ikona), h('span', a.nazwa)))),

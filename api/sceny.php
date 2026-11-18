@@ -66,7 +66,10 @@ function scena_gwiazdy(float $x, float $y): array
         if ($d < 2 || $d > $z) continue; // własny układ (słońce rysuje się osobno) i poza zasięgiem
         if (!mapa_planeta_widoczna((int) $p['id'])) continue;
         $h = crc32(mb_strtolower((string) $p['nazwa']));
+        // Typ gwiazdy: kolor i jasność; „de” = odległość pozorna (jasny olbrzym wygląda na bliższy).
+        $g = astro_gwiazda(astro_typ_gwiazdy((string) $p['nazwa']));
         $wynik[] = ['k' => round(fmod(rad2deg(atan2($dy, $dx)) + 360, 360), 2), 'd' => round($d, 1),
+            'de' => round($d / sqrt($g['L']), 1), 'rgb' => $g['rgb'],
             'w' => round(($h % 2000) / 1000 - 1, 3), 'o' => ($h >> 11) % 3];
         if (count($wynik) >= GWIAZDY_MAKS) break;
     }

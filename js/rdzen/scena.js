@@ -380,10 +380,12 @@ export function utworzScene(canvas) {
     for (const g of lista) {
       if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 2) continue;
       const x = xKierunku(k.kurs, g.k), y = h * (0.42 - g.w * 0.3);
-      const [r, gr, b] = ODCIENIE[g.o] || ODCIENIE[0];
-      const blisko = g.d < 50, srednio = g.d < 300;
+      const [r, gr, b] = g.rgb || ODCIENIE[g.o] || ODCIENIE[0];
+      // Odległość pozorna (jasny olbrzym z daleka świeci jak bliska gwiazda).
+      const d = g.de ?? g.d;
+      const blisko = d < 50, srednio = d < 300;
       const promien = blisko ? 2.6 : srednio ? 1.7 : 1.1;
-      const alfa = blisko ? 1 : srednio ? 0.9 : Math.max(0.25, 0.55 - (g.d - 300) / 2000);
+      const alfa = blisko ? 1 : srednio ? 0.9 : Math.max(0.2, 0.55 - (d - 300) / 2000);
       if (blisko) {
         const po = ctx.createRadialGradient(x, y, 0, x, y, 18);
         po.addColorStop(0, `rgba(${r}, ${gr}, ${b}, 0.55)`); po.addColorStop(1, `rgba(${r}, ${gr}, ${b}, 0)`);
@@ -394,15 +396,38 @@ export function utworzScene(canvas) {
     }
   }
 
+  // Słońca układu (`cykl.gwiazdy`): kolor, wielkość tarczy i łuna według typu gwiazdy;
+  // w układach wielokrotnych towarzysze świecą obok głównej gwiazdy.
   function rysujSlonce() {
     const k = kierunki();
-    if (k?.slonce == null || Math.abs(norm180(k.slonce - k.kurs)) > POLE_WIDZENIA / 2 + 15) return;
-    const x = xKierunku(k.kurs, k.slonce), y = h * 0.3, r = Math.min(w, h) * 0.022;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 14);
-    g.addColorStop(0, 'rgba(255, 252, 240, 1)'); g.addColorStop(0.07, 'rgba(255, 240, 200, 0.9)');
-    g.addColorStop(0.25, 'rgba(255, 210, 140, 0.18)'); g.addColorStop(1, 'rgba(255, 200, 120, 0)');
-    ctx.fillStyle = g; ctx.fillRect(x - r * 14, y - r * 14, r * 28, r * 28);
-    ctx.fillStyle = '#fffdf6'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    if (k?.slonce == null) return;
+    const gwiazdy = stan.widok?.cykl?.gwiazdy?.length ? stan.widok.cykl.gwiazdy : [{ rgb: [255, 244, 225], rozmiar: 1, jasnosc: 1, przesuniecie: 0, wysokosc: 0 }];
+    for (const gw of gwiazdy) {
+      const kier = k.slonce + (gw.przesuniecie || 0);
+      if (Math.abs(norm180(kier - k.kurs)) > POLE_WIDZENIA / 2 + 15) continue;
+      const [cr, cg, cb] = gw.rgb;
+      const x = xKierunku(k.kurs, kier), y = h * (0.3 + (gw.wysokosc || 0)), r = Math.min(w, h) * 0.022 * gw.rozmiar;
+      const R = Math.min(w, h) * 0.022 * 14 * gw.jasnosc;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+      g.addColorStop(0, 'rgba(255, 253, 248, 1)'); g.addColorStop(0.07, `rgba(${cr}, ${cg}, ${cb}, 0.9)`);
+      g.addColorStop(0.25, `rgba(${cr}, ${cg}, ${cb}, 0.18)`); g.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2);
+      ctx.fillStyle = `rgb(${Math.min(255, cr + 30)}, ${Math.min(255, cg + 30)}, ${Math.min(255, cb + 30)})`;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Czy słońce układu jest teraz w kadrze (przycisk „Zdjęcie” na pulpicie): na mostku — w polu
+  // widzenia okna; na planecie — w dzień. Serwer sprawdza to samo przy zapisie zdjęcia.
+  function slonceWidoczne() {
+    if (['orbita', 'wyjscie', 'kosmos'].includes(stan.scena)) {
+      const k = kierunki();
+      if (!stan.widok) return stan.scena === 'orbita';
+      if (k?.slonce == null) return false;
+      return Math.abs(norm180(k.slonce - k.kurs)) <= POLE_WIDZENIA / 2 + 5;
+    }
+    if (stan.scena === 'powierzchnia') return !!stan.swiatlo?.cykl && poraTeraz() === 'dzien';
+    return false;
   }
 
   // Oświetlona część tarczy: od strony słońca, z terminatorem jako półelipsą (faza jak u Księżyca).
@@ -670,8 +695,10 @@ export function utworzScene(canvas) {
     else {
       // słońce
       const sx = w * 0.78, sy = h * 0.2;
+      const rgb = stan.swiatlo?.cykl?.gwiazdy?.[0]?.rgb;
+      const kolorSlonca = rgb ? '#' + rgb.map((v) => v.toString(16).padStart(2, '0')).join('') : p.slonce;
       const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, h * 0.25);
-      g.addColorStop(0, p.slonce); g.addColorStop(0.08, p.slonce + 'cc'); g.addColorStop(1, p.slonce + '00');
+      g.addColorStop(0, kolorSlonca); g.addColorStop(0.08, kolorSlonca + 'cc'); g.addColorStop(1, kolorSlonca + '00');
       ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
     }
     rysujChmury(dt, typ, 0.012, d > 0.5 ? 0.25 : 0.7, 0.05, 0.45);
@@ -874,6 +901,15 @@ export function utworzScene(canvas) {
       if (stan.scena === 'wyjscie' && !swieza) stan.scena = 'orbita';
       planeta = null;
       start = performance.now();
+    },
+    slonceWidoczne,
+    // Miniatura bieżącego widoku (z oknem mostka) jako JPEG, najwyżej 480 px szerokości.
+    zdjecie() {
+      const szer = Math.min(480, canvas.width);
+      const c = document.createElement('canvas');
+      c.width = szer; c.height = Math.round(canvas.height * szer / canvas.width);
+      c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.72);
     },
     start() {
       if (klatka) return;

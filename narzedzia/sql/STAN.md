@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **198**, z czego używane przez PHP: **25**
+- Tabele w `api/schema.sql`: **200**, z czego używane przez PHP: **27**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -126,12 +126,14 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | waluty | — | `waluty`, `waluty_aliasy` |
 | wskazniki | `wskazniki_zgody` | — |
 | wtyczki | — | `wtyczki_postaci` |
+| wyczyny | `wyczyny_progi` | — |
 | wydarzenia | — | `wydarzenia`, `wydarzenia_skutki_cen` |
 | wykrycia | — | `wykrycia_nadprzestrzenne` |
 | wymiany | — | `wymiany_walut` |
 | wyplaty | — | `wyplaty` |
 | zakazy | — | `zakazy_skokow` |
 | zatrudnienie | — | `zatrudnienie` |
+| zdjecia | `zdjecia_gwiazd` | — |
 | zegar | — | `zegar_swiata` |
 | znane | — | `znane_lokacje`, `znane_planety` |
 | zuzycie | — | `zuzycie_zasobow`, `zuzycie_zasobow_pozycje` |

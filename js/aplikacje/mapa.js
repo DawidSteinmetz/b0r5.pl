@@ -201,10 +201,15 @@ export default {
         const u = ukladNaEkranie(p);
         if (!u) continue;
         const { R, rp, sx, sy, px, py } = u;
-        // słońce i orbita planety
-        const blask = c.createRadialGradient(sx, sy, 0, sx, sy, Math.max(10, R * 0.12));
-        blask.addColorStop(0, 'rgba(255, 246, 220, 1)'); blask.addColorStop(0.3, 'rgba(255, 214, 140, 0.6)'); blask.addColorStop(1, 'rgba(255, 200, 120, 0)');
-        c.fillStyle = blask; c.beginPath(); c.arc(sx, sy, Math.max(10, R * 0.12), 0, Math.PI * 2); c.fill();
+        // słońca układu (typ: kolor i wielkość; towarzysze obok) i orbita planety
+        (u.cykl.gwiazdy?.length ? u.cykl.gwiazdy : [{ rgb: [255, 244, 225], rozmiar: 1 }]).forEach((gw, i) => {
+          const [cr, cg, cb] = gw.rgb;
+          const rs = Math.max(6, R * 0.12 * Math.sqrt(gw.rozmiar));
+          const gx = sx + (i ? Math.cos(i * 2.4) * rs * 1.6 : 0), gy = sy + (i ? Math.sin(i * 2.4) * rs * 1.6 : 0);
+          const blask = c.createRadialGradient(gx, gy, 0, gx, gy, rs);
+          blask.addColorStop(0, 'rgba(255, 252, 245, 1)'); blask.addColorStop(0.3, `rgba(${cr}, ${cg}, ${cb}, 0.65)`); blask.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
+          c.fillStyle = blask; c.beginPath(); c.arc(gx, gy, rs, 0, Math.PI * 2); c.fill();
+        });
         c.strokeStyle = 'rgba(160, 200, 220, 0.22)'; c.lineWidth = 1; c.beginPath(); c.arc(sx, sy, R, 0, Math.PI * 2); c.stroke();
         // księżyce (schematycznie, kolejno od planety)
         u.u.ksiezyce.forEach((k, i) => {
@@ -680,12 +685,13 @@ export default {
         g.clearRect(0, 0, W, H);
         // kierunek słońca: smuga światła od strony słońca
         const as = ekr(u.katSlonca);
-        g.save(); g.strokeStyle = 'rgba(255, 214, 120, 0.35)'; g.lineWidth = 1;
+        const [sr, sg, sb] = cykl.gwiazdy?.[0]?.rgb || [255, 214, 120];
+        g.save(); g.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, 0.35)`; g.lineWidth = 1;
         for (let i = -3; i <= 3; i++) {
           const dx = Math.cos(as), dy = Math.sin(as), px = -dy * i * 7, py = dx * i * 7;
           g.beginPath(); g.moveTo(cx + dx * 140 + px, cy + dy * 140 + py); g.lineTo(cx + dx * (rp + 6) + px, cy + dy * (rp + 6) + py); g.stroke();
         }
-        g.fillStyle = 'rgba(255, 214, 120, 0.9)'; g.font = '10px monospace';
+        g.fillStyle = `rgba(${sr}, ${sg}, ${sb}, 0.9)`; g.font = '10px monospace';
         g.fillText('Słońce', Math.max(4, Math.min(W - 44, cx + Math.cos(as) * 120 - 18)), Math.max(12, Math.min(H - 4, cy + Math.sin(as) * 90)));
         g.restore();
         // księżyce: orbity w skali logarytmicznej
@@ -741,7 +747,8 @@ export default {
         g.strokeStyle = 'rgba(255,255,255,0.2)'; g.beginPath(); g.arc(35, 35, 24, 0, Math.PI * 2); g.stroke();
         const ap = ekr(u.katPlanety);
         g.fillStyle = '#6fa8d8'; g.beginPath(); g.arc(35 + Math.cos(ap) * 24, 35 + Math.sin(ap) * 24, 3, 0, Math.PI * 2); g.fill();
-        wyczysc(opis).append(...[`Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie]
+        const gwiazdy = (cykl.gwiazdy || []).map((x) => `${x.nazwa} (${x.typ})`).join(' + ');
+        wyczysc(opis).append(...[gwiazdy ? `Gwiazda: ${gwiazdy}` : null, `Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie].filter(Boolean)
           .map((l) => h('div', l)));
       };
       odswiezUkladKarty = rysuj;

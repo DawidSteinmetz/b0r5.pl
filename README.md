@@ -144,6 +144,22 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   imporcie wybraną bazę). Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
   `narzedzia/sql/zbuduj.js` pomija linie `USE` w pełnym schemacie. Wymagana migracja 018.
 
+## Rodzaje gwiazd i wyczyn „Fotograf gwiazd”
+
+- **Typ gwiazdy** układu (`ASTRO_GWIAZDY` w `api/astro.php`) losowany z nazwy z udziałami zbliżonymi
+  do prawdziwych: czerwony karzeł M 40%, pomarańczowa K 25%, żółta G 15%, żółtobiała F 8%, biała A 5%,
+  błękitna B 3%, biały karzeł 2%, błękitny olbrzym O 1%, czerwony olbrzym 1%. MG nadpisuje typ
+  w `planety_cykle.gwiazda_typ`; Zephyria = G. Liczba słońc z `mapa_planety.slonca` (do 3).
+- Typ zmienia kolor, wielkość tarczy i łunę słońca w oknie mostka, w widokach układu (mapa, karta
+  planety), kolor światła na niebie planety oraz kolor i jasność gwiazd sąsiednich układów
+  (jasny olbrzym z daleka świeci jak bliższa gwiazda).
+- **Aparat:** przycisk „Zdjęcie” w lewym dolnym rogu pulpitu, gdy słońce układu jest w kadrze
+  (na mostku w polu widzenia okna, na planecie w dzień). Serwer sprawdza układ i widoczność słońca,
+  zapisuje miniaturę JPEG (`zdjecia_gwiazd`). Każdy układ liczy się dla konta raz.
+- **Album gwiazd** w Karcie postaci: postęp (sfotografowane / układy widoczne dla konta), tytuł
+  według progów (`wyczyny_progi`: 1% Obserwator … 100%), zdjęcia z nazwą układu, typem gwiazdy
+  i datą gry. MG: zakładka **Wyczyny** (postępy graczy, edycja progów). Migracja 021.
+
 ## Liczniki pokładowe na pulpicie
 
 - Na pokładzie statku albo okrętu pulpit pokazuje dyskretny pasek w prawym dolnym rogu

@@ -1,6 +1,6 @@
 // Karta postaci: tożsamość, pozycja, statystyki, reputacja, kontakty, ekwipunek, notatnik.
 
-import { h, wyczysc } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 import { TYPY_PLANET } from '../rdzen/scena.js';
 
@@ -59,10 +59,10 @@ export default {
 
     function rysuj() {
       const NAZWY = [['tozsamosc', 'Tożsamość'], ['pozycja', 'Pozycja'], ['statystyki', 'Statystyki'], ['reputacja', 'Reputacja'],
-        ['kontakty', 'Kontakty'], ['ekwipunek', 'Ekwipunek'], ['notatnik', 'Notatnik']];
+        ['kontakty', 'Kontakty'], ['ekwipunek', 'Ekwipunek'], ['album', 'Album gwiazd'], ['notatnik', 'Notatnik']];
       wyczysc(zakladki).append(...NAZWY.map(([k, n]) => h('button' + (k === zakladka ? '.aktywna' : ''), { onclick: () => { zakladka = k; rysuj(); } }, n)));
       if (!d) return;
-      wyczysc(tresc).append({ tozsamosc, pozycja, statystyki, reputacja, kontakty, ekwipunek, notatnik }[zakladka]());
+      wyczysc(tresc).append({ tozsamosc, pozycja, statystyki, reputacja, kontakty, ekwipunek, album, notatnik }[zakladka]());
     }
 
     const wiersz = (k, v) => (v === '' || v === null || v === undefined ? null : h('tr', h('th', k), h('td', v)));
@@ -173,6 +173,30 @@ export default {
       : h('div.panel', h('div.pusto', pusta)));
     const kontakty = () => lista(d.karta.kontakty, 'Brak zapisanych kontaktów.');
     const ekwipunek = () => lista(d.karta.ekwipunek, 'Brak zarejestrowanego ekwipunku.');
+
+    // ---------- album gwiazd (wyczyn „Fotograf gwiazd”) ----------
+    function album() {
+      const el = h('div', h('div.panel', h('div.slaby', 'Ładowanie albumu...')));
+      api('album_gwiazd').then((a) => {
+        const p = a.postep;
+        const progi = a.progi.map((x) => h('li' + (p.procent >= x.procent ? '.osiagniety' : ''),
+          h('span', x.nazwa), h('span.slaby.maly-tekst', `${x.procent}% układów`)));
+        wyczysc(el).append(
+          h('div.panel', h('h2', 'Fotograf gwiazd'),
+            h('p', `Sfotografowane słońca: ${p.liczba} z ${p.wszystkie} układów (${p.procent}%).`),
+            h('div.album-postep', h('i', { style: `width:${Math.min(100, p.procent)}%` })),
+            h('p.slaby.maly-tekst', p.prog ? `Tytuł: ${p.prog.nazwa}.` : 'Jeszcze bez tytułu.',
+              p.nastepny ? ` Następny: ${p.nastepny.nazwa} (${p.nastepny.procent}%).` : ''),
+            h('ul.album-progi', progi),
+            h('p.slaby.maly-tekst', 'Zdjęcie robisz przyciskiem „Zdjęcie” na pulpicie, gdy słońce układu jest w kadrze: przez okno mostka albo w dzień na planecie. Każdy układ liczy się raz.')),
+          a.zdjecia.length
+            ? h('div.album-siatka', a.zdjecia.map((z) => h('figure.album-zdjecie',
+              h('img', { src: new URL(`../../api/?a=zdjecie_slonca_obraz&id=${z.id}`, import.meta.url).href, alt: z.uklad, loading: 'lazy' }),
+              h('figcaption', h('b', z.uklad), h('span', `${z.gwiazda} · ${z.miejsce === 'mostek' ? 'z mostka' : 'z powierzchni'}`), h('span.slaby', czasGry(z.zrobiono))))))
+            : h('div.panel', h('div.pusto', 'Album jest pusty.')));
+      }).catch((e) => wyczysc(el).append(h('div.komunikat.blad', e.message)));
+      return el;
+    }
 
     // ---------- notatnik (zapis automatyczny) ----------
     function notatnik() {

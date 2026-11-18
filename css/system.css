@@ -728,3 +728,9 @@ html.z-tlem #ekran::before {
 .holonet-zrodla button { display: inline-flex; align-items: center; gap: 6px; }
 .holonet-zrodla svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; }
 .holonet-zrodla button.szyfr { color: var(--zph); }
+
+/* Kalendarz: wybór kultur */
+.kal-kultury-wybor { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin: 12px 0; }
+.kal-kultura-opcja { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--linia); border-radius: var(--promien); cursor: pointer; }
+.kal-kultura-opcja i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.kal-dodaj-kulture { min-width: 40px; font-size: 18px; }

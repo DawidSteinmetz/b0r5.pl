@@ -94,7 +94,7 @@ function tabela_sql_dostepna(string $nazwa): bool
     static $cache = [];
     $dozwolone = ['mapa_planety', 'lokalizacje', 'budynki', 'datapad_pozycje_legacy', 'mapa_obiekty', 'mapa_obiekty_dostep',
         'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg',
-        'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje', 'mapa_wykrycia_skokow', 'planety_cykle', 'planety_ksiezyce', 'wskazniki_zgody', 'zdjecia_gwiazd', 'wyczyny_progi'];
+        'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje', 'mapa_wykrycia_skokow', 'planety_cykle', 'planety_ksiezyce', 'wskazniki_zgody', 'zdjecia_gwiazd', 'wyczyny_progi', 'ustawienia_kont'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {
@@ -296,6 +296,27 @@ obsluz_astro($akcja, $post);
 obsluz_gwiazdy($akcja, $post);
 
 switch ($akcja) {
+
+    // ----- ustawienia interfejsu konta (np. kultury w Kalendarzu) -----
+
+    case 'ustawienie':
+        $u = wymagaj_logowania();
+        if (!tabela_sql_dostepna('ustawienia_kont')) odpowiedz(['wartosc' => null]);
+        $q = polaczenie_bazy()->prepare('SELECT wartosc FROM ustawienia_kont WHERE konto_login=? AND klucz=?');
+        $q->execute([(string) $u['login'], mb_substr((string) ($_GET['klucz'] ?? ''), 0, 60)]);
+        $v = $q->fetchColumn();
+        odpowiedz(['wartosc' => $v === false ? null : json_decode((string) $v, true)]);
+
+    case 'ustawienie_zapisz':
+        if (!$post) blad('Zła metoda.', 405);
+        $u = wymagaj_logowania();
+        if (!tabela_sql_dostepna('ustawienia_kont')) odpowiedz(['ok' => false]);
+        $klucz = mb_substr(trim((string) (wejscie()['klucz'] ?? '')), 0, 60);
+        $wartosc = json_encode(wejscie()['wartosc'] ?? null, JSON_UNESCAPED_UNICODE);
+        if ($klucz === '' || strlen($wartosc) > 2000) blad('Nieprawidłowe ustawienie.');
+        polaczenie_bazy()->prepare('INSERT INTO ustawienia_kont (konto_login, klucz, wartosc) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE wartosc = ?')
+            ->execute([(string) $u['login'], $klucz, $wartosc, $wartosc]);
+        odpowiedz(['ok' => true]);
 
     case 'mapa_dane':
         $u = wymagaj_logowania();

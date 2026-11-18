@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–021 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–022 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -6115,4 +6115,27 @@ INSERT IGNORE INTO wyczyny_progi (procent, nazwa) VALUES
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v21-gwiazdy-zdjecia-wyczyny', 'Rodzaje gwiazd, zdjęcia słońc i wyczyn Fotograf gwiazd')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/022_ustawienia_kont.sql
+-- =====================================================================
+
+-- Ustawienia interfejsu przypisane do konta (a nie do tabletu), np. kultury wybrane w Kalendarzu.
+-- wartosc: JSON (krótkie wartości interfejsu; dane gry mają własne tabele).
+--
+-- Wymaga migracji 021. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz.
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ustawienia_kont (
+  konto_login VARCHAR(64) NOT NULL,
+  klucz VARCHAR(60) NOT NULL,
+  wartosc VARCHAR(2000) NOT NULL,
+  zmieniono TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (konto_login, klucz)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v22-ustawienia-kont', 'Ustawienia interfejsu przypisane do konta (np. kultury w Kalendarzu)')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

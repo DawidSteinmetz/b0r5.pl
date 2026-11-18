@@ -29,6 +29,45 @@ export default {
     if (!KULTURY[kulturaId]) kulturaId = 'imperial_coruscant';
     const K = () => KULTURY[kulturaId];
     const u = ctx.uzytkownik;
+    // Kultury wybrane przez gracza (konto; kopia na tablecie). Brak wyboru = ekran wyboru przy pierwszym uruchomieniu.
+    let wybrane = pamiec.czytaj('kultury_wybrane', null);
+    let wyborOtwarty = false;
+    const zapiszWybor = (lista) => {
+      wybrane = lista;
+      pamiec.zapisz('kultury_wybrane', lista);
+      api('ustawienie_zapisz', { klucz: 'kalendarz_kultury', wartosc: lista }).catch(() => {});
+      if (!lista.includes(kulturaId)) { kulturaId = lista[0]; pamiec.zapisz('kultura', kulturaId); }
+    };
+    api('ustawienie', undefined, { klucz: 'kalendarz_kultury' }).then((d) => {
+      const lista = Array.isArray(d.wartosc) ? d.wartosc.filter((id) => KULTURY[id]) : null;
+      if (lista?.length && JSON.stringify(lista) !== JSON.stringify(wybrane)) {
+        wybrane = lista; pamiec.zapisz('kultury_wybrane', lista);
+        if (!lista.includes(kulturaId)) kulturaId = lista[0];
+        rysuj();
+      }
+    }).catch(() => {});
+
+    // Ekran wyboru kultur: przy pierwszym uruchomieniu i po kliknięciu „+”.
+    function wyborKultur() {
+      const zaznaczone = new Set(wybrane?.length ? wybrane : []);
+      const zapisz = h('button.przycisk.glowny', { disabled: !zaznaczone.size, onclick: () => {
+        zapiszWybor(Object.keys(KULTURY).filter((id) => zaznaczone.has(id)));
+        wyborOtwarty = false; rysuj();
+      } }, 'Zapisz wybór');
+      const lista = h('div.kal-kultury-wybor', Object.entries(KULTURY).map(([id, x]) => h('label.kal-kultura-opcja',
+        h('input', { type: 'checkbox', checked: zaznaczone.has(id), onchange: (e) => {
+          if (e.target.checked) zaznaczone.add(id); else zaznaczone.delete(id);
+          zapisz.disabled = !zaznaczone.size;
+        } }),
+        h('i', { style: `background:${x.akcent}` }),
+        h('span', x.nazwa))));
+      wyczysc(korzen).append(
+        h('div.app-glowa', h('h1', 'Kalendarz sesji'), h('span.podtytul', 'Kultury kalendarza')),
+        h('div.panel',
+          h('p', 'Wybierz kultury, których kalendarze chcesz mieć pod ręką. Zmienisz to później przyciskiem „+” przy kulturach.'),
+          lista,
+          h('div.rzad', zapisz, wybrane?.length ? h('button.przycisk.drugi', { onclick: () => { wyborOtwarty = false; rysuj(); } }, 'Anuluj') : null)));
+    }
 
     const korzen = h('div.kal');
     const toast = h('div.kal-toast');
@@ -102,6 +141,7 @@ export default {
     }
 
     function rysuj() {
+      if (!wybrane?.length || wyborOtwarty) return wyborKultur();
       const k = K();
       const y = kur.getFullYear(), m = kur.getMonth(), mon = m + 1, ig = rokGry(y);
       const razem = dim(y, m), norm = normDni(y, m), dzisIso = iso(new Date());
@@ -181,9 +221,10 @@ export default {
         siatka,
         rejestr);
 
-      // ----- pasek kultur -----
-      const kultury = h('div.zakladki', Object.entries(KULTURY).map(([id, x]) =>
-        h('button' + (id === kulturaId ? '.aktywna' : ''), { onclick: () => { kulturaId = id; pamiec.zapisz('kultura', id); rysuj(); } }, x.nazwa)));
+      // ----- pasek kultur: tylko wybrane + „+” (dodaj / usuń kultury) -----
+      const kultury = h('div.zakladki', ...Object.entries(KULTURY).filter(([id]) => wybrane.includes(id)).map(([id, x]) =>
+        h('button' + (id === kulturaId ? '.aktywna' : ''), { onclick: () => { kulturaId = id; pamiec.zapisz('kultura', id); rysuj(); } }, x.nazwa)),
+        h('button.kal-dodaj-kulture', { title: 'Wybierz kultury', 'aria-label': 'Wybierz kultury', onclick: () => { wyborOtwarty = true; rysuj(); } }, '+'));
 
       const modal = korzen.querySelector('.kal-modal-tlo');
       wyczysc(korzen).append(

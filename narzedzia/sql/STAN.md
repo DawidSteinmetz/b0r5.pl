@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **200**, z czego używane przez PHP: **27**
+- Tabele w `api/schema.sql`: **201**, z czego używane przez PHP: **29**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -85,7 +85,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | osoby | `osoby` | `osoby_statystyki`, `osoby_profil_dialogowy`, `osoby_relacje`, `osoby_pamiec` |
 | pakiety | — | `pakiety_wiedzy`, `pakiety_zawartosc` |
 | parametry | — | `parametry_czestotliwosci_modeli` |
-| planety | `planety_gry`, `planety_widocznosc_konta`, `planety_cykle`, `planety_ksiezyce` | `planety_widocznosc`, `planety_orbity`, `planety_specyfika`, `planety_kategorie_ceny`, `planety_wladza` |
+| planety | `planety_gry`, `planety_wladza`, `planety_widocznosc_konta`, `planety_cykle`, `planety_ksiezyce` | `planety_widocznosc`, `planety_orbity`, `planety_specyfika`, `planety_kategorie_ceny` |
 | plany | — | `plany_lotu`, `plany_lotu_przystanki`, `plany_lotu_operacje` |
 | podmioty | `podmioty` | — |
 | podroze | — | `podroze` |
@@ -122,7 +122,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | typy | — | `typy_kadlubow`, `typy_kadlubow_sloty`, `typy_hipernapedow`, `typy_turbolaserow`, `typy_oslon`, `typy_reaktorow`, `typy_kwater_zalogi`, `typy_hangarow` |
 | uklady | — | `uklady_planetarne` |
 | uprawnienia | — | `uprawnienia_zawartosci` |
-| ustawienia | — | `ustawienia` |
+| ustawienia | `ustawienia_kont` | `ustawienia` |
 | waluty | — | `waluty`, `waluty_aliasy` |
 | wskazniki | `wskazniki_zgody` | — |
 | wtyczki | — | `wtyczki_postaci` |

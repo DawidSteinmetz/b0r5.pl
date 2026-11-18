@@ -27,6 +27,7 @@ export const TYPY_PLANET = {
   miasto: { nazwa: 'miasto-planeta', kolory: ['#5d6470', '#454b55', '#7a818c'], atmosfera: '#ffd27a', chmury: 0.12, swiatla: true },
   bagienna: { nazwa: 'bagienna', kolory: ['#3b4f2f', '#2a3a24', '#55663a'], atmosfera: '#a9c98a', chmury: 0.6 },
   skalista: { nazwa: 'skalista', kolory: ['#8a8580', '#6b6661', '#a39e98'], atmosfera: '#d0d0d0', chmury: 0.05 },
+  pionowe_miasto: { nazwa: 'księżyc-miasto', kolory: ['#3d424b', '#2c3038', '#4d535d'], atmosfera: '#c9a46a', chmury: 0.05, swiatla: true },
 };
 
 export const ODLEGLOSCI = { blisko: 1.15, srednio: 0.5, daleko: 0.16, krawedz: 0.012 };
@@ -42,6 +43,8 @@ const POWIERZCHNIE = {
   miasto: { niebo: ['#33415f', '#e0b27a'], teren: ['#4a5262', '#343a46', '#22262e'], styl: 'miasto', slonce: '#ffd59a' },
   bagienna: { niebo: ['#6f7f62', '#cbd4b2'], teren: ['#55663f', '#3b4f2f', '#25331e'], styl: 'bagno', slonce: '#f4f0cf' },
   skalista: { niebo: ['#7fa6c4', '#e3e2d6'], teren: ['#a59a8d', '#8a8075', '#675f57'], styl: 'plaskowyze', slonce: '#fffbe8' },
+  // Pionowe miasto (Nar Shaddaa): wieże do góry kadru w kilku warstwach, kładki, neony, mgła i łuna.
+  pionowe_miasto: { niebo: ['#1a1e2a', '#4b4048'], teren: ['#5a5f6a', '#3a3e47', '#262a31', '#121418'], styl: 'pionowe', slonce: '#ffe2b0' },
 };
 const CZAS_STARTU = 300000; // 5 min chmur, potem przejście w kosmos
 
@@ -627,6 +630,59 @@ export function utworzScene(canvas) {
     const swiatla = [];
     const horyzont = h * 0.58;
 
+    if (p.styl === 'pionowe') {
+      // Pionowe miasto: warstwy wież od dalekich (jasnych od mgły) do bliskich (ciemnych, sięgających
+      // ponad kadr), kładki między wieżami, okna i neony; nocą łuna miasta od dołu.
+      const mgla = noc() ? '#2a2630' : zmierzch() ? '#4a4048' : '#8a8c92';
+      const NEONY = ['#ff4d6d', '#4de2c9', '#ffb347', '#9d7bff'];
+      p.teren.forEach((kolor, i) => {
+        const glebia = i / (p.teren.length - 1);
+        const baza = mieszaj(kolor, mgla, (1 - glebia) * 0.55);
+        g.fillStyle = noc() ? mieszaj(baza, '#05070d', ciemno * (0.4 + glebia * 0.5)) : baza;
+        const krok = w * (0.035 + glebia * 0.05);
+        for (let x = -krok * los(); x < w + krok; x += krok * (0.7 + los() * 0.9)) {
+          const sz = krok * (0.55 + los() * 0.6);
+          const gora = glebia > 0.6 ? -h * 0.1 : h * (0.08 + (1 - glebia) * 0.25 * los());
+          g.fillRect(x, gora, sz, h - gora);
+          // iglica albo antena
+          if (los() < 0.35) g.fillRect(x + sz * 0.45, gora - h * 0.05 * (1 - glebia), Math.max(1, sz * 0.08), h * 0.05 * (1 - glebia));
+          // okna: pionowe pasy świateł
+          for (let kol = x + 3; kol < x + sz - 3; kol += 4 + glebia * 4) {
+            if (los() < 0.45) continue;
+            for (let wy = Math.max(gora + 6, 0); wy < h; wy += 6 + glebia * 6) {
+              if (los() < (noc() ? 0.3 : zmierzch() ? 0.2 : 0.06)) swiatla.push([kol, wy]);
+            }
+          }
+          // neony na bliższych wieżach
+          if (glebia > 0.3 && los() < 0.35) {
+            const ny = gora + (h - gora) * (0.2 + los() * 0.5), kn = NEONY[Math.floor(los() * NEONY.length)];
+            g.save(); g.shadowColor = kn; g.shadowBlur = 12; g.fillStyle = kn;
+            g.fillRect(x + sz * 0.15, ny, sz * 0.7, Math.max(2, h * 0.006)); g.restore();
+            g.fillStyle = noc() ? mieszaj(baza, '#05070d', ciemno * (0.4 + glebia * 0.5)) : baza;
+          }
+        }
+        // kładki i pomosty między wieżami
+        if (i === 1 || i === 2) {
+          for (let k = 0; k < 4; k++) {
+            const y = h * (0.35 + los() * 0.4), x0 = los() * w * 0.6;
+            g.fillRect(x0, y, w * (0.15 + los() * 0.35), Math.max(2, h * 0.008 * (1 + glebia)));
+          }
+        }
+        // mgła między warstwami
+        const fg = g.createLinearGradient(0, 0, 0, h);
+        fg.addColorStop(0, 'rgba(0,0,0,0)'); fg.addColorStop(1, noc() ? 'rgba(80, 40, 60, 0.18)' : 'rgba(160, 160, 170, 0.12)');
+        g.fillStyle = fg; g.fillRect(0, 0, w, h);
+      });
+      // lądowisko na pierwszym planie i barierka
+      g.fillStyle = noc() ? '#0b0c10' : '#2a2c31';
+      g.fillRect(0, h * 0.86, w, h * 0.14);
+      g.fillStyle = noc() ? '#16181d' : '#3a3d44';
+      for (let x = 0; x < w; x += w * 0.06) g.fillRect(x, h * 0.8, 3, h * 0.06);
+      g.fillRect(0, h * 0.8, w, 3);
+      krajobraz = { klucz, plotno: c, swiatla, pionowe: true };
+      return;
+    }
+
     p.teren.forEach((kolor, i) => {
       const glebia = i / (p.teren.length - 1); // 0 daleko, 1 blisko
       const baza = horyzont + glebia * h * 0.16;
@@ -742,10 +798,47 @@ export function utworzScene(canvas) {
     ctx.restore();
   }
 
+  // Planeta macierzysta na niebie księżyca (np. Nal Hutta nad Nar Shaddaa), z fazą od słońca.
+  function rysujMacierz() {
+    const cykl = stan.swiatlo?.cykl, m = cykl?.macierz;
+    if (!m) return;
+    const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+    const u = stanUkladu(cykl, t);
+    const katKsiezyca = (m.faza + 360 * (t - cykl.epoka) / 86400 / m.okres_dni) % 360; // kierunek planeta → księżyc
+    const info = TYPY_PLANET[m.typ] || TYPY_PLANET.skalista;
+    const R = Math.min(w, h) * 0.2, cx = w * 0.3, cy = h * 0.2;
+    ctx.save();
+    ctx.globalAlpha = noc() ? 0.95 : 0.75;
+    ctx.fillStyle = info.kolory[0];
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = info.kolory[1];
+    for (let i = 0; i < 5; i++) { ctx.globalAlpha *= 0.9; ctx.beginPath(); ctx.ellipse(cx - R * 0.3 + i * R * 0.15, cy - R * 0.4 + i * R * 0.2, R * 0.5, R * 0.08, 0.2, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+    // cień: faza z kąta słońce–planeta–księżyc (obserwator na księżycu)
+    const k = { slonce: u.katSlonca, orbita: katKsiezyca, doPlanety: katKsiezyca + 180 };
+    const ciemna = new Path2D();
+    ciemna.arc(cx, cy, R, 0, Math.PI * 2);
+    ciemna.addPath(sciezkaSwiatla(cx, cy, R, k));
+    ctx.fillStyle = 'rgba(5, 7, 12, 0.88)';
+    ctx.fill(ciemna, 'evenodd');
+  }
+
+  // Przelatujące światła pojazdów nad pionowym miastem.
+  function rysujRuchMiasta(t) {
+    const los = losowe(hash(stan.miejsce || 'miasto'));
+    for (let i = 0; i < 14; i++) {
+      const y = h * (0.15 + los() * 0.6), v = (0.02 + los() * 0.05) * (los() < 0.5 ? 1 : -1), faza = los();
+      const x = ((((t * v / 1000 + faza) % 1) + 1) % 1) * (w + 40) - 20;
+      ctx.fillStyle = los() < 0.5 ? 'rgba(255, 230, 190, 0.85)' : 'rgba(255, 80, 90, 0.8)';
+      ctx.fillRect(x, y, 3, 1.5);
+    }
+  }
+
   function rysujPowierzchnie(t, dt) {
     const typ = POWIERZCHNIE[stan.planeta] ? stan.planeta : 'skalista';
     const p = POWIERZCHNIE[typ];
     const d = rysujNiebo(typ);
+    rysujMacierz();
     if (d > 0.5) rysujGwiazdy(0.000004, dt, d - 0.3, 0.05);
     else {
       // słońce
@@ -759,6 +852,7 @@ export function utworzScene(canvas) {
     rysujChmury(dt, typ, 0.012, d > 0.5 ? 0.25 : 0.7, 0.05, 0.45);
     przygotujKrajobraz();
     ctx.drawImage(krajobraz.plotno, 0, 0, w, h);
+    if (krajobraz.pionowe) rysujRuchMiasta(t);
     // migoczące światła miasta
     if (krajobraz.swiatla.length) {
       ctx.fillStyle = noc() ? 'rgba(255, 214, 140, 0.9)' : 'rgba(255, 240, 200, 0.35)';

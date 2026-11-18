@@ -137,6 +137,21 @@ function astro_cykl(string $nazwa): array
     $cykl['gwiazdy'] = [astro_gwiazda($glowna, 0)];
     for ($i = 1; $i < $ile; $i++) $cykl['gwiazdy'][] = astro_gwiazda(astro_typ_gwiazdy($nazwa, 30 + $i), $i);
     $cykl['mapa_id'] = (int) ($mapa['id'] ?? 0);
+    // Księżyc z planetą macierzystą (np. Nar Shaddaa → Nal Hutta): słońce, rok i pory roku z orbity
+    // planety macierzystej; na niebie księżyca widać planetę macierzystą (`macierz`).
+    if (!empty($nadpisy['macierz_planeta_id'])) {
+        $q = polaczenie_bazy()->prepare('SELECT p.nazwa' . (tabela_sql_dostepna('planety_gry') ? ', g.typ_planety' : '') . ' FROM mapa_planety p'
+            . (tabela_sql_dostepna('planety_gry') ? ' LEFT JOIN planety_gry g ON g.planeta_id = p.id' : '') . ' WHERE p.id = ?');
+        $q->execute([(int) $nadpisy['macierz_planeta_id']]);
+        if ($m = $q->fetch(PDO::FETCH_ASSOC)) {
+            $cache[$klucz] = $cykl; // ochrona przed zapętleniem
+            $rodzic = astro_cykl((string) $m['nazwa']);
+            foreach (['faza_orbity', 'rok_dni', 'promien_orbity_au', 'gwiazdy'] as $pole) $cykl[$pole] = $rodzic[$pole];
+            $cykl['macierz'] = ['nazwa' => $m['nazwa'], 'typ' => ($m['typ_planety'] ?? '') ?: 'skalista',
+                'srednica_km' => $rodzic['srednica_km'], 'promien_km' => (float) ($nadpisy['promien_wokol_km'] ?? 400000),
+                'okres_dni' => (float) ($nadpisy['okres_wokol_dni'] ?? 20), 'faza' => (float) ($nadpisy['faza_wokol_deg'] ?? 0)];
+        }
+    }
     return $cache[$klucz] = $cykl;
 }
 

@@ -211,6 +211,18 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   MG ustawia właściciela, zasięg i wyłącza lokalizator (np. złodziej) w zakładce Floty.
   Tracyn: właściciel Tara, zasięg 500 pc (migracja 025).
 
+## Księżyce jako miejsca gry: Nar Shaddaa
+
+- Mapa miała jeden wpis „Nal Hutta & Nar Shaddaa”. Migracja 026 rozdziela go: **Nal Hutta**
+  (planeta, bagienna, doba 87 h, rok 413 dni) i **Nar Shaddaa** (księżyc-miasto, typ `pionowe_miasto`)
+  w tym samym układzie. Lokacje i postacie z dawnego wpisu przechodzą na Nar Shaddaa.
+- `planety_cykle.macierz_planeta_id` (+ promień, okres i faza obiegu): księżyc bierze słońce, rok
+  i pory roku z orbity planety macierzystej; na niebie księżyca widać planetę macierzystą z fazą.
+  Nal Hutta ma Nar Shaddaa na liście księżyców (widok układu).
+- **Pionowe miasto** (widok z okna, hotelu, kokpitu na lądowisku): warstwy wież do góry kadru,
+  kładki, pasy okien, neony, mgła i przelatujące światła pojazdów; nad miastem Nal Hutta.
+- Migracja 026 dodaje też Tracyna, którego 024 nie utworzyła (szukała planety „Nar Shaddaa”).
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

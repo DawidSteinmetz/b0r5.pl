@@ -8,7 +8,7 @@ const kr = (n) => `${Number(n).toLocaleString('pl-PL')} kr`;
 const czas = (iso) => {
   const d = new Date(iso);
   const p = (n) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getDate())}|${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
 // Pole numeru rachunku: same cyfry, myślniki dopisują się same (0000-0000-0000).

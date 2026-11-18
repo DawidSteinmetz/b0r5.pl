@@ -21,7 +21,7 @@ const data = (od, i) => {
   d.setDate(d.getDate() + i);
   return d;
 };
-const dzien = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+const dzien = (d) => `${String(d.getDate()).padStart(2, '0')}|${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 // Wykres liniowy w SVG. Kolor: zielony, gdy kurs wzrósł w całym okresie, czerwony, gdy spadł.
 function wykres(ceny, { wys = 160, maly = false } = {}) {

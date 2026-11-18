@@ -2,6 +2,7 @@
 // załoga, legalne kursy handlowe, budynki, finanse) plus Misje.
 // Zakładkę misji (z innymi napisami i legendą) wykorzystuje też profil agencji.
 
+import { dataKrotka } from '../../rdzen/narzedzia.js';
 import transport from './transport.js';
 
 const STATUS_MISJI = {
@@ -66,7 +67,7 @@ function misje(p, o) {
         return h('li', h('div.rzad',
           h('div.rozpycha',
             h('div', m.nazwa),
-            h('div.slaby.maly-tekst', [m.termin && new Date(m.termin).toLocaleDateString('pl-PL'), p.nazwaPlanety(m.planeta), `${m.statki.length} stat. · ${m.zaloga.length} os.`].filter((x) => x && x !== '—').join(' · ')),
+            h('div.slaby.maly-tekst', [m.termin && dataKrotka(m.termin, { rok: true }), p.nazwaPlanety(m.planeta), `${m.statki.length} stat. · ${m.zaloga.length} os.`].filter((x) => x && x !== '—').join(' · ')),
             m.uwagi ? h('div.maly-tekst', { style: 'color:var(--akcent-2)' }, `${o.uwagi}: ${m.uwagi}`) : null),
           h('span.maly-tekst' + (klasa ? '.' + klasa : ''), opis),
           h('button.przycisk.drugi.maly', {
@@ -160,7 +161,7 @@ function raport(p, m) {
   return h('div',
     h('div.panel',
       h('h2', `Raport: ${m.nazwa}`),
-      h('div.slaby.maly-tekst', { style: 'margin-bottom:10px' }, [m.termin && new Date(m.termin).toLocaleDateString('pl-PL'), p.nazwaPlanety(m.planeta)].filter((x) => x && x !== '—').join(' · ')),
+      h('div.slaby.maly-tekst', { style: 'margin-bottom:10px' }, [m.termin && dataKrotka(m.termin, { rok: true }), p.nazwaPlanety(m.planeta)].filter((x) => x && x !== '—').join(' · ')),
       m.przykrywka ? h('div.slaby.maly-tekst', { style: 'margin-bottom:8px' }, 'Legenda: ' + m.przykrywka) : null,
       h('div.dokument-tresc', m.raport || 'Brak raportu.')),
     lista('Statki', (m.straty?.statki || []).map((s) => h('li', h('div.rzad', h('span.rozpycha', s.nazwa),

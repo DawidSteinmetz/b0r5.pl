@@ -76,6 +76,15 @@ export function czasGry(d = new Date()) {
   return `${p(t.getDate())}|${p(t.getMonth() + 1)}|${p(rokGST(t))} ${p(t.getHours())}:${p(t.getMinutes())}`;
 }
 
+// Krótka data gry: DD|MM, z rokiem gry (DD|MM|RR) i/lub godziną (… GG:MM). Przyjmuje Date,
+// tekst daty (ISO) albo znacznik czasu w milisekundach.
+export function dataKrotka(v, { rok = false, godz = false } = {}) {
+  const t = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(t.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(t.getDate())}|${p(t.getMonth() + 1)}${rok ? `|${p(rokGST(t))}` : ''}${godz ? ` ${p(t.getHours())}:${p(t.getMinutes())}` : ''}`;
+}
+
 export function godzina(d = new Date()) {
   return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 }

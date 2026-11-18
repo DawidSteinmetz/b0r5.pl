@@ -1,7 +1,7 @@
 // Panel MG: konta graczy, dokumenty dekodera, komunikaty holonetu, dane frakcji, harmonogram.
 // To narzędzie poza światem gry, więc mówi normalnym językiem.
 
-import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
+import { h, wyczysc, czasGry, dataKrotka } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 import { panelWydarzen } from './wydarzenia.js';
 import { panelCzasu } from './czas.js';
@@ -400,7 +400,7 @@ const TYPY_OPERACJI = { przelew: 'przelew', dochod: 'stały dochód', korekta: '
 function nastepnaWyplata(d) {
   const [r, m] = d.ostatnio.split('-').map(Number);
   const t = new Date(r, m, d.dzien); // miesiąc m (0-based) = miesiąc po „ostatnio”
-  return t.toLocaleDateString('pl-PL');
+  return dataKrotka(t, { rok: true });
 }
 
 async function bank(edytowany = null) {
@@ -460,7 +460,7 @@ async function bank(edytowany = null) {
             }), '.zly')))))),
     h('div.karta.przewijana', h('h2', 'Ostatnie operacje'),
       h('table', h('tr', h('th', 'Czas'), h('th', 'Typ'), h('th', 'Od'), h('th', 'Do'), h('th', 'Kwota'), h('th', 'Tytuł')),
-        transakcje.map((t) => h('tr', h('td', new Date(t.czas).toLocaleString('pl-PL')), h('td', TYPY_OPERACJI[t.typ] || t.typ),
+        transakcje.map((t) => h('tr', h('td', dataKrotka(t.czas, { rok: true, godz: true })), h('td', TYPY_OPERACJI[t.typ] || t.typ),
           h('td', t.od_nazwa), h('td', t.do_nazwa), h('td', kr(t.kwota)), h('td', t.tytul || ''))))),
   );
 }
@@ -821,7 +821,7 @@ async function kanaly(edytowany = null) {
           await odswiez('Wiadomość nadana.');
         }), '.glowny')),
         h('table', [...k.wpisy].reverse().map((x) => h('tr',
-          h('td.slaby', { style: 'white-space:nowrap' }, new Date(x.data).toLocaleString('pl-PL')),
+          h('td.slaby', { style: 'white-space:nowrap' }, dataKrotka(x.data, { rok: true, godz: true })),
           h('td', x.tresc),
           h('td', btn('Usuń', bezpiecznie(async () => { await api('mg_wpis_usun', { kanal: k.id, id: x.id }); await odswiez('Usunięto wiadomość.'); }), '.zly'))))));
     }),
@@ -864,7 +864,7 @@ async function rekrutacja() {
     h('div.karta', h('h2', 'Testy przeprowadzone przez graczy'),
       h('table', h('tr', h('th', 'Kandydat'), h('th', 'Firma'), h('th', 'Data'), h('th', 'Wynik testu'), h('th', 'Prawda')),
         kandydaci.flatMap((k) => Object.entries(k.testy || {}).map(([fid, t]) => h('tr',
-          h('td', k.imie), h('td', nazwyFirm[fid] || '?'), h('td', new Date(t.data).toLocaleDateString('pl-PL')),
+          h('td', k.imie), h('td', nazwyFirm[fid] || '?'), h('td', dataKrotka(t.data, { rok: true })),
           h('td', Object.entries(t.wyniki).map(([a, b]) => `${a}: ${b}`).join(', ')),
           h('td.slaby', Object.entries(k.statystyki || {}).map(([a, b]) => `${STATYSTYKI[a] || a} ${b}`).join(', '))))))));
 }
@@ -995,7 +995,7 @@ async function firmy(wrocDoKatalogu = false) {
           h('td', h('b', s.nazwa), h('div.slaby', f.nazwa)),
           h('td', s.status === 'wstrzymany' ? h('span', { style: 'color:var(--zly)' }, 'wstrzymany') : 'działa', s.uwagi ? h('div.slaby', s.uwagi) : null),
           h('td', (s.dziennik || []).slice(-4).map((d) => h('div.slaby', `${d.data}: ${d.ok ? (d.zysk >= 0 ? '+' : '') + d.zysk + ' kr' : 'nieudany'}`))),
-          h('td', s.status === 'w_realizacji' && s.nastepny ? new Date(s.nastepny).toLocaleDateString('pl-PL') : '—'),
+          h('td', s.status === 'w_realizacji' && s.nastepny ? dataKrotka(s.nastepny, { rok: true }) : '—'),
           h('td', btn('Zatrzymaj', bezpiecznie(async () => {
             if (!confirm('Zatrzymać automat? Statek wróci do dyspozycji firmy.')) return;
             await api('mg_szlak_status', { firma: f.id, szlak: s.id, status: 'zakonczony' });

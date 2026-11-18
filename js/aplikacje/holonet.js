@@ -1,6 +1,6 @@
 // Holonet: komunikaty sieci, transmisja na żywo i przechwycony kanał B0R5.
 
-import { h, wyczysc, ikona, czekaj, zIso, dataGST } from '../rdzen/narzedzia.js';
+import { h, wyczysc, ikona, czekaj, zIso, dataGST, dataKrotka } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 
 // Kanał transmisji na żywo. „parent" musi być domeną, na której stoi system.
@@ -112,7 +112,7 @@ export default {
       const rysuj = () => {
         wyczysc(lista).append(...(d.wpisy.length
           ? d.wpisy.map((x) => h('article.panel',
-            h('div.slaby.maly-tekst', new Date(x.data).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })),
+            h('div.slaby.maly-tekst', dataKrotka(x.data, { godz: true })),
             h('div.dokument-tresc', { style: 'min-height:0;margin-top:6px' }, odszyfruj(x.tresc))))
           : [h('div.pusto', 'Kanał milczy.')]));
       };

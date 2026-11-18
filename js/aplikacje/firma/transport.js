@@ -17,7 +17,7 @@
 //   })
 // gdzie `p` to wspólne narzędzia panelu (zobacz obiekt `panel` niżej).
 
-import { h, wyczysc } from '../../rdzen/narzedzia.js';
+import { h, wyczysc, dataKrotka } from '../../rdzen/narzedzia.js';
 import { api } from '../../rdzen/api.js';
 
 const STATUS_KURSU = {
@@ -238,7 +238,7 @@ export default {
 
     function ocenaTekst(o) {
       if (!o?.wyniki) return null;
-      return h('div.slaby.maly-tekst', { style: 'margin-top:4px' }, `Ocena z ${new Date(o.data).toLocaleDateString('pl-PL')} (${o.tester}): `,
+      return h('div.slaby.maly-tekst', { style: 'margin-top:4px' }, `Ocena z ${dataKrotka(o.data, { rok: true })} (${o.tester}): `,
         Object.entries(o.wyniki).map(([k, v], i) => [i ? ' · ' : '', `${k}: `, h('span', { style: 'color:var(--tekst)' }, v)]));
     }
 
@@ -330,7 +330,7 @@ export default {
             const wplyw = t.kierunek === 'wplyw';
             return h('li', h('div.rzad',
               h('div.rozpycha', h('div', (wplyw ? 'Od: ' + t.od_nazwa : 'Do: ' + t.do_nazwa)),
-                h('div.slaby.maly-tekst', [t.tytul, new Date(t.czas).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · '))),
+                h('div.slaby.maly-tekst', [t.tytul, dataKrotka(t.czas, { godz: true })].filter(Boolean).join(' · '))),
               h('span' + (wplyw ? '.bank-plus' : '.bank-minus'), (wplyw ? '+' : '−') + kr(t.kwota))));
           })) : h('div.pusto', 'Brak operacji.')));
     }
@@ -364,10 +364,10 @@ export default {
     // Wynik ostatniego obiegu (i kiedy następny) — pod nazwą kursu na liście.
     function ostatniObieg(s) {
       const d = s.dziennik?.[s.dziennik.length - 1];
-      const nastepny = s.auto && s.status === 'w_realizacji' && s.nastepny ? ` · następny obieg ${new Date(s.nastepny).toLocaleDateString('pl-PL')}` : '';
+      const nastepny = s.auto && s.status === 'w_realizacji' && s.nastepny ? ` · następny obieg ${dataKrotka(s.nastepny, { rok: true })}` : '';
       if (!d) return nastepny ? h('div.slaby.maly-tekst', nastepny.slice(3)) : null;
       return h('div.maly-tekst',
-        h('span.slaby', `Obieg ${new Date(d.data).toLocaleDateString('pl-PL')}: `),
+        h('span.slaby', `Obieg ${dataKrotka(d.data, { rok: true })}: `),
         d.ok ? h('span' + (d.zysk >= 0 ? '.bank-plus' : '.status-nieobecny'), `${d.zysk >= 0 ? '+' : ''}${d.zysk} kr`) : h('span.status-nieobecny', 'nieudany'),
         h('span.slaby', nastepny));
     }
@@ -485,7 +485,7 @@ export default {
       coDni.addEventListener('input', () => { k.co_dni = Math.max(1, Math.min(30, Math.floor(Number(coDni.value) || 7))); });
       // Dziennik obiegów (kursy automatyczne i rozliczone).
       const dziennik = (k.dziennik || []).slice().reverse().map((d) => h('li',
-        h('div.rzad', h('span.rozpycha', new Date(d.data).toLocaleDateString('pl-PL')),
+        h('div.rzad', h('span.rozpycha', dataKrotka(d.data, { rok: true })),
           d.ok ? h('span' + (d.zysk >= 0 ? '.bank-plus' : '.status-nieobecny'), `${d.zysk >= 0 ? '+' : ''}${d.zysk} kr`) : h('span.status-nieobecny', d.opis)),
         d.pozycje?.length ? h('div.slaby.maly-tekst', d.pozycje.map((x) => `${x.planeta}: ${x.typ === 'kup' ? 'kupno' : 'sprzedaż'} ${x.ilosc} × ${x.towar} po ${x.cena} kr`).join(' · ')) : null));
 

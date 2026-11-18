@@ -2,6 +2,7 @@
 // Dla wtajemniczonych: narzędzie do kontaktu, kontroli i rozliczeń z agentami w terenie.
 // Celowo żadnych słów, które zdradzałyby, kto naprawdę stoi za agencją.
 
+import { dataKrotka } from '../../rdzen/narzedzia.js';
 import transport from './transport.js';
 import { zakladkaMisji } from './komorka.js';
 
@@ -86,7 +87,7 @@ function monitoring(p) {
   const cele = [...(dane.cele || [])].sort((a, b) => (a.status === b.status ? (b.utworzono || '').localeCompare(a.utworzono || '') : a.status === 'aktywny' ? -1 : 1));
   const nazwa = h('input', { maxlength: 120, placeholder: 'osoba, statek, lokal, organizacja...' });
   const opis = h('textarea', { maxlength: 2000, placeholder: 'Powód obserwacji, czego szukamy', style: 'min-height:70px' });
-  const czas = (iso) => new Date(iso).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const czas = (iso) => dataKrotka(iso, { rok: true, godz: true });
 
   return h('div',
     f.moze ? h('form.panel', {

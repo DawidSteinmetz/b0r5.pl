@@ -1,6 +1,6 @@
 // Holonet: komunikaty sieci, transmisja na żywo i przechwycony kanał B0R5.
 
-import { h, wyczysc, ikona, czekaj, zIso, dataGST, dataKrotka } from '../rdzen/narzedzia.js';
+import { h, wyczysc, ikona, czekaj, dataKrotka, pamiec } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 
 // Kanał transmisji na żywo. „parent" musi być domeną, na której stoi system.
@@ -21,35 +21,35 @@ export default {
   uruchom(w, ctx) {
     let przerwij = false;
 
+    // Po otwarciu od razu treść (domyślnie najnowsze komunikaty); na górze pasek źródeł.
+    // Ostatnio wybrane źródło pamięta tablet.
     let wtyczki = [];
-    let naGlownej = true;
-    const glowna = () => {
-      naGlownej = true;
-      ctx.ustawWstecz(null);
-      wyczysc(w).append(
-        h('div.app-glowa', h('h1', 'Holonet'), h('span.podtytul', 'Węzeł publiczny')),
-        h('div.panel',
-          h('h2', 'Węzły'),
-          h('ul.lista',
-            wezel(IKONY.wiadomosci, 'Komunikaty sieci', 'Najnowsze wiadomości z holonetu', wiadomosci),
-            wezel(IKONY.transmisja, 'Transmisja na żywo', 'Odbiór kanału holowizyjnego', transmisja),
-            wezel(IKONY.b0r5, 'Przechwycony kanał', 'Sygnał niezidentyfikowany · szyfrowany', b0r5))),
-        // Kanały z zainstalowanych wtyczek (czarny rynek informacji).
-        wtyczki.length ? h('div.panel', { style: 'border-color:var(--zph)' },
-          h('h2', { style: 'color:var(--zph)' }, 'Kanały szyfrowane'),
-          h('ul.lista', wtyczki.map((k) => wezel(IKONY.szyfr, k.nazwa, 'Wtyczka zewnętrzna · transmisja szyfrowana', () => kanal(k))))) : null,
-      );
-    };
-    api('wtyczki').then((d) => { wtyczki = d.wtyczki; if (naGlownej && !przerwij) glowna(); }).catch(() => {});
+    let aktywne = pamiec.czytaj('holonet_zrodlo', 'komunikaty');
+    const pasekZrodel = h('div.zakladki.holonet-zrodla');
+    const tresc = h('div');
+    w.append(h('div.app-glowa', h('h1', 'Holonet'), h('span.podtytul', 'Węzeł publiczny')), pasekZrodel, tresc);
 
-    const wezel = (ik, tytul, opis, fn) => h('li', h('div.wezel', { onclick: fn, role: 'button' },
-      ikona(ik), h('div', h('div', tytul), h('div.slaby.maly-tekst', opis))));
+    const zrodla = () => [
+      { id: 'komunikaty', nazwa: 'Komunikaty', ik: IKONY.wiadomosci, fn: wiadomosci },
+      { id: 'transmisja', nazwa: 'Na żywo', ik: IKONY.transmisja, fn: transmisja },
+      { id: 'b0r5', nazwa: 'Przechwycony kanał', ik: IKONY.b0r5, fn: b0r5 },
+      ...wtyczki.map((k) => ({ id: 'k:' + k.id, nazwa: k.nazwa, ik: IKONY.szyfr, fn: () => kanal(k), szyfr: true })),
+    ];
+    const rysujPasek = () => wyczysc(pasekZrodel).append(...zrodla().map((z) => h('button' + (z.id === aktywne ? '.aktywna' : '') + (z.szyfr ? '.szyfr' : ''),
+      { onclick: () => otworz(z.id) }, ikona(z.ik), h('span', z.nazwa))));
+    const otworz = (id) => {
+      const z = zrodla().find((x) => x.id === id) || zrodla()[0];
+      aktywne = z.id;
+      pamiec.zapisz('holonet_zrodlo', aktywne);
+      przerwij = true; // zatrzymuje pisanie w przechwyconym kanale
+      rysujPasek();
+      setTimeout(() => { przerwij = false; z.fn(); }, 0);
+    };
+    api('wtyczki').then((d) => { wtyczki = d.wtyczki || []; rysujPasek(); if (aktywne.startsWith('k:')) otworz(aktywne); }).catch(() => {});
 
     const podstrona = (tytul, ...zawartosc) => {
-      ctx.ustawWstecz(() => { przerwij = true; glowna(); return true; });
       przerwij = false;
-      naGlownej = false;
-      wyczysc(w).append(h('div.app-glowa', h('h1', tytul)), ...zawartosc);
+      wyczysc(tresc).append(...zawartosc);
     };
 
     async function wiadomosci() {
@@ -61,7 +61,7 @@ export default {
         if (!komunikaty.length) return lista.append(h('div.pusto', 'Brak nowych komunikatów.'));
         for (const k of komunikaty) {
           lista.append(h('article.panel',
-            h('div.slaby.maly-tekst', [dataGST(zIso(k.data)), k.zrodlo].filter(Boolean).join(' · ')),
+            h('div.slaby.maly-tekst', [dataKrotka(k.data, { rok: true }), k.zrodlo].filter(Boolean).join(' · ')),
             h('h2', { style: 'margin-top:6px' }, k.tytul),
             h('div.dokument-tresc', k.tresc)));
         }
@@ -153,7 +153,7 @@ export default {
       await pisz('Potrzebujemy Cię.');
     }
 
-    glowna();
+    otworz(aktywne.startsWith('k:') ? 'komunikaty' : aktywne);
     return () => { przerwij = true; };
   },
 };

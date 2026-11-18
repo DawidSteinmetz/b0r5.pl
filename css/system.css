@@ -723,3 +723,8 @@ html.z-tlem #ekran::before {
 .kal-toast { position: fixed; left: 50%; bottom: 80px; transform: translate(-50%, 20px); z-index: 60; padding: 10px 18px; border: 1px solid var(--ok); border-radius: var(--promien); background: var(--panel-mocny); color: var(--ok); letter-spacing: 0.12em; text-transform: uppercase; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
 .kal-toast.widoczny { opacity: 1; transform: translate(-50%, 0); }
 .kal-toast.blad { border-color: var(--zly); color: var(--zly); }
+
+/* Holonet: pasek źródeł nad treścią */
+.holonet-zrodla button { display: inline-flex; align-items: center; gap: 6px; }
+.holonet-zrodla svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.5; }
+.holonet-zrodla button.szyfr { color: var(--zph); }

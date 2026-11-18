@@ -8,7 +8,7 @@
 //   powierzchnia — widok za oknem (biuro, hotel) albo z wrót hangaru: niebo i krajobraz planety
 //   start       — wznoszenie: ~5 min chmur w kolorze atmosfery, potem czarne niebo i gwiazdy (planeta za rufą)
 //
-// `okno: 'isd'` — widok przez okno mostka gwiezdnego niszczyciela (trzy okna, symetryczne względem
+// `okno: 'isd'` / `'komrk'` — widok przez okno mostka gwiezdnego niszczyciela albo kokpit Kom'rka (trzy okna, symetryczne względem
 // środkowego). `widok` (kurs dziobu z manewrem, miejsce na orbicie, cykl planety) przesuwa planetę
 // i słońce w oknie zgodnie z kierunkiem dziobu i oświetla planetę zgodnie z położeniem słońca.
 //
@@ -186,12 +186,29 @@ function geometriaOknaIsd(w, h) {
   ] };
 }
 
-function rysujOknoIsd(w, h, dpr) {
+// Kokpit Kom'rka: szeroka, kanciasta owiewka (rozciągnięty sześciokąt) podzielona pionowym wspornikiem
+// na dwie szyby; pod nią konsola. W pionie owiewka na całą szerokość, konsola rośnie w dół.
+function geometriaOknaKomrk(w, h) {
+  const pion = h > w;
+  const x0 = pion ? w * 0.02 : w * 0.03, x1 = w - x0, sx = w / 2;
+  const wys = pion ? (x1 - x0) * 0.55 : h * 0.6;
+  const gora = pion ? h * 0.4 - wys / 2 : h * 0.1, dol = gora + wys, srodek = (gora + dol) / 2;
+  const skos = (x1 - x0) * 0.07, wspornik = Math.max(5, w * 0.012);
+  return { pion, gora, dol, konsola: true, okna: [
+    [[x0 + skos, gora], [sx - wspornik, gora], [sx - wspornik, dol], [x0 + skos, dol], [x0, srodek]],
+    [[sx + wspornik, gora], [x1 - skos, gora], [x1, srodek], [x1 - skos, dol], [sx + wspornik, dol]],
+  ] };
+}
+
+const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : geometriaOknaIsd(w, h));
+
+function rysujOknoIsd(w, h, dpr, typ = 'isd') {
   const c = document.createElement('canvas');
   c.width = Math.max(1, w * dpr); c.height = Math.max(1, h * dpr);
   const g = c.getContext('2d');
   g.scale(dpr, dpr);
-  const { gora, dol, okna } = geometriaOknaIsd(w, h);
+  const geo = geometriaOkna(typ, w, h);
+  const { gora, dol, okna } = geo;
   const r = Math.min(w, h) * 0.045;
   // poszycie
   const kad = g.createLinearGradient(0, 0, 0, h);
@@ -217,6 +234,23 @@ function rysujOknoIsd(w, h, dpr) {
       wielokat(g, o, r); g.lineWidth = szer; g.strokeStyle = kolor; g.stroke();
     }
     wielokat(g, o, r); g.lineWidth = Math.max(1.5, w * 0.0018); g.strokeStyle = jasna; g.stroke();
+  }
+  if (geo.konsola) {
+    // konsola pod owiewką: ciemniejszy pulpit z przygaszonymi wskaźnikami
+    const top = dol + Math.max(10, h * 0.03);
+    const kon = g.createLinearGradient(0, top, 0, h);
+    kon.addColorStop(0, '#16181b'); kon.addColorStop(1, '#0c0d0f');
+    g.fillStyle = kon; g.fillRect(0, top, w, h - top);
+    g.strokeStyle = '#2b2f33'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, top); g.lineTo(w, top); g.stroke();
+    let ziarno = 7;
+    const los = () => ((ziarno = (ziarno * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const kolory = ['rgba(77,226,201,0.75)', 'rgba(255,179,71,0.7)', 'rgba(255,90,79,0.65)', 'rgba(140,170,255,0.6)'];
+    for (let i = 0; i < 26; i++) {
+      const x = w * (0.08 + los() * 0.84), y = top + (h - top) * (0.2 + los() * 0.6);
+      g.fillStyle = kolory[Math.floor(los() * kolory.length)];
+      if (los() < 0.6) g.fillRect(x, y, 3 + los() * 10, 2.5);
+      else { g.beginPath(); g.arc(x, y, 2.2, 0, Math.PI * 2); g.fill(); }
+    }
   }
   return c;
 }
@@ -348,8 +382,8 @@ export function utworzScene(canvas) {
   // Wysokość na ekranie dla ułamka „poziomego” projektu (okno 0,08–0,84 h). W pionie z oknem ISD
   // liczona względem środkowego okna, żeby planeta i słońce nie chowały się pod poszyciem.
   const yWidoku = (u) => {
-    if (stan.okno !== 'isd' || h <= w) return h * u;
-    const { gora, dol } = geometriaOknaIsd(w, h);
+    if (!stan.okno || (stan.okno === 'isd' && h <= w)) return h * u;
+    const { gora, dol } = geometriaOkna(stan.okno, w, h);
     return gora + (u - 0.08) / 0.76 * (dol - gora);
   };
 
@@ -890,8 +924,8 @@ export function utworzScene(canvas) {
         if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05); }
         rysujSasiednieGwiazdy();
     }
-    if (stan.okno === 'isd') {
-      if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h) oknoIsd = { w, h, plotno: rysujOknoIsd(w, h, dpr) };
+    if (stan.okno === 'isd' || stan.okno === 'komrk') {
+      if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h || oknoIsd.typ !== stan.okno) oknoIsd = { w, h, typ: stan.okno, plotno: rysujOknoIsd(w, h, dpr, stan.okno) };
       ctx.drawImage(oknoIsd.plotno, 0, 0, w, h);
     }
   }

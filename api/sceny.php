@@ -82,6 +82,14 @@ function scena_jest_isd(string $tekst): bool
     return (bool) preg_match('/imperial|\bisd\b|niszczyciel/i', $tekst);
 }
 
+// Rodzaj okna z kokpitu/mostka według klasy: 'isd', 'komrk' albo '' (pełny ekran).
+function scena_okno(string $tekst): string
+{
+    if (scena_jest_isd($tekst)) return 'isd';
+    if (preg_match("/kom'?rk/iu", $tekst)) return 'komrk';
+    return '';
+}
+
 function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
 {
     if (!function_exists('floty_orbita_dostepna') || !tabela_sql_dostepna('mapa_obiekty')
@@ -90,7 +98,10 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     $db = polaczenie_bazy();
     $gry = tabela_sql_dostepna('planety_gry');
     $nav = floty_nawigacja_dostepna();
+    $lad = function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne();
     $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.x,m.y,m.przylot_utc,p.nazwa AS planeta'
+        . ($lad ? ',m.ladowisko_id,m.start_utc,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko,'
+            . '(SELECT x_km FROM lokalizacje WHERE id=m.ladowisko_id) AS lad_x,(SELECT y_km FROM lokalizacje WHERE id=m.ladowisko_id) AS lad_y' : '')
         . ($nav ? ',m.podejscie,m.podlot_start,m.podlot_cel,m.podlot_od_utc,m.podlot_do_utc' : '') . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
         FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id'
         . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=m.planeta_id' : '') . ' WHERE m.id=?');
@@ -104,8 +115,7 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     }
 
     $teraz = czas_teraz();
-    $isd = scena_jest_isd($o['klasa'] . ' ' . $o['nazwa']);
-    $baza = ['okno' => $isd ? 'isd' : '', 'wnetrze' => '', 'opis' => (string) $o['nazwa']];
+    $baza = ['okno' => scena_okno($o['klasa'] . ' ' . $o['nazwa']), 'wnetrze' => '', 'opis' => (string) $o['nazwa']];
     $typ = (string) (($o['typ_planety'] ?? '') ?: 'skalista');
     $planeta = (string) ($o['planeta'] ?? '');
     $przylot = czas_z_utc($o['przylot_utc'] ?? null);
@@ -134,6 +144,18 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     if ($planeta === '') {
         return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
             'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy]];
+    }
+    if (!empty($o['ladowisko_id'])) {
+        // Na lądowisku: za oknem kokpitu powierzchnia planety (dzień/noc z cyklu planety i miejsca).
+        return $baza + ['scena' => 'powierzchnia', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => $planeta,
+            'opis' => (string) ($o['ladowisko'] ?? 'Lądowisko'), 'zmieniono' => $zmieniono,
+            'swiatlo' => astro_swiatlo($planeta, ['x' => (float) ($o['lad_x'] ?? 0), 'y' => (float) ($o['lad_y'] ?? 0)])];
+    }
+    $start = czas_z_utc($o['start_utc'] ?? null);
+    if ($start && $teraz - $start < START_WZNOSZENIE_S) {
+        // Start z lądowiska: wznoszenie przez atmosferę (animacja na tablecie, potem orbita).
+        return $baza + ['scena' => 'start', 'planeta' => $typ, 'odleglosc' => 'blisko', 'miejsce' => $planeta,
+            'opis' => 'Start', 'zmieniono' => max($start * 1000, $zmianaPozycjiMs)];
     }
     if (!empty($o['rozbity'])) {
         return $baza + ['scena' => 'powierzchnia', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => $planeta,
@@ -172,7 +194,8 @@ function liczniki_okretu(int $id): ?array
     $db = polaczenie_bazy();
     $nav = floty_nawigacja_dostepna();
     $l = liczniki_dostepne();
-    $q = $db->prepare('SELECT o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc' . ($nav ? ',o.podlot_cel,o.podlot_do_utc' : '') . ',
+    $q = $db->prepare('SELECT o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc' . ($nav ? ',o.podlot_cel,o.podlot_do_utc' : '')
+        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',o.ladowisko_id,o.start_utc' : '') . ',
             n.paliwo,n.paliwo_maks,n.moc_reaktora,n.moc_hipernapedu,n.sprawnosc_reaktora' . ($l ? ',n.oslony,n.kadlub' : '') . '
         FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id=?');
     $q->execute([$id]);
@@ -203,6 +226,11 @@ function liczniki_okretu(int $id): ?array
             $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => $wejscie];
             $reaktor = 40;
         }
+    } elseif (!empty($o['ladowisko_id'])) {
+        $reaktor = 5; // na lądowisku: zasilanie postojowe
+    } elseif (czas_z_utc($o['start_utc'] ?? null) + START_WZNOSZENIE_S > $teraz) {
+        $odliczanie = ['etykieta' => 'Wznoszenie', 'koniec' => czas_z_utc($o['start_utc']) + START_WZNOSZENIE_S];
+        $reaktor = 80;
     } elseif ($manewrDo > $teraz) {
         $odliczanie = ['etykieta' => 'Obrót na kurs ' . round((float) $o['kurs_cel_deg']) . '°', 'koniec' => $manewrDo];
         $reaktor = 40;
@@ -337,7 +365,7 @@ function scena_efektywna(string $uid): array
             }
             $okret = ['scena' => $pl ? 'orbita' : 'kosmos', 'planeta' => $pl['typ'] ?? 'skalista', 'odleglosc' => 'blisko',
                 'miejsce' => $pl['nazwa'] ?? 'Przestrzeń', 'opis' => (string) ($gdzie['nazwa'] ?? ''), 'wnetrze' => '',
-                'okno' => scena_jest_isd(($gdzie['klasa'] ?? '') . ' ' . ($gdzie['nazwa'] ?? '')) ? 'isd' : '', 'zmieniono' => $zmianaPozycji];
+                'okno' => scena_okno(($gdzie['klasa'] ?? '') . ' ' . ($gdzie['nazwa'] ?? '')), 'zmieniono' => $zmianaPozycji];
         }
         return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;
     }

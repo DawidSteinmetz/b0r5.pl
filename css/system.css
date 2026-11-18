@@ -181,25 +181,20 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 .album-zdjecie figcaption { display: grid; gap: 2px; padding: 8px 10px; font-size: 12px; }
 .album-zdjecie figcaption b { color: var(--akcent); font-weight: normal; }
 /* Aparat (zdjęcie słońca) i komunikat na pulpicie */
-.pulpit-aparat { position: absolute; left: 18px; bottom: 16px; z-index: 2; display: flex; align-items: center; gap: 6px;
-  padding: 6px 12px 6px 8px; border: 1px solid var(--linia-mocna); border-radius: 18px; background: rgba(5, 8, 10, 0.55);
-  color: var(--akcent); font-size: 12px; letter-spacing: 0.08em; cursor: pointer; }
-.pulpit-aparat[hidden] { display: none; }
-.pulpit-aparat svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.5; }
+.kafel-aparat[hidden], .kafel-liczniki[hidden] { display: none; }
+.kafel-aparat { color: var(--akcent); }
 .pulpit-blysk { position: absolute; inset: 0; z-index: 5; background: #fff; pointer-events: none; animation: blysk-aparatu 0.45s ease-out forwards; }
 @keyframes blysk-aparatu { from { opacity: 0.85; } to { opacity: 0; } }
 .pulpit-komunikat { position: absolute; left: 50%; bottom: 20px; z-index: 6; transform: translateX(-50%); max-width: min(560px, 90%);
   padding: 10px 16px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(5, 8, 10, 0.92);
   color: var(--tekst); font-size: 13px; text-align: center; }
-/* Liczniki pokładowe: dyskretny pasek w prawym dolnym rogu pulpitu */
-.pulpit-liczniki { position: absolute; right: 18px; bottom: 16px; z-index: 2; width: min(250px, 42vw); display: grid; gap: 4px;
-  padding: 8px 10px; font-size: 11px; letter-spacing: 0.06em; color: var(--tekst-slaby);
-  background: rgba(5, 8, 10, 0.42); border: 1px solid var(--linia); border-radius: var(--promien); pointer-events: none; }
-.pulpit-liczniki[hidden] { display: none; }
-.licznik-odliczanie { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 3px; border-bottom: 1px solid var(--linia); }
+/* Liczniki pokładowe: kafelek w siatce pulpitu, tej samej wielkości co ikony aplikacji */
+.kafel-liczniki { align-items: stretch; justify-content: center; gap: 4px; padding: 10px 10px; cursor: default;
+  font-size: 10px; letter-spacing: 0.04em; color: var(--tekst-slaby); text-align: left; }
+.licznik-odliczanie { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 6px; padding-bottom: 3px; border-bottom: 1px solid var(--linia); }
 .licznik-odliczanie b { color: var(--akcent); font-weight: normal; font-variant-numeric: tabular-nums; }
 .licznik-odliczanie b.ostrz { color: #ffb347; }
-.licznik { display: grid; grid-template-columns: 58px 1fr 34px; align-items: center; gap: 6px; }
+.licznik { display: grid; grid-template-columns: 44px 1fr 30px; align-items: center; gap: 4px; }
 .licznik > i { height: 3px; background: rgba(255, 255, 255, 0.08); border-radius: 2px; overflow: hidden; }
 .licznik > i > i { display: block; height: 100%; background: var(--akcent); opacity: 0.75; }
 .licznik b { font-weight: normal; text-align: right; color: var(--tekst); font-variant-numeric: tabular-nums; }

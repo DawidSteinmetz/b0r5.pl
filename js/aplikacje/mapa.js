@@ -32,6 +32,18 @@ export function kursTeraz(o, t = teraz()) {
 // Jednostka jest w nadprzestrzeni dopiero po manewrze (wejście w skok).
 const wNadprzestrzeni = (o, t = teraz()) => !!o?.lot && t >= (o.lot.wejscie || 0);
 
+// Sylwetka Kom'rka z góry (dziób = dwa wysunięte kły, okrągły kadłub, skrzydła), obrócona według kursu.
+const KOMRK = [[1, 0.1], [0.25, 0.14], [0.55, 0.72], [0.05, 0.62], [-0.45, 0.55], [-0.7, 0.28], [-0.72, 0], [-0.7, -0.28], [-0.45, -0.55],
+  [0.05, -0.62], [0.55, -0.72], [0.25, -0.14], [1, -0.1], [0.3, 0]];
+function sylwetkaKomrk(g, x, y, kurs, r = 10) {
+  const a = -kurs * RAD, c = Math.cos(a), s = Math.sin(a);
+  KOMRK.forEach(([px, py], i) => {
+    const X = x + (px * c - py * s) * r, Y = y + (px * s + py * c) * r;
+    if (i) g.lineTo(X, Y); else g.moveTo(X, Y);
+  });
+  g.closePath();
+}
+
 // Strzałka (dziób w kierunku kursu); ekran ma oś y w dół, stąd minus przy kącie.
 function strzalka(g, x, y, kurs, r = 8) {
   const a = -kurs * RAD;
@@ -575,6 +587,7 @@ export default {
         if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
         if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys);
+        else if (o.znacznik === 'komrk') sylwetkaKomrk(c, sx, sy, kursRys);
         else if (o.znacznik === 'kwadrat') c.rect(sx - 5, sy - 5, 10, 10);
         else if (o.znacznik === 'romb') { c.moveTo(sx, sy - 7); c.lineTo(sx + 7, sy); c.lineTo(sx, sy + 7); c.lineTo(sx - 7, sy); c.closePath(); }
         else c.arc(sx, sy, 5, 0, Math.PI * 2);
@@ -777,10 +790,41 @@ export default {
         const rysuj = () => {
           const f = floty.find((x) => String(x.id) === wybor.value) || floty[0];
           const jednostki = f.jednostki || [];
-          const tutaj = jednostki.filter((j) => norm(j.planeta || '') === p.klucz && !j.rozkaz_id);
+          const wUkladzie = jednostki.filter((j) => norm(j.planeta || '') === p.klucz && !j.rozkaz_id);
+          const naLadowisku = wUkladzie.filter((j) => j.ladowisko_id);
+          const tutaj = wUkladzie.filter((j) => !j.ladowisko_id);
           const automat = jednostki[0]?.automat !== false;
           const info = h('p.slaby.maly-tekst');
           wyczysc(tresc);
+          // Na lądowisku: start (wznoszenie ok. 5 min, potem bliska orbita).
+          if (naLadowisku.length) {
+            tresc.append(h('div.mapa-nawigacja-blok',
+              h('b', `Na lądowisku: ${naLadowisku[0].ladowisko || 'lądowisko'}`),
+              h('button.przycisk.glowny.mapa-nawigacja-wykonaj', { onclick: async () => {
+                try {
+                  const w = await api('mapa_flota_start', { flota_id: f.id, jednostki: naLadowisku.map((j) => j.obiekt_id) });
+                  info.textContent = `Start. Bliska orbita ok. ${czasGry(w.orbita)}.`;
+                  await pobierzPozycje(); await odswiezFloty();
+                } catch (e) { info.textContent = e.message; }
+              } }, 'Start')));
+          }
+          // Na bliskiej orbicie, jednostki zdolne do lądowania: wybór lądowiska.
+          const mogaLadowac = tutaj.filter((j) => Number(j.moze_ladowac) === 1 && (j.podejscie_teraz || 'bliska') === 'bliska');
+          if (mogaLadowac.length) {
+            const lista = h('select.mapa-nawigacja-wybor', h('option', { value: '' }, 'Wybierz lądowisko'));
+            const laduj = h('button.przycisk', { onclick: async () => {
+              if (!lista.value) { info.textContent = 'Wybierz lądowisko.'; return; }
+              try {
+                const w = await api('mapa_flota_ladowanie', { flota_id: f.id, jednostki: mogaLadowac.map((j) => j.obiekt_id), lokacja_id: Number(lista.value) });
+                info.textContent = `Lądowanie: ${w.ladowisko}.`;
+                await pobierzPozycje(); await odswiezFloty();
+              } catch (e) { info.textContent = e.message; }
+            } }, 'Ląduj');
+            api('mapa_ladowiska', undefined, { planeta: p.nazwa }).then((d) => {
+              lista.append(...(d.ladowiska || []).map((l) => h('option', { value: l.id }, `${l.nazwa} (${l.rodzaj})`)));
+            }).catch(() => {});
+            tresc.append(h('div.mapa-nawigacja-blok', h('b', 'Lądowanie'), h('div.mapa-nawigacja-wiersz', lista, laduj)));
+          }
           if (tutaj.length) {
             const obecna = tutaj[0].podejscie_teraz || 'bliska';
             const doloty = Object.keys(NAZWY_WARIANTOW).filter((k) => k !== obecna).map((k) => h('button.przycisk.maly', { onclick: async () => {
@@ -802,7 +846,7 @@ export default {
               wariant: wDrodze.wariant || 'daleka', reczny: !wDrodze.wariant, policzony: true, aktywny: true };
             odswiezUkladKarty?.();
           }
-          if (tutaj.length < jednostki.length && !wDrodze) {
+          if (wUkladzie.length < jednostki.length && !wDrodze) {
             let wariant = 'bliska';
             const glowna = jednostki[0] || {};
             const kierunek = Math.atan2(p.y - Number(glowna.y || 0), p.x - Number(glowna.x || 0)) / RAD;

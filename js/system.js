@@ -428,11 +428,12 @@ function ekranPulpitu() {
         h('div', [u.frakcja, u.oddzial].filter(Boolean).join(' · ')),
         u.ranga ? h('div', u.ranga) : null)),
     szybkieAkcje,
-    h('div.pulpit-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
-    h('button.pulpit-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie')),
+    // Liczniki pokładowe i aparat to kafelki w tej samej siatce co aplikacje (nie nachodzą na ikony).
     h('div.siatka-aplikacji',
       APLIKACJE.map((a) => h('button.ikona-aplikacji', { onclick: () => otworz(a.id) },
-        ikona(a.ikona), h('span', a.nazwa)))),
+        ikona(a.ikona), h('span', a.nazwa))),
+      h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
+      h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
   );
   odswiezZegar();
   rysujSzybkieAkcje();

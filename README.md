@@ -178,6 +178,21 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   Zgody: panel dowodzenia na mapie, Nawigacja na pokładzie statku firmy, MG w zakładce Floty.
   Zgoda działa, gdy gość jest na pokładzie tego okrętu, i obowiązuje do cofnięcia.
 
+## Lądowanie, start i Kom'rk „Tracyn”
+
+- Małe jednostki z SQL (`mapa_naped_jednostki.moze_ladowac`: Kom'rk, Gozanti) z **bliskiej orbity**
+  lądują na lądowisku planety (karta planety → Nawigacja floty → „Ląduj”; lokalizacje typu
+  ladowisko albo hangar/port/platforma) i stoją z `mapa_obiekty.ladowisko_id`. **Start** — wznoszenie
+  ok. 5 min (scena „start” u załogi), potem bliska orbita. Na lądowisku nie ma skoku, obrotu ani dolotu.
+  ISD nigdy nie ląduje (chyba że rozbity).
+- **Kokpit Kom'rka** (`okno: 'komrk'`): kanciasta owiewka podzielona wspornikiem, pod nią konsola;
+  w pionie owiewka na całą szerokość. Na lądowisku za szybą powierzchnia planety (dzień/noc).
+  Na mapie Kom'rk ma własną sylwetkę (znacznik `komrk`), obróconą według kursu.
+- **Tracyn** (migracja 024): Kom'rk Venki Tary (konto `Tara`, Syndykat) w jednoosobowej flocie
+  „Tracyn” z dowódcą Tara, na lądowisku „Port kosmiczny Nar Shaddaa”, Venka na pokładzie.
+- **Pulpit:** liczniki pokładowe i przycisk „Zdjęcie” są kafelkami w siatce aplikacji (tej samej
+  wielkości co ikony), więc nie nachodzą na ikony na telefonie.
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

@@ -345,6 +345,30 @@ export function utworzScene(canvas) {
   // Pozioma pozycja na ekranie obiektu w danym kierunku (cel na lewo od dziobu → na lewo w oknie).
   const xKierunku = (kurs, kierunek) => w / 2 - norm180(kierunek - kurs) * (w / POLE_WIDZENIA);
 
+  // Gwiazdy sąsiednich układów (`widok.gwiazdy`): w swoim kierunku względem dziobu, jasność
+  // według odległości: do 50 pc jasna z poświatą, 50–300 pc jasny punkt, 300–1000 pc słaby punkt.
+  const ODCIENIE = [[255, 244, 225], [210, 225, 255], [255, 225, 180]];
+  function rysujSasiednieGwiazdy() {
+    const k = kierunki();
+    const lista = stan.widok?.gwiazdy;
+    if (!k || !lista?.length) return;
+    for (const g of lista) {
+      if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 2) continue;
+      const x = xKierunku(k.kurs, g.k), y = h * (0.42 - g.w * 0.3);
+      const [r, gr, b] = ODCIENIE[g.o] || ODCIENIE[0];
+      const blisko = g.d < 50, srednio = g.d < 300;
+      const promien = blisko ? 2.6 : srednio ? 1.7 : 1.1;
+      const alfa = blisko ? 1 : srednio ? 0.9 : Math.max(0.25, 0.55 - (g.d - 300) / 2000);
+      if (blisko) {
+        const po = ctx.createRadialGradient(x, y, 0, x, y, 18);
+        po.addColorStop(0, `rgba(${r}, ${gr}, ${b}, 0.55)`); po.addColorStop(1, `rgba(${r}, ${gr}, ${b}, 0)`);
+        ctx.fillStyle = po; ctx.fillRect(x - 18, y - 18, 36, 36);
+      }
+      ctx.fillStyle = `rgba(${r}, ${gr}, ${b}, ${alfa})`;
+      ctx.beginPath(); ctx.arc(x, y, promien, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   function rysujSlonce() {
     const k = kierunki();
     if (k?.slonce == null || Math.abs(norm180(k.slonce - k.kurs)) > POLE_WIDZENIA / 2 + 15) return;
@@ -755,7 +779,7 @@ export function utworzScene(canvas) {
         tlo();
         const k = Math.min(1, f / 0.6);
         rysujGwiazdy((0.004 * Math.pow(1 - k, 2.2) + 0.00003) * ruch, dt, 1, 1.6 * (1 - k) + 0.05);
-        if (f > 0.45) rysujSlonce();
+        if (f > 0.45) { rysujSasiednieGwiazdy(); rysujSlonce(); }
         if (f > 0.45) rysujPlanete(t, Math.min(1, (f - 0.45) / 0.55));
         blysk(f < 0.15 ? 1 - f / 0.15 : 0);
         break;
@@ -763,6 +787,7 @@ export function utworzScene(canvas) {
       case 'orbita':
         tlo();
         rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05);
+        rysujSasiednieGwiazdy();
         rysujSlonce();
         rysujPlanete(t, 1);
         break;
@@ -775,6 +800,7 @@ export function utworzScene(canvas) {
       default:
         tlo();
         rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05);
+        rysujSasiednieGwiazdy();
     }
     if (stan.okno === 'isd') {
       if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h) oknoIsd = { w, h, plotno: rysujOknoIsd(w, h, dpr) };

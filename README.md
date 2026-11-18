@@ -117,6 +117,11 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   symetryczne względem środkowego trapezu, z fazowaną ramą. Przez okno widać to, na co patrzy
   dziób (pole widzenia ok. 100°): planetę (z fazą oświetlenia zgodną z położeniem słońca), słońce,
   albo samą przestrzeń, gdy planeta jest za plecami. Kadłuba i dziobu na razie nie widać.
+- **Gwiazdy sąsiednich układów** (do 1000 pc, najwyżej 40 najbliższych, z pominięciem planet
+  zastrzeżonych dla konta) widać w oknie w ich prawdziwym kierunku względem dziobu: do 50 pc jasne
+  z poświatą, 50–300 pc jasne punkty, 300–1000 pc słabe punkty; dalej zlewają się z tłem.
+  Wysokość w oknie i odcień są stałe dla każdej gwiazdy (z nazwy), bo mapa galaktyki jest płaska.
+  Zakresy: `GWIAZDY_ZASIEG_PC` / `GWIAZDY_MAKS` w `api/sceny.php`, jasność w `js/rdzen/scena.js`.
 - Inne okręty dostają te same sceny bez okna (pełny ekran).
 - Wymaga migracji `016_orbita_przylot_rozbicie.sql` (przenosi dotychczasowy kąt orbity do
   `orbita_deg` i kieruje dzioby okrętów na orbicie ku planecie).

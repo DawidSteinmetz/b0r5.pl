@@ -46,6 +46,33 @@ function scena_planeta_przy(float $x, float $y): ?array
     return ['nazwa' => (string) $p['nazwa'], 'typ' => (string) (($p['typ_planety'] ?? '') ?: 'skalista')];
 }
 
+// Gwiazdy sąsiednich układów widoczne przez okno: kierunek (układ mapy), odległość w pc,
+// stała wysokość w oknie i odcień z nazwy (mapa jest płaska). Tablet dobiera jasność do odległości:
+// do 50 pc jasna z poświatą, 50–300 pc jasny punkt, 300–1000 pc słaby punkt, dalej — tło.
+const GWIAZDY_ZASIEG_PC = 1000;
+const GWIAZDY_MAKS = 40;
+
+function scena_gwiazdy(float $x, float $y): array
+{
+    if (!tabela_sql_dostepna('mapa_planety')) return [];
+    $z = GWIAZDY_ZASIEG_PC;
+    $q = polaczenie_bazy()->prepare('SELECT id, nazwa, x, y FROM mapa_planety
+        WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ? ORDER BY POW(x-?,2)+POW(y-?,2) LIMIT ' . (GWIAZDY_MAKS + 20));
+    $q->execute([$x - $z, $x + $z, $y - $z, $y + $z, $x, $y]);
+    $wynik = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+        $dx = (float) $p['x'] - $x; $dy = (float) $p['y'] - $y;
+        $d = hypot($dx, $dy);
+        if ($d < 2 || $d > $z) continue; // własny układ (słońce rysuje się osobno) i poza zasięgiem
+        if (!mapa_planeta_widoczna((int) $p['id'])) continue;
+        $h = crc32(mb_strtolower((string) $p['nazwa']));
+        $wynik[] = ['k' => round(fmod(rad2deg(atan2($dy, $dx)) + 360, 360), 2), 'd' => round($d, 1),
+            'w' => round(($h % 2000) / 1000 - 1, 3), 'o' => ($h >> 11) % 3];
+        if (count($wynik) >= GWIAZDY_MAKS) break;
+    }
+    return $wynik;
+}
+
 // Okręt to ISD (okno mostka), jeśli klasa albo nazwa na to wskazuje.
 function scena_jest_isd(string $tekst): bool
 {
@@ -88,8 +115,10 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         return $baza + ['scena' => 'wejscie', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => 'Nadprzestrzeń',
             'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs)];
     }
+    $gwiazdy = scena_gwiazdy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
     if ($planeta === '') {
-        return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono];
+        return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
+            'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy]];
     }
     if (!empty($o['rozbity'])) {
         return $baza + ['scena' => 'powierzchnia', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => $planeta,
@@ -102,7 +131,7 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         'odleglosc' => $minuty < PODEJSCIE_DALEKO_MIN ? 'daleko' : ($minuty < PODEJSCIE_SREDNIO_MIN ? 'srednio' : 'blisko'),
         'miejsce' => $planeta,
         'zmieniono' => $zmieniono,
-        'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta)],
+        'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta), 'gwiazdy' => $gwiazdy],
     ];
 }
 

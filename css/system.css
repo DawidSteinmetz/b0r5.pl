@@ -594,6 +594,13 @@ html.z-tlem #ekran::before {
 .mapa-nawigacja-blok b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
 .mapa-nawigacja-przyciski { display: flex; flex-wrap: wrap; gap: 6px; }
 .mapa-nawigacja .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
+/* Skok z karty planety: wybór orbity i „Oblicz” w jednym rzędzie, równej wielkości */
+.mapa-nawigacja-wiersz { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }
+.mapa-nawigacja-wiersz > select, .mapa-nawigacja-wiersz > .przycisk { width: 100%; min-height: 40px; margin: 0; }
+.mapa-nawigacja-xy { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mapa-nawigacja-xy input { width: 100%; min-height: 40px; }
+.mapa-nawigacja-wykonaj { width: 100%; min-height: 40px; }
+@media (max-width: 420px) { .mapa-nawigacja-wiersz { grid-template-columns: 1fr; } }
 /* Zgody na wskaźniki pokładowe */
 .wskazniki-zgody:empty { display: none; }
 .wskazniki-zgody { display: grid; gap: 6px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--linia); }

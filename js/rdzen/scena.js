@@ -348,7 +348,7 @@ export function utworzScene(canvas) {
 
   // Panorama tła z mostka: losowe (ale stałe dla okrętu) gwiazdy w pełnym kole 360°. Przy obrocie
   // dziobu całe niebo przesuwa się razem z planetą, słońcem i gwiazdami sąsiednich układów.
-  function rysujPanorame(t) {
+  function rysujPanorame(t, zTlem = true) {
     const k = kierunki();
     if (!k) return false;
     const ziarno = hash(String(stan.opis || stan.miejsce || 'niebo'));
@@ -360,7 +360,7 @@ export function utworzScene(canvas) {
           a: jasna ? 0.75 + los() * 0.25 : 0.2 + los() * 0.5, m: 0.5 + los() * 2, f: los() * Math.PI * 2 };
       }) };
     }
-    tlo();
+    if (zTlem) tlo();
     const migot = spokojnie ? 0 : 0.18;
     for (const g of panorama.gwiazdy) {
       if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 1) continue;
@@ -786,6 +786,18 @@ export function utworzScene(canvas) {
         if (f < 0.72) {
           tlo();
           const k = f / 0.72;
+          if (stan.widok) {
+            // Widok sprzed skoku gaśnie płynnie: niebo i planeta szybciej, słońce z łuną odrobinę wolniej,
+            // wszystko znika, zanim smugi zgęstnieją.
+            const zanik = Math.max(0, 1 - k * 1.6), zanikSlonca = Math.max(0, 1 - k * 1.3);
+            ctx.save();
+            ctx.globalAlpha = zanik;
+            if (zanik > 0) { rysujPanorame(t, false); rysujSasiednieGwiazdy(); }
+            ctx.globalAlpha = zanikSlonca;
+            if (zanikSlonca > 0) rysujSlonce();
+            ctx.restore();
+            if (zanik > 0 && !stan.widok.bez_planety) rysujPlanete(t, zanik);
+          }
           rysujGwiazdy((0.00004 + Math.pow(k, 3) * 0.004) * ruch, dt, 1, 0.2 + k * 1.5);
         } else if (f < 1) {
           rysujTunel(t, dt, (f - 0.72) / 0.28);
@@ -804,7 +816,12 @@ export function utworzScene(canvas) {
         tlo();
         const k = Math.min(1, f / 0.6);
         rysujGwiazdy((0.004 * Math.pow(1 - k, 2.2) + 0.00003) * ruch, dt, 1, 1.6 * (1 - k) + 0.05);
-        if (f > 0.45) { rysujSasiednieGwiazdy(); rysujSlonce(); }
+        if (f > 0.45) {
+          // Słońce i gwiazdy sąsiednich układów wyłaniają się razem z planetą, gdy smugi gasną.
+          ctx.save(); ctx.globalAlpha = Math.min(1, (f - 0.45) / 0.55);
+          rysujSasiednieGwiazdy(); rysujSlonce();
+          ctx.restore();
+        }
         if (f > 0.45) rysujPlanete(t, Math.min(1, (f - 0.45) / 0.55));
         blysk(f < 0.15 ? 1 - f / 0.15 : 0);
         break;

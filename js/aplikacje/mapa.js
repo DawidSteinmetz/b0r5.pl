@@ -657,6 +657,11 @@ export default {
     // Widok układu w karcie planety: planeta z dzienną i nocną stroną, kierunek słońca, księżyce
     // na orbitach i jednostki na orbicie ze strzałkami (rufa ku planecie). Liczone na żywo
     // z cyklu planety (api ?a=uklad, js/rdzen/astro.js); w małej ramce: obieg planety wokół słońca.
+    // Plan skoku pokazywany przerywanymi liniami w widoku układu karty planety:
+    // { planeta, kierunek (°, skąd leci flota → planeta), wariant, reczny, policzony, aktywny }.
+    let planSkoku = null;
+    let odswiezUkladKarty = null;
+
     function widokUkladu(p) {
       const W = 300, H = 220;
       const plotnoUkladu = h('canvas.mapa-uklad', { width: W * 2, height: H * 2, style: `width:${W}px;height:${H}px;max-width:100%` });
@@ -716,6 +721,20 @@ export default {
           const st = stronaOrbity(cykl, o.orbita ?? kursTeraz(o, t), t);
           linie.push(`${o.flota?.nazwa || o.nazwa}${o.rozbity ? ' (wrak na powierzchni)' : ''}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · orbita ${Math.round(o.orbita ?? kursTeraz(o, t))}° · kurs ${Math.round(kursTeraz(o, t))}°`);
         });
+        // plan przylotu: przerywany okrąg wybranej orbity, linia przylotu z kierunku floty, punkt wyjścia
+        if (planSkoku?.planeta === p.nazwa) {
+          const pl = planSkoku;
+          const odl = { bliska: rp + 14, srednia: rp + 32, daleka: rp + 52, krawedz: Math.min(W, H) / 2 - 10 }[pl.wariant] ?? rp + 14;
+          const a = ekr(pl.kierunek + 180); // przylot od strony, z której nadlatuje flota
+          const kolor = pl.policzony ? 'rgba(255, 214, 120, 0.95)' : 'rgba(255, 214, 120, 0.45)';
+          g.save(); g.strokeStyle = kolor; g.fillStyle = kolor; g.lineWidth = 1.2; g.setLineDash([4, 4]);
+          if (!pl.reczny) { g.beginPath(); g.arc(cx, cy, odl, 0, Math.PI * 2); g.stroke(); }
+          const koniec = pl.reczny ? rp + 8 : odl;
+          const daleko = Math.hypot(W, H);
+          g.beginPath(); g.moveTo(cx + Math.cos(a) * daleko, cy + Math.sin(a) * daleko); g.lineTo(cx + Math.cos(a) * koniec, cy + Math.sin(a) * koniec); g.stroke();
+          g.setLineDash([]); g.beginPath(); strzalka(g, cx + Math.cos(a) * koniec, cy + Math.sin(a) * koniec, pl.kierunek, 6); g.fill();
+          g.restore();
+        }
         // ramka: obieg planety wokół słońca
         g.strokeStyle = 'rgba(255,255,255,0.15)'; g.strokeRect(4, 4, 62, 62);
         g.fillStyle = '#ffd678'; g.beginPath(); g.arc(35, 35, 3.5, 0, Math.PI * 2); g.fill();
@@ -725,6 +744,7 @@ export default {
         wyczysc(opis).append(...[`Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie]
           .map((l) => h('div', l)));
       };
+      odswiezUkladKarty = rysuj;
       const zegar = setInterval(rysuj, 1000);
       api('uklad', undefined, { planeta: p.nazwa }).then((d) => { cykl = d.cykl; rysuj(); })
         .catch(() => { wyczysc(opis).append(h('div', 'Brak danych astronawigacyjnych układu.')); });
@@ -768,23 +788,34 @@ export default {
               tutaj[0].podlot_do > teraz() ? h('div.slaby.maly-tekst', `Trwa dolot (koniec ${czasGry(tutaj[0].podlot_do)}).`) : null,
               h('div.mapa-nawigacja-przyciski', ...doloty)));
           }
-          if (tutaj.length < jednostki.length) {
+          // Skok w toku do tej planety: plan przylotu zostaje na widoku układu do przylotu.
+          const wDrodze = jednostki.find((j) => j.rozkaz_id && j.cel_x != null && Math.hypot(j.cel_x - p.x, j.cel_y - p.y) < 2);
+          if (wDrodze) {
+            planSkoku = { planeta: p.nazwa, kierunek: Math.atan2(p.y - wDrodze.y, p.x - wDrodze.x) / RAD,
+              wariant: wDrodze.wariant || 'daleka', reczny: !wDrodze.wariant, policzony: true, aktywny: true };
+            odswiezUkladKarty?.();
+          }
+          if (tutaj.length < jednostki.length && !wDrodze) {
             let wariant = 'bliska';
-            const warianty = h('div.mapa-nawigacja-przyciski', Object.entries(NAZWY_WARIANTOW).map(([k, n]) => {
-              const b = h('button.przycisk.maly' + (k === wariant ? '.wl' : ''), { onclick: () => {
-                wariant = k; warianty.querySelectorAll('button').forEach((x) => x.classList.toggle('wl', x === b)); wynik.textContent = ''; wykonaj.hidden = true;
-              } }, n);
-              return b;
-            }));
+            const glowna = jednostki[0] || {};
+            const kierunek = Math.atan2(p.y - Number(glowna.y || 0), p.x - Number(glowna.x || 0)) / RAD;
+            const ustawPlan = (zmiany = {}) => {
+              planSkoku = { planeta: p.nazwa, kierunek, wariant, reczny: !automat, policzony: false, ...zmiany };
+              odswiezUkladKarty?.();
+            };
+            const warianty = h('select.mapa-nawigacja-wybor', { onchange: (e) => {
+              wariant = e.target.value; wynik.textContent = ''; wykonaj.hidden = true; ustawPlan();
+            } }, Object.entries(NAZWY_WARIANTOW).map(([k, n]) => h('option', { value: k }, n)));
             const x = h('input', { type: 'number', step: '0.1', placeholder: 'X' });
             const y = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
             const wynik = h('p.maly-tekst');
             const dane = () => (automat ? { flota_id: f.id, cel_planeta: p.nazwa, wariant } : { flota_id: f.id, x: Number(x.value), y: Number(y.value) });
-            const wykonaj = h('button.przycisk.glowny', { hidden: true, onclick: async () => {
+            const wykonaj = h('button.przycisk.glowny.mapa-nawigacja-wykonaj', { hidden: true, onclick: async () => {
               try {
                 const w = await api('mapa_flota_rozkaz', dane());
                 wynik.textContent = `Rozkaz przyjęty. Wejście w nadprzestrzeń ${czasGry(w.wejscie)}, ETA ${czasGry(w.eta)}.`;
                 wykonaj.hidden = true;
+                ustawPlan({ policzony: true, aktywny: true });
                 await pobierzPozycje();
               } catch (e) { wynik.textContent = e.message; }
             } }, 'Wykonaj skok');
@@ -796,14 +827,15 @@ export default {
                   + ` · lot: ${czasTrwania(w.lot_s)} · wejście ${czasGry(w.wejscie)} · ETA ${czasGry(w.eta)}`
                   + ` · paliwo: ${w.jednostki.map((j) => `${j.nazwa} ${j.paliwo}`).join(', ')}`;
                 wykonaj.hidden = false;
+                ustawPlan({ policzony: true });
               } catch (e) { wynik.textContent = e.message; wykonaj.hidden = true; }
             } }, automat ? 'Oblicz skok' : 'Sprawdź skok');
+            ustawPlan();
             tresc.append(h('div.mapa-nawigacja-blok',
               h('b', `Skok do układu ${p.nazwa}`),
-              automat ? warianty : h('div',
-                h('p.slaby.maly-tekst', 'Komputer nawigacyjny nie odpowiada. Mostek musi wyliczyć skok sam: podaj współrzędne wyjścia.'),
-                h('div.mapa-flota-form', x, y)),
-              h('div.mapa-nawigacja-przyciski', oblicz, wykonaj), wynik));
+              automat ? null : h('p.slaby.maly-tekst', 'Komputer nawigacyjny nie odpowiada. Mostek musi wyliczyć skok sam: podaj współrzędne wyjścia.'),
+              h('div.mapa-nawigacja-wiersz', automat ? warianty : h('div.mapa-nawigacja-xy', x, y), oblicz),
+              wykonaj, wynik));
           }
           tresc.append(info);
         };

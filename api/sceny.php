@@ -109,13 +109,23 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     $zmieniono = max($przylot * 1000, $zmianaPozycjiMs);
 
     // Skok w toku: po wejściu w nadprzestrzeń tunel (animacja gra na tabletach włączonych w tej chwili).
-    $q = $db->prepare("SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie FROM mapa_rozkazy_skokow_jednostki j
+    $q = $db->prepare("SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie, j.start_x, j.start_y FROM mapa_rozkazy_skokow_jednostki j
         JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.obiekt_id=? AND j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' LIMIT 1");
     $q->execute([$okretId]);
-    $wejscie = czas_z_utc($q->fetchColumn() ?: null);
+    $skok = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+    $wejscie = czas_z_utc($skok['wejscie'] ?? null);
+    $podejscie = $nav ? floty_podejscie_teraz($o, $teraz) : null;
+    $odlWariantu = ['bliska' => 'blisko', 'srednia' => 'srednio', 'daleka' => 'daleko', 'krawedz' => 'krawedz'];
     if ($wejscie && $wejscie <= $teraz) {
-        return $baza + ['scena' => 'wejscie', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => 'Nadprzestrzeń',
-            'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs)];
+        // Wejście w nadprzestrzeń z widokiem sprzed skoku (słońce, planeta, gwiazdy w miejscu startu):
+        // tablet wygasza je płynnie, zanim smugi zgęstnieją. W locie okręt nie ma już planety,
+        // więc układ startu bierzemy z punktu startu skoku.
+        $start = scena_planeta_przy((float) $skok['start_x'], (float) $skok['start_y']);
+        $widok = mapa_kurs_pola($o) + ['gwiazdy' => scena_gwiazdy((float) $skok['start_x'], (float) $skok['start_y'])];
+        if ($start) $widok['cykl'] = astro_cykl($start['nazwa']);
+        return $baza + ['scena' => 'wejscie', 'planeta' => $start['typ'] ?? $typ,
+            'odleglosc' => $odlWariantu[$podejscie ?? ''] ?? 'srednio', 'miejsce' => 'Nadprzestrzeń',
+            'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs), 'widok' => $widok + ($start ? [] : ['bez_planety' => true])];
     }
     $gwiazdy = scena_gwiazdy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
     if ($planeta === '') {
@@ -128,9 +138,8 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     }
     $minuty = $przylot ? ($teraz - $przylot) / 60 : PODEJSCIE_KONIEC_MIN;
     // Wariant orbity (po skoku z automatu albo dolocie): bliska → duża planeta, krawędź układu → punkt.
-    $podejscie = $nav ? floty_podejscie_teraz($o, $teraz) : null;
     $odleglosc = $podejscie !== null
-        ? ['bliska' => 'blisko', 'srednia' => 'srednio', 'daleka' => 'daleko', 'krawedz' => 'krawedz'][$podejscie] ?? 'blisko'
+        ? $odlWariantu[$podejscie] ?? 'blisko'
         : ($minuty < PODEJSCIE_DALEKO_MIN ? 'daleko' : ($minuty < PODEJSCIE_SREDNIO_MIN ? 'srednio' : 'blisko'));
     return $baza + [
         'scena' => $minuty < ($podejscie !== null ? 2 : PODEJSCIE_KONIEC_MIN) ? 'wyjscie' : 'orbita',

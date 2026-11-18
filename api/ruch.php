@@ -846,6 +846,16 @@ function obsluz_ruch(string $akcja, bool $post): void
                 $wynik['bankomat'] = ($gdzie['typ'] ?? '') === 'bankomat';
             }
             $wynik['moje_statki'] = ruch_moje_statki_sql($u, $gdzie);
+            // Własny statek na lądowisku tej planety jest też na liście „Dokąd?” (trasa na jego lądowisko).
+            if (empty($wynik['poklad']['w_locie'])) {
+                foreach ($wynik['moje_statki'] as $s) {
+                    $l = $s['ladowisko'] ?? null;
+                    if (!$l || $l['na_miejscu'] || $l['km'] === null) continue;
+                    $wynik['miejsca'][] = ['klucz' => $l['klucz'], 'nazwa' => $s['nazwa'] . ' · ' . $l['nazwa'] . ' (twój statek)',
+                        'typ' => 'statek', 'km' => $l['km'], 'opis' => ''];
+                }
+                usort($wynik['miejsca'], fn($a, $b) => $a['km'] <=> $b['km']);
+            }
             odpowiedz($wynik);
 
         case 'statek_wejdz':

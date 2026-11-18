@@ -5,6 +5,7 @@ import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
 
 const TYPY = {
+  statek: ['Twój statek', '✦'],
   hangar: ['Hangar', '⌂'], platforma: ['Platforma lądowania', '▬'], port: ['Port kosmiczny', '✈'], hotel: ['Hotel', '▤'], bankomat: ['Bankomat', '¤'], sklep: ['Sklep', '◫'],
   kantyna: ['Kantyna', '◍'], biuro: ['Biuro', '▦'], garaz: ['Garaż', '▭'], inne: ['Miejsce', '•'], poklad: ['Pokład statku', '△'],
 };

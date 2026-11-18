@@ -39,7 +39,7 @@ function scena_planeta_przy(float $x, float $y): ?array
     $gry = tabela_sql_dostepna('planety_gry');
     $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa' . ($gry ? ', g.typ_planety' : '') . ' FROM mapa_planety p'
         . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=p.id' : '')
-        . ' WHERE ABS(p.x-?) < 2 AND ABS(p.y-?) < 2 ORDER BY POW(p.x-?,2)+POW(p.y-?,2) LIMIT 1');
+        . ' WHERE ABS(p.x-?) < 2 AND ABS(p.y-?) < 2 ORDER BY POW(p.x-?,2)+POW(p.y-?,2), p.id LIMIT 1');
     $q->execute([$x, $y, $x, $y]);
     $p = $q->fetch(PDO::FETCH_ASSOC);
     if (!$p || !mapa_planeta_widoczna((int) $p['id'])) return null;
@@ -217,23 +217,23 @@ function liczniki_okretu(int $id): ?array
     if ($skok) {
         $wejscie = czas_z_utc($skok['wejscie']);
         if ($teraz >= $wejscie) {
-            $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => czas_z_utc($skok['eta'])];
+            $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => czas_z_utc($skok['eta']), 'od' => $wejscie];
             $wzgl = (float) ($o['moc_hipernapedu'] ?? 80) / max(1, (float) ($o['moc_reaktora'] ?? 100) * max(0.1, (int) ($o['sprawnosc_reaktora'] ?? 100) / 100));
             $reaktor = (int) round(70 + 25 * min(1, $wzgl));
         } elseif ($manewrOd && $teraz < $manewrOd) {
             $odliczanie = ['etykieta' => 'Obliczenia skoku', 'koniec' => $manewrOd];
             $reaktor = 25;
         } elseif (($punktOd = czas_z_utc($skok['punkt_od_utc'] ?? null)) && $teraz >= $punktOd && $punktOd < $wejscie) {
-            $odliczanie = ['etykieta' => 'Lot do punktu skoku', 'koniec' => $wejscie];
+            $odliczanie = ['etykieta' => 'Lot do punktu skoku', 'koniec' => $wejscie, 'od' => $punktOd];
             $reaktor = 60;
         } else {
-            $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => ($punktOd ?? 0) ?: $wejscie];
+            $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => ($punktOd ?? 0) ?: $wejscie, 'od' => $manewrOd];
             $reaktor = 40;
         }
     } elseif (!empty($o['ladowisko_id'])) {
         $reaktor = 5; // na lądowisku: zasilanie postojowe
     } elseif (czas_z_utc($o['start_utc'] ?? null) + START_WZNOSZENIE_S > $teraz) {
-        $odliczanie = ['etykieta' => 'Wznoszenie', 'koniec' => czas_z_utc($o['start_utc']) + START_WZNOSZENIE_S];
+        $odliczanie = ['etykieta' => 'Wznoszenie', 'koniec' => czas_z_utc($o['start_utc']) + START_WZNOSZENIE_S, 'od' => czas_z_utc($o['start_utc'])];
         $reaktor = 80;
     } elseif ($manewrDo > $teraz) {
         $odliczanie = ['etykieta' => 'Obrót na kurs ' . round((float) $o['kurs_cel_deg']) . '°', 'koniec' => $manewrDo];
@@ -259,9 +259,9 @@ function liczniki_statku(string $klucz): ?array
     $teraz = czas_teraz();
     $odliczanie = null;
     if (!empty($s['cel']) && !empty($s['skok'])) {
-        $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => (int) ($s['skok']['eta_plan'] ?? $s['skok']['eta'])];
+        $odliczanie = ['etykieta' => 'Wyjście z nadprzestrzeni', 'koniec' => (int) ($s['skok']['eta_plan'] ?? $s['skok']['eta']), 'od' => (int) ($s['skok']['start'] ?? 0)];
     } elseif (!empty($s['przygotowanie']) && (int) $s['przygotowanie']['gotowy'] > $teraz) {
-        $odliczanie = ['etykieta' => 'Obsługa naziemna', 'koniec' => (int) $s['przygotowanie']['gotowy']];
+        $odliczanie = ['etykieta' => 'Obsługa naziemna', 'koniec' => (int) $s['przygotowanie']['gotowy'], 'od' => (int) ($s['przygotowanie']['start'] ?? 0)];
     }
     return array_filter(['odliczanie' => $odliczanie, 'paliwo' => (int) ($s['paliwo'] ?? 100)], fn($v) => $v !== null);
 }

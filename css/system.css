@@ -181,7 +181,13 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 .album-zdjecie figcaption { display: grid; gap: 2px; padding: 8px 10px; font-size: 12px; }
 .album-zdjecie figcaption b { color: var(--akcent); font-weight: normal; }
 /* Aparat (zdjęcie słońca) i komunikat na pulpicie */
-.kafel-aparat[hidden], .kafel-liczniki[hidden] { display: none; }
+.kafel-aparat[hidden], .kafel-liczniki[hidden], .kafel-odliczanie[hidden] { display: none; }
+.kafel-odliczanie { justify-content: center; gap: 8px; cursor: default; }
+.kafel-etykieta { font-size: 11px; letter-spacing: 0.06em; color: var(--tekst-slaby); }
+.kafel-czas { font-size: 20px; font-weight: normal; color: var(--akcent); font-variant-numeric: tabular-nums; }
+.kafel-czas.ostrz { color: #ffb347; }
+.kafel-postep { display: block; width: 80%; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.kafel-postep > i { display: block; height: 100%; width: 0; background: var(--akcent); opacity: 0.8; }
 .kafel-aparat { color: var(--akcent); }
 .pulpit-blysk { position: absolute; inset: 0; z-index: 5; background: #fff; pointer-events: none; animation: blysk-aparatu 0.45s ease-out forwards; }
 @keyframes blysk-aparatu { from { opacity: 0.85; } to { opacity: 0; } }

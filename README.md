@@ -222,6 +222,11 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - **Pionowe miasto** (widok z okna, hotelu, kokpitu na lądowisku): warstwy wież do góry kadru,
   kładki, pasy okien, neony, mgła i przelatujące światła pojazdów; nad miastem Nal Hutta.
 - Migracja 026 dodaje też Tracyna, którego 024 nie utworzyła (szukała planety „Nar Shaddaa”).
+- Migracja 027: Nar Shaddaa ma te same współrzędne mapy co Nal Hutta (jedno słońce, jeden układ).
+  Na mapie księżyc rysuje się na orbicie Nal Hutty; przy równej odległości kod wybiera planetę.
+- Mapa: „Jesteś tutaj” pulsuje przy znaczniku własnej postaci (zamiast imienia), nie w środku układu.
+- Pulpit: kafelek stanu (4 paski) jest zawsze kwadratowy; odliczanie etapu (nazwa, czas, pasek
+  postępu) ma osobny kafelek obok i znika, gdy nic nie trwa.
 
 ## Widok z mostka i sceny na okrętach
 

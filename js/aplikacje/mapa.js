@@ -114,7 +114,11 @@ export default {
     const panelRadar = h('section.mapa-radar', { hidden: true });
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
-    const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => { if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta })); } }, 'Moja pozycja');
+    const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => {
+      const ja = obiektyMapy.find((o) => o.ja);
+      if (ja) przelec(ja.x, ja.y, Math.max(skala, 0.6), () => wybierz({ obiekt: ja }));
+      else if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta }));
+    } }, 'Moja pozycja');
     const przyciskCala = h('button.przycisk.maly.drugi', { onclick: () => calaGalaktyka(true) }, 'Cała galaktyka');
     const przyciskFloty = h('button.przycisk.maly.drugi', { onclick: () => { panelFlot.hidden = !panelFlot.hidden; if (!panelFlot.hidden) odswiezFloty(); } }, 'Floty / nawigacja');
 
@@ -198,6 +202,17 @@ export default {
       if (R < 14) return null;
       const cykl = cyklPlanety(p);
       if (!cykl) return null;
+      if (cykl.macierz) {
+        // Księżyc: miejsce na orbicie planety macierzystej (tam, gdzie rysuje go jej układ).
+        const rodzic = wgKlucza.get(norm(cykl.macierz.nazwa));
+        const pu = rodzic && rodzic !== p ? ukladNaEkranie(rodzic) : null;
+        if (!pu) return null;
+        const i = Math.max(0, pu.u.ksiezyce.findIndex((k) => norm(k.nazwa) === p.klucz));
+        const k = pu.u.ksiezyce[i];
+        if (!k) return null;
+        const rk = pu.rp * 2.4 + i * pu.rp * 1.1, a = -k.kat * RAD;
+        return { ...pu, ksiezyc: true, cykl, rp: Math.max(3, pu.rp * 0.35), px: pu.px + Math.cos(a) * rk, py: pu.py + Math.sin(a) * rk };
+      }
       const u = stanUkladu(cykl);
       const [sx, sy] = naEkran(p.x, p.y);
       const a = -u.katPlanety * RAD;
@@ -211,7 +226,7 @@ export default {
         const [sx0, sy0] = naEkran(p.x, p.y);
         if (sx0 < -szer || sy0 < -wys || sx0 > szer * 2 || sy0 > wys * 2) continue;
         const u = ukladNaEkranie(p);
-        if (!u) continue;
+        if (!u || u.ksiezyc) continue; // księżyc rysuje układ planety macierzystej
         const { R, rp, sx, sy, px, py } = u;
         // słońca układu (typ: kolor i wielkość; towarzysze obok) i orbita planety
         (u.cykl.gwiazdy?.length ? u.cykl.gwiazdy : [{ rgb: [255, 244, 225], rozmiar: 1 }]).forEach((gw, i) => {
@@ -594,7 +609,14 @@ export default {
         c.fill();
         if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, 10, 0, Math.PI * 2); c.stroke(); }
         c.restore();
-        if (najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
+        if (o.ja) {
+          // własna postać: pulsujący pierścień i „Jesteś tutaj” zamiast imienia
+          const f = (t % 1800) / 1800;
+          c.save(); c.strokeStyle = kolory.akcent; c.globalAlpha = 1 - f; c.lineWidth = 1.5;
+          c.beginPath(); c.arc(sx, sy, 8 + f * 16, 0, Math.PI * 2); c.stroke(); c.restore();
+          c.font = 'bold 12px monospace'; c.fillStyle = kolory.akcent;
+          napis(c, 'Jesteś tutaj', sx + 10, sy - 7);
+        } else if (najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
           c.font = 'bold 12px monospace'; c.fillStyle = kolor;
           const label = nazwaPostaci(o);
           napis(c, label, sx + 10, sy - 7);
@@ -613,7 +635,7 @@ export default {
         const eta = w.eta * 1000 > Date.now() ? `ETA ~${czasGry(w.eta)}` : 'wyjście szacowane';
         napis(c, `Skok · ${w.nazwa} · ${eta}`, bx + Math.min(r, 40) + 6, by + 4);
       }
-      if (tuPlaneta) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
+      if (tuPlaneta && !obiektyMapy.some((o) => o.ja)) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
       for (const [p, alfa] of [[najechane?.planeta, 0.7], [wybrane?.planeta, 1]]) {
         if (!p) continue;
         const [sx, sy] = naEkran(p.x, p.y);

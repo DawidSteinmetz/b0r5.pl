@@ -765,6 +765,14 @@ function obsluz_ruch(string $akcja, bool $post): void
             $wynik['obiekty'] = $radar['obiekty'];
             $wynik['bitwy_radar'] = $radar['bitwy'];
             $wynik['obiekty'] = mapa_strony($wynik['obiekty'], $u);
+            // Znacznik własnej postaci: mapa pokazuje przy nim pulsujące „Jesteś tutaj”.
+            if (tabela_sql_dostepna('mapa_obiekty')) {
+                $q = polaczenie_bazy()->prepare("SELECT id FROM mapa_obiekty WHERE legacy_uid = ? AND typ = 'postac' LIMIT 1");
+                $q->execute([(string) $u['id']]);
+                $mojId = (int) $q->fetchColumn();
+                foreach ($wynik['obiekty'] as &$o) if ((int) $o['id'] === $mojId) $o['ja'] = true;
+                unset($o);
+            }
             $wynik['wykrycia'] = radar_wykrycia($u, array_column(array_filter($wynik['obiekty'],
                 fn($o) => in_array($o['typ'], ['statek', 'jednostka'], true)), 'id'));
             $wynik['gm'] = ($u['rola'] ?? '') === 'mg';

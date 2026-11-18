@@ -492,7 +492,7 @@ function floty_aktualizuj_ruch(): void
         if (!$start || !$eta || $eta <= $start || $teraz >= $eta) {
             $planeta = (int) ($r['planeta_id'] ?? 0) ?: null;
             if ($planeta === null) {
-                $p = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?) < 2 AND ABS(y-?) < 2 ORDER BY POW(x-?,2)+POW(y-?,2) LIMIT 1');
+                $p = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?) < 2 AND ABS(y-?) < 2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1');
                 $p->execute([$koniecX, $koniecY, $koniecX, $koniecY]);
                 $planeta = $p->fetchColumn() ?: null;
             }
@@ -627,7 +627,7 @@ function floty_rozkaz(string $login, array $w): array
         if (!is_numeric($x) || !is_numeric($y)) blad('Podaj współrzędne X i Y albo wskaż inną jednostkę.');
         $x = (float) $x; $y = (float) $y;
         if (abs($x) > 1000000 || abs($y) > 1000000) blad('Współrzędne wykraczają poza zakres mapy.');
-        $q = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2) LIMIT 1');
+        $q = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1');
         $q->execute([$x,$y,$x,$y]);
         $planetaCel = $q->fetchColumn();
         if ($planetaCel && !mapa_planeta_widoczna((int) $planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
@@ -999,7 +999,7 @@ function obsluz_floty(string $akcja, bool $post): void
                     $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$rid]);
                     $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany',zakonczono_utc=UTC_TIMESTAMP(),opis=CONCAT(COALESCE(opis,''),' | Przerwano teleportem MG.') WHERE id=?")->execute([$rid]);
                 }
-                $q=$db->prepare('UPDATE mapa_obiekty SET x=?,y=?,planeta_id=(SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2) LIMIT 1) WHERE id IN (' . $marks . ')');
+                $q=$db->prepare('UPDATE mapa_obiekty SET x=?,y=?,planeta_id=(SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1) WHERE id IN (' . $marks . ')');
                 $q->execute([$x,$y,$x,$y,$x,$y,...$ids]);
                 $reason=mb_substr(trim((string) ($w['powod'] ?? '')),0,500);
                 $q=$db->prepare('INSERT INTO mapa_teleporty_mg (obiekt_id,autor_login,x,y,powod) VALUES (?,?,?,?,?)');

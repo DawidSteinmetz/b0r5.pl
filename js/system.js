@@ -180,12 +180,20 @@ function pozostalo(koniec) {
 }
 
 function rysujLiczniki() {
+  // Kafelek odliczania (tylko gdy coś trwa): etap, czas i pasek postępu.
+  document.querySelectorAll('[data-odliczanie]').forEach((el) => {
+    wyczysc(el);
+    const o = liczniki?.odliczanie;
+    el.hidden = !o;
+    if (!o) return;
+    el.append(h('span.kafel-etykieta', o.etykieta), h('b.kafel-czas', { 'data-koniec': String(o.koniec) }, pozostalo(o.koniec)),
+      o.od ? h('i.kafel-postep', h('i', { 'data-od': String(o.od), 'data-do': String(o.koniec) })) : null);
+  });
+  // Kafelek stanu: zawsze cztery paski (statek firmy: paliwo).
   document.querySelectorAll('[data-liczniki]').forEach((el) => {
     wyczysc(el);
     el.hidden = !liczniki;
     if (!liczniki) return;
-    const o = liczniki.odliczanie;
-    if (o) el.append(h('div.licznik-odliczanie', h('span', o.etykieta), h('b', { 'data-koniec': String(o.koniec) }, pozostalo(o.koniec))));
     for (const [k, nazwa] of NAZWY_LICZNIKOW) {
       if (liczniki[k] == null) continue;
       const v = Math.max(0, Math.min(100, Number(liczniki[k])));
@@ -194,11 +202,18 @@ function rysujLiczniki() {
     }
   });
 }
-setInterval(() => document.querySelectorAll('[data-koniec]').forEach((el) => {
-  const koniec = Number(el.dataset.koniec);
-  el.textContent = pozostalo(koniec);
-  el.classList.toggle('ostrz', koniec - (Date.now() + przesuniecieZegara) / 1000 < 60);
-}), 1000);
+setInterval(() => {
+  const teraz = (Date.now() + przesuniecieZegara) / 1000;
+  document.querySelectorAll('[data-koniec]').forEach((el) => {
+    const koniec = Number(el.dataset.koniec);
+    el.textContent = pozostalo(koniec);
+    el.classList.toggle('ostrz', koniec - teraz < 60);
+  });
+  document.querySelectorAll('[data-od]').forEach((el) => {
+    const od = Number(el.dataset.od), d = Number(el.dataset.do);
+    el.style.width = `${Math.max(0, Math.min(100, ((teraz - od) / Math.max(1, d - od)) * 100))}%`;
+  });
+}, 1000);
 
 // Aparat: przycisk „Zdjęcie” na pulpicie, gdy słońce układu jest w kadrze (wyczyn Fotograf gwiazd).
 const IKONA_APARATU = '<rect x="8" y="16" width="32" height="22" rx="3"/><circle cx="24" cy="27" r="6"/><path d="M18 16l3-5h6l3 5"/>';
@@ -432,6 +447,7 @@ function ekranPulpitu() {
     h('div.siatka-aplikacji',
       APLIKACJE.map((a) => h('button.ikona-aplikacji', { onclick: () => otworz(a.id) },
         ikona(a.ikona), h('span', a.nazwa))),
+      h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', hidden: !liczniki?.odliczanie }),
       h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
       h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
   );

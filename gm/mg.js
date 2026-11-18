@@ -196,12 +196,18 @@ async function floty() {
     const kursMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °', value: pierwsza.kurs != null ? Math.round(pierwsza.kurs) : '', style: 'max-width:110px' });
     const orbitaMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Orbita °', value: pierwsza.orbita_deg != null ? Math.round(pierwsza.orbita_deg) : '', style: 'max-width:110px' });
     const rozbityMg = h('input', { type: 'checkbox', checked: Number(pierwsza.rozbity) === 1 });
+    // Prywatny statek: właściciel (login) i lokalizator (zasięg pc; wyłączony np. gdy złodziej go znalazł).
+    const wlascicielMg = h('input', { placeholder: 'login właściciela', value: pierwsza.wlasciciel_login || '', style: 'max-width:150px' });
+    const zasiegMg = h('input', { type: 'number', min: 0, step: 10, value: pierwsza.lokalizator_zasieg_pc ?? '', placeholder: 'pc', style: 'max-width:90px' });
+    const lokalizatorMg = h('input', { type: 'checkbox', checked: pierwsza.lokalizator_aktywny == null || Number(pierwsza.lokalizator_aktywny) === 1 });
     // Frakcja floty: kolor na mapie graczy (sojusznik zielony, wróg czerwony, neutralny biały).
     const frakcjaMg = h('select', [['', 'automatycznie'], ...FRAKCJE.map((x) => [x, x]), ['neutralna', 'neutralna']]
       .map(([v, n]) => h('option', { value: v, selected: (pierwsza.frakcja || '') === v }, n)));
     const ustawKursMg = h('button.btn', { type: 'button', onclick: async () => {
       try {
-        const dane = { flota_id: f.id, rozbity: rozbityMg.checked ? 1 : 0, frakcja: frakcjaMg.value };
+        const dane = { flota_id: f.id, rozbity: rozbityMg.checked ? 1 : 0, frakcja: frakcjaMg.value,
+          wlasciciel_login: wlascicielMg.value, lokalizator_aktywny: lokalizatorMg.checked ? 1 : 0 };
+        if (zasiegMg.value !== '') dane.lokalizator_zasieg = Number(zasiegMg.value);
         if (kursMg.value !== '') dane.kurs = Number(kursMg.value);
         if (orbitaMg.value !== '') dane.orbita = Number(orbitaMg.value);
         await api('mg_flota_kurs', dane);
@@ -217,6 +223,7 @@ async function floty() {
         obrot_deg_na_min: num('Obrót °/min', j.obrot_deg_na_min, '1'),
         komputer_klasa: num('Komputer (1–5)', j.komputer_klasa, '1'),
         oslony: num('Osłony %', j.oslony ?? 100, '1'), kadlub: num('Kadłub %', j.kadlub ?? 100, '1'),
+        predkosc_podswietlna_kms: num('Podświetlna km/s', j.predkosc_podswietlna_kms ?? 300, '10'),
       };
       // Stan komputera: zhakowany = automat działa, ale po cichu daje duży rozrzut; przejęty/brak = mostek liczy ręcznie.
       const stanKomputera = h('select', ['sprawny', 'zhakowany', 'przejety', 'brak'].map((v) => h('option', { value: v, selected: (j.komputer_stan || 'sprawny') === v }, v)));
@@ -242,7 +249,8 @@ async function floty() {
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
       h('div.formularz', nx, ny, powod, teleport),
       h('p.slaby', 'Kąty: 0° = wschód, 90° = północ. Kurs = kierunek dziobu (z mostka ISD widać to, na co patrzy dziób). Orbita = strona planety, przy której stoi flota (dzień/noc, księżyc). Rozbita = wrak na powierzchni: z mostka widać powierzchnię. Tu zmiany są natychmiastowe; dowódca zmienia kurs manewrem (czas zależy od „Obrót °/min” najwolniejszej jednostki).'),
-      h('div.formularz', pole('Kurs °', kursMg), pole('Orbita °', orbitaMg), pole('Frakcja', frakcjaMg), h('label', rozbityMg, ' rozbita na planecie'), ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
+      h('div.formularz', pole('Kurs °', kursMg), pole('Orbita °', orbitaMg), pole('Frakcja', frakcjaMg), h('label', rozbityMg, ' rozbita na planecie'), ustawKursMg),
+      h('div.formularz', pole('Właściciel (prywatny statek)', wlascicielMg), pole('Lokalizator: zasięg', zasiegMg), h('label', lokalizatorMg, ' lokalizator działa')), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
   }
   render();
 }

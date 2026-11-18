@@ -100,6 +100,7 @@ export default {
         d.podroz ? podroz() : null,
         akcjeWMiejscu(),
         d.statki.length ? statki() : null,
+        d.moje_statki?.length ? mojeStatki() : null,
         d.podroz || d.poklad?.w_locie ? null : dokad(),
         d.pojazdy.length ? pojazdy() : null,
       ].filter(Boolean)); // natywne append zamieniłoby null na tekst „null”
@@ -119,6 +120,7 @@ export default {
     function akcjeWMiejscu() {
       const el = [];
       if (d.poklad) el.push(poklad(d.poklad));
+      if (d.poklad_okret) el.push(pokladOkretu(d.poklad_okret));
       if (d.bankomat) {
         const kwota = h('input', { type: 'number', min: 1, step: 1, placeholder: 'kwota' });
         el.push(h('div.panel', h('h2', 'Bankomat'),
@@ -204,6 +206,35 @@ export default {
     }
 
     // Statki firm postaci na tej planecie: przygotowanie do lotu.
+    // Prywatne statki z lokalizatorem: gdzie są (w zasięgu) albo ostatnia znana pozycja;
+    // na lądowisku tej samej planety — trasa i wejście na pokład.
+    function mojeStatki() {
+      return h('div.panel', h('h2', 'Twoje statki'), h('ul.lista', d.moje_statki.map((s) => {
+        let stan;
+        if (s.sygnal === 'aktywny') stan = h('div.slaby.maly-tekst', `Lokalizator: ${s.pozycja}`);
+        else stan = h('div.slaby.maly-tekst', (s.sygnal === 'brak' ? 'Lokalizator nie odpowiada.' : `Poza zasięgiem lokalizatora (${s.zasieg} pc).`)
+          + (s.ostatnia ? ` Ostatnia pozycja: ${s.ostatnia}${s.ostatnia_czas ? ` · ${czasGry(s.ostatnia_czas)}` : ''}.` : ''));
+        const l = s.ladowisko;
+        const akcjaStatku = l
+          ? (l.na_miejscu
+            ? h('button.przycisk', { onclick: () => akcja('statek_wejdz', { obiekt_id: s.id }, `Jesteś na pokładzie ${s.nazwa}.`) }, 'Wejdź na pokład')
+            : h('button.przycisk.drugi', { onclick: () => trasa(l.klucz, l.nazwa) }, l.km != null ? `Trasa (${l.km} km)` : 'Trasa'))
+          : null;
+        return h('li', h('div.rzad', h('div.rozpycha', h('div', `${s.nazwa}`, h('span.slaby.maly-tekst', s.klasa ? ` · ${s.klasa}` : '')), stan), akcjaStatku));
+      })));
+    }
+
+    // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start.
+    function pokladOkretu(p) {
+      return h('div.panel', { style: 'border-color:var(--akcent)' }, h('h2', `Pokład: ${p.nazwa}`),
+        p.na_ladowisku
+          ? h('div', h('div.slaby.maly-tekst', `Na lądowisku: ${p.ladowisko || '—'}`),
+            h('div.rzad', { style: 'margin-top:10px' },
+              p.kapitan ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start') : null,
+              h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
+          : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'));
+    }
+
     function statki() {
       return h('div', d.statki.map((s) => {
         const pr = s.przygotowanie;

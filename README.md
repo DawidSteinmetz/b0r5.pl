@@ -193,6 +193,24 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - **Pulpit:** liczniki pokładowe i przycisk „Zdjęcie” są kafelkami w siatce aplikacji (tej samej
   wielkości co ikony), więc nie nachodzą na ikony na telefonie.
 
+## Start, punkt skoku i lokalizator prywatnych statków
+
+- **Start z lądowiska** ustawia miejsce na orbicie według lokalnej godziny lądowiska (kąt godzinny
+  z cyklu planety): w południe po stronie słońca, o północy po stronie od słońca; dziób na zewnątrz.
+- **Lot do punktu skoku** (poza studnią grawitacyjną, 150 000 km od planety): przed wejściem
+  w nadprzestrzeń okręt leci po orbicie na stronę zwróconą ku celowi (łuk z prędkością ok. 1/15
+  podświetlnej), potem prosto do punktu skoku. Prędkość podświetlna w profilu napędu
+  (`predkosc_podswietlna_kms`: ISD 200, Arquitens 350, Gozanti 300, Kom'rk 600). Średnia orbita = 4,
+  daleka = 15 promieni planety; z krawędzi układu bez tego etapu. Plan skoku i liczniki pokazują
+  etap „do punktu skoku”. Przykład Kom'rka (planeta jak Ziemia): start o 00:00 — ok. 9 min z wznoszeniem,
+  o 06:00 — ok. 13,5 min, o 12:00 — ok. 18 min.
+- **Lokalizator** prywatnych statków (`mapa_obiekty.wlasciciel_login`, `lokalizator_zasieg_pc`,
+  `lokalizator_aktywny`): Nawigacja właściciela → „Twoje statki”: pozycja w zasięgu (pc od postaci),
+  inaczej „poza zasięgiem” / „lokalizator nie odpowiada” z ostatnią znaną pozycją. Na lądowisku tej
+  samej planety: trasa (pieszo/taksówka) i „Wejdź na pokład”; na pokładzie: „Zejdź z pokładu” i Start.
+  MG ustawia właściciela, zasięg i wyłącza lokalizator (np. złodziej) w zakładce Floty.
+  Tracyn: właściciel Tara, zasięg 500 pc (migracja 025).
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

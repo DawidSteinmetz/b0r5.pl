@@ -13,8 +13,8 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | Dokument | odczyty | zmiany | pliki PHP |
 |---|---:|---:|---|
 | `firmy` | 19 | 13 | agencja.php, bank.php, czas.php, firmy.php, handel.php, karty.php, komorka.php, ruch.php, sceny.php |
+| `karty` | 11 | 19 | czas.php, karty.php, ruch.php |
 | `bank` | 5 | 21 | agencja.php, bank.php, firmy.php, gielda.php, handel.php, karty.php, ruch.php |
-| `karty` | 9 | 17 | czas.php, karty.php, ruch.php |
 | `katalog` | 5 | 5 | firmy.php, gielda.php, ruch.php |
 | `kanaly` | 5 | 5 | kanaly.php, wydarzenia.php |
 | `sceny` | 6 | 4 | karty.php, ruch.php, sceny.php |

@@ -53,6 +53,13 @@ function astro_kat_slonca(array $cykl, int $t): float
     return fmod($cykl['faza_orbity'] + 360 * $d / $cykl['rok_dni'] + 180 + 3600, 360);
 }
 
+// Kąt godzinny słońca w lokacji (stopnie, −180…180; 0 = lokalne południe, ±180 = północ).
+function astro_kat_godzinny(array $cykl, float $dl, int $t): float
+{
+    $H = fmod($cykl['faza_obrotu'] + 360 * ($t - $cykl['epoka']) / ($cykl['doba_h'] * 3600) + $dl + 180, 360);
+    return ($H < 0 ? $H + 360 : $H) - 180;
+}
+
 // Wysokość słońca nad horyzontem w lokacji (stopnie) — to samo co js/rdzen/astro.js.
 function astro_wysokosc_slonca(array $cykl, float $szer, float $dl, int $t): float
 {

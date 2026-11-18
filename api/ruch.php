@@ -343,6 +343,67 @@ function mapa_obiekty_mg(): array
 }
 
 
+// LOKALIZATOR PRYWATNYCH STATKÓW (mapa_obiekty.wlasciciel_login): Nawigacja właściciela pokazuje statek,
+// jeśli lokalizator działa i statek jest w zasięgu (pc od pozycji postaci na mapie); inaczej ostatnią
+// znaną pozycję. Na lądowisku tej samej planety: trasa i wejście na pokład.
+function ruch_lokalizator_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT wlasciciel_login, lokalizator_zasieg_pc, ostatnia_pozycja FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function ruch_moje_statki_sql(array $u, ?array $gdzie): array
+{
+    if (!ruch_lokalizator_dostepny() || !function_exists('floty_ladowanie_dostepne') || !floty_ladowanie_dostepne()) return [];
+    $db = polaczenie_bazy();
+    $q = $db->prepare("SELECT o.id, o.nazwa, o.klasa, o.x, o.y, o.planeta_id, p.nazwa AS planeta, o.ladowisko_id, l.nazwa AS ladowisko,
+            o.lokalizator_zasieg_pc, o.lokalizator_aktywny, o.ostatnia_pozycja, o.ostatnia_pozycja_utc
+        FROM mapa_obiekty o LEFT JOIN mapa_planety p ON p.id = o.planeta_id LEFT JOIN lokalizacje l ON l.id = o.ladowisko_id
+        WHERE o.aktywny = 1 AND LOWER(o.wlasciciel_login) = LOWER(?) ORDER BY o.nazwa");
+    $q->execute([(string) $u['login']]);
+    $statki = $q->fetchAll(PDO::FETCH_ASSOC);
+    if (!$statki) return [];
+    // pozycja postaci na mapie (znacznik postaci, synchronizowany z kartą)
+    $q = $db->prepare("SELECT x, y FROM mapa_obiekty WHERE legacy_uid = ? AND typ = 'postac' LIMIT 1");
+    $q->execute([(string) $u['id']]);
+    $ja = $q->fetch(PDO::FETCH_ASSOC) ?: null;
+    $teraz = czas_teraz();
+    $wynik = [];
+    foreach ($statki as $s) {
+        $skok = $db->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id = j.rozkaz_id
+            WHERE j.obiekt_id = ? AND j.status = 'w_nadprzestrzeni' AND COALESCE(r.wejscie_utc, r.wydano_utc) <= ? LIMIT 1");
+        $skok->execute([(int) $s['id'], czas_utc($teraz)]);
+        $wSkoku = (bool) $skok->fetchColumn();
+        $opis = $wSkoku ? 'w nadprzestrzeni'
+            : ($s['ladowisko_id'] ? 'lądowisko: ' . $s['ladowisko'] . ' (' . $s['planeta'] . ')'
+                : ($s['planeta'] ? 'orbita: ' . $s['planeta'] : 'przestrzeń'));
+        $odl = $ja && $s['x'] !== null ? hypot((float) $s['x'] - (float) $ja['x'], (float) $s['y'] - (float) $ja['y']) : null;
+        $zasieg = (float) ($s['lokalizator_zasieg_pc'] ?? 0);
+        $wZasiegu = (int) $s['lokalizator_aktywny'] === 1 && $zasieg > 0 && $odl !== null && $odl <= $zasieg;
+        $w = ['id' => (int) $s['id'], 'nazwa' => $s['nazwa'], 'klasa' => $s['klasa'], 'zasieg' => $zasieg];
+        if ($wZasiegu) {
+            $db->prepare('UPDATE mapa_obiekty SET ostatnia_pozycja = ?, ostatnia_pozycja_utc = ? WHERE id = ?')->execute([$opis, czas_utc($teraz), (int) $s['id']]);
+            $w += ['sygnal' => 'aktywny', 'pozycja' => $opis];
+            $klucz = 'sql:' . (int) $s['ladowisko_id'];
+            if ($s['ladowisko_id'] && $gdzie && (string) ($gdzie['planeta'] ?? '') === (string) $s['planeta_id']) {
+                $lok = ruch_lokacje()[$klucz] ?? null;
+                $w['ladowisko'] = ['klucz' => $klucz, 'nazwa' => $s['ladowisko'],
+                    'km' => $lok && is_numeric($gdzie['x'] ?? null) && is_numeric($lok['x'] ?? null) ? round(ruch_odleglosc($gdzie, $lok), 1) : null,
+                    'na_miejscu' => ($gdzie['klucz'] ?? '') === $klucz];
+            }
+        } else {
+            $w += ['sygnal' => (int) $s['lokalizator_aktywny'] === 1 ? 'poza_zasiegiem' : 'brak',
+                'ostatnia' => $s['ostatnia_pozycja'], 'ostatnia_czas' => czas_z_utc($s['ostatnia_pozycja_utc'] ?? null)];
+        }
+        $wynik[] = $w;
+    }
+    return $wynik;
+}
+
 // Wszystkie lokacje (katalog + budynki firm), klucz => dane.
 function ruch_lokacje(): array
 {
@@ -762,6 +823,21 @@ function obsluz_ruch(string $akcja, bool $post): void
                     $wynik['miejsca'] = [];
                     $wynik['pojazdy'] = [];
                 }
+                // Na pokładzie okrętu z SQL: panel pokładu (zejście na lądowisko, start); bez chodzenia po galaktyce.
+                if (str_starts_with($gdzie['klucz'] ?? '', 'okret:')) {
+                    $wynik['miejsca'] = [];
+                    $wynik['pojazdy'] = [];
+                    $maKoordynaty = false;
+                    if (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne()) {
+                        $q = polaczenie_bazy()->prepare('SELECT o.id, o.nazwa, o.ladowisko_id, l.nazwa AS ladowisko FROM mapa_obiekty o
+                            LEFT JOIN lokalizacje l ON l.id = o.ladowisko_id WHERE o.id = ?');
+                        $q->execute([(int) ($gdzie['okret_id'] ?? 0)]);
+                        if ($ok = $q->fetch(PDO::FETCH_ASSOC)) {
+                            $wynik['poklad_okret'] = ['id' => (int) $ok['id'], 'nazwa' => $ok['nazwa'], 'ladowisko' => $ok['ladowisko'],
+                                'na_ladowisku' => (bool) $ok['ladowisko_id'], 'kapitan' => wskazniki_kapitan('okret:' . (int) $ok['id'], $u)];
+                        }
+                    }
+                }
                 // Pojazdy z innych planet nie są tu przydatne.
                 $wynik['pojazdy'] = array_values(array_filter($wynik['pojazdy'], fn($p) => $p['km'] !== null));
                 $wynik['ruch_mozliwy'] = $maKoordynaty;
@@ -769,7 +845,45 @@ function obsluz_ruch(string $akcja, bool $post): void
                 if (($gdzie['typ'] ?? '') === 'sklep') $wynik['sklep'] = $gdzie['oferta'] ?? [];
                 $wynik['bankomat'] = ($gdzie['typ'] ?? '') === 'bankomat';
             }
+            $wynik['moje_statki'] = ruch_moje_statki_sql($u, $gdzie);
             odpowiedz($wynik);
+
+        case 'statek_wejdz':
+            // Wejście na pokład prywatnego statku z SQL, gdy postać stoi na jego lądowisku.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            $id = (int) (wejscie()['obiekt_id'] ?? 0);
+            $karta = karta($u['id']);
+            $gdzie = ruch_gdzie($karta, ruch_lokacje());
+            $q = polaczenie_bazy()->prepare('SELECT ladowisko_id, wlasciciel_login FROM mapa_obiekty WHERE id = ? AND aktywny = 1');
+            $q->execute([$id]);
+            $s = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$s || !$s['ladowisko_id']) blad('Statek nie stoi na lądowisku.');
+            if (mb_strtolower((string) $s['wlasciciel_login']) !== mb_strtolower((string) $u['login']) && !wskazniki_kapitan('okret:' . $id, $u)) blad('Właz pozostaje zamknięty.', 403);
+            if (($gdzie['klucz'] ?? '') !== 'sql:' . (int) $s['ladowisko_id']) blad('Najpierw dojdź na lądowisko.');
+            zmien('karty', function (&$k) use ($u, $id) {
+                $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . $id;
+                $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
+            });
+            pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
+            odpowiedz(['ok' => true]);
+
+        case 'statek_zejdz':
+            // Zejście z pokładu okrętu z SQL na jego lądowisko.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            $gdzie = ruch_gdzie(karta($u['id']), ruch_lokacje());
+            $id = (int) ($gdzie['okret_id'] ?? 0);
+            $q = polaczenie_bazy()->prepare('SELECT ladowisko_id, planeta_id FROM mapa_obiekty WHERE id = ?');
+            $q->execute([$id]);
+            $s = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$s || !$s['ladowisko_id']) blad('Statek nie stoi na lądowisku — nie da się zejść.');
+            zmien('karty', function (&$k) use ($u, $s) {
+                $k[$u['id']]['pozycja']['lokacja'] = 'sql:' . (int) $s['ladowisko_id'];
+                $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
+            });
+            pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
+            odpowiedz(['ok' => true]);
 
         case 'trasa':
             $u = wymagaj_logowania();

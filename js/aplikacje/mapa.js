@@ -875,6 +875,7 @@ export default {
               try {
                 const w = await api('mapa_flota_rozkaz', { ...dane(), plan: true });
                 wynik.textContent = `${w.tryb === 'reczny' ? 'Obliczenia mostka' : 'Komputer'}: ${czasTrwania(w.obliczenia_s)} · obrót: ${czasTrwania(w.manewr_s)}`
+                  + (w.punkt_s > 0 ? ` · do punktu skoku: ${czasTrwania(w.punkt_s)}` : '')
                   + ` · lot: ${czasTrwania(w.lot_s)} · wejście ${czasGry(w.wejscie)} · ETA ${czasGry(w.eta)}`
                   + ` · paliwo: ${w.jednostki.map((j) => `${j.nazwa} ${j.paliwo}`).join(', ')}`;
                 wykonaj.hidden = false;

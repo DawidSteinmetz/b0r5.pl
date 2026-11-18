@@ -176,6 +176,59 @@ function floty_ladowanie_dostepne(): bool
     return $jest;
 }
 
+// ---------- lot do punktu skoku ----------
+// Skok przy planecie zaczyna się dopiero w punkcie skoku (poza studnią grawitacyjną): okręt leci po
+// orbicie na stronę zwróconą ku celowi (łuk, ok. 1/15 prędkości podświetlnej), potem prosto do
+// odległości PUNKT_SKOKU_KM od planety. Z krawędzi układu i z pustej przestrzeni tego etapu nie ma.
+// Przykład (Kom'rk, 600 km/s, planeta jak Ziemia): start o 00:00 — ok. 9 min z wznoszeniem,
+// o 12:00 — pół orbity więcej, ok. 18 min.
+const PUNKT_SKOKU_KM = 150000;
+const NISKA_ORBITA_KM = 300;
+
+function floty_punkt_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try {
+            polaczenie_bazy()->query('SELECT predkosc_podswietlna_kms FROM mapa_naped_jednostki LIMIT 0');
+            polaczenie_bazy()->query('SELECT punkt_od_utc FROM mapa_rozkazy_skokow LIMIT 0');
+            $jest = true;
+        } catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+// Promień orbity (km) dla wariantu orbity; krawędź układu = poza studnią (null).
+function floty_promien_orbity_km(float $promienPlanety, ?string $podejscie): ?float
+{
+    return match ($podejscie ?? 'bliska') {
+        'srednia' => $promienPlanety * 4,
+        'daleka' => $promienPlanety * 15,
+        'krawedz' => null,
+        default => $promienPlanety + NISKA_ORBITA_KM,
+    };
+}
+
+// Czas (s) lotu jednostki do punktu skoku w kierunku $kierunek (stopnie, układ mapy).
+function floty_czas_do_punktu(array $j, float $kierunek, int $teraz): int
+{
+    if (!floty_punkt_dostepny() || empty($j['planeta_startu'])) return 0;
+    static $promienie = [];
+    $pid = (int) $j['planeta_startu'];
+    if (!isset($promienie[$pid])) {
+        $q = polaczenie_bazy()->prepare('SELECT nazwa FROM mapa_planety WHERE id = ?');
+        $q->execute([$pid]);
+        $nazwa = (string) $q->fetchColumn();
+        $promienie[$pid] = $nazwa !== '' ? astro_cykl($nazwa)['srednica_km'] / 2 : 6371.0;
+    }
+    $R = floty_promien_orbity_km($promienie[$pid], floty_podejscie_teraz($j, $teraz));
+    if ($R === null) return 0;
+    $v = max(10.0, (float) ($j['predkosc_podswietlna_kms'] ?? 300));
+    $orbita = $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kat(floty_kurs_teraz($j, $teraz) + 180);
+    $luk = $R * deg2rad(abs(floty_kat_roznica($orbita, $kierunek)));
+    return (int) ceil($luk / max(1.0, $v / 15) + max(0.0, PUNKT_SKOKU_KM - $R) / $v);
+}
+
 function floty_blokada_ladowiska(array $odbiorcy): void
 {
     if (!floty_ladowanie_dostepne() || !$odbiorcy) return;
@@ -206,9 +259,20 @@ function floty_start(array $odbiorcy): array
     $ids = array_map('intval', array_column($q->fetchAll(PDO::FETCH_ASSOC), 'id'));
     if (!$ids) blad('Żadna z jednostek nie stoi na lądowisku.');
     $teraz = czas_teraz();
-    $m = implode(',', array_fill(0, count($ids), '?'));
-    $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = NULL, start_utc = ?, podejscie = 'bliska', status = 'na orbicie',
-        orbita_deg = COALESCE(orbita_deg, MOD(kurs_deg + 180, 360)) WHERE id IN ($m)")->execute([czas_utc($teraz), ...$ids]);
+    // Miejsce na orbicie po starcie = kierunek lądowiska w chwili startu: w lokalne południe ku słońcu,
+    // o północy od słońca (z cyklu planety i długości geograficznej lądowiska). Dziób skierowany na zewnątrz.
+    $q = $db->prepare('SELECT o.id, p.nazwa AS planeta, l.x_km, l.y_km FROM mapa_obiekty o JOIN mapa_planety p ON p.id = o.planeta_id
+        LEFT JOIN lokalizacje l ON l.id = o.ladowisko_id WHERE o.id = ?');
+    $u = $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = NULL, start_utc = ?, podejscie = 'bliska', status = 'na orbicie',
+        orbita_deg = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL, manewr_od_utc = NULL, manewr_do_utc = NULL WHERE id = ?");
+    foreach ($ids as $id) {
+        $q->execute([$id]);
+        $o = $q->fetch(PDO::FETCH_ASSOC);
+        $cykl = astro_cykl((string) $o['planeta']);
+        [, $dl] = astro_wsp_lokacji(['x' => (float) ($o['x_km'] ?? 0), 'y' => (float) ($o['y_km'] ?? 0)], $cykl);
+        $orbita = floty_kat(astro_kat_slonca($cykl, $teraz) + astro_kat_godzinny($cykl, $dl, $teraz));
+        $u->execute([czas_utc($teraz), round($orbita, 2), round($orbita, 2), $id]);
+    }
     return ['ok' => true, 'orbita' => $teraz + START_WZNOSZENIE_S];
 }
 
@@ -480,7 +544,9 @@ function floty_lista(string $login, bool $mg = false): array
         COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,COALESCE(n.komputer_klasa,3) AS komputer_klasa,COALESCE(n.komputer_stan,'sprawny') AS komputer_stan," . (liczniki_dostepne() ? 'COALESCE(n.oslony,100) AS oslony,COALESCE(n.kadlub,100) AS kadlub,' : '') . "
         o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,o.orbita_deg,o.rozbity,"
         . (floty_ladowanie_dostepne() ? 'o.ladowisko_id,o.start_utc,COALESCE(n.moze_ladowac,0) AS moze_ladowac,(SELECT nazwa FROM lokalizacje WHERE id=o.ladowisko_id) AS ladowisko,' : '')
-        . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+        . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '')
+        . (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny() ? 'o.wlasciciel_login,o.lokalizator_zasieg_pc,o.lokalizator_aktywny,' : '')
+        . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc,r.wariant
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
@@ -567,7 +633,8 @@ function floty_rozkaz(string $login, array $w): array
         if ($planetaCel && !mapa_planeta_widoczna((int) $planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
     }
     $ids = implode(',', array_fill(0, count($odbiorcy), '?'));
-    $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id AS planeta_startu,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,n.* FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($ids) AND o.aktywny=1");
+    $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id AS planeta_startu,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+            o.orbita_deg,o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,n.* FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($ids) AND o.aktywny=1");
     $q->execute($odbiorcy);
     $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
     if (count($jednostki) !== count($odbiorcy)) blad('Brak pozycji lub parametrów napędu jednej z jednostek.');
@@ -596,6 +663,7 @@ function floty_rozkaz(string $login, array $w): array
         $kursSkoku = floty_kat(rad2deg(atan2($dy, $dx)));
         $kursTeraz = floty_kurs_teraz($j, $teraz);
         $manewr = floty_czas_manewru(floty_kat_roznica($kursTeraz, $kursSkoku), $obrotFloty);
+        $punkt = floty_czas_do_punktu($j, $kursSkoku, $teraz);
         $paliwoZuzyte = $dystans * (float) $j['paliwo_na_parsek'];
         if ((float) $j['paliwo'] < $paliwoZuzyte) blad('Jednostka „' . $j['nazwa'] . '” ma za mało paliwa.');
         $bladMax = max((float) $j['szum_bazowy'], 0) + (100 - min((int) $j['sprawnosc_reaktora'], (int) $j['sprawnosc_hipernapedu'])) * 0.3 + (1 - $mnoznikMocy) * 10;
@@ -609,20 +677,22 @@ function floty_rozkaz(string $login, array $w): array
         $koniecY = (float) $j['y'] + $dystans * sin($kierunek);
         $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => (float) $j['x'], 'y0' => (float) $j['y'],
             'x1' => $koniecX, 'y1' => $koniecY, 'kat' => $kat, 'moc' => $mnoznikMocy, 'paliwo' => $paliwoZuzyte, 'lot' => $czasLotu,
-            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr];
+            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr, 'punkt' => $punkt];
     }
     // Obliczenia skoku (automat: sekundy zależne od klasy komputera; mostek ręcznie: 20 min),
     // potem obrót na kurs; wejście w nadprzestrzeń, gdy ostatnia jednostka stanie na kursie.
     $obliczenia = $tryb === 'reczny' ? NAV_RECZNE_OBLICZENIA_S : (6 - $klasaKomputera) * 30;
     $start = $teraz + $obliczenia;
-    $wejscie = $start + max(array_column($wyliczone, 'manewr'));
+    $punktOd = $start + max(array_column($wyliczone, 'manewr'));
+    // Wejście, gdy ostatnia jednostka obróci się i doleci do punktu skoku.
+    $wejscie = $start + max(array_map(fn($j) => $j['manewr'] + $j['punkt'], $wyliczone));
     foreach ($wyliczone as &$wj) $wj['eta'] = $wejscie + $wj['lot'];
     unset($wj);
     $najpozniej = max(array_column($wyliczone, 'eta'));
     if (!empty($w['plan'])) {
         // Tylko plan (bez rozkazu): co pokaże automat albo mostek przed potwierdzeniem.
         return ['ok' => true, 'plan' => true, 'tryb' => $tryb, 'wariant' => $wariant, 'obliczenia_s' => $obliczenia,
-            'manewr_s' => $wejscie - $start, 'lot_s' => $najpozniej - $wejscie, 'wejscie' => $wejscie, 'eta' => $najpozniej,
+            'manewr_s' => $punktOd - $start, 'punkt_s' => $wejscie - $punktOd, 'lot_s' => $najpozniej - $wejscie, 'wejscie' => $wejscie, 'eta' => $najpozniej,
             'jednostki' => array_map(static fn($j) => ['nazwa' => $j['nazwa'], 'paliwo' => round($j['paliwo'], 1), 'eta' => $j['eta']], $wyliczone)];
     }
     $db->beginTransaction();
@@ -632,6 +702,7 @@ function floty_rozkaz(string $login, array $w): array
             VALUES (?,?,?,?,?,?,?,?,?,'w_nadprzestrzeni',?,?,?,?)");
         $q->execute([$kod, $login, $flotaId ?: null, $celObiekt ?: null, $x, $y, round($wyliczone[0]['kurs'], 2), $wariant, $tryb, czas_utc($teraz), czas_utc($wejscie), czas_utc($najpozniej), 'Automatyczny skok: reaktor, moc hipernapędu i odchylenie nawigacyjne.']);
         $rozkazId = (int) $db->lastInsertId();
+        if (floty_punkt_dostepny()) $db->prepare('UPDATE mapa_rozkazy_skokow SET punkt_od_utc=? WHERE id=?')->execute([czas_utc($punktOd), $rozkazId]);
         // ETA z planu (szacunek komputera); resynchronizacja zmienia tylko eta_utc.
         if (function_exists('liczniki_dostepne') && liczniki_dostepne()) {
             $db->prepare('UPDATE mapa_rozkazy_skokow SET eta_plan_utc=eta_utc WHERE id=?')->execute([$rozkazId]);
@@ -656,7 +727,7 @@ function floty_rozkaz(string $login, array $w): array
         'flota', (string) $rozkazId, $ile === 1 ? 'Sygnatura: ' . $pierwsza['nazwa'] : "Zgrupowanie: {$ile} jednostek",
         array_column($wyliczone, 'id'), $wejscie);
     return ['ok' => true, 'rozkaz_id' => $rozkazId, 'cel' => ['x' => $x, 'y' => $y], 'eta' => $najpozniej, 'wejscie' => $wejscie,
-        'manewr_s' => $wejscie - $teraz, 'tryb' => $tryb, 'wariant' => $wariant,
+        'manewr_s' => $punktOd - $teraz, 'punkt_s' => $wejscie - $punktOd, 'tryb' => $tryb, 'wariant' => $wariant,
         'jednostki' => array_map(static fn($j) => ['id' => $j['id'],'nazwa' => $j['nazwa'],'szum_stopnie' => $j['kat'],'eta' => $j['eta']], $wyliczone)];
 }
 
@@ -758,6 +829,19 @@ function obsluz_floty(string $akcja, bool $post): void
                 // Frakcja floty (kolor na mapie: sojusznik / wróg / neutralny); pusta = wyliczana automatycznie.
                 $fr = in_array($w['frakcja'], [...FRAKCJE, 'neutralna'], true) ? $w['frakcja'] : null;
                 polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET frakcja=? WHERE id IN ($marks)")->execute([$fr, ...$ids]);
+            }
+            if (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny()) {
+                // Prywatny statek: konto właściciela i lokalizator (zasięg pc, włączony / wyłączony np. przez złodzieja).
+                if (array_key_exists('wlasciciel_login', $w)) {
+                    $wl = mb_substr(trim((string) $w['wlasciciel_login']), 0, 64);
+                    polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET wlasciciel_login=? WHERE id IN ($marks)")->execute([$wl !== '' ? $wl : null, ...$ids]);
+                }
+                if (isset($w['lokalizator_zasieg']) && is_numeric($w['lokalizator_zasieg'])) {
+                    polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET lokalizator_zasieg_pc=? WHERE id IN ($marks)")->execute([max(0, min(100000, (float) $w['lokalizator_zasieg'])), ...$ids]);
+                }
+                if (isset($w['lokalizator_aktywny'])) {
+                    polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET lokalizator_aktywny=? WHERE id IN ($marks)")->execute([empty($w['lokalizator_aktywny']) ? 0 : 1, ...$ids]);
+                }
             }
             if (isset($w['rozbity'])) {
                 polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET rozbity=? WHERE id IN ($marks)")->execute([empty($w['rozbity']) ? 0 : 1, ...$ids]);
@@ -885,6 +969,10 @@ function obsluz_floty(string $akcja, bool $post): void
             if (!$id || min($params[0],$params[1],$params[2],$params[3],$params[5]) <= 0 || $params[4] < 0 || $params[4] > $params[5] || $params[6] < 0) blad('Sprawdź dodatnie parametry napędu i poziom paliwa.');
             $q = polaczenie_bazy()->prepare('INSERT INTO mapa_naped_jednostki (obiekt_id,moc_reaktora,moc_hipernapedu,klasa_hipernapedu,predkosc_pc_na_godzine,paliwo,paliwo_maks,paliwo_na_parsek,sprawnosc_reaktora,sprawnosc_hipernapedu,szum_bazowy,obrot_deg_na_min,komputer_klasa,komputer_stan) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE obrot_deg_na_min=VALUES(obrot_deg_na_min),komputer_klasa=VALUES(komputer_klasa),komputer_stan=VALUES(komputer_stan), moc_reaktora=VALUES(moc_reaktora),moc_hipernapedu=VALUES(moc_hipernapedu),klasa_hipernapedu=VALUES(klasa_hipernapedu),predkosc_pc_na_godzine=VALUES(predkosc_pc_na_godzine),paliwo=VALUES(paliwo),paliwo_maks=VALUES(paliwo_maks),paliwo_na_parsek=VALUES(paliwo_na_parsek),sprawnosc_reaktora=VALUES(sprawnosc_reaktora),sprawnosc_hipernapedu=VALUES(sprawnosc_hipernapedu),szum_bazowy=VALUES(szum_bazowy)');
             $q->execute([$id,...$params]);
+            if (floty_punkt_dostepny() && isset($w['predkosc_podswietlna_kms'])) {
+                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET predkosc_podswietlna_kms=? WHERE obiekt_id=?')
+                    ->execute([max(10, min(5000, (float) $w['predkosc_podswietlna_kms'])), $id]);
+            }
             if (liczniki_dostepne()) {
                 polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET oslony=?, kadlub=? WHERE obiekt_id=?')
                     ->execute([max(0, min(100, (int) ($w['oslony'] ?? 100))), max(0, min(100, (int) ($w['kadlub'] ?? 100))), $id]);

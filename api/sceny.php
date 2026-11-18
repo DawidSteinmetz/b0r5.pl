@@ -202,7 +202,8 @@ function liczniki_okretu(int $id): ?array
     $o = $q->fetch(PDO::FETCH_ASSOC);
     if (!$o) return null;
     $teraz = czas_teraz();
-    $q = $db->prepare('SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie, ' . ($l ? 'COALESCE(r.eta_plan_utc, j.eta_utc)' : 'j.eta_utc') . " AS eta
+    $pk = function_exists('floty_punkt_dostepny') && floty_punkt_dostepny();
+    $q = $db->prepare('SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie, ' . ($pk ? 'r.punkt_od_utc, ' : '') . ($l ? 'COALESCE(r.eta_plan_utc, j.eta_utc)' : 'j.eta_utc') . " AS eta
         FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id
         WHERE j.obiekt_id=? AND j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' LIMIT 1");
     $q->execute([$id]);
@@ -222,8 +223,11 @@ function liczniki_okretu(int $id): ?array
         } elseif ($manewrOd && $teraz < $manewrOd) {
             $odliczanie = ['etykieta' => 'Obliczenia skoku', 'koniec' => $manewrOd];
             $reaktor = 25;
+        } elseif (($punktOd = czas_z_utc($skok['punkt_od_utc'] ?? null)) && $teraz >= $punktOd && $punktOd < $wejscie) {
+            $odliczanie = ['etykieta' => 'Lot do punktu skoku', 'koniec' => $wejscie];
+            $reaktor = 60;
         } else {
-            $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => $wejscie];
+            $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => ($punktOd ?? 0) ?: $wejscie];
             $reaktor = 40;
         }
     } elseif (!empty($o['ladowisko_id'])) {

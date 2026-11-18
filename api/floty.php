@@ -14,19 +14,32 @@ function floty_gotowe(): void
     try { polaczenie_bazy()->query('SELECT dowodca_osoba_id FROM mapa_floty LIMIT 0'); }
     catch (Throwable $e) { blad('Zaimportuj jeszcze api/migracje/009_flota_dromund_kaas.sql.'); }
     if (!floty_kurs_dostepny()) blad('Zaimportuj jeszcze api/migracje/015_kurs_manewry_i_cykle_planet.sql.');
+    if (!floty_orbita_dostepna()) blad('Zaimportuj jeszcze api/migracje/016_orbita_przylot_rozbicie.sql.');
 }
 
-// ---------- kurs i manewry ----------
-// Kurs (kurs_deg) to kierunek dziobu w układzie mapy: 0° = wschód, 90° = północ. Na orbicie ten sam
-// kąt mówi, po której stronie planety stoi jednostka (rufa ku planecie). Manewr to płynna zmiana
-// kursu od kurs_start_deg do kurs_cel_deg w czasie manewr_od_utc → manewr_do_utc, z tempem
-// obrot_deg_na_min najwolniejszej jednostki. Przed skokiem flota najpierw staje na kursie skoku.
+// ---------- kurs, orbita i manewry ----------
+// Kurs (kurs_deg) to kierunek dziobu w układzie mapy: 0° = wschód, 90° = północ. Miejsce na orbicie
+// (orbita_deg) to osobny kąt: po której stronie planety stoi jednostka. Manewr to płynny obrót
+// dziobu od kurs_start_deg do kurs_cel_deg w czasie manewr_od_utc → manewr_do_utc, z tempem
+// obrot_deg_na_min najwolniejszej jednostki. Przed skokiem flota najpierw obraca się na kurs skoku.
+// Po wyjściu z nadprzestrzeni przy planecie: orbita po stronie przylotu, dziób ku planecie,
+// przylot_utc = chwila wyjścia (podejście: planeta z mostka najpierw mała, potem coraz większa).
 
 function floty_kurs_dostepny(): bool
 {
     static $jest = null;
     if ($jest === null) {
         try { polaczenie_bazy()->query('SELECT kurs_deg, manewr_do_utc FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function floty_orbita_dostepna(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT orbita_deg, przylot_utc, rozbity FROM mapa_obiekty LIMIT 0'); $jest = true; }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
@@ -217,7 +230,12 @@ function floty_aktualizuj_ruch(): void
                 // jednostka staje na orbicie po stronie, z której przyleciała (rufa ku planecie).
                 $kierunek = floty_kat(rad2deg(atan2($koniecY - (float) $r['start_y'], $koniecX - (float) $r['start_x'])));
                 $db->prepare('UPDATE mapa_obiekty SET kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
-                    ->execute([round($planeta ? floty_kat($kierunek + 180) : $kierunek, 2), $r['obiekt_id']]);
+                    ->execute([round($kierunek, 2), $r['obiekt_id']]);
+                if (floty_orbita_dostepna()) {
+                    // Przy planecie: orbita po stronie przylotu, dziób (kurs lotu) ku planecie.
+                    $db->prepare('UPDATE mapa_obiekty SET orbita_deg=?, przylot_utc=?, rozbity=0 WHERE id=?')
+                        ->execute([$planeta ? round(floty_kat($kierunek + 180), 2) : null, $planeta ? czas_utc(min($eta ?: $teraz, $teraz)) : null, $r['obiekt_id']]);
+                }
             }
             $db->prepare('UPDATE mapa_naped_jednostki SET paliwo=GREATEST(0,paliwo-?) WHERE obiekt_id=?')->execute([$r['paliwo_zuzyte'], $r['obiekt_id']]);
             $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='dotarl' WHERE rozkaz_id=? AND obiekt_id=?")->execute([$r['rozkaz_id'], $r['obiekt_id']]);
@@ -247,7 +265,7 @@ function floty_lista(string $login, bool $mg = false): array
         COALESCE(n.moc_reaktora,100) AS moc_reaktora,COALESCE(n.moc_hipernapedu,80) AS moc_hipernapedu,COALESCE(n.klasa_hipernapedu,1) AS klasa_hipernapedu,
         COALESCE(n.predkosc_pc_na_godzine,1000) AS predkosc_pc_na_godzine,COALESCE(n.paliwo,100000) AS paliwo,COALESCE(n.paliwo_maks,100000) AS paliwo_maks,
         COALESCE(n.paliwo_na_parsek,0.01) AS paliwo_na_parsek,COALESCE(n.sprawnosc_reaktora,100) AS sprawnosc_reaktora,COALESCE(n.sprawnosc_hipernapedu,100) AS sprawnosc_hipernapedu,COALESCE(n.szum_bazowy,0.05) AS szum_bazowy,
-        COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+        COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,o.orbita_deg,o.rozbity,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
@@ -449,8 +467,16 @@ function obsluz_floty(string $akcja, bool $post): void
                 $ids = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
             }
             if (!$ids) blad('Wybierz jednostkę lub flotę.');
-            if (!isset($w['kurs']) || !is_numeric($w['kurs'])) blad('Podaj kurs w stopniach (0–359).');
-            odpowiedz(floty_kurs($ids, (float) $w['kurs'], true));
+            // Opcjonalnie: miejsce na orbicie i rozbicie (z mostka widać wtedy powierzchnię planety).
+            $marks = implode(',', array_fill(0, count($ids), '?'));
+            if (isset($w['orbita']) && is_numeric($w['orbita'])) {
+                polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET orbita_deg=? WHERE id IN ($marks)")->execute([round(floty_kat((float) $w['orbita']), 2), ...$ids]);
+            }
+            if (isset($w['rozbity'])) {
+                polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET rozbity=? WHERE id IN ($marks)")->execute([empty($w['rozbity']) ? 0 : 1, ...$ids]);
+            }
+            if (isset($w['kurs']) && is_numeric($w['kurs'])) odpowiedz(floty_kurs($ids, (float) $w['kurs'], true));
+            odpowiedz(['ok' => true]);
 
         case 'mapa_rozkaz_anuluj':
             if (!$post) blad('Zła metoda.', 405);

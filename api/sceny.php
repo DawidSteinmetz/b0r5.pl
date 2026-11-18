@@ -21,11 +21,76 @@ function scena_domyslna(): array
 
 // Co widzi postać: krajobraz planety, na której stoi (z okna, z hangaru), albo scenę MG / lotu.
 // Wygrywa nowsza zmiana: dotarcie na miejsce (pozycja) albo ustawienie sceny (MG, start, skok).
+// SCENA NA POKŁADZIE OKRĘTU (SQL) — liczona automatycznie ze stanu okrętu, bez kliknięć MG:
+//   manewr przed skokiem → widok z mostka obraca się (kurs z manewrem),
+//   wejście w nadprzestrzeń (wejscie_utc) → animacja skoku, potem tunel,
+//   wyjście (przylot_utc) → animacja wyjścia, podejście: planeta mała (do 5 min), średnia (do 15 min),
+//   potem orbita z dużą planetą; rozbity okręt → powierzchnia planety.
+// ISD ma okno mostka (`okno` = 'isd'). `widok` (kurs, orbita, cykl planety) pozwala tabletowi
+// liczyć na bieżąco, gdzie w oknie jest planeta i słońce.
+const PODEJSCIE_DALEKO_MIN = 5;
+const PODEJSCIE_SREDNIO_MIN = 15;
+const PODEJSCIE_KONIEC_MIN = 25;
+
+function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
+{
+    if (!function_exists('floty_orbita_dostepna') || !tabela_sql_dostepna('mapa_obiekty')
+        || !floty_kurs_dostepny() || !floty_orbita_dostepna()) return null;
+    if (tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) floty_aktualizuj_ruch();
+    $db = polaczenie_bazy();
+    $gry = tabela_sql_dostepna('planety_gry');
+    $q = $db->prepare('SELECT m.id,m.nazwa,m.klasa,m.planeta_id,m.przylot_utc,p.nazwa AS planeta' . ($gry ? ',g.typ_planety' : '') . mapa_kurs_sql() . '
+        FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id'
+        . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=m.planeta_id' : '') . ' WHERE m.id=?');
+    $q->execute([$okretId]);
+    $o = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$o) return null;
+
+    $teraz = czas_teraz();
+    $isd = (bool) preg_match('/imperial|\bisd\b|niszczyciel/i', $o['klasa'] . ' ' . $o['nazwa']);
+    $baza = ['okno' => $isd ? 'isd' : '', 'wnetrze' => '', 'opis' => (string) $o['nazwa']];
+    $typ = (string) (($o['typ_planety'] ?? '') ?: 'skalista');
+    $planeta = (string) ($o['planeta'] ?? '');
+    $przylot = czas_z_utc($o['przylot_utc'] ?? null);
+    $zmieniono = max($przylot * 1000, $zmianaPozycjiMs);
+
+    // Skok w toku: po wejściu w nadprzestrzeń tunel (animacja gra na tabletach włączonych w tej chwili).
+    $q = $db->prepare("SELECT COALESCE(r.wejscie_utc, r.wydano_utc) AS wejscie FROM mapa_rozkazy_skokow_jednostki j
+        JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.obiekt_id=? AND j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' LIMIT 1");
+    $q->execute([$okretId]);
+    $wejscie = czas_z_utc($q->fetchColumn() ?: null);
+    if ($wejscie && $wejscie <= $teraz) {
+        return $baza + ['scena' => 'wejscie', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => 'Nadprzestrzeń',
+            'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs)];
+    }
+    if ($planeta === '') {
+        return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono];
+    }
+    if (!empty($o['rozbity'])) {
+        return $baza + ['scena' => 'powierzchnia', 'planeta' => $typ, 'odleglosc' => 'srednio', 'miejsce' => $planeta,
+            'opis' => 'Wrak: ' . $o['nazwa'], 'zmieniono' => $zmieniono, 'swiatlo' => astro_swiatlo($planeta, ['x' => 0, 'y' => 0])];
+    }
+    $minuty = $przylot ? ($teraz - $przylot) / 60 : PODEJSCIE_KONIEC_MIN;
+    return $baza + [
+        'scena' => $minuty < PODEJSCIE_KONIEC_MIN ? 'wyjscie' : 'orbita',
+        'planeta' => $typ,
+        'odleglosc' => $minuty < PODEJSCIE_DALEKO_MIN ? 'daleko' : ($minuty < PODEJSCIE_SREDNIO_MIN ? 'srednio' : 'blisko'),
+        'miejsce' => $planeta,
+        'zmieniono' => $zmieniono,
+        'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta)],
+    ];
+}
+
 function scena_efektywna(string $uid): array
 {
     $zapisana = (wczytaj('sceny', [])[$uid] ?? []) + scena_domyslna();
     $karta = karta($uid);
     $gdzie = ruch_gdzie($karta, ruch_lokacje());
+    // Na pokładzie okrętu z SQL: scena ze stanu okrętu. Ręczna scena MG wygrywa, jeśli jest nowsza.
+    if ($gdzie && !empty($gdzie['okret_id'])) {
+        $okret = scena_okretu((int) $gdzie['okret_id'], (int) ($karta['pozycja']['zmieniono'] ?? 0));
+        if ($okret) return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;
+    }
     if ($gdzie && !ruch_w_locie($karta['pozycja']['lokacja'] ?? '')) {
         $pl = ruch_planeta($gdzie['planeta']);
         $ziemia = [

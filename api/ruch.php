@@ -143,8 +143,9 @@ function mapa_obiekty_poklad_sync(): void
 // Kolumny kursu do zapytań mapy (puste, dopóki nie ma migracji 015).
 function mapa_kurs_sql(): string
 {
-    return function_exists('floty_kurs_dostepny') && floty_kurs_dostepny()
-        ? ',m.kurs_deg,m.kurs_start_deg,m.kurs_cel_deg,m.manewr_od_utc,m.manewr_do_utc' : '';
+    if (!function_exists('floty_kurs_dostepny') || !floty_kurs_dostepny()) return '';
+    return ',m.kurs_deg,m.kurs_start_deg,m.kurs_cel_deg,m.manewr_od_utc,m.manewr_do_utc'
+        . (floty_orbita_dostepna() ? ',m.orbita_deg,m.rozbity' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -152,6 +153,8 @@ function mapa_kurs_pola(array $r): array
 {
     if (!array_key_exists('kurs_deg', $r)) return [];
     $w = ['kurs' => (float) $r['kurs_deg']];
+    if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
+    if (!empty($r['rozbity'])) $w['rozbity'] = true;
     if (!empty($r['manewr_do_utc']) && $r['kurs_cel_deg'] !== null) {
         $w['manewr'] = ['od' => czas_z_utc((string) $r['manewr_od_utc']), 'do' => czas_z_utc((string) $r['manewr_do_utc']),
             'start' => (float) $r['kurs_start_deg'], 'cel' => (float) $r['kurs_cel_deg']];

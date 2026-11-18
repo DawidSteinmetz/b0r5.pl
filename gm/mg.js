@@ -189,13 +189,19 @@ async function floty() {
         wyczysc(status).append(msg('Flota przeniesiona; operacja zapisana w dzienniku MG.', 'sukces'));
       } catch (e) { wyczysc(status).append(msg(e.message)); }
     } }, 'Teleportuj flotę');
-    const kursMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °', style: 'max-width:110px' });
+    const pierwsza = f.jednostki?.[0] || {};
+    const kursMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °', value: pierwsza.kurs != null ? Math.round(pierwsza.kurs) : '', style: 'max-width:110px' });
+    const orbitaMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Orbita °', value: pierwsza.orbita_deg != null ? Math.round(pierwsza.orbita_deg) : '', style: 'max-width:110px' });
+    const rozbityMg = h('input', { type: 'checkbox', checked: Number(pierwsza.rozbity) === 1 });
     const ustawKursMg = h('button.btn', { type: 'button', onclick: async () => {
       try {
-        await api('mg_flota_kurs', { flota_id: f.id, kurs: Number(kursMg.value) });
-        wyczysc(status).append(msg(`Kurs floty ustawiony na ${Math.round(Number(kursMg.value)) % 360}° (bez manewru).`, 'sukces'));
+        const dane = { flota_id: f.id, rozbity: rozbityMg.checked ? 1 : 0 };
+        if (kursMg.value !== '') dane.kurs = Number(kursMg.value);
+        if (orbitaMg.value !== '') dane.orbita = Number(orbitaMg.value);
+        await api('mg_flota_kurs', dane);
+        wyczysc(status).append(msg('Zapisano kurs, miejsce na orbicie i stan floty (bez manewru).', 'sukces'));
       } catch (e) { wyczysc(status).append(msg(e.message)); }
-    } }, 'Ustaw kurs od razu');
+    } }, 'Ustaw od razu');
     const konfiguracje = f.jednostki.map((j) => {
         const num = (key, value, step = '1') => h('label', key, h('input', { type: 'number', step, value: value ?? '', style: 'width:100px' }));
       const vals = {
@@ -224,8 +230,8 @@ async function floty() {
     wyczysc(widok).append(h('h2', f.nazwa), h('div.formularz', pole('Nazwa floty', nazwa), pole('Dowódca', dowodca)),
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
       h('div.formularz', nx, ny, powod, teleport),
-      h('p.slaby', 'Kurs: 0° = wschód, 90° = północ. Na orbicie kurs to też strona planety (rufa ku planecie). Tu zmiana jest natychmiastowa; gracz-dowódca zmienia kurs manewrem (czas zależy od „Obrót °/min” najwolniejszej jednostki).'),
-      h('div.formularz', kursMg, ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
+      h('p.slaby', 'Kąty: 0° = wschód, 90° = północ. Kurs = kierunek dziobu (z mostka ISD widać to, na co patrzy dziób). Orbita = strona planety, przy której stoi flota (dzień/noc, księżyc). Rozbita = wrak na powierzchni: z mostka widać powierzchnię. Tu zmiany są natychmiastowe; dowódca zmienia kurs manewrem (czas zależy od „Obrót °/min” najwolniejszej jednostki).'),
+      h('div.formularz', pole('Kurs °', kursMg), pole('Orbita °', orbitaMg), h('label', rozbityMg, ' rozbita na planecie'), ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
   }
   render();
 }

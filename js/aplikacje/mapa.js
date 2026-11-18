@@ -183,10 +183,10 @@ export default {
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const promien = orbita ? 18 + numerOrbity * 9 : 30;
       const [px, py] = naEkran(p.x, p.y);
-      if (orbita && o.kurs != null) {
-        // Kurs = strona orbity: jednostki floty wachlarzem wokół kursu, każda rufą ku planecie.
+      if (orbita && (o.orbita != null || o.kurs != null)) {
+        // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
         const rozrzut = Math.min(14, 140 / Math.max(rodzina.length, 1));
-        const kat = -(kursTeraz(o) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
+        const kat = -((o.orbita ?? kursTeraz(o)) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
         return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
       }
       const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
@@ -623,14 +623,14 @@ export default {
         const linie = [];
         [...grupy.values()].forEach((lista, nr) => {
           lista.forEach((o, i) => {
-            const kurs = kursTeraz(o, t) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
-            const r = rp + 9 + nr * 6, a = ekr(kurs);
+            const miejsce = (o.orbita ?? kursTeraz(o, t)) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
+            const r = rp + 9 + nr * 6, a = ekr(miejsce);
             const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
-            g.fillStyle = kolor; g.beginPath(); strzalka(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, kurs, 6); g.fill();
+            g.fillStyle = kolor; g.beginPath(); strzalka(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, kursTeraz(o, t), 6); g.fill();
           });
           const o = lista[0];
-          const st = stronaOrbity(cykl, kursTeraz(o, t), t);
-          linie.push(`${o.flota?.nazwa || o.nazwa}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · kurs ${Math.round(kursTeraz(o, t))}°`);
+          const st = stronaOrbity(cykl, o.orbita ?? kursTeraz(o, t), t);
+          linie.push(`${o.flota?.nazwa || o.nazwa}${o.rozbity ? ' (wrak na powierzchni)' : ''}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · orbita ${Math.round(o.orbita ?? kursTeraz(o, t))}° · kurs ${Math.round(kursTeraz(o, t))}°`);
         });
         // ramka: obieg planety wokół słońca
         g.strokeStyle = 'rgba(255,255,255,0.15)'; g.strokeRect(4, 4, 62, 62);
@@ -931,7 +931,7 @@ export default {
         } }, 'Zaznacz domyślną eskortę (1 krążownik + 3 Gozanti)') : null;
         panelFlot.append(h('article.karta', h('h3', flota.nazwa), h('p.slaby', `Dowódca: ${flota.dowodca_efektywny || 'nieprzypisany'}`), stan, defaultEskorta, wybor,
           h('div.mapa-flota-form', nazwaGrupy, podziel), h('div.mapa-flota-form', kurs, ustawKurs),
-          h('p.slaby.maly-tekst', 'Kurs: 0° = wschód, 90° = północ. Na orbicie kurs wyznacza też stronę planety (rufa ku planecie). Przed skokiem flota sama staje na kursie skoku.'),
+          h('p.slaby.maly-tekst', 'Kurs to kierunek dziobu: 0° = wschód, 90° = północ. Miejsce na orbicie się nie zmienia, okręty tylko obracają dziób. Przed skokiem flota sama obraca się na kurs skoku.'),
           h('div.mapa-flota-form', x, y, cel, rozkaz), info));
       }
     }

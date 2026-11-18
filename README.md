@@ -91,18 +91,35 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 
 - Każda jednostka mapy ma **kurs** (`mapa_obiekty.kurs_deg`): 0° = wschód, 90° = północ, przeciwnie
   do ruchu wskazówek zegara. Strzałka floty na mapie wskazuje kurs.
-- **Na orbicie** kurs to jednocześnie strona planety: jednostka stoi po stronie wskazanej kątem,
-  dziobem od planety (rufa ku planecie). Jednostki jednej floty ustawiają się wachlarzem wokół
-  tego kąta.
-- **Manewr:** zmiana kursu (na orbicie: przelot na inną stronę planety) trwa zależnie od
+- **Miejsce na orbicie** (`mapa_obiekty.orbita_deg`) to osobny kąt: po której stronie planety stoi
+  jednostka (dzień/noc pod okrętem, czy wisi między planetą a księżycem). Jednostki jednej floty
+  ustawiają się wachlarzem wokół niego. Strzałka na mapie pokazuje kurs dziobu.
+- **Manewr:** obrót dziobu trwa zależnie od
   różnicy kątów i tempa **Obrót °/min** w profilu napędu (`mapa_naped_jednostki.obrot_deg_na_min`;
   domyślnie ISD 30, Arquitens 60, reszta 90). Flota manewruje tempem najwolniejszej jednostki.
   Dowódca ustawia kurs w panelu „Floty / nawigacja” na mapie; MG w zakładce Floty ustawia go od razu.
-- **Przed skokiem** flota najpierw staje na kursie skoku (strzałką w stronę celu), dopiero potem
+- **Przed skokiem** flota najpierw obraca się na kurs skoku (strzałką w stronę celu), dopiero potem
   wchodzi w nadprzestrzeń (`mapa_rozkazy_skokow.wejscie_utc`). ETA = manewr + lot, więc cel
   „po drugiej stronie” przesuwa ETA. Radar widzi skok dopiero w chwili wejścia w nadprzestrzeń.
 - Po wyjściu z nadprzestrzeni przy planecie jednostka staje na orbicie po stronie, z której
-  przyleciała; w pustej przestrzeni zostaje z dziobem w kierunku lotu.
+  przyleciała, dziobem ku planecie (`przylot_utc` = chwila wyjścia); w pustej przestrzeni zostaje
+  z dziobem w kierunku lotu. MG w zakładce Floty ustawia od razu kurs, orbitę i rozbicie.
+
+## Widok z mostka i sceny na okrętach
+
+- Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną
+  automatycznie** ze stanu okrętu (`scena_okretu()` w `api/sceny.php`), bez klikania MG:
+  manewr przed skokiem → widok obraca się; wejście w nadprzestrzeń (`wejscie_utc`) → animacja
+  skoku i tunel; wyjście (`przylot_utc`) → animacja wyjścia i podejście: planeta mała do 5 min,
+  średnia do 15 min, potem orbita z dużą planetą; okręt rozbity → powierzchnia planety.
+  Ręczna scena MG wygrywa, jeśli jest nowsza (do następnego zdarzenia okrętu).
+- **ISD** (klasa albo nazwa z „Imperial”, „ISD”, „niszczyciel”) ma tło **okna mostka**: trzy okna
+  symetryczne względem środkowego trapezu, z fazowaną ramą. Przez okno widać to, na co patrzy
+  dziób (pole widzenia ok. 100°): planetę (z fazą oświetlenia zgodną z położeniem słońca), słońce,
+  albo samą przestrzeń, gdy planeta jest za plecami. Kadłuba i dziobu na razie nie widać.
+- Inne okręty dostają te same sceny bez okna (pełny ekran).
+- Wymaga migracji `016_orbita_przylot_rozbicie.sql` (przenosi dotychczasowy kąt orbity do
+  `orbita_deg` i kieruje dzioby okrętów na orbicie ku planecie).
 - Manewry są procesami w zakładce **Czas** (resynchronizacja); resynchronizacja skoku floty
   skraca też manewr, jeśli nowy koniec wypada wcześniej.
 

@@ -8,10 +8,14 @@
 //   powierzchnia — widok za oknem (biuro, hotel) albo z wrót hangaru: niebo i krajobraz planety
 //   start       — wznoszenie: ~5 min chmur w kolorze atmosfery, potem czarne niebo i gwiazdy (planeta za rufą)
 //
+// `okno: 'isd'` — widok przez okno mostka gwiezdnego niszczyciela (trzy okna, symetryczne względem
+// środkowego). `widok` (kurs dziobu z manewrem, miejsce na orbicie, cykl planety) przesuwa planetę
+// i słońce w oknie zgodnie z kierunkiem dziobu i oświetla planetę zgodnie z położeniem słońca.
+//
 // Wszystko rysowane kodem na <canvas>, bez obrazków. Animacja zatrzymuje się, gdy scena
 // jest niewidoczna (otwarta aplikacja, wygaszony ekran), żeby nie drenować baterii.
 
-import { pora as poraAstro } from './astro.js';
+import { pora as poraAstro, stanUkladu } from './astro.js';
 
 export const TYPY_PLANET = {
   pustynna: { nazwa: 'pustynna', kolory: ['#d9a35b', '#b97834', '#e8c58a'], atmosfera: '#f3c27a', chmury: 0.15 },
@@ -135,6 +139,75 @@ function teksturaSwiatel(d, ziarno) {
   return c;
 }
 
+const POLE_WIDZENIA = 100; // stopnie w poziomie na całą szerokość ekranu
+const norm180 = (k) => ((((k + 180) % 360) + 360) % 360) - 180;
+
+// Kurs dziobu teraz (z trwającym manewrem). Kąty w układzie mapy: 0° = wschód, 90° = północ.
+function kursDziobu(widok, t) {
+  const m = widok?.manewr;
+  if (m && t < m.do) {
+    const p = Math.max(0, Math.min(1, (t - m.od) / Math.max(1, m.do - m.od)));
+    return m.start + norm180(m.cel - m.start) * p;
+  }
+  return m ? m.cel : (widok?.kurs ?? 90);
+}
+
+// Zaokrąglony wielokąt (okna mostka).
+function wielokat(g, pkt, r) {
+  const n = pkt.length;
+  g.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = pkt[(i + n - 1) % n], b = pkt[i], c = pkt[(i + 1) % n];
+    const sx = (a[0] + b[0]) / 2, sy = (a[1] + b[1]) / 2;
+    if (i === 0) g.moveTo(sx, sy);
+    g.arcTo(b[0], b[1], (b[0] + c[0]) / 2, (b[1] + c[1]) / 2, r);
+  }
+  g.closePath();
+}
+
+// Okno mostka ISD: ciemne poszycie z trzema oknami (środkowe — trapez rozszerzający się ku dołowi,
+// boczne — lustrzane, równoległe do jego skosów) i wielowarstwową, fazowaną ramą.
+function rysujOknoIsd(w, h, dpr) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, w * dpr); c.height = Math.max(1, h * dpr);
+  const g = c.getContext('2d');
+  g.scale(dpr, dpr);
+  const gora = h * 0.08, dol = h * 0.84, sx = w / 2;
+  const pGora = w * 0.2, pDol = w * 0.355, przerwa = w * 0.05, bok = w * 0.32;
+  const okna = [
+    [[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]],
+    [[sx - pGora - przerwa - bok, gora], [sx - pGora - przerwa, gora], [sx - pDol - przerwa, dol], [sx - pDol - przerwa - bok, dol]],
+    [[sx + pGora + przerwa, gora], [sx + pGora + przerwa + bok, gora], [sx + pDol + przerwa + bok, dol], [sx + pDol + przerwa, dol]],
+  ];
+  const r = Math.min(w, h) * 0.045;
+  // poszycie
+  const kad = g.createLinearGradient(0, 0, 0, h);
+  kad.addColorStop(0, '#202326'); kad.addColorStop(0.6, '#1a1c1f'); kad.addColorStop(1, '#141618');
+  g.fillStyle = kad; g.fillRect(0, 0, w, h);
+  // szyby: wycięte z poszycia
+  g.globalCompositeOperation = 'destination-out';
+  for (const o of okna) { wielokat(g, o, r); g.fill(); }
+  g.globalCompositeOperation = 'source-over';
+  // lekki połysk szyb
+  for (const o of okna) {
+    g.save(); wielokat(g, o, r); g.clip();
+    const pol = g.createLinearGradient(0, gora, w * 0.3, dol);
+    pol.addColorStop(0, 'rgba(255,255,255,0.035)'); pol.addColorStop(0.5, 'rgba(255,255,255,0)'); pol.addColorStop(1, 'rgba(255,255,255,0.02)');
+    g.fillStyle = pol; g.fillRect(0, 0, w, h);
+    g.restore();
+  }
+  // rama: ciemny kołnierz, stalowa faza i jasna krawędź (najjaśniej u dołu)
+  const jasna = g.createLinearGradient(0, gora, 0, dol);
+  jasna.addColorStop(0, 'rgba(110,116,120,0.35)'); jasna.addColorStop(1, 'rgba(205,210,208,0.9)');
+  for (const o of okna) {
+    for (const [szer, kolor] of [[Math.max(10, w * 0.016), '#101214'], [Math.max(6, w * 0.01), '#2b2f33'], [Math.max(3, w * 0.004), '#454a4f']]) {
+      wielokat(g, o, r); g.lineWidth = szer; g.strokeStyle = kolor; g.stroke();
+    }
+    wielokat(g, o, r); g.lineWidth = Math.max(1.5, w * 0.0018); g.strokeStyle = jasna; g.stroke();
+  }
+  return c;
+}
+
 export function utworzScene(canvas) {
   const ctx = canvas.getContext('2d');
   let w = 0, h = 0, dpr = 1;
@@ -146,6 +219,7 @@ export function utworzScene(canvas) {
   let planeta = null; // { tekstura, swiatla, d, typ }
   let krajobraz = null; // { klucz, plotno, swiatla: [{x, y}] }
   let chmury = [];
+  let oknoIsd = null; // { w, h, plotno }
   const spokojnie = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function rozmiar() {
@@ -157,6 +231,7 @@ export function utworzScene(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     planeta = null;
     krajobraz = null;
+    oknoIsd = null;
   }
 
   function noweGwiazdy() {
@@ -256,16 +331,63 @@ export function utworzScene(canvas) {
     }
   }
 
+  // Kierunki z mostka (stopnie w układzie mapy) liczone z `stan.widok` w danej chwili.
+  function kierunki() {
+    const v = stan.widok;
+    if (!v) return null;
+    const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+    const kurs = kursDziobu(v, t);
+    const orbita = v.orbita ?? norm180(kurs + 180);           // strona planety, przy której stoi okręt
+    const doPlanety = orbita + 180;                           // kierunek z okrętu na planetę
+    const slonce = v.cykl ? stanUkladu(v.cykl, t).katSlonca : null; // kierunek planeta → słońce
+    return { kurs, orbita, doPlanety, slonce };
+  }
+  // Pozioma pozycja na ekranie obiektu w danym kierunku (cel na lewo od dziobu → na lewo w oknie).
+  const xKierunku = (kurs, kierunek) => w / 2 - norm180(kierunek - kurs) * (w / POLE_WIDZENIA);
+
+  function rysujSlonce() {
+    const k = kierunki();
+    if (k?.slonce == null || Math.abs(norm180(k.slonce - k.kurs)) > POLE_WIDZENIA / 2 + 15) return;
+    const x = xKierunku(k.kurs, k.slonce), y = h * 0.3, r = Math.min(w, h) * 0.022;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 14);
+    g.addColorStop(0, 'rgba(255, 252, 240, 1)'); g.addColorStop(0.07, 'rgba(255, 240, 200, 0.9)');
+    g.addColorStop(0.25, 'rgba(255, 210, 140, 0.18)'); g.addColorStop(1, 'rgba(255, 200, 120, 0)');
+    ctx.fillStyle = g; ctx.fillRect(x - r * 14, y - r * 14, r * 28, r * 28);
+    ctx.fillStyle = '#fffdf6'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Oświetlona część tarczy: od strony słońca, z terminatorem jako półelipsą (faza jak u Księżyca).
+  function sciezkaSwiatla(cx, cy, R, k) {
+    const RAD = Math.PI / 180;
+    const faza = Math.cos((k.slonce - k.orbita) * RAD);             // 1 = pełnia (słońce za okrętem)
+    const strona = Math.cos((k.slonce - (k.doPlanety - 90)) * RAD) >= 0 ? 1 : -1; // 1: światło z prawej
+    const p = new Path2D();
+    p.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2, strona < 0);
+    for (let i = 0; i <= 24; i++) {
+      const th = Math.PI / 2 - (Math.PI * i) / 24;
+      p.lineTo(cx + strona * R * faza * Math.cos(th) * -1, cy + R * Math.sin(th));
+    }
+    p.closePath();
+    return p;
+  }
+
   function rysujPlanete(t, pojawienie = 1) {
     przygotujPlanete();
     const { d, tekstura, swiatla, typ } = planeta;
     const r = d / 2;
-    // Położenie: duża planeta wchodzi od dołu ekranu, mała wisi z boku.
+    // Położenie: duża planeta wchodzi od dołu ekranu, mała wisi z boku. Z mostka: tam, gdzie
+    // wskazuje kierunek na planetę względem dziobu (za plecami — nie widać jej wcale).
     const blisko = stan.odleglosc === 'blisko';
-    const cx = blisko ? w * 0.62 : w * 0.68;
+    const k = kierunki();
+    let cx = blisko ? w * 0.62 : w * 0.68;
+    if (k) {
+      if (Math.abs(norm180(k.doPlanety - k.kurs)) > POLE_WIDZENIA / 2 + 40) return;
+      cx = xKierunku(k.kurs, k.doPlanety);
+    }
     const cy = blisko ? h * 0.98 : h * 0.55;
     const skala = 0.85 + 0.15 * pojawienie;
     const R = r * skala;
+    if (cx + R * 1.3 < 0 || cx - R * 1.3 > w) return;
     const info = TYPY_PLANET[typ];
     ctx.save();
     ctx.globalAlpha = pojawienie;
@@ -283,6 +405,24 @@ export function utworzScene(canvas) {
     ctx.clip();
     const przes = ((t * 0.004 * (spokojnie ? 0 : 1)) % d);
     ctx.drawImage(tekstura, przes, 0, d, d, cx - R, cy - R, R * 2, R * 2);
+    const ciemna = k?.slonce != null ? (() => {
+      // Z mostka: nocna strona tam, gdzie nie dociera słońce (faza zależna od miejsca na orbicie).
+      const p = new Path2D();
+      p.arc(cx, cy, R, 0, Math.PI * 2);
+      p.addPath(sciezkaSwiatla(cx, cy, R, k));
+      return p;
+    })() : null;
+    if (ciemna) {
+      ctx.fillStyle = 'rgba(0,0,0,0.93)';
+      ctx.fill(ciemna, 'evenodd');
+      if (swiatla) {
+        ctx.save();
+        ctx.clip(ciemna, 'evenodd');
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(swiatla, przes, 0, d, d, cx - R, cy - R, R * 2, R * 2);
+        ctx.restore();
+      }
+    } else {
     // cień nocnej strony (światło z lewej góry)
     const cien = ctx.createRadialGradient(cx - R * 0.45, cy - R * 0.4, R * 0.15, cx - R * 0.2, cy - R * 0.2, R * 1.45);
     cien.addColorStop(0, 'rgba(0,0,0,0)');
@@ -291,7 +431,8 @@ export function utworzScene(canvas) {
     cien.addColorStop(1, 'rgba(0,0,0,0.97)');
     ctx.fillStyle = cien;
     ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
-    if (swiatla) {
+    }
+    if (swiatla && !ciemna) {
       // Światła miast tylko po nocnej stronie: rysujemy je na osobnym płótnie
       // i wygaszamy maską jaśniejszą od strony słońca.
       const p = document.createElement('canvas');
@@ -614,6 +755,7 @@ export function utworzScene(canvas) {
         tlo();
         const k = Math.min(1, f / 0.6);
         rysujGwiazdy((0.004 * Math.pow(1 - k, 2.2) + 0.00003) * ruch, dt, 1, 1.6 * (1 - k) + 0.05);
+        if (f > 0.45) rysujSlonce();
         if (f > 0.45) rysujPlanete(t, Math.min(1, (f - 0.45) / 0.55));
         blysk(f < 0.15 ? 1 - f / 0.15 : 0);
         break;
@@ -621,6 +763,7 @@ export function utworzScene(canvas) {
       case 'orbita':
         tlo();
         rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05);
+        rysujSlonce();
         rysujPlanete(t, 1);
         break;
       case 'powierzchnia':
@@ -632,6 +775,10 @@ export function utworzScene(canvas) {
       default:
         tlo();
         rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05);
+    }
+    if (stan.okno === 'isd') {
+      if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h) oknoIsd = { w, h, plotno: rysujOknoIsd(w, h, dpr) };
+      ctx.drawImage(oknoIsd.plotno, 0, 0, w, h);
     }
   }
 
@@ -647,7 +794,11 @@ export function utworzScene(canvas) {
     ustaw(nowy) {
       const zmiana = nowy.scena !== stan.scena || nowy.planeta !== stan.planeta || nowy.odleglosc !== stan.odleglosc
         || nowy.zmieniono !== stan.zmieniono || nowy.wnetrze !== stan.wnetrze || nowy.miejsce !== stan.miejsce;
-      if (!zmiana) return;
+      if (!zmiana) {
+        // Ten sam stan, nowy widok z mostka (np. trwa manewr) albo światło: bez restartu animacji.
+        stan.widok = nowy.widok; stan.swiatlo = nowy.swiatlo; stan.okno = nowy.okno; stan.przesuniecie = nowy.przesuniecie;
+        return;
+      }
       const zmienionoLokalnie = (nowy.zmieniono || 0) - (nowy.przesuniecie || 0);
       const swieza = Date.now() - zmienionoLokalnie < 15000;
       stan = { ...nowy, zmienionoLokalnie };

@@ -7,17 +7,15 @@
 --             najpierw mała, potem średnia, na orbicie duża).
 -- rozbity:    okręt rozbity na planecie (ustawia MG); z mostka widać powierzchnię.
 --
--- Wymaga migracji 015. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 015. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
+USE hololink;
 SET NAMES utf8mb4;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'orbita_deg');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
+ALTER TABLE mapa_obiekty
   ADD COLUMN orbita_deg DECIMAL(6,2) NULL AFTER kurs_deg,
   ADD COLUMN przylot_utc DATETIME NULL AFTER manewr_do_utc,
-  ADD COLUMN rozbity TINYINT(1) NOT NULL DEFAULT 0 AFTER przylot_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN rozbity TINYINT(1) NOT NULL DEFAULT 0 AFTER przylot_utc;
 
 -- Dotąd kurs na orbicie oznaczał stronę planety (dziobem od planety). Przenosimy go do orbita_deg,
 -- a dziób kierujemy ku planecie — z mostka widać planetę.

@@ -32,7 +32,8 @@ const naglowek = [
 // (np. Havis III) i nadają nowym planetom id = MAX(id)+1, więc mapa musi już być w bazie.
 const czesci = pliki.flatMap((f) => (f.startsWith('001_') ? [path.join(MIGRACJE, f), path.join(KORZEN, 'api', 'mapa_seed.sql')] : [path.join(MIGRACJE, f)]));
 const tresc = naglowek + czesci.map((p) => {
-  const sql = fs.readFileSync(p, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n').trimEnd();
+  // `USE hololink;` w migracjach jest dla phpMyAdmin; pełny schemat ma działać w bazie o dowolnej nazwie.
+  const sql = fs.readFileSync(p, 'utf8').replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/^USE\s+\S+;\n/gm, '').trimEnd();
   return `\n-- ${'='.repeat(69)}\n-- ${path.relative(path.join(KORZEN, 'api'), p).replace(/\\/g, '/')}\n-- ${'='.repeat(69)}\n\n${sql}\n`;
 }).join('');
 

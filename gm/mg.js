@@ -193,9 +193,12 @@ async function floty() {
     const kursMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °', value: pierwsza.kurs != null ? Math.round(pierwsza.kurs) : '', style: 'max-width:110px' });
     const orbitaMg = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Orbita °', value: pierwsza.orbita_deg != null ? Math.round(pierwsza.orbita_deg) : '', style: 'max-width:110px' });
     const rozbityMg = h('input', { type: 'checkbox', checked: Number(pierwsza.rozbity) === 1 });
+    // Frakcja floty: kolor na mapie graczy (sojusznik zielony, wróg czerwony, neutralny biały).
+    const frakcjaMg = h('select', [['', 'automatycznie'], ...FRAKCJE.map((x) => [x, x]), ['neutralna', 'neutralna']]
+      .map(([v, n]) => h('option', { value: v, selected: (pierwsza.frakcja || '') === v }, n)));
     const ustawKursMg = h('button.btn', { type: 'button', onclick: async () => {
       try {
-        const dane = { flota_id: f.id, rozbity: rozbityMg.checked ? 1 : 0 };
+        const dane = { flota_id: f.id, rozbity: rozbityMg.checked ? 1 : 0, frakcja: frakcjaMg.value };
         if (kursMg.value !== '') dane.kurs = Number(kursMg.value);
         if (orbitaMg.value !== '') dane.orbita = Number(orbitaMg.value);
         await api('mg_flota_kurs', dane);
@@ -235,7 +238,7 @@ async function floty() {
       h('h3', 'Skład'), sloty, zapisz, h('h3', 'Teleport GM'), h('p.slaby', 'Przerywa aktywne skoki i zapisuje autora oraz powód.'),
       h('div.formularz', nx, ny, powod, teleport),
       h('p.slaby', 'Kąty: 0° = wschód, 90° = północ. Kurs = kierunek dziobu (z mostka ISD widać to, na co patrzy dziób). Orbita = strona planety, przy której stoi flota (dzień/noc, księżyc). Rozbita = wrak na powierzchni: z mostka widać powierzchnię. Tu zmiany są natychmiastowe; dowódca zmienia kurs manewrem (czas zależy od „Obrót °/min” najwolniejszej jednostki).'),
-      h('div.formularz', pole('Kurs °', kursMg), pole('Orbita °', orbitaMg), h('label', rozbityMg, ' rozbita na planecie'), ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
+      h('div.formularz', pole('Kurs °', kursMg), pole('Orbita °', orbitaMg), pole('Frakcja', frakcjaMg), h('label', rozbityMg, ' rozbita na planecie'), ustawKursMg), h('h3', 'Profile napędu'), ...konfiguracje, usunFlote);
   }
   render();
 }

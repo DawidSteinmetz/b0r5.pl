@@ -140,12 +140,66 @@ function mapa_obiekty_poklad_sync(): void
         SET postac.planeta_id=okret.planeta_id,postac.x=okret.x,postac.y=okret.y WHERE postac.typ='postac' AND okret.aktywny=1");
 }
 
+// STRONY NA MAPIE: kolor jednostki z punktu widzenia gracza — sojusznik (zielony), wróg (czerwony),
+// neutralny (biały). Frakcja jednostki: kolumna `frakcja` (ustawia MG), inaczej z pola `wlasciciel`,
+// inaczej frakcja konta dowódcy floty. Relacje: ta sama frakcja = sojusznik, Imperium ↔ Rebelia = wróg.
+const MAPA_WROGOWIE = [['Imperium', 'Rebelia']];
+
+function mapa_frakcja_dostepna(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT frakcja FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function mapa_frakcja_z_opisu(string $tekst): ?string
+{
+    $t = mb_strtolower($tekst);
+    if ($t === '') return null;
+    if (preg_match('/imperi|\bisb\b|moff|imperialn/u', $t)) return 'Imperium';
+    if (preg_match('/rebel|sojusz/u', $t)) return 'Rebelia';
+    if (preg_match('/syndykat|hutt|czarne słońce|przemyt/u', $t)) return 'Syndykat';
+    return null;
+}
+
+function mapa_relacja(?string $ja, ?string $oni): string
+{
+    if (!$ja || !$oni || $oni === 'neutralna') return 'neutralny';
+    if ($ja === $oni) return 'sojusznik';
+    foreach (MAPA_WROGOWIE as [$a, $b]) {
+        if (($ja === $a && $oni === $b) || ($ja === $b && $oni === $a)) return 'wrog';
+    }
+    return 'neutralny';
+}
+
+// Dopisuje `strona` (sojusznik / wrog / neutralny) jednostkom widzianym przez gracza (MG: bez stron).
+function mapa_strony(array $obiekty, array $u): array
+{
+    if (($u['rola'] ?? '') === 'mg') return $obiekty;
+    $ja = in_array($u['frakcja'] ?? '', FRAKCJE, true) ? $u['frakcja'] : null;
+    $konta = [];
+    foreach (uzytkownicy() as $k) $konta[mb_strtolower((string) ($k['login'] ?? ''))] = $k['frakcja'] ?? null;
+    foreach ($obiekty as &$o) {
+        if (!in_array($o['typ'] ?? '', ['statek', 'jednostka'], true)) continue;
+        $frakcja = $o['frakcja'] ?? null
+            ?: mapa_frakcja_z_opisu((string) ($o['wlasciciel'] ?? ''))
+            ?: ($konta[mb_strtolower((string) ($o['flota']['dowodca_login'] ?? ''))] ?? null);
+        $o['strona'] = mapa_relacja($ja, $frakcja);
+    }
+    unset($o);
+    return $obiekty;
+}
+
 // Kolumny kursu do zapytań mapy (puste, dopóki nie ma migracji 015).
 function mapa_kurs_sql(): string
 {
     if (!function_exists('floty_kurs_dostepny') || !floty_kurs_dostepny()) return '';
     return ',m.kurs_deg,m.kurs_start_deg,m.kurs_cel_deg,m.manewr_od_utc,m.manewr_do_utc'
-        . (floty_orbita_dostepna() ? ',m.orbita_deg,m.rozbity' : '');
+        . (floty_orbita_dostepna() ? ',m.orbita_deg,m.rozbity' : '')
+        . (mapa_frakcja_dostepna() ? ',m.frakcja' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -155,6 +209,7 @@ function mapa_kurs_pola(array $r): array
     $w = ['kurs' => (float) $r['kurs_deg']];
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
+    if (!empty($r['frakcja'])) $w['frakcja'] = $r['frakcja'];
     if (!empty($r['manewr_do_utc']) && $r['kurs_cel_deg'] !== null) {
         $w['manewr'] = ['od' => czas_z_utc((string) $r['manewr_od_utc']), 'do' => czas_z_utc((string) $r['manewr_do_utc']),
             'start' => (float) $r['kurs_start_deg'], 'cel' => (float) $r['kurs_cel_deg']];
@@ -648,6 +703,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             $radar = mapa_radar_lokalny($u, $wynik['tu'], $wynik['obiekty']);
             $wynik['obiekty'] = $radar['obiekty'];
             $wynik['bitwy_radar'] = $radar['bitwy'];
+            $wynik['obiekty'] = mapa_strony($wynik['obiekty'], $u);
             $wynik['wykrycia'] = radar_wykrycia($u, array_column(array_filter($wynik['obiekty'],
                 fn($o) => in_array($o['typ'], ['statek', 'jednostka'], true)), 'id'));
             $wynik['gm'] = ($u['rola'] ?? '') === 'mg';

@@ -8,6 +8,12 @@ import { api } from '../rdzen/api.js';
 
 const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
 const RAD = Math.PI / 180;
+// Kolor jednostki z punktu widzenia gracza: sojusznik / wróg / neutralny (serwer: mapa_strony()).
+const KOLORY_STRON = { sojusznik: '#3ddc84', wrog: '#ff5a4f', neutralny: '#e8edf2' };
+const kolorObiektu = (o) => {
+  const k = o?.bitwa?.kolor || KOLORY_STRON[o?.strona] || o?.kolor;
+  return /^#[0-9a-f]{6}$/i.test(k || '') ? k : '#00ff66';
+};
 const teraz = () => Date.now() / 1000;
 
 // Kurs jednostki teraz (stopnie, układ mapy: 0° = wschód, 90° = północ), z trwającym manewrem.
@@ -160,6 +166,59 @@ export default {
 
     // Przy oddaleniu flota na orbicie to jedna strzałka z liczbą okrętów; po przybliżeniu wachlarz.
     const PROG_ROZWINIECIA = 3;
+    // Od tego przybliżenia (px na pc) kropka planety staje się układem: słońce w miejscu kropki,
+    // planeta na swojej orbicie (położenie z cyklu planety), księżyce i okręty wokół planety.
+    // Układ jest schematyczny: rośnie płynnie z przybliżeniem (prawdziwe orbity to ułamki parseka).
+    const PROG_UKLADU = 60;
+    const cykle = new Map(); // nazwa planety → cykl (api ?a=uklad) albo null w trakcie pobierania
+    function cyklPlanety(p) {
+      if (!cykle.has(p.nazwa)) {
+        cykle.set(p.nazwa, null);
+        api('uklad', undefined, { planeta: p.nazwa }).then((d) => { cykle.set(p.nazwa, d.cykl); odswiez(); }).catch(() => {});
+      }
+      return cykle.get(p.nazwa);
+    }
+    // Promień orbity planety na ekranie i promień planety (0 = jeszcze kropka).
+    function ukladNaEkranie(p) {
+      if (skala < PROG_UKLADU) return null;
+      const R = Math.min(Math.min(szer, wys) * 0.42, (skala / PROG_UKLADU - 1) * 90);
+      if (R < 14) return null;
+      const cykl = cyklPlanety(p);
+      if (!cykl) return null;
+      const u = stanUkladu(cykl);
+      const [sx, sy] = naEkran(p.x, p.y);
+      const a = -u.katPlanety * RAD;
+      return { R, rp: Math.max(4, R * 0.06), sx, sy, px: sx + Math.cos(a) * R, py: sy + Math.sin(a) * R, u, cykl };
+    }
+    const pozycjaPlanety = (p) => { const u = ukladNaEkranie(p); return u ? [u.px, u.py] : naEkran(p.x, p.y); };
+
+    function rysujUklady() {
+      if (skala < PROG_UKLADU) return;
+      for (const p of P) {
+        const [sx0, sy0] = naEkran(p.x, p.y);
+        if (sx0 < -szer || sy0 < -wys || sx0 > szer * 2 || sy0 > wys * 2) continue;
+        const u = ukladNaEkranie(p);
+        if (!u) continue;
+        const { R, rp, sx, sy, px, py } = u;
+        // słońce i orbita planety
+        const blask = c.createRadialGradient(sx, sy, 0, sx, sy, Math.max(10, R * 0.12));
+        blask.addColorStop(0, 'rgba(255, 246, 220, 1)'); blask.addColorStop(0.3, 'rgba(255, 214, 140, 0.6)'); blask.addColorStop(1, 'rgba(255, 200, 120, 0)');
+        c.fillStyle = blask; c.beginPath(); c.arc(sx, sy, Math.max(10, R * 0.12), 0, Math.PI * 2); c.fill();
+        c.strokeStyle = 'rgba(160, 200, 220, 0.22)'; c.lineWidth = 1; c.beginPath(); c.arc(sx, sy, R, 0, Math.PI * 2); c.stroke();
+        // księżyce (schematycznie, kolejno od planety)
+        u.u.ksiezyce.forEach((k, i) => {
+          const rk = rp * 2.4 + i * rp * 1.1, a = -k.kat * RAD;
+          c.strokeStyle = 'rgba(160, 190, 220, 0.14)'; c.beginPath(); c.arc(px, py, rk, 0, Math.PI * 2); c.stroke();
+          c.fillStyle = '#9fb2c4'; c.beginPath(); c.arc(px + Math.cos(a) * rk, py + Math.sin(a) * rk, Math.max(1.5, rp * 0.28), 0, Math.PI * 2); c.fill();
+        });
+        // planeta: oświetlona połowa od strony słońca
+        const as = -u.u.katSlonca * RAD;
+        c.fillStyle = '#1b2433'; c.beginPath(); c.arc(px, py, rp, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#6fa8d8'; c.beginPath(); c.arc(px, py, rp, as - Math.PI / 2, as + Math.PI / 2); c.closePath(); c.fill();
+        c.font = `11px ${kroj}`; c.fillStyle = kolory.tekst;
+        napis(c, p.nazwa, px + rp + 5, py - rp - 3);
+      }
+    }
     function grupaZwinieta(o) {
       if (skala >= PROG_ROZWINIECIA || !o?.flota || o.typ === 'postac') return null;
       const p = planetaObiektu(o);
@@ -193,8 +252,10 @@ export default {
       const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !wNadprzestrzeni(x)).map(grupaOrbity))];
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const zwinieta = !!grupaZwinieta(o);
-      const promien = orbita ? (zwinieta ? 18 + numerOrbity * 10 : 26 + numerOrbity * 14) : 30;
-      const [px, py] = naEkran(p.x, p.y);
+      const uklad = ukladNaEkranie(p);
+      const promien = uklad ? uklad.rp + 12 + numerOrbity * 11
+        : orbita ? (zwinieta ? 18 + numerOrbity * 10 : 26 + numerOrbity * 14) : 30;
+      const [px, py] = pozycjaPlanety(p);
       if (orbita && (o.orbita != null || o.kurs != null)) {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
         const rozrzut = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
@@ -486,6 +547,7 @@ export default {
         if (planeta === tuPlaneta) continue;
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
+      rysujUklady();
       for (const o of obiektyMapy) {
         const zw = grupaZwinieta(o);
         if (zw && !zw.glowny) continue;
@@ -496,8 +558,7 @@ export default {
           napis(c, `${o.flota.grupa || o.flota.nazwa} ×${zw.ile}`, sx + 9, sy + 12);
           c.restore();
         }
-        const kolorZnacznika = o.bitwa?.kolor || o.kolor;
-        const kolor = /^#[0-9a-f]{6}$/i.test(kolorZnacznika || '') ? kolorZnacznika : '#00ff66';
+        const kolor = kolorObiektu(o);
         let kursRys = kursTeraz(o);
         if (o.lot) {
           const [cx, cy] = naEkran(o.lot.x, o.lot.y);
@@ -562,9 +623,10 @@ export default {
       if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       let najblizsza = null, odl = 16;
       for (const p of P) {
-        const [px, py] = naEkran(p.x, p.y);
-        const d = Math.hypot(px - sx, py - sy);
-        if (d < odl) { odl = d; najblizsza = p; }
+        for (const [px, py] of [naEkran(p.x, p.y), pozycjaPlanety(p)]) {
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < odl) { odl = d; najblizsza = p; }
+        }
       }
       if (najblizsza) return { planeta: najblizsza };
       if (!szlakiWidoczne) return null;
@@ -646,7 +708,7 @@ export default {
           lista.forEach((o, i) => {
             const miejsce = (o.orbita ?? kursTeraz(o, t)) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
             const r = rp + 9 + nr * 6, a = ekr(miejsce);
-            const kolor = /^#[0-9a-f]{6}$/i.test(o.kolor || '') ? o.kolor : '#00ff66';
+            const kolor = kolorObiektu(o);
             g.fillStyle = kolor; g.beginPath(); strzalka(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, kursTeraz(o, t), 6); g.fill();
           });
           const o = lista[0];
@@ -925,7 +987,7 @@ export default {
 
     function przybliz(mnoznik, sx, sy) {
       const [mx, my] = naMape(sx, sy);
-      skala = Math.max(0.005, Math.min(12, skala * mnoznik));
+      skala = Math.max(0.005, Math.min(3000, skala * mnoznik));
       ox = sx - mx * skala;
       oy = sy + my * skala;
       odswiez();
@@ -983,6 +1045,69 @@ export default {
       return czesci.join(' · ');
     }
 
+    // Tarcza kursu: przeciągnij strzałkę (albo użyj przycisków), podgląd kąta i czasu obrotu,
+    // „Wykonaj obrót” dla całej floty albo zaznaczonych okrętów. Kąty: 0° = wschód, 90° = północ.
+    function tarczaKursu(flota, zaznaczone, info) {
+      const jednostki = flota.jednostki || [];
+      const glowna = jednostki[0] || {};
+      let cel = Math.round(glowna.kurs ?? 90);
+      const S = 180, srodek = S / 2, r = S / 2 - 16;
+      const plotnoT = h('canvas.mapa-tarcza', { width: S * 2, height: S * 2, style: `width:${S}px;height:${S}px` });
+      const g = plotnoT.getContext('2d');
+      g.scale(2, 2);
+      const opis = h('div.maly-tekst');
+      const wybrane = () => { const ids = zaznaczone(); return ids.length ? jednostki.filter((j) => ids.includes(j.obiekt_id)) : jednostki; };
+      const roznica = (a, b) => Math.abs(((b - a + 540) % 360) - 180);
+      const rysuj = () => {
+        const w = wybrane(), teraz0 = Math.round(glowna.kurs ?? 90);
+        g.clearRect(0, 0, S, S);
+        g.strokeStyle = 'rgba(120,220,210,0.35)'; g.lineWidth = 1;
+        g.beginPath(); g.arc(srodek, srodek, r, 0, Math.PI * 2); g.stroke();
+        g.font = '10px monospace'; g.fillStyle = 'rgba(200,230,230,0.7)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        for (const [k, t] of [[90, 'N'], [0, 'E'], [270, 'S'], [180, 'W']]) g.fillText(t, srodek + Math.cos(-k * RAD) * (r + 9), srodek + Math.sin(-k * RAD) * (r + 9));
+        for (let k = 0; k < 360; k += 15) {
+          const a = -k * RAD, d = k % 45 ? 4 : 8;
+          g.beginPath(); g.moveTo(srodek + Math.cos(a) * r, srodek + Math.sin(a) * r); g.lineTo(srodek + Math.cos(a) * (r - d), srodek + Math.sin(a) * (r - d)); g.stroke();
+        }
+        if (glowna.orbita_deg != null && glowna.planeta) {
+          // planeta: kierunek od okrętu do planety (przeciwnie do miejsca na orbicie)
+          const a = -(Number(glowna.orbita_deg) + 180) * RAD;
+          g.fillStyle = '#6fa8d8'; g.beginPath(); g.arc(srodek + Math.cos(a) * (r - 14), srodek + Math.sin(a) * (r - 14), 5, 0, Math.PI * 2); g.fill();
+        }
+        g.globalAlpha = 0.45; g.fillStyle = '#e8edf2'; g.beginPath(); strzalka(g, srodek, srodek, teraz0, r * 0.55); g.fill();
+        g.globalAlpha = 1; g.fillStyle = '#3ddc84'; g.beginPath(); strzalka(g, srodek, srodek, cel, r * 0.8); g.fill();
+        const obrot = Math.min(...w.map((j) => Number(j.obrot_deg_na_min) || 90));
+        opis.textContent = `Kurs ${cel}° (teraz ${teraz0}°) · obrót ok. ${czasTrwania(roznica(teraz0, cel) / obrot * 60)} · ${w.length === jednostki.length ? 'cała flota' : `zaznaczone: ${w.length}`}`;
+      };
+      const zKursu = (e) => {
+        const b = plotnoT.getBoundingClientRect();
+        const x = e.clientX - b.left - b.width / 2, y = e.clientY - b.top - b.height / 2;
+        cel = (Math.round(Math.atan2(-y, x) / RAD) + 360) % 360;
+        rysuj();
+      };
+      let ciagnij = false;
+      plotnoT.addEventListener('pointerdown', (e) => { ciagnij = true; plotnoT.setPointerCapture(e.pointerId); zKursu(e); });
+      plotnoT.addEventListener('pointermove', (e) => { if (ciagnij) zKursu(e); });
+      plotnoT.addEventListener('pointerup', () => { ciagnij = false; });
+      const przesun = (d) => h('button.przycisk.maly.drugi', { onclick: () => { cel = (cel + d + 360) % 360; rysuj(); } }, `${d > 0 ? '+' : ''}${d}°`);
+      const naPlanete = glowna.orbita_deg != null && glowna.planeta;
+      const wykonaj = h('button.przycisk.glowny', { onclick: async () => {
+        const ids = zaznaczone();
+        try {
+          const w = await api('mapa_flota_kurs', { flota_id: flota.id, ...(ids.length ? { jednostki: ids } : {}), kurs: cel });
+          info.textContent = w.koniec > teraz() ? `Obrót na kurs ${Math.round(w.kurs)}° zakończy się ${czasGry(w.koniec)}.` : `Kurs ${Math.round(w.kurs)}°.`;
+          await odswiezFloty(); await pobierzPozycje();
+        } catch (e) { info.textContent = e.message; }
+      } }, 'Wykonaj obrót');
+      rysuj();
+      return h('div.mapa-tarcza-blok', plotnoT, h('div.mapa-tarcza-sterowanie',
+        h('div.mapa-nawigacja-przyciski', przesun(45), przesun(15), przesun(-15), przesun(-45)),
+        naPlanete ? h('div.mapa-nawigacja-przyciski',
+          h('button.przycisk.maly.drugi', { onclick: () => { cel = Math.round((Number(glowna.orbita_deg) + 180) % 360); rysuj(); } }, 'Dziobem na planetę'),
+          h('button.przycisk.maly.drugi', { onclick: () => { cel = Math.round(Number(glowna.orbita_deg) % 360); rysuj(); } }, 'Rufą do planety')) : null,
+        opis, wykonaj));
+    }
+
     let wybranaFlota = null;
     function rysujPanelFlot() {
       wyczysc(panelFlot);
@@ -1023,16 +1148,7 @@ export default {
             catch (e) { info.textContent = e.message; }
           } else info.textContent = 'Podaj współrzędne albo wybierz jednostkę docelową.';
         } }, 'Wyślij zaznaczone');
-        const kurs = h('input', { type: 'number', min: 0, max: 359, step: 1, placeholder: 'Kurs °' });
-        const ustawKurs = h('button.przycisk.maly', { onclick: async () => {
-          if (kurs.value === '') { info.textContent = 'Podaj kurs w stopniach: 0 = wschód, 90 = północ.'; return; }
-          const ids = zaznaczone();
-          try {
-            const w = await api('mapa_flota_kurs', { flota_id: flota.id, ...(ids.length ? { jednostki: ids } : {}), kurs: Number(kurs.value) });
-            info.textContent = w.koniec > teraz() ? `Manewr na kurs ${Math.round(w.kurs)}° zakończy się ${czasGry(w.koniec)}.` : `Kurs ${Math.round(w.kurs)}°.`;
-            await odswiezFloty(); await pobierzPozycje();
-          } catch (e) { info.textContent = e.message; }
-        } }, 'Ustaw kurs');
+        const tarcza = tarczaKursu(flota, zaznaczone, info);
         const defaultEskorta = flota.kod === 'havis-iii-eskortowa' ? h('button.przycisk.maly.drugi', { onclick: () => {
           let krążnik = false;
           wybor.querySelectorAll('input').forEach((el) => { const j = flota.jednostki.find((u) => u.obiekt_id === Number(el.value));
@@ -1042,7 +1158,7 @@ export default {
           });
         } }, 'Zaznacz domyślną eskortę (1 krążownik + 3 Gozanti)') : null;
         panelFlot.append(h('article.karta', h('h3', flota.nazwa), h('p.slaby', `Dowódca: ${flota.dowodca_efektywny || 'nieprzypisany'}`), stan, defaultEskorta, wybor,
-          h('div.mapa-flota-form', kurs, ustawKurs),
+          tarcza,
           h('p.slaby.maly-tekst', 'Kurs to kierunek dziobu: 0° = wschód, 90° = północ. Miejsce na orbicie się nie zmienia, okręty tylko obracają dziób. Przed skokiem flota sama obraca się na kurs skoku.'),
           h('p.slaby.maly-tekst', 'Skok do planety z wyborem orbity: kliknij planetę na mapie → „Nawigacja floty”. Tu: skok na współrzędne albo do innej jednostki.'),
           h('div.mapa-flota-form', x, y, cel, rozkaz), info,

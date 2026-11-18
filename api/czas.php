@@ -247,6 +247,7 @@ function obsluz_czas(string $akcja, bool $post): void
             if (!tabela_sql_dostepna('mapa_wykrycia_skokow')) $ostrzezenia[] = 'Brak migracji 014 (radar, skok statku postaci).';
             if (function_exists('floty_kurs_dostepny') && !floty_kurs_dostepny()) $ostrzezenia[] = 'Brak migracji 015 (kurs, manewry, cykle planet): floty i sceny okrętów nie działają.';
             if (function_exists('floty_orbita_dostepna') && !floty_orbita_dostepna()) $ostrzezenia[] = 'Brak migracji 016 (orbita, przylot, rozbicie): sceny okrętów i okno ISD nie działają.';
+            if (function_exists('mapa_frakcja_dostepna') && !mapa_frakcja_dostepna()) $ostrzezenia[] = 'Brak migracji 018 (frakcja jednostek): kolory stron liczone tylko z opisu właściciela i dowódcy.';
             if (function_exists('floty_nawigacja_dostepna') && !floty_nawigacja_dostepna()) $ostrzezenia[] = 'Brak migracji 017 (komputer nawigacyjny, warianty orbity, dolot): floty nie przyjmą rozkazów.';
             odpowiedz(['teraz' => czas_teraz(), 'procesy' => czas_procesy(), 'dziennik' => $dziennik,
                 'dziennik_dostepny' => tabela_sql_dostepna('resynchronizacje'), 'ostrzezenia' => $ostrzezenia]);

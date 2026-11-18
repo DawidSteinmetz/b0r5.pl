@@ -580,6 +580,10 @@ html.z-tlem #ekran::before {
 .mapa-nawigacja-blok b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
 .mapa-nawigacja-przyciski { display: flex; flex-wrap: wrap; gap: 6px; }
 .mapa-nawigacja .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
+/* Tarcza kursu floty */
+.mapa-tarcza-blok { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 10px 0; }
+.mapa-tarcza { touch-action: none; cursor: grab; border-radius: 50%; background: rgba(0, 0, 0, 0.3); }
+.mapa-tarcza-sterowanie { display: grid; gap: 8px; flex: 1 1 200px; }
 
 /* ---------- Giełda CDEX ---------- */
 

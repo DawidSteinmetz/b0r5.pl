@@ -10,28 +10,23 @@
 -- NULL w kolumnie = wartość domyślna. Księżyce z planety_ksiezyce zastępują wygenerowane.
 -- Docelowy, pełny model orbit (uklady_planetarne, planety_orbity) pozostaje fundamentem.
 --
--- Wymaga migracji 014. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 014. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
+USE hololink;
 SET NAMES utf8mb4;
 
 -- ---------- kurs i manewr jednostek mapy ----------
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'kurs_deg');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
+ALTER TABLE mapa_obiekty
   ADD COLUMN kurs_deg DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER y,
   ADD COLUMN kurs_start_deg DECIMAL(6,2) NULL AFTER kurs_deg,
   ADD COLUMN kurs_cel_deg DECIMAL(6,2) NULL AFTER kurs_start_deg,
   ADD COLUMN manewr_od_utc DATETIME NULL AFTER kurs_cel_deg,
-  ADD COLUMN manewr_do_utc DATETIME NULL AFTER manewr_od_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN manewr_do_utc DATETIME NULL AFTER manewr_od_utc;
 
 -- Tempo obrotu (i przelotu po orbicie) w stopniach na minutę; flota manewruje tempem najwolniejszej jednostki.
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_naped_jednostki' AND column_name = 'obrot_deg_na_min');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_naped_jednostki
-  ADD COLUMN obrot_deg_na_min DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER szum_bazowy', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+ALTER TABLE mapa_naped_jednostki
+  ADD COLUMN obrot_deg_na_min DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER szum_bazowy;
 
 -- Domyślne tempa według klasy (tylko tam, gdzie wciąż jest wartość domyślna).
 UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
@@ -42,12 +37,9 @@ UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
   WHERE n.obrot_deg_na_min = 90 AND (o.klasa LIKE '%Arquitens%' OR o.nazwa LIKE 'Arquitens%');
 
 -- Rozkaz skoku: chwila wejścia w nadprzestrzeń (po manewrze) i kurs skoku.
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_rozkazy_skokow' AND column_name = 'wejscie_utc');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_rozkazy_skokow
+ALTER TABLE mapa_rozkazy_skokow
   ADD COLUMN wejscie_utc DATETIME NULL AFTER wydano_utc,
-  ADD COLUMN kurs_deg DECIMAL(6,2) NULL AFTER cel_y', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN kurs_deg DECIMAL(6,2) NULL AFTER cel_y;
 
 -- Resynchronizacja obejmuje też manewry (zmiana kursu / pozycji na orbicie).
 ALTER TABLE resynchronizacje

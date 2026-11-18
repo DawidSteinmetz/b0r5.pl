@@ -388,7 +388,7 @@ function floty_lista(string $login, bool $mg = false): array
         COALESCE(n.predkosc_pc_na_godzine,1000) AS predkosc_pc_na_godzine,COALESCE(n.paliwo,100000) AS paliwo,COALESCE(n.paliwo_maks,100000) AS paliwo_maks,
         COALESCE(n.paliwo_na_parsek,0.01) AS paliwo_na_parsek,COALESCE(n.sprawnosc_reaktora,100) AS sprawnosc_reaktora,COALESCE(n.sprawnosc_hipernapedu,100) AS sprawnosc_hipernapedu,COALESCE(n.szum_bazowy,0.05) AS szum_bazowy,
         COALESCE(n.obrot_deg_na_min,90) AS obrot_deg_na_min,COALESCE(n.komputer_klasa,3) AS komputer_klasa,COALESCE(n.komputer_stan,'sprawny') AS komputer_stan,
-        o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,o.orbita_deg,o.rozbity,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+        o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,o.orbita_deg,o.rozbity," . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
@@ -636,6 +636,11 @@ function obsluz_floty(string $akcja, bool $post): void
             $marks = implode(',', array_fill(0, count($ids), '?'));
             if (isset($w['orbita']) && is_numeric($w['orbita'])) {
                 polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET orbita_deg=? WHERE id IN ($marks)")->execute([round(floty_kat((float) $w['orbita']), 2), ...$ids]);
+            }
+            if (array_key_exists('frakcja', $w) && mapa_frakcja_dostepna()) {
+                // Frakcja floty (kolor na mapie: sojusznik / wróg / neutralny); pusta = wyliczana automatycznie.
+                $fr = in_array($w['frakcja'], [...FRAKCJE, 'neutralna'], true) ? $w['frakcja'] : null;
+                polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET frakcja=? WHERE id IN ($marks)")->execute([$fr, ...$ids]);
             }
             if (isset($w['rozbity'])) {
                 polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET rozbity=? WHERE id IN ($marks)")->execute([empty($w['rozbity']) ? 0 : 1, ...$ids]);

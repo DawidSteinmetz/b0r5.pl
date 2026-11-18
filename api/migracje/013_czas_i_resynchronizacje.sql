@@ -1,8 +1,9 @@
 -- Czas świata płynie 1:1 z czasem rzeczywistym. MG może skrócić albo wydłużyć pojedynczy proces
 -- (skok floty, podróż, obsługa naziemna) — w grze nazywa się to resynchronizacją (ingerencją mocy).
 -- Gra nie tłumaczy graczom, co się stało; ten dziennik widzi tylko MG.
--- Wymaga migracji 012 i tabeli schema_migracje. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 012 i tabeli schema_migracje. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
+USE hololink;
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS resynchronizacje (

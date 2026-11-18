@@ -8,16 +8,14 @@
 -- podejscie: gdzie w układzie jest okręt po wyjściu ze skoku: bliska / srednia / daleka orbita
 --            albo krawedz układu. Dolot (podlot_*) zmienia go napędem podświetlnym, z czasem.
 --
--- Wymaga migracji 016. Import w phpMyAdmin (najpierw kliknij bazę hololink); ponowny import niczego nie psuje.
+-- Wymaga migracji 016. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
+USE hololink;
 SET NAMES utf8mb4;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_naped_jednostki' AND column_name = 'komputer_klasa');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_naped_jednostki
+ALTER TABLE mapa_naped_jednostki
   ADD COLUMN komputer_klasa TINYINT UNSIGNED NOT NULL DEFAULT 3 AFTER obrot_deg_na_min,
-  ADD COLUMN komputer_stan ENUM(''sprawny'',''zhakowany'',''przejety'',''brak'') NOT NULL DEFAULT ''sprawny'' AFTER komputer_klasa', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN komputer_stan ENUM('sprawny','zhakowany','przejety','brak') NOT NULL DEFAULT 'sprawny' AFTER komputer_klasa;
 
 -- ISD: fachowy, wydajny komputer (5); Arquitens 4; reszta 3 (tylko tam, gdzie wartość domyślna).
 UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
@@ -27,22 +25,16 @@ UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
   SET n.komputer_klasa = 4
   WHERE n.komputer_klasa = 3 AND (o.klasa LIKE '%Arquitens%' OR o.nazwa LIKE 'Arquitens%');
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'podejscie');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
-  ADD COLUMN podejscie ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER przylot_utc,
-  ADD COLUMN podlot_start ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER podejscie,
-  ADD COLUMN podlot_cel ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER podlot_start,
+ALTER TABLE mapa_obiekty
+  ADD COLUMN podejscie ENUM('bliska','srednia','daleka','krawedz') NULL AFTER przylot_utc,
+  ADD COLUMN podlot_start ENUM('bliska','srednia','daleka','krawedz') NULL AFTER podejscie,
+  ADD COLUMN podlot_cel ENUM('bliska','srednia','daleka','krawedz') NULL AFTER podlot_start,
   ADD COLUMN podlot_od_utc DATETIME NULL AFTER podlot_cel,
-  ADD COLUMN podlot_do_utc DATETIME NULL AFTER podlot_od_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN podlot_do_utc DATETIME NULL AFTER podlot_od_utc;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_rozkazy_skokow' AND column_name = 'wariant');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_rozkazy_skokow
-  ADD COLUMN wariant ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER kurs_deg,
-  ADD COLUMN tryb ENUM(''automat'',''reczny'') NOT NULL DEFAULT ''automat'' AFTER wariant', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+ALTER TABLE mapa_rozkazy_skokow
+  ADD COLUMN wariant ENUM('bliska','srednia','daleka','krawedz') NULL AFTER kurs_deg,
+  ADD COLUMN tryb ENUM('automat','reczny') NOT NULL DEFAULT 'automat' AFTER wariant;
 
 -- Okręty już stojące przy planecie są na bliskiej orbicie.
 UPDATE mapa_obiekty SET podejscie = 'bliska'

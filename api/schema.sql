@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–017 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–018 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -5746,7 +5746,7 @@ ON DUPLICATE KEY UPDATE opis=VALUES(opis);
 -- Czas świata płynie 1:1 z czasem rzeczywistym. MG może skrócić albo wydłużyć pojedynczy proces
 -- (skok floty, podróż, obsługa naziemna) — w grze nazywa się to resynchronizacją (ingerencją mocy).
 -- Gra nie tłumaczy graczom, co się stało; ten dziennik widzi tylko MG.
--- Wymaga migracji 012 i tabeli schema_migracje. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 012 i tabeli schema_migracje. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
 SET NAMES utf8mb4;
 
@@ -5776,7 +5776,7 @@ ON DUPLICATE KEY UPDATE opis=VALUES(opis);
 -- =====================================================================
 
 -- Skok statku postaci z wyliczanym czasem (resynchronizowalny) i radarowe wykrywanie skoków.
--- Wymaga migracji 013. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 013. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
 SET NAMES utf8mb4;
 
@@ -5826,28 +5826,22 @@ ON DUPLICATE KEY UPDATE opis=VALUES(opis);
 -- NULL w kolumnie = wartość domyślna. Księżyce z planety_ksiezyce zastępują wygenerowane.
 -- Docelowy, pełny model orbit (uklady_planetarne, planety_orbity) pozostaje fundamentem.
 --
--- Wymaga migracji 014. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 014. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
 SET NAMES utf8mb4;
 
 -- ---------- kurs i manewr jednostek mapy ----------
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'kurs_deg');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
+ALTER TABLE mapa_obiekty
   ADD COLUMN kurs_deg DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER y,
   ADD COLUMN kurs_start_deg DECIMAL(6,2) NULL AFTER kurs_deg,
   ADD COLUMN kurs_cel_deg DECIMAL(6,2) NULL AFTER kurs_start_deg,
   ADD COLUMN manewr_od_utc DATETIME NULL AFTER kurs_cel_deg,
-  ADD COLUMN manewr_do_utc DATETIME NULL AFTER manewr_od_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN manewr_do_utc DATETIME NULL AFTER manewr_od_utc;
 
 -- Tempo obrotu (i przelotu po orbicie) w stopniach na minutę; flota manewruje tempem najwolniejszej jednostki.
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_naped_jednostki' AND column_name = 'obrot_deg_na_min');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_naped_jednostki
-  ADD COLUMN obrot_deg_na_min DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER szum_bazowy', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+ALTER TABLE mapa_naped_jednostki
+  ADD COLUMN obrot_deg_na_min DECIMAL(6,2) NOT NULL DEFAULT 90 AFTER szum_bazowy;
 
 -- Domyślne tempa według klasy (tylko tam, gdzie wciąż jest wartość domyślna).
 UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
@@ -5858,12 +5852,9 @@ UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
   WHERE n.obrot_deg_na_min = 90 AND (o.klasa LIKE '%Arquitens%' OR o.nazwa LIKE 'Arquitens%');
 
 -- Rozkaz skoku: chwila wejścia w nadprzestrzeń (po manewrze) i kurs skoku.
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_rozkazy_skokow' AND column_name = 'wejscie_utc');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_rozkazy_skokow
+ALTER TABLE mapa_rozkazy_skokow
   ADD COLUMN wejscie_utc DATETIME NULL AFTER wydano_utc,
-  ADD COLUMN kurs_deg DECIMAL(6,2) NULL AFTER cel_y', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN kurs_deg DECIMAL(6,2) NULL AFTER cel_y;
 
 -- Resynchronizacja obejmuje też manewry (zmiana kursu / pozycji na orbicie).
 ALTER TABLE resynchronizacje
@@ -5931,17 +5922,14 @@ ON DUPLICATE KEY UPDATE opis = VALUES(opis);
 --             najpierw mała, potem średnia, na orbicie duża).
 -- rozbity:    okręt rozbity na planecie (ustawia MG); z mostka widać powierzchnię.
 --
--- Wymaga migracji 015. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 015. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
 SET NAMES utf8mb4;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'orbita_deg');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
+ALTER TABLE mapa_obiekty
   ADD COLUMN orbita_deg DECIMAL(6,2) NULL AFTER kurs_deg,
   ADD COLUMN przylot_utc DATETIME NULL AFTER manewr_do_utc,
-  ADD COLUMN rozbity TINYINT(1) NOT NULL DEFAULT 0 AFTER przylot_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN rozbity TINYINT(1) NOT NULL DEFAULT 0 AFTER przylot_utc;
 
 -- Dotąd kurs na orbicie oznaczał stronę planety (dziobem od planety). Przenosimy go do orbita_deg,
 -- a dziób kierujemy ku planecie — z mostka widać planetę.
@@ -5968,16 +5956,13 @@ ON DUPLICATE KEY UPDATE opis = VALUES(opis);
 -- podejscie: gdzie w układzie jest okręt po wyjściu ze skoku: bliska / srednia / daleka orbita
 --            albo krawedz układu. Dolot (podlot_*) zmienia go napędem podświetlnym, z czasem.
 --
--- Wymaga migracji 016. Import w phpMyAdmin (najpierw kliknij bazę hololink); ponowny import niczego nie psuje.
+-- Wymaga migracji 016. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
 SET NAMES utf8mb4;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_naped_jednostki' AND column_name = 'komputer_klasa');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_naped_jednostki
+ALTER TABLE mapa_naped_jednostki
   ADD COLUMN komputer_klasa TINYINT UNSIGNED NOT NULL DEFAULT 3 AFTER obrot_deg_na_min,
-  ADD COLUMN komputer_stan ENUM(''sprawny'',''zhakowany'',''przejety'',''brak'') NOT NULL DEFAULT ''sprawny'' AFTER komputer_klasa', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN komputer_stan ENUM('sprawny','zhakowany','przejety','brak') NOT NULL DEFAULT 'sprawny' AFTER komputer_klasa;
 
 -- ISD: fachowy, wydajny komputer (5); Arquitens 4; reszta 3 (tylko tam, gdzie wartość domyślna).
 UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
@@ -5987,22 +5972,16 @@ UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id
   SET n.komputer_klasa = 4
   WHERE n.komputer_klasa = 3 AND (o.klasa LIKE '%Arquitens%' OR o.nazwa LIKE 'Arquitens%');
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_obiekty' AND column_name = 'podejscie');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_obiekty
-  ADD COLUMN podejscie ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER przylot_utc,
-  ADD COLUMN podlot_start ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER podejscie,
-  ADD COLUMN podlot_cel ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER podlot_start,
+ALTER TABLE mapa_obiekty
+  ADD COLUMN podejscie ENUM('bliska','srednia','daleka','krawedz') NULL AFTER przylot_utc,
+  ADD COLUMN podlot_start ENUM('bliska','srednia','daleka','krawedz') NULL AFTER podejscie,
+  ADD COLUMN podlot_cel ENUM('bliska','srednia','daleka','krawedz') NULL AFTER podlot_start,
   ADD COLUMN podlot_od_utc DATETIME NULL AFTER podlot_cel,
-  ADD COLUMN podlot_do_utc DATETIME NULL AFTER podlot_od_utc', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+  ADD COLUMN podlot_do_utc DATETIME NULL AFTER podlot_od_utc;
 
-SET @brak := (SELECT COUNT(*) = 0 FROM information_schema.columns
-  WHERE table_schema = DATABASE() AND table_name = 'mapa_rozkazy_skokow' AND column_name = 'wariant');
-SET @sql := IF(@brak, 'ALTER TABLE mapa_rozkazy_skokow
-  ADD COLUMN wariant ENUM(''bliska'',''srednia'',''daleka'',''krawedz'') NULL AFTER kurs_deg,
-  ADD COLUMN tryb ENUM(''automat'',''reczny'') NOT NULL DEFAULT ''automat'' AFTER wariant', 'SELECT 1');
-PREPARE polecenie FROM @sql; EXECUTE polecenie; DEALLOCATE PREPARE polecenie;
+ALTER TABLE mapa_rozkazy_skokow
+  ADD COLUMN wariant ENUM('bliska','srednia','daleka','krawedz') NULL AFTER kurs_deg,
+  ADD COLUMN tryb ENUM('automat','reczny') NOT NULL DEFAULT 'automat' AFTER wariant;
 
 -- Okręty już stojące przy planecie są na bliskiej orbicie.
 UPDATE mapa_obiekty SET podejscie = 'bliska'
@@ -6013,4 +5992,25 @@ ALTER TABLE resynchronizacje
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v17-komputer-nawigacyjny-dolot', 'Komputer nawigacyjny, warianty celu skoku, dolot na orbitę')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/018_frakcja_jednostek.sql
+-- =====================================================================
+
+-- Frakcja jednostki mapy: od niej zależy kolor na mapie z punktu widzenia gracza
+-- (sojusznik — zielony, wróg — czerwony, neutralny — biały).
+-- NULL = frakcja wyliczana z pola `wlasciciel` albo frakcji dowódcy floty (api/ruch.php).
+-- Relacje: ta sama frakcja = sojusznik, Imperium ↔ Rebelia = wróg, reszta = neutralni.
+--
+-- Wymaga migracji 017. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz;
+-- ponowny import zatrzyma się na „Duplicate column”.
+
+SET NAMES utf8mb4;
+
+ALTER TABLE mapa_obiekty
+  ADD COLUMN frakcja ENUM('Imperium','Rebelia','Syndykat','neutralna') NULL AFTER wlasciciel;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v18-frakcja-jednostek', 'Frakcja jednostek mapy: kolory sojusznik/wróg/neutralny')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

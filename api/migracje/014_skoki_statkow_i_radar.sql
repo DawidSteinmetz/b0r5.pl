@@ -1,6 +1,7 @@
 -- Skok statku postaci z wyliczanym czasem (resynchronizowalny) i radarowe wykrywanie skoków.
--- Wymaga migracji 013. Import w phpMyAdmin; ponowny import niczego nie psuje.
+-- Wymaga migracji 013. Import w phpMyAdmin: zakładka SQL albo Import. Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
 
+USE hololink;
 SET NAMES utf8mb4;
 
 -- Resynchronizacja obejmuje teraz także skok statku postaci.

@@ -126,6 +126,24 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   wachlarz); panel dowodzenia po lewej z wyborem floty, karta planety po prawej, radar u góry.
 - Wymaga migracji `017_komputer_nawigacyjny_i_dolot.sql`.
 
+## Mapa: zoom, układy, strony, tarcza kursu
+
+- **Zoom** do 3000 px na parsek. Od 3 px/pc flota na orbicie rozkłada się na pojedyncze okręty.
+  Od 60 px/pc kropka planety staje się **układem**: słońce w miejscu kropki (współrzędne mapy to
+  słońce), planeta na swojej orbicie z dzienną i nocną stroną, księżyce i okręty wokół planety.
+  Układ jest schematyczny i rośnie płynnie z przybliżeniem.
+- **Kolory stron** z punktu widzenia gracza: sojusznik zielony, wróg czerwony, neutralny biały
+  (`mapa_strony()` w `api/ruch.php`). Frakcja jednostki: kolumna `mapa_obiekty.frakcja` (MG,
+  zakładka Floty), inaczej z pola `wlasciciel` (Imperium/ISB/Moff, Rebelia/Sojusz, Syndykat/Hutt),
+  inaczej frakcja konta dowódcy floty. Relacje: ta sama frakcja = sojusznik, Imperium ↔ Rebelia =
+  wróg (`MAPA_WROGOWIE`), reszta neutralna. MG widzi kolory ustawione ręcznie.
+- **Tarcza kursu** w panelu dowodzenia: przeciągnij strzałkę albo użyj ±15°/±45°, „Dziobem na
+  planetę”, „Rufą do planety”; podgląd kąta i czasu obrotu, „Wykonaj obrót” dla całej floty albo
+  zaznaczonych okrętów.
+- **Migracje** od 013 zaczynają się od `USE hololink;` i nie używają PREPARE (phpMyAdmin gubił przy
+  imporcie wybraną bazę). Importuj raz; ponowny import zatrzyma się na „Duplicate column”.
+  `narzedzia/sql/zbuduj.js` pomija linie `USE` w pełnym schemacie. Wymagana migracja 018.
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

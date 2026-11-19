@@ -78,9 +78,11 @@ let dane = null;
 async function wczytajDane() {
   if (dane) return dane;
   const { planety: surowePlanety, szlaki: suroweSzlaki } = await api('mapa_dane');
-  // [nazwa, region, x, y, grawitacja, słońca, księżyce, doba, rok, średnica]
+  // [nazwa, region, x, y, grawitacja, słońca, księżyce, doba, rok, średnica]. Kolumny DECIMAL przychodzą
+  // z bazy jako tekst — zamiana na liczby (inaczej „+” skleja tekst i kamera dostaje NaN).
   const planety = surowePlanety.map(([nazwa, r, x, y, g, slonca, ksiezyce, doba, rok, srednica]) => ({
-    nazwa, region: REGIONY[r] || '', x, y, g, slonca, ksiezyce, doba, rok, srednica, klucz: norm(nazwa),
+    nazwa, region: REGIONY[r] || '', x: +x, y: +y, g: +g, slonca: +slonca, ksiezyce: +ksiezyce, doba: +doba, rok: +rok,
+    srednica: +srednica, klucz: norm(nazwa),
   }));
   const szlaki = suroweSzlaki.map((s) => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -182,7 +184,7 @@ export default {
       const k = skala / KM_NA_PC;
       return [camX + ((sx - szer / 2) / k + camKx) / KM_NA_PC, camY + (-(sy - wys / 2) / k + camKy) / KM_NA_PC];
     };
-    const ustawSrodek = (x, y) => { camX = x; camY = y; camKx = 0; camKy = 0; };
+    const ustawSrodek = (x, y) => { camX = +x; camY = +y; camKx = 0; camKy = 0; };
     let sledz = null; // { poz: () => [x, y] na ekranie, ekran: [x, y] — gdzie ma zostać }
     // Przesunięcie w km przenoszone do parseków, gdy to bezpieczne (dokładność parseków ≪ piksel).
     const scalKamere = () => {
@@ -1607,7 +1609,7 @@ export default {
             if (o < min) { min = o; region = p.region; }
           }
         }
-        return { nazwa: d.nazwa, region, x: d.x, y: d.y, g: 0, slonca: 0, ksiezyce: 0, doba: 0, rok: 0, srednica: 0,
+        return { nazwa: d.nazwa, region, x: +d.x, y: +d.y, g: 0, slonca: 0, ksiezyce: 0, doba: 0, rok: 0, srednica: 0,
           sektor: d.sektor, kwadrat: d.kwadrat, zastrzezona: d.zastrzezona, klucz: norm(d.nazwa) };
       });
       const klucze = new Set(dodatkowe.map((p) => p.klucz));

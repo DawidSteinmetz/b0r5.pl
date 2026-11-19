@@ -158,7 +158,9 @@ function opisMiejsca() {
   if (sc === 'start' && odZmiany > 300000) sc = 'orbita'; // po wznoszeniu statek jest na orbicie
   if (sc === 'powierzchnia') return [stanSceny.miejsce, stanSceny.opis].filter(Boolean).join(' · ');
   const miejsce = stanSceny.miejsce || (sc === 'orbita' && typ ? `planeta ${typ}` : '');
-  return [NAZWY_SCEN[sc], miejsce, stanSceny.opis].filter(Boolean).join(' · ');
+  // Na krawędzi studni grawitacyjnej planeta jest daleko (miliony km) — stąd mała w oknie.
+  const krawedz = (sc === 'orbita' || sc === 'wyjscie') && stanSceny.odleglosc === 'krawedz' ? 'krawędź układu' : '';
+  return [NAZWY_SCEN[sc], miejsce, krawedz, stanSceny.opis].filter(Boolean).join(' · ');
 }
 
 // Liczniki pokładowe (tylko na pokładzie): odliczanie bieżącego procesu i stany: paliwo,

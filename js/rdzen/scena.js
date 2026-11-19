@@ -306,7 +306,10 @@ export function utworzScene(canvas) {
     // przeliczone przez pole widzenia (POLE_WIDZENIA stopni na szerokość wzoru).
     const srednica = Number(stan.widok?.cykl?.srednica_km) || SREDNICA_DOMYSLNA_KM;
     const wysokosc = Number(stan.widok?.wysokosc_km ?? WYSOKOSCI_KM[stan.odleglosc] ?? WYSOKOSCI_KM.srednio);
-    const d = Math.max(3, rozmiarKatowy(srednica, srednica / 2 + wysokosc) * w / POLE_WIDZENIA);
+    // Z krawędzi układu (miliony km) prawdziwa tarcza to 2–3 px — gubiła się w czerni okna, więc
+    // trzyma co najmniej 14 px (patrz też szersza poświata w rysujPlanete).
+    const minimum = stan.odleglosc === 'krawedz' ? 14 : 3;
+    const d = Math.max(minimum, rozmiarKatowy(srednica, srednica / 2 + wysokosc) * w / POLE_WIDZENIA);
     // Tekstura w rozmiarach potęgi dwójki (8–1024 px): przy zbliżaniu i oddalaniu nie generuje się co klatkę.
     const dt = Math.min(1024, 2 ** Math.ceil(Math.log2(Math.max(8, d))));
     if (planeta && planeta.typ === typ && planeta.dt === dt) { planeta.d = d; return; }
@@ -548,13 +551,14 @@ export function utworzScene(canvas) {
     const info = TYPY_PLANET[typ];
     ctx.save();
     ctx.globalAlpha = pojawienie;
-    // poświata atmosfery
-    const glow = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * 1.25);
+    // poświata atmosfery (z krawędzi układu szersza: mała tarcza ma być widać także od nocnej strony)
+    const zasieg = stan.odleglosc === 'krawedz' ? 2.4 : 1.25;
+    const glow = ctx.createRadialGradient(cx, cy, R * 0.9, cx, cy, R * zasieg);
     glow.addColorStop(0, info.atmosfera + 'aa');
     glow.addColorStop(1, info.atmosfera + '00');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
+    ctx.arc(cx, cy, R * zasieg, 0, Math.PI * 2);
     ctx.fill();
     // powierzchnia (przewijana = obrót)
     ctx.beginPath();

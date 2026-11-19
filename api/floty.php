@@ -237,7 +237,43 @@ function floty_czas_do_punktu(array $j, float $kierunek, int $teraz): int
 // obrót na kurs, rozpędzanie, przelot, hamowanie. Po przylocie przy planecie: daleka orbita.
 const KM_NA_PC = 30856775814913.7;
 const LOT_ROZPED_S = 120;        // rozpędzanie i hamowanie razem
-const LOT_W_UKLADZIE_PC = 0.05;  // bliżej niż tyle: ten sam układ (mapa liczy pozycje co 0,1 pc)
+// Strefa grawitacyjna układu (studnia): w tym promieniu od planety jednostka jest w jej układzie. Komputer
+// nawigacyjny nie pozwala w niej wyjść z nadprzestrzeni (poza skokiem do tego układu) ani przez nią przeskoczyć
+// czy przelecieć. Pół kroku mapy (pozycje co 0,1 pc).
+const STREFA_UKLADU_PC = 0.05;
+const LOT_W_UKLADZIE_PC = STREFA_UKLADU_PC;
+// Skok automatu do układu: wyjście z rozrzutem do tylu pc od celu kończy się w tym układzie.
+const TOLERANCJA_AUTOMATU_PC = 2.0;
+
+// Pierwsza studnia grawitacyjna na odcinku trasy (układ inny niż startu i celu): opis albo null.
+function floty_trasa_kolizja(float $x0, float $y0, float $x1, float $y1): ?string
+{
+    static $pamiec = [];
+    $klucz = "$x0|$y0|$x1|$y1";
+    if (array_key_exists($klucz, $pamiec)) return $pamiec[$klucz]; // flota startuje z jednego punktu
+    $s = STREFA_UKLADU_PC;
+    $q = polaczenie_bazy()->prepare('SELECT id, nazwa, x, y FROM mapa_planety WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?');
+    $q->execute([min($x0, $x1) - $s, max($x0, $x1) + $s, min($y0, $y1) - $s, max($y0, $y1) + $s]);
+    $dx = $x1 - $x0; $dy = $y1 - $y0; $l2 = $dx * $dx + $dy * $dy;
+    $najblizej = null; $tMin = 2.0;
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+        $px = (float) $p['x']; $py = (float) $p['y'];
+        if (hypot($px - $x0, $py - $y0) < $s || hypot($px - $x1, $py - $y1) < $s) continue; // układ startu albo celu
+        $t = $l2 > 0 ? max(0.0, min(1.0, (($px - $x0) * $dx + ($py - $y0) * $dy) / $l2)) : 0.0;
+        if (hypot($px - ($x0 + $dx * $t), $py - ($y0 + $dy * $t)) < $s && $t < $tMin) { $tMin = $t; $najblizej = $p; }
+    }
+    if (!$najblizej) return $pamiec[$klucz] = null;
+    return $pamiec[$klucz] = mapa_planeta_widoczna((int) $najblizej['id']) ? 'układu „' . $najblizej['nazwa'] . '”' : 'nieznanego układu';
+}
+
+// Współrzędne planety (układu) po id.
+function floty_wsp_planety(int $id): ?array
+{
+    $q = polaczenie_bazy()->prepare('SELECT x, y FROM mapa_planety WHERE id = ?');
+    $q->execute([$id]);
+    $p = $q->fetch(PDO::FETCH_ASSOC);
+    return $p ? [(float) $p['x'], (float) $p['y']] : null;
+}
 
 function floty_lot_dostepny(): bool
 {
@@ -312,8 +348,10 @@ function floty_lot(array $odbiorcy, array $w): array
         if (!is_numeric($x) || !is_numeric($y)) blad('Podaj punkt docelowy.');
         $x = round((float) $x, 1); $y = round((float) $y, 1);
         if (abs($x) > 1000000 || abs($y) > 1000000) blad('Współrzędne wykraczają poza zakres mapy.');
+        // Punkt w studni układu: lot do tego układu (planety), nigdy w głąb studni ani w słońce.
         $celId = floty_planeta_w_punkcie($x, $y);
         if ($celId && !mapa_planeta_widoczna($celId, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
+        if ($celId) [$x, $y] = floty_wsp_planety($celId);
     }
     $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
@@ -334,6 +372,9 @@ function floty_lot(array $odbiorcy, array $w): array
         $odPl = $poz ? floty_planeta_w_punkcie($x0, $y0) : (((int) $j['planeta_id']) ?: floty_planeta_w_punkcie($x0, $y0));
         $km = floty_lot_km($odPl, $x0, $y0, $celId, $x, $y);
         if ($km < 1) blad('Jednostka „' . $j['nazwa'] . '” już jest w tym miejscu.');
+        if (hypot($x - $x0, $y - $y0) >= STREFA_UKLADU_PC && ($k = floty_trasa_kolizja($x0, $y0, $x, $y))) {
+            blad('Komputer nawigacyjny odrzuca trasę: lot jednostki „' . $j['nazwa'] . '” przecina studnię grawitacyjną ' . $k . '.');
+        }
         $kursTeraz = floty_kurs_teraz($j, $teraz);
         $pc = hypot($x - $x0, $y - $y0);
         $kurs = $pc >= 0.05 ? floty_kat(rad2deg(atan2($y - $y0, $x - $x0))) : $kursTeraz;
@@ -734,6 +775,10 @@ function floty_aktualizuj_ruch(): void
     if (!tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) return;
     floty_domknij_manewry();
     floty_aktualizuj_loty();
+    // Jednostka przypisana do planety stoi na współrzędnych jej układu (porządkuje dawne przesunięcia,
+    // przez które komputer brał „obok planety” za inny punkt i pozwalał skoczyć w jej studnię).
+    polaczenie_bazy()->exec("UPDATE mapa_obiekty o JOIN mapa_planety p ON p.id = o.planeta_id SET o.x = p.x, o.y = p.y
+        WHERE o.typ <> 'postac' AND (o.x <> p.x OR o.y <> p.y)" . (floty_lot_dostepny() ? ' AND o.lot_do_utc IS NULL' : ''));
     $db = polaczenie_bazy();
     $kurs = floty_kurs_dostepny();
     $q = $db->query("SELECT j.rozkaz_id,j.obiekt_id,j.start_x,j.start_y,j.wyjscie_x,j.wyjscie_y,j.eta_utc,j.paliwo_zuzyte,j.planeta_id,r.wydano_utc"
@@ -749,11 +794,18 @@ function floty_aktualizuj_ruch(): void
         $koniecX = (float) $r['wyjscie_x'];
         $koniecY = (float) $r['wyjscie_y'];
         if (!$start || !$eta || $eta <= $start || $teraz >= $eta) {
+            // Skok do układu: wyjście z rozrzutem w tolerancji automatu → w tym układzie. Inaczej, jeśli rozrzut
+            // wyrzucił jednostkę w studni innego układu → na jego krawędzi. Poza strefami: pusta przestrzeń.
             $planeta = (int) ($r['planeta_id'] ?? 0) ?: null;
-            if ($planeta === null) {
-                $p = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?) < 2 AND ABS(y-?) < 2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1');
-                $p->execute([$koniecX, $koniecY, $koniecX, $koniecY]);
-                $planeta = $p->fetchColumn() ?: null;
+            $krawedz = false;
+            if ($planeta !== null) {
+                $wsp = floty_wsp_planety($planeta);
+                if ($wsp && hypot($koniecX - $wsp[0], $koniecY - $wsp[1]) <= TOLERANCJA_AUTOMATU_PC) [$koniecX, $koniecY] = $wsp;
+                else $planeta = null;
+            }
+            if ($planeta === null && ($planeta = floty_planeta_w_punkcie($koniecX, $koniecY))) {
+                [$koniecX, $koniecY] = floty_wsp_planety($planeta);
+                $krawedz = true;
             }
             $db->prepare('UPDATE mapa_obiekty SET x=?,y=?,planeta_id=? WHERE id=?')->execute([$koniecX, $koniecY, $planeta, $r['obiekt_id']]);
             if ($kurs) {
@@ -768,7 +820,7 @@ function floty_aktualizuj_ruch(): void
                         ->execute([$planeta ? round(floty_kat($kierunek + 180), 2) : null, $planeta ? czas_utc(min($eta ?: $teraz, $teraz)) : null, $r['obiekt_id']]);
                     if (floty_nawigacja_dostepna()) {
                         $db->prepare('UPDATE mapa_obiekty SET podejscie=? WHERE id=?')
-                            ->execute([$planeta ? (($r['wariant'] ?? null) ?: 'daleka') : null, $r['obiekt_id']]);
+                            ->execute([$planeta ? ($krawedz ? 'krawedz' : (($r['wariant'] ?? null) ?: 'daleka')) : null, $r['obiekt_id']]);
                     }
                 }
             }
@@ -867,6 +919,7 @@ function floty_rozkaz(string $login, array $w): array
     $celObiekt = (int) ($w['cel_obiekt_id'] ?? 0);
     $celPlaneta = trim((string) ($w['cel_planeta'] ?? ''));
     $wariant = null;
+    $celPlanetaId = null;
     $tryb = $automat ? 'automat' : 'reczny';
     if ($celPlaneta !== '') {
         // Automat: skok na planetę z wybranym wariantem orbity.
@@ -877,6 +930,7 @@ function floty_rozkaz(string $login, array $w): array
         $pl = $q->fetch(PDO::FETCH_ASSOC);
         if (!$pl || !mapa_planeta_widoczna((int) $pl['id'], ja())) blad('Komputer nawigacyjny nie zna tej planety.');
         $x = (float) $pl['x']; $y = (float) $pl['y'];
+        $celPlanetaId = (int) $pl['id'];
     } elseif ($celObiekt) {
         if (!floty_odbiorca_widoczny($login, $celObiekt)) blad('Nie masz dostępu do pozycji wskazanej jednostki.', 403);
         $q = $db->prepare('SELECT x,y,planeta_id FROM mapa_obiekty WHERE id=? AND aktywny=1');
@@ -885,15 +939,17 @@ function floty_rozkaz(string $login, array $w): array
         if (!$cel || $cel['x'] === null || $cel['y'] === null) blad('Wskazana jednostka nie ma pozycji.');
         if ($cel['planeta_id'] !== null && !mapa_planeta_widoczna((int) $cel['planeta_id'], ja())) blad('Nie masz dostępu do wskazanej pozycji.', 403);
         $x = (float) $cel['x']; $y = (float) $cel['y'];
+        $celPlanetaId = $cel['planeta_id'] !== null ? (int) $cel['planeta_id'] : floty_planeta_w_punkcie($x, $y);
+        if ($celPlanetaId && ($wsp = floty_wsp_planety($celPlanetaId))) [$x, $y] = $wsp;
     } else {
         $x = $w['x'] ?? null; $y = $w['y'] ?? null;
         if (!is_numeric($x) || !is_numeric($y)) blad('Podaj współrzędne X i Y albo wskaż inną jednostkę.');
         $x = (float) $x; $y = (float) $y;
         if (abs($x) > 1000000 || abs($y) > 1000000) blad('Współrzędne wykraczają poza zakres mapy.');
-        $q = $db->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1');
-        $q->execute([$x,$y,$x,$y]);
-        $planetaCel = $q->fetchColumn();
-        if ($planetaCel && !mapa_planeta_widoczna((int) $planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
+        // Punkt w studni grawitacyjnej układu: komputer prowadzi skok do tego układu (nie w głąb studni).
+        $planetaCel = floty_planeta_w_punkcie($x, $y);
+        if ($planetaCel && !mapa_planeta_widoczna($planetaCel, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
+        if ($planetaCel) { $celPlanetaId = $planetaCel; [$x, $y] = floty_wsp_planety($planetaCel); }
     }
     $ids = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id AS planeta_startu,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
@@ -911,8 +967,10 @@ function floty_rozkaz(string $login, array $w): array
         if ($aktywny->fetchColumn()) blad('Jednostka „' . $j['nazwa'] . '” już wykonuje skok.');
         if ($j['moc_reaktora'] === null) blad('Jednostka „' . $j['nazwa'] . '” nie ma profilu napędu.');
         $dx = $x - (float) $j['x']; $dy = $y - (float) $j['y']; $dystans = hypot($dx, $dy);
-        if ($dystans < 0.01 && $wariant === null) blad('Jednostka „' . $j['nazwa'] . '” już jest w punkcie docelowym.');
-        if ($dystans < 0.01) blad('Jednostka „' . $j['nazwa'] . '” już jest w tym układzie. Zmień orbitę dolotem.');
+        if ($dystans < STREFA_UKLADU_PC) blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Do planet i księżyców układu leć podświetlnie, orbitę zmień dolotem.');
+        if ($k = floty_trasa_kolizja((float) $j['x'], (float) $j['y'], $x, $y)) {
+            blad('Komputer nawigacyjny odrzuca trasę: skok jednostki „' . $j['nazwa'] . '” przecina studnię grawitacyjną ' . $k . '. Wybierz inny cel albo skacz etapami.');
+        }
         $stanReaktora = max(0, min(100, (int) $j['sprawnosc_reaktora'])) / 100;
         $stanNapedu = max(0, min(100, (int) $j['sprawnosc_hipernapedu'])) / 100;
         $mocWzgl = ((float) $j['moc_reaktora'] * $stanReaktora) / max(0.01, (float) $j['moc_hipernapedu']);
@@ -976,7 +1034,7 @@ function floty_rozkaz(string $login, array $w): array
         // Wylot z układu przerywa dolot.
         $db->prepare('UPDATE mapa_obiekty SET podlot_start=NULL, podlot_cel=NULL, podlot_od_utc=NULL, podlot_do_utc=NULL WHERE id IN (' . implode(',', array_fill(0, count($wyliczone), '?')) . ')')
             ->execute(array_column($wyliczone, 'id'));
-        foreach ($wyliczone as $j) $q->execute([$rozkazId,$j['id'],$j['x0'],$j['y0'],$j['x1'],$j['y1'],$celObiekt ? ($cel['planeta_id'] ?: null) : null,$j['kat'],$j['moc'],$j['paliwo'],czas_utc($j['eta'])]);
+        foreach ($wyliczone as $j) $q->execute([$rozkazId,$j['id'],$j['x0'],$j['y0'],$j['x1'],$j['y1'],$celPlanetaId ?: null,$j['kat'],$j['moc'],$j['paliwo'],czas_utc($j['eta'])]);
         $db->commit();
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
@@ -1288,7 +1346,7 @@ function obsluz_floty(string $akcja, bool $post): void
                     $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$rid]);
                     $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany',zakonczono_utc=UTC_TIMESTAMP(),opis=CONCAT(COALESCE(opis,''),' | Przerwano teleportem MG.') WHERE id=?")->execute([$rid]);
                 }
-                $q=$db->prepare('UPDATE mapa_obiekty SET x=?,y=?,planeta_id=(SELECT id FROM mapa_planety WHERE ABS(x-?)<2 AND ABS(y-?)<2 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1) WHERE id IN (' . $marks . ')');
+                $q=$db->prepare('UPDATE mapa_obiekty SET x=?,y=?,planeta_id=(SELECT id FROM mapa_planety WHERE ABS(x-?)<0.05 AND ABS(y-?)<0.05 ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1) WHERE id IN (' . $marks . ')');
                 $q->execute([$x,$y,$x,$y,$x,$y,...$ids]);
                 $reason=mb_substr(trim((string) ($w['powod'] ?? '')),0,500);
                 $q=$db->prepare('INSERT INTO mapa_teleporty_mg (obiekt_id,autor_login,x,y,powod) VALUES (?,?,?,?,?)');

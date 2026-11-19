@@ -39,8 +39,10 @@ function scena_planeta_przy(float $x, float $y): ?array
     $gry = tabela_sql_dostepna('planety_gry');
     $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa' . ($gry ? ', g.typ_planety' : '') . ' FROM mapa_planety p'
         . ($gry ? ' LEFT JOIN planety_gry g ON g.planeta_id=p.id' : '')
-        . ' WHERE ABS(p.x-?) < 2 AND ABS(p.y-?) < 2 ORDER BY POW(p.x-?,2)+POW(p.y-?,2), p.id LIMIT 1');
-    $q->execute([$x, $y, $x, $y]);
+        . ' WHERE ABS(p.x-?) < ? AND ABS(p.y-?) < ? ORDER BY POW(p.x-?,2)+POW(p.y-?,2), p.id LIMIT 1');
+    // Planeta za oknem tylko w strefie grawitacyjnej jej układu.
+    $s = defined('STREFA_UKLADU_PC') ? STREFA_UKLADU_PC : 0.05;
+    $q->execute([$x, $s, $y, $s, $x, $y]);
     $p = $q->fetch(PDO::FETCH_ASSOC);
     if (!$p || !mapa_planeta_widoczna((int) $p['id'])) return null;
     return ['nazwa' => (string) $p['nazwa'], 'typ' => (string) (($p['typ_planety'] ?? '') ?: 'skalista')];

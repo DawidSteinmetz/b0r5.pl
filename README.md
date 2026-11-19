@@ -228,6 +228,19 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - Pulpit: kafelek stanu (4 paski) jest zawsze kwadratowy; odliczanie etapu (nazwa, czas, pasek
   postępu) ma osobny kafelek obok i znika, gdy nic nie trwa.
 
+## Strefy grawitacyjne układów
+
+- `STREFA_UKLADU_PC` (0,05 pc, `api/floty.php`; ta sama wartość w mapie i scenie): w tym promieniu od planety
+  jednostka jest w jej układzie. Zastępuje dawne 2 pc (wyskok 1,9 pc od układu kończył się „na orbicie”).
+- Skok: z własnego układu odmowa (do planet i księżyców układu leci się podświetlnie); cel w strefie układu →
+  skok do tego układu; trasa przez studnię trzeciego układu → odmowa z nazwą układu (`floty_trasa_kolizja`).
+  Automat celujący w układ: wyjście z rozrzutem do 2 pc (`TOLERANCJA_AUTOMATU_PC`) → w układzie; rozrzut
+  w studnię innego układu → na jego krawędzi; poza strefami → pusta przestrzeń.
+- Lot podświetlny: punkt w strefie układu → lot do tego układu (nigdy w głąb studni ani w słońce); trasa przez
+  studnię innego układu → odmowa. Jednostka przypisana do planety stoi zawsze na współrzędnych układu.
+- Mapa: pusty klik w obrębie układu (także w słońce w widoku układu) otwiera kartę planety; skok do układu
+  w karcie planety tylko dla jednostek spoza niego (statek przy księżycu leci podświetlnie).
+
 ## Lot podświetlny, punkt na mapie i pokład (migracja 028)
 
 - **Lot podświetlny** (`mapa_flota_lot`, z `plan` tylko wyliczenie): zwykłe silniki, czas 1:1, MG może

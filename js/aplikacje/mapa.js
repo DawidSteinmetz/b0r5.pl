@@ -204,6 +204,20 @@ export default {
     // planeta na swojej orbicie (położenie z cyklu planety), księżyce i okręty wokół planety.
     // Układ jest schematyczny: rośnie płynnie z przybliżeniem (prawdziwe orbity to ułamki parseka).
     const PROG_UKLADU = 60;
+    // Strefa grawitacyjna układu (pc), jak STREFA_UKLADU_PC na serwerze: w niej jest się „w układzie”.
+    const STREFA_UKLADU_PC = 0.05;
+    // Planeta, w której układzie leży punkt mapy (przy widoku układu: cały narysowany układ).
+    function ukladWPunkcie(mx, my) {
+      // Promień układu na ekranie jak w ukladNaEkranie (orbita planety) z zapasem na księżyce.
+      const R = skala >= PROG_UKLADU ? Math.min(Math.min(szer, wys) * 0.42, (skala / PROG_UKLADU - 1) * 90) * 1.15 : 0;
+      const zasieg = Math.max(STREFA_UKLADU_PC, R / skala);
+      let naj = null, min = zasieg;
+      for (const p of P) {
+        const d = Math.hypot(p.x - mx, p.y - my);
+        if (d < min) { min = d; naj = p; }
+      }
+      return naj;
+    }
     const cykle = new Map(); // nazwa planety → cykl (api ?a=uklad) albo null w trakcie pobierania
     function cyklPlanety(p) {
       if (!cykle.has(p.nazwa)) {
@@ -906,13 +920,15 @@ export default {
               h('div.mapa-nawigacja-przyciski', ...doloty)));
           }
           // Skok w toku do tej planety: plan przylotu zostaje na widoku układu do przylotu.
-          const wDrodze = jednostki.find((j) => j.rozkaz_id && j.cel_x != null && Math.hypot(j.cel_x - p.x, j.cel_y - p.y) < 2);
+          const wDrodze = jednostki.find((j) => j.rozkaz_id && j.cel_x != null && Math.hypot(j.cel_x - p.x, j.cel_y - p.y) < STREFA_UKLADU_PC);
           if (wDrodze) {
             planSkoku = { planeta: p.nazwa, kierunek: Math.atan2(p.y - wDrodze.y, p.x - wDrodze.x) / RAD,
               wariant: wDrodze.wariant || 'daleka', reczny: !wDrodze.wariant, policzony: true, aktywny: true };
             odswiezUkladKarty?.();
           }
-          if (wUkladzie.length < jednostki.length && !wDrodze) {
+          // Jednostki spoza tego układu (po strefie, nie po nazwie: statek przy księżycu jest już w układzie).
+          const pozaUkladem = jednostki.filter((j) => !j.rozkaz_id && Math.hypot(Number(j.x) - p.x, Number(j.y) - p.y) >= STREFA_UKLADU_PC);
+          if (pozaUkladem.length && !wDrodze) {
             let wariant = 'bliska';
             const glowna = jednostki[0] || {};
             const kierunek = Math.atan2(p.y - Number(glowna.y || 0), p.x - Number(glowna.x || 0)) / RAD;
@@ -926,7 +942,8 @@ export default {
             const x = h('input', { type: 'number', step: '0.1', placeholder: 'X' });
             const y = h('input', { type: 'number', step: '0.1', placeholder: 'Y' });
             const wynik = h('p.maly-tekst');
-            const dane = () => (automat ? { flota_id: f.id, cel_planeta: p.nazwa, wariant } : { flota_id: f.id, x: Number(x.value), y: Number(y.value) });
+            const odbiorcy = pozaUkladem.map((j) => j.obiekt_id);
+            const dane = () => (automat ? { flota_id: f.id, jednostki: odbiorcy, cel_planeta: p.nazwa, wariant } : { flota_id: f.id, jednostki: odbiorcy, x: Number(x.value), y: Number(y.value) });
             const wykonaj = h('button.przycisk.glowny.mapa-nawigacja-wykonaj', { hidden: true, onclick: async () => {
               try {
                 const w = await api('mapa_flota_rozkaz', dane());
@@ -1251,7 +1268,9 @@ export default {
       if (wskazniki.size < 2) szczypanie = null;
       if (byl && !przesuniety && wskazniki.size === 0 && e.type === 'pointerup' && D) {
         const [mx, my] = naMape(e.offsetX, e.offsetY);
-        wybierz(trafienie(e.offsetX, e.offsetY) || (wybrane ? null : { punkt: { x: Math.round(mx * 10) / 10, y: Math.round(my * 10) / 10 } }));
+        // Pusty klik w obrębie układu (także w słońce w widoku układu) → karta planety, poza układami → karta punktu.
+        const uklad = ukladWPunkcie(mx, my);
+        wybierz(trafienie(e.offsetX, e.offsetY) || (wybrane ? null : uklad ? { planeta: uklad } : { punkt: { x: Math.round(mx * 10) / 10, y: Math.round(my * 10) / 10 } }));
       }
     };
     plotno.addEventListener('pointerup', pusc);

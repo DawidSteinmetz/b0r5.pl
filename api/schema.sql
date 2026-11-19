@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–028 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–031 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -6458,4 +6458,513 @@ UPDATE mapa_naped_jednostki n JOIN mapa_obiekty o ON o.id = n.obiekt_id SET n.pr
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v28-lot-podswietlny-poklad', 'Lot podświetlny (mapa_obiekty.lot_*), rola na pokładzie, prędkości podświetlne')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/029_lokacje_tatooine.sql
+-- =====================================================================
+
+-- Lokacje Tatooine (3 BBY): regiony, miasta i osady, infrastruktura miast, stanowiska portu Mos Eisley.
+-- Układ współrzędnych gry: +X wschód, +Y północ (km), (0,0) — środek zamieszkałego obszaru.
+-- Planeta wyszukiwana po nazwie. Nie zmienia struktury tabel ani istniejących rekordów.
+-- Import w phpMyAdmin: zakładka SQL albo Import; ponowny import niczego nie psuje.
+
+SET NAMES utf8mb4;
+
+SET @pl := (SELECT id FROM mapa_planety WHERE nazwa = 'Tatooine' LIMIT 1);
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+CREATE TEMPORARY TABLE tmp_import_lokacji (
+  poziom TINYINT UNSIGNED NOT NULL,
+  nazwa VARCHAR(200) NOT NULL PRIMARY KEY,
+  rodzic_nazwa VARCHAR(200) NULL,
+  typ ENUM('uklad','orbita','powierzchnia','lokacja','budynek','ladowisko') NOT NULL,
+  rodzaj ENUM('hangar','port','hotel','bankomat','sklep','kantyna','biuro','garaz','baza','magazyn','platforma','inne') NULL,
+  x_km DECIMAL(12,3) NOT NULL,
+  y_km DECIMAL(12,3) NOT NULL,
+  publiczna TINYINT(1) NOT NULL,
+  status ENUM('aktywna','zamknieta','zniszczona') NOT NULL,
+  opis TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO tmp_import_lokacji (poziom, nazwa, rodzic_nazwa, typ, rodzaj, x_km, y_km, publiczna, status, opis) VALUES
+(1,'Jundland Wastes',NULL,'powierzchnia','inne',-80.0,-180.0,0,'aktywna','Umowny region kartograficzny: skaliste pustkowia, kaniony i rozproszone gospodarstwa. Granice projektowe, nie administracyjne.'),
+(1,'Dune Sea',NULL,'powierzchnia','inne',360.0,-420.0,0,'aktywna','Rozległy obszar ruchomych wydm. Region kartograficzny obejmujący między innymi okolice pałacu Jabby i Wielkiego Dołu Carkoon.'),
+(1,'Mospic High Range',NULL,'powierzchnia','inne',640.0,520.0,0,'aktywna','Umowny region kartograficzny pasm i terenów wyżynnych związanych w materiałach rozszerzonych z osadami Mos Entha i Mos Taike.'),
+(1,'Great Mesra Plateau',NULL,'powierzchnia','inne',-140.0,100.0,0,'aktywna','Umowny region kartograficzny płaskowyżu i terenów otaczających Mos Eisley.'),
+(1,'Western Dune Sea',NULL,'powierzchnia','inne',-650.0,-520.0,0,'aktywna','Zachodnia część pustynnego obszaru Tatooine. Granice przyjęte na potrzeby mapy gry.'),
+(1,'Northern Dune Sea',NULL,'powierzchnia','inne',220.0,760.0,0,'aktywna','Północny obszar pustynny. Obozowiska i trasy ludów pustyni mają charakter ruchomy.'),
+(2,'Lars Homestead','Jundland Wastes','lokacja','inne',-55.0,-115.0,0,'aktywna','Gospodarstwo wilgoci rodziny Larsów. W 3 BBY funkcjonuje; zniszczenie następuje dopiero w 0 BBY. Położenie na mapie jest projektowe.'),
+(2,'Ben Kenobi''s Hut','Jundland Wastes','budynek','inne',-115.0,-245.0,0,'aktywna','Pustelnia Obi-Wana Kenobiego. Dokładne współrzędne nie są kanonicznie określone; pozycja projektowa.'),
+(2,'Beggar''s Canyon','Jundland Wastes','lokacja','inne',-15.0,-315.0,0,'aktywna','Charakterystyczny kanion Tatooine, znany z kanonu. Współrzędne projektowe.'),
+(2,'Tusken Raider Territories – Jundland','Jundland Wastes','lokacja','inne',-180.0,-80.0,0,'aktywna','Umowny obszar występowania grup Tuskenów, nie stała osada ani wyznaczona granica plemienna.'),
+(2,'Fort Tusken','Jundland Wastes','lokacja','inne',-260.0,-210.0,0,'aktywna','Lokacja z materiałów Legends. Uwzględniona jako rozszerzenie, nie jako potwierdzona instalacja kanoniczna z 3 BBY.'),
+(2,'Jabba''s Palace','Dune Sea','budynek','baza',410.0,-390.0,0,'aktywna','Pałac i główna siedziba Jabby Desilijica Tiure. Istnieje w 3 BBY; szczegółowa pozycja na mapie jest projektowa.'),
+(2,'Great Pit of Carkoon','Dune Sea','lokacja','inne',435.0,-445.0,0,'aktywna','Wielki Dół Carkoon, siedlisko sarlacca. Położenie względem pałacu przyjęte umownie dla mapy.'),
+(2,'Jawa Territories – Dune Sea','Dune Sea','lokacja','inne',300.0,-560.0,0,'aktywna','Obszar umowny dla przemieszczających się klanów Jawów i ich sandcrawlerów; nie jest stałą osadą.'),
+(2,'Tusken Raider Territories – Dune Sea','Dune Sea','lokacja','inne',520.0,-600.0,0,'aktywna','Umowny obszar aktywności Tuskenów na pustyni. Nie oznacza stałego obozu.'),
+(2,'Krayt Dragon Territories','Dune Sea','lokacja','inne',620.0,-300.0,0,'aktywna','Umowny obszar występowania smoków kraytów. Granice i współrzędne są projektowe.'),
+(2,'Mos Entha','Mospic High Range','lokacja','inne',600.0,520.0,1,'aktywna','Osada Tatooine uwzględniona na podstawie materiałów rozszerzonych. Jej szczegółowa infrastruktura w 3 BBY wymaga ostrożnego traktowania.'),
+(2,'Mos Taike','Mospic High Range','lokacja','inne',606.0,514.0,1,'aktywna','Niewielka osada. Współrzędne zaprojektowano tak, by leżała około 8 km na południowy wschód od Mos Entha.'),
+(2,'Mos Espa','Mospic High Range','lokacja','inne',620.0,500.0,1,'aktywna','Miasto handlowe i portowe, znane z Wielkiej Areny Podracerów. Pozycja zachowuje umowną relację przestrzenną z Mos Entha i Mos Taike.'),
+(2,'Mos Eisley','Great Mesra Plateau','lokacja','inne',-140.0,100.0,1,'aktywna','Duże miasto portowe i ośrodek handlowo-przemytniczy. Ważny punkt komunikacyjny Tatooine.'),
+(2,'Anchorhead','Great Mesra Plateau','lokacja','inne',-95.0,45.0,1,'aktywna','Osada w pobliżu Mos Eisley, znana między innymi z Tosche Station. Współrzędne projektowe.'),
+(2,'Bestine','Western Dune Sea','lokacja','inne',-620.0,-470.0,1,'aktywna','Miasto Tatooine. Imperialna obecność i szczegóły administracyjne są w dużej mierze rozwijane w Legends; nie zakłada się tu konkretnej wielkości garnizonu.'),
+(2,'Mos Elrey','Western Dune Sea','lokacja','inne',-720.0,-590.0,1,'aktywna','Osada uwzględniona w rozszerzonym katalogu lokacji Tatooine. Współrzędne projektowe.'),
+(2,'Wayfar','Western Dune Sea','lokacja','inne',-820.0,-650.0,1,'aktywna','Osada z materiałów Legends. Nie jest przedstawiana jako kanoniczna.'),
+(2,'Arnthout','Western Dune Sea','lokacja','inne',-570.0,-650.0,1,'aktywna','Osada z materiałów Legends, uwzględniona jako punkt rozszerzonej mapy.'),
+(2,'Motesta','Western Dune Sea','lokacja','inne',-500.0,-700.0,1,'aktywna','Osada z materiałów Legends, uwzględniona jako punkt rozszerzonej mapy.'),
+(2,'Mos Ila','Western Dune Sea','lokacja','inne',-880.0,-500.0,1,'aktywna','Osada z materiałów Legends. Współrzędne projektowe.'),
+(2,'Mos Gamos','Northern Dune Sea','lokacja','inne',260.0,820.0,1,'aktywna','Osada z materiałów Legends. Współrzędne projektowe.'),
+(2,'Mos Shuuta','Northern Dune Sea','lokacja','inne',120.0,680.0,1,'aktywna','Osada znana z materiałów Legends i gier. Współrzędne projektowe.'),
+(3,'Mos Eisley Spaceport','Mos Eisley','ladowisko','port',-132.0,94.0,1,'aktywna','Port kosmiczny Mos Eisley. Lokalizacja centralna względem miejskiego skupiska infrastruktury.'),
+(3,'Chalmun''s Cantina','Mos Eisley','budynek','kantyna',-145.0,105.0,1,'aktywna','Kantyna Chalmunna, znany lokal pilotów, przemytników i podróżnych.'),
+(3,'Mos Eisley Commercial District','Mos Eisley','lokacja','inne',-150.0,115.0,1,'aktywna','Projektowa nazwa obszaru handlowego; grupuje sklepy i usługi, nie jest nazwą kanonicznej dzielnicy.'),
+(3,'Mos Eisley Residential District','Mos Eisley','lokacja','inne',-125.0,125.0,0,'aktywna','Projektowy węzeł zabudowy mieszkalnej Mos Eisley.'),
+(3,'Mos Eisley Underworld District','Mos Eisley','lokacja','inne',-160.0,85.0,0,'aktywna','Projektowy obszar punktów kontaktowych i działalności przestępczej; bez przypisywania konkretnego syndykatu do całej dzielnicy.'),
+(3,'Mos Espa Spaceport','Mos Espa','ladowisko','port',626.0,497.0,1,'aktywna','Port kosmiczny Mos Espa; szczegółowy układ stanowisk jest projektowy.'),
+(3,'Mos Espa Grand Arena','Mos Espa','budynek','inne',615.0,505.0,1,'aktywna','Wielka Arena Podracerów, znany obiekt miasta.'),
+(3,'Mos Espa Commercial District','Mos Espa','lokacja','inne',622.0,508.0,1,'aktywna','Projektowy węzeł handlowy grupujący sklepy i punkty usługowe.'),
+(3,'Mos Espa Hutt District','Mos Espa','lokacja','inne',632.0,510.0,0,'aktywna','Projektowy węzeł obiektów pozostających pod wpływem lokalnych organizacji Huttów.'),
+(3,'Mos Espa Residential District','Mos Espa','lokacja','inne',610.0,492.0,0,'aktywna','Projektowy węzeł zabudowy mieszkalnej.'),
+(3,'Tosche Station','Anchorhead','budynek','inne',-92.0,42.0,1,'aktywna','Elektrownia i warsztat maszynowy w okolicy Anchorhead.'),
+(3,'Anchorhead General Store','Anchorhead','budynek','sklep',-99.0,48.0,1,'aktywna','Projektowa nazwa sklepu wielobranżowego; nie jest deklaracją kanonicznej nazwy placówki.'),
+(3,'Anchorhead Cantina','Anchorhead','budynek','kantyna',-88.0,50.0,1,'aktywna','Projektowy lokal usługowy dla mieszkańców, przewoźników i podróżnych.'),
+(3,'Anchorhead Repair Workshop','Anchorhead','budynek','garaz',-103.0,40.0,1,'aktywna','Projektowy warsztat naprawczy.'),
+(3,'Anchorhead Warehouse','Anchorhead','budynek','magazyn',-85.0,38.0,0,'aktywna','Projektowy skład lokalnych towarów i części.'),
+(3,'Bestine Administrative Center','Bestine','budynek','biuro',-615.0,-465.0,1,'aktywna','Projektowy obiekt administracji miejskiej.'),
+(3,'Bestine Imperial Post','Bestine','budynek','baza',-630.0,-475.0,0,'aktywna','Projektowy posterunek imperialny. Jego obecność w tej konkretnej postaci jest założeniem rozgrywki, nie potwierdzonym kanonicznym obiektem.'),
+(3,'Bestine Commercial District','Bestine','lokacja','inne',-605.0,-480.0,1,'aktywna','Projektowy węzeł handlowy miasta.'),
+(3,'Bestine Warehouse','Bestine','budynek','magazyn',-625.0,-455.0,0,'aktywna','Projektowy magazyn miejski.'),
+(3,'Jabba Palace Courtyard','Jabba''s Palace','lokacja','inne',415.0,-385.0,0,'aktywna','Dziedziniec pałacu; podlokacja projektowa w ramach znanego obiektu.'),
+(3,'Jabba Palace Guard Quarters','Jabba''s Palace','budynek','baza',405.0,-395.0,0,'aktywna','Pomieszczenia straży; podlokacja projektowa.'),
+(3,'Jabba Palace Storage','Jabba''s Palace','budynek','magazyn',420.0,-400.0,0,'aktywna','Zaplecze magazynowe pałacu; podlokacja projektowa.'),
+(3,'Lars Moisture Farm','Lars Homestead','budynek','inne',-52.0,-112.0,0,'aktywna','Instalacje farmy wilgoci; nazwa i punkt reprezentujący zabudowania gospodarstwa, współrzędne projektowe.'),
+(4,'Docking Bay 94','Mos Eisley Spaceport','ladowisko','hangar',-130.0,92.0,1,'aktywna','Stanowisko dokujące znane z filmu Nowa nadzieja.'),
+(4,'Mos Eisley Port Control','Mos Eisley Spaceport','budynek','biuro',-134.0,96.0,1,'aktywna','Projektowy obiekt kontroli i obsługi ruchu portowego.'),
+(4,'Mos Eisley Port Workshop','Mos Eisley Spaceport','budynek','garaz',-128.0,89.0,1,'aktywna','Projektowy warsztat obsługi technicznej statków i sprzętu portowego.'),
+(4,'Mos Eisley Port Warehouse','Mos Eisley Spaceport','budynek','magazyn',-136.0,88.0,0,'aktywna','Projektowy magazyn portowy.');
+
+-- Import poziom po poziomie: rodzic odnajdywany po nazwie na tej planecie. Istniejące rekordy
+-- (ta sama planeta i nazwa) zostają bez zmian, więc ponowny import tylko dokłada brakujące.
+START TRANSACTION;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 1 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 2 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 3 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 4 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+COMMIT;
+
+-- Kontrola: lokacje z paczki w bazie, brakujące (np. brak planety albo rodzica) i osierocone.
+SELECT COUNT(*) AS w_paczce,
+  SUM(l.id IS NOT NULL) AS w_bazie,
+  SUM(l.id IS NULL) AS brakujace,
+  SUM(t.rodzic_nazwa IS NOT NULL AND l.id IS NOT NULL AND l.rodzic_id IS NULL) AS bez_rodzica
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje l ON l.planeta_id = @pl AND l.nazwa = t.nazwa;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v29-lokacje-tatooine', 'Lokacje: Tatooine (56)')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/030_lokacje_nar_shaddaa.sql
+-- =====================================================================
+
+-- Lokacje Nar Shaddaa: aglomeracja miejska (umowny korzeń), sektory, dzielnice, kompleksy, budynki
+-- i punkty wewnętrzne; trzy lądowiska (przemytnicze P-17 i serwisowe D-04 są niepubliczne — widzą je
+-- tylko znający je piloci i MG). Opis zaczyna się od statusu lore: [LORE: KANON / LEGENDS / AUTORSKI].
+-- Sześć lokacji portu już jest w bazie (port, terminal, kantyna, targ, hotel, biuro) — tu pominięte.
+-- Wymaga migracji 026 (planeta Nar Shaddaa). Import w phpMyAdmin; ponowny import niczego nie psuje.
+
+SET NAMES utf8mb4;
+
+SET @pl := (SELECT id FROM mapa_planety WHERE nazwa = 'Nar Shaddaa' LIMIT 1);
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+CREATE TEMPORARY TABLE tmp_import_lokacji (
+  poziom TINYINT UNSIGNED NOT NULL,
+  nazwa VARCHAR(200) NOT NULL PRIMARY KEY,
+  rodzic_nazwa VARCHAR(200) NULL,
+  typ ENUM('uklad','orbita','powierzchnia','lokacja','budynek','ladowisko') NOT NULL,
+  rodzaj ENUM('hangar','port','hotel','bankomat','sklep','kantyna','biuro','garaz','baza','magazyn','platforma','inne') NULL,
+  x_km DECIMAL(12,3) NOT NULL,
+  y_km DECIMAL(12,3) NOT NULL,
+  publiczna TINYINT(1) NOT NULL,
+  status ENUM('aktywna','zamknieta','zniszczona') NOT NULL,
+  opis TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO tmp_import_lokacji (poziom, nazwa, rodzic_nazwa, typ, rodzaj, x_km, y_km, publiczna, status, opis) VALUES
+(1,'Nar Shaddaa — aglomeracja miejska',NULL,'powierzchnia','inne',0.0,0.0,1,'aktywna','[LORE: AUTORSKI] Umowny korzeń kartograficzny HOLOLINK dla nowo dodawanej geografii miejskiej. Nie jest osobnym obiektem lore; obejmuje projektowane sektory i dzielnice. Wysokość zabudowy nie jest kodowana we współrzędnych.'),
+(1,'Sektor Portowy','Port kosmiczny Nar Shaddaa','lokacja','inne',0.0,0.0,1,'aktywna','[LORE: AUTORSKI] Projektowa strefa transportu orbitalnego i przeładunku, powiązana przestrzennie z istniejącym w bazie Portem kosmicznym Nar Shaddaa.'),
+(2,'Corellian Sector','Nar Shaddaa — aglomeracja miejska','lokacja','inne',-900.0,450.0,1,'aktywna','[LORE: KANON] Dzielnica o silnej społeczności corelliańskiej; w 3 BBY traktowana jako istniejący obszar miasta, choć dokładny zasięg i granice nie są źródłowo ustalone.'),
+(2,'Hutta Town','Nar Shaddaa — aglomeracja miejska','lokacja','inne',-350.0,1250.0,1,'aktywna','[LORE: KANON] Nazwana miejska jednostka Nar Shaddaa; projektowo przyjęta jako reprezentacyjny obszar administracji i interesów Huttów. Szczegółowe granice są umowne.'),
+(2,'Sektor Portowy — Doki Główne','Sektor Portowy','lokacja','inne',-4.0,3.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Portowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(2,'Sektor Portowy — Nabrzeże Serwisowe','Sektor Portowy','lokacja','inne',4.0,-3.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Portowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(2,'Sektor Handlowy','Nar Shaddaa — aglomeracja miejska','lokacja','inne',850.0,700.0,1,'aktywna','[LORE: AUTORSKI] Gęsta strefa handlu legalnego i nielegalnego, targowisk, kantorów oraz pośredników.'),
+(2,'Sektor Rozrywkowy','Nar Shaddaa — aglomeracja miejska','lokacja','inne',1450.0,150.0,1,'aktywna','[LORE: AUTORSKI] Kasyna, hotele, lokale, areny i usługi dla zamożnych klientów oraz przestępczego półświatka.'),
+(2,'Sektor Przemysłowy','Nar Shaddaa — aglomeracja miejska','lokacja','inne',850.0,-900.0,1,'aktywna','[LORE: AUTORSKI] Warsztaty, rafinerie, odzysk złomu, produkcja części i magazyny techniczne.'),
+(2,'Sektor Dolnych Poziomów','Nar Shaddaa — aglomeracja miejska','lokacja','inne',-650.0,-1050.0,1,'aktywna','[LORE: AUTORSKI] Zdegradowane poziomy mieszkalne, slumsy, nieformalny handel i infrastruktura komunalna.'),
+(2,'Sektor Przemytniczy','Nar Shaddaa — aglomeracja miejska','lokacja','inne',-1500.0,-250.0,1,'aktywna','[LORE: AUTORSKI] Kryjówki, składy kontrabandy, punkty kontaktowe i niejawne przeładunki.'),
+(2,'Sektor Kontroli i Bezpieczeństwa','Nar Shaddaa — aglomeracja miejska','lokacja','inne',200.0,1700.0,1,'aktywna','[LORE: AUTORSKI] Rozproszone punkty ochrony portowej, administracji lokalnej i ograniczonej obecności imperialnej.'),
+(3,'Corellian Sector — Górne Platformy','Corellian Sector','lokacja','inne',-904.0,453.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Corellian Sector. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Corellian Sector — Dolne Ulice','Corellian Sector','lokacja','inne',-896.0,447.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Corellian Sector. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Hutta Town — Plac Huttański','Hutta Town','lokacja','inne',-354.0,1253.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Hutta Town. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Hutta Town — Rezydencje Kajidiców','Hutta Town','lokacja','inne',-346.0,1247.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Hutta Town. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Kompleks Doku Głównego','Sektor Portowy — Doki Główne','lokacja','inne',-4.8,3.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Doki Główne; skupia obiekty usługowe i zaplecze operacyjne.'),
+(3,'Kompleks Obsługi Statków','Sektor Portowy — Nabrzeże Serwisowe','lokacja','inne',4.8,-3.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Nabrzeże Serwisowe; skupia obiekty usługowe i zaplecze operacyjne.'),
+(3,'Sektor Handlowy — Targowiska Centralne','Sektor Handlowy','lokacja','inne',846.0,703.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Handlowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Handlowy — Ulica Pośredników','Sektor Handlowy','lokacja','inne',854.0,697.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Handlowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Rozrywkowy — Aleja Kasyn','Sektor Rozrywkowy','lokacja','inne',1446.0,153.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Rozrywkowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Rozrywkowy — Kwartał Kantyn','Sektor Rozrywkowy','lokacja','inne',1454.0,147.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Rozrywkowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Przemysłowy — Strefa Rafineryjna','Sektor Przemysłowy','lokacja','inne',846.0,-897.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Przemysłowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Przemysłowy — Strefa Odzysku','Sektor Przemysłowy','lokacja','inne',854.0,-903.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Przemysłowy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Dolnych Poziomów — Osiedle Szczelinowe','Sektor Dolnych Poziomów','lokacja','inne',-654.0,-1047.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Dolnych Poziomów. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Dolnych Poziomów — Kanały Techniczne','Sektor Dolnych Poziomów','lokacja','inne',-646.0,-1053.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Dolnych Poziomów. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Przemytniczy — Korytarz Kontrabandy','Sektor Przemytniczy','lokacja','inne',-1504.0,-247.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Przemytniczy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Przemytniczy — Zaułki Łowców','Sektor Przemytniczy','lokacja','inne',-1496.0,-253.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Przemytniczy. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Kontroli i Bezpieczeństwa — Strefa Odpraw','Sektor Kontroli i Bezpieczeństwa','lokacja','inne',196.0,1703.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Kontroli i Bezpieczeństwa. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(3,'Sektor Kontroli i Bezpieczeństwa — Kwartał Obserwacyjny','Sektor Kontroli i Bezpieczeństwa','lokacja','inne',204.0,1697.0,1,'aktywna','[LORE: AUTORSKI] Dzielnica funkcjonalna sektora Sektor Kontroli i Bezpieczeństwa. Granice i nazwa są umownym podziałem kartograficznym HOLOLINK.'),
+(4,'Kompleks Handlowy Corellian','Corellian Sector — Górne Platformy','lokacja','inne',-904.8,453.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Górne Platformy; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Spacebarn Shug Ninx','Corellian Sector — Dolne Ulice','lokacja','inne',-895.2,446.4,0,'aktywna','[LORE: LEGENDS] Spacebarn, warsztat i zaplecze remontowe Shug Ninx, znane z wydarzeń 4 BBY. W 3 BBY przyjęto ciągłość działania; stan po bitwie wymaga traktowania jako założenie projektowe.'),
+(4,'Kompleks Administracyjny Huttów','Hutta Town — Plac Huttański','lokacja','inne',-354.8,1253.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Plac Huttański; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Rezydencjonalny','Hutta Town — Rezydencje Kajidiców','lokacja','inne',-345.2,1246.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Rezydencje Kajidiców; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Hangar Tranzytowy 01','Kompleks Doku Głównego','budynek','hangar',-4.92,3.68,1,'aktywna','[LORE: AUTORSKI] Hangar Tranzytowy 01. Obiekt operacyjny kompleksu Kompleks Doku Głównego; przeznaczenie zgodne z kategorią hangar.'),
+(4,'Magazyn Przeładunkowy A','Kompleks Doku Głównego','budynek','magazyn',-4.68,3.52,1,'aktywna','[LORE: AUTORSKI] Magazyn Przeładunkowy A. Obiekt uzupełniający kompleksu Kompleks Doku Głównego; przeznaczenie zgodne z kategorią magazyn.'),
+(4,'Warsztat Kadłubowy „Nitownia”','Kompleks Obsługi Statków','budynek','garaz',4.68,-3.52,1,'aktywna','[LORE: AUTORSKI] Warsztat Kadłubowy „Nitownia”. Obiekt operacyjny kompleksu Kompleks Obsługi Statków; przeznaczenie zgodne z kategorią garaz.'),
+(4,'Stacja Paliw i Uzupełnień','Kompleks Obsługi Statków','budynek','inne',4.92,-3.68,1,'aktywna','[LORE: AUTORSKI] Stacja Paliw i Uzupełnień. Obiekt uzupełniający kompleksu Kompleks Obsługi Statków; przeznaczenie zgodne z kategorią inne.'),
+(4,'Kompleks Wielkiego Targu','Sektor Handlowy — Targowiska Centralne','lokacja','inne',845.2,703.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Targowiska Centralne; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Kantorów','Sektor Handlowy — Ulica Pośredników','lokacja','inne',854.8,696.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Ulica Pośredników; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Kasynowy „Neonowy Łuk”','Sektor Rozrywkowy — Aleja Kasyn','lokacja','inne',1445.2,153.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Aleja Kasyn; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Rozrywkowy „Czerwony Szyld”','Sektor Rozrywkowy — Kwartał Kantyn','lokacja','inne',1454.8,146.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Kwartał Kantyn; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Przetwórstwa Przyprawy','Sektor Przemysłowy — Strefa Rafineryjna','lokacja','inne',845.2,-896.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Strefa Rafineryjna; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Recyklingu','Sektor Przemysłowy — Strefa Odzysku','lokacja','inne',854.8,-903.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Strefa Odzysku; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Mieszkalny „Szczelina”','Sektor Dolnych Poziomów — Osiedle Szczelinowe','lokacja','inne',-654.8,-1046.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Osiedle Szczelinowe; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Infrastruktury Podziemnej','Sektor Dolnych Poziomów — Kanały Techniczne','lokacja','inne',-645.2,-1053.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Kanały Techniczne; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Składów Cieni','Sektor Przemytniczy — Korytarz Kontrabandy','lokacja','inne',-1504.8,-246.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Korytarz Kontrabandy; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Pośredników Nagród','Sektor Przemytniczy — Zaułki Łowców','lokacja','inne',-1495.2,-253.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Zaułki Łowców; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Kontroli Portowej','Sektor Kontroli i Bezpieczeństwa — Strefa Odpraw','lokacja','inne',195.2,1703.6,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Strefa Odpraw; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Kompleks Łącznikowy','Sektor Kontroli i Bezpieczeństwa — Kwartał Obserwacyjny','lokacja','inne',204.8,1696.4,0,'aktywna','[LORE: AUTORSKI] Kompleks funkcjonalny w dzielnicy Kwartał Obserwacyjny; skupia obiekty usługowe i zaplecze operacyjne.'),
+(4,'Lądowisko Serwisowe D-04','Kompleks Obsługi Statków','ladowisko','platforma',4.92,-3.68,0,'aktywna','[LORE: AUTORSKI] Platforma techniczna dla holowników, barek i jednostek serwisowych.'),
+(5,'Dom Maklerski Trójkąta Corelliańskiego','Kompleks Handlowy Corellian','budynek','biuro',-904.92,453.68,1,'aktywna','[LORE: AUTORSKI] Dom Maklerski Trójkąta Corelliańskiego. Obiekt operacyjny kompleksu Kompleks Handlowy Corellian; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Skład Części Corelliańskich','Kompleks Handlowy Corellian','budynek','magazyn',-904.68,453.52,1,'aktywna','[LORE: AUTORSKI] Skład Części Corelliańskich. Obiekt uzupełniający kompleksu Kompleks Handlowy Corellian; przeznaczenie zgodne z kategorią magazyn.'),
+(5,'Warsztat Statków Spacebarn','Spacebarn Shug Ninx','budynek','garaz',-895.32,446.48,1,'aktywna','[LORE: AUTORSKI] Warsztat Statków Spacebarn. Obiekt operacyjny kompleksu Spacebarn Shug Ninx; przeznaczenie zgodne z kategorią garaz.'),
+(5,'Hangar Spacebarn','Spacebarn Shug Ninx','budynek','hangar',-895.08,446.32,1,'aktywna','[LORE: AUTORSKI] Hangar Spacebarn. Obiekt uzupełniający kompleksu Spacebarn Shug Ninx; przeznaczenie zgodne z kategorią hangar.'),
+(5,'Biuro Danin Huttańskich','Kompleks Administracyjny Huttów','budynek','biuro',-354.92,1253.68,1,'aktywna','[LORE: AUTORSKI] Biuro Danin Huttańskich. Obiekt operacyjny kompleksu Kompleks Administracyjny Huttów; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Dom Audiencji Kajidicu','Kompleks Administracyjny Huttów','budynek','biuro',-354.68,1253.52,1,'aktywna','[LORE: AUTORSKI] Dom Audiencji Kajidicu. Obiekt uzupełniający kompleksu Kompleks Administracyjny Huttów; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Rezydencja Klanu Besadii','Kompleks Rezydencjonalny','budynek','baza',-345.32,1246.48,1,'aktywna','[LORE: AUTORSKI] Rezydencja Klanu Besadii. Obiekt operacyjny kompleksu Kompleks Rezydencjonalny; przeznaczenie zgodne z kategorią baza.'),
+(5,'Rezydencja Klanu Desilijic','Kompleks Rezydencjonalny','budynek','baza',-345.08,1246.32,1,'aktywna','[LORE: AUTORSKI] Rezydencja Klanu Desilijic. Obiekt uzupełniający kompleksu Kompleks Rezydencjonalny; przeznaczenie zgodne z kategorią baza.'),
+(5,'Stanowisko Kontroli Ładunków','Hangar Tranzytowy 01','lokacja','inne',-4.92,3.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Hangar Tranzytowy 01; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(5,'Punkt Holowniczy','Stacja Paliw i Uzupełnień','lokacja','inne',4.68,-3.52,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Stacja Paliw i Uzupełnień; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(5,'Hala Towarowa „Siedem Bram”','Kompleks Wielkiego Targu','budynek','sklep',845.08,703.68,1,'aktywna','[LORE: AUTORSKI] Hala Towarowa „Siedem Bram”. Obiekt operacyjny kompleksu Kompleks Wielkiego Targu; przeznaczenie zgodne z kategorią sklep.'),
+(5,'Giełda Towarów Huttańskich','Kompleks Wielkiego Targu','budynek','biuro',845.32,703.52,1,'aktywna','[LORE: AUTORSKI] Giełda Towarów Huttańskich. Obiekt uzupełniający kompleksu Kompleks Wielkiego Targu; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Kantor Kredytowy „Złoty Ząb”','Kompleks Kantorów','budynek','biuro',854.68,696.48,1,'aktywna','[LORE: AUTORSKI] Kantor Kredytowy „Złoty Ząb”. Obiekt operacyjny kompleksu Kompleks Kantorów; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Sklep Elektroniki Używanej','Kompleks Kantorów','budynek','sklep',854.92,696.32,1,'aktywna','[LORE: AUTORSKI] Sklep Elektroniki Używanej. Obiekt uzupełniający kompleksu Kompleks Kantorów; przeznaczenie zgodne z kategorią sklep.'),
+(5,'Kasyno „Ostatnia Szansa”','Kompleks Kasynowy „Neonowy Łuk”','budynek','inne',1445.08,153.68,1,'aktywna','[LORE: AUTORSKI] Kasyno „Ostatnia Szansa”. Obiekt operacyjny kompleksu Kompleks Kasynowy „Neonowy Łuk”; przeznaczenie zgodne z kategorią inne.'),
+(5,'Hotel „Nocny Księżyc”','Kompleks Kasynowy „Neonowy Łuk”','budynek','hotel',1445.32,153.52,1,'aktywna','[LORE: AUTORSKI] Hotel „Nocny Księżyc”. Obiekt uzupełniający kompleksu Kompleks Kasynowy „Neonowy Łuk”; przeznaczenie zgodne z kategorią hotel.'),
+(5,'Kantyna „Pęknięty Blaster”','Kompleks Rozrywkowy „Czerwony Szyld”','budynek','kantyna',1454.68,146.48,1,'aktywna','[LORE: AUTORSKI] Kantyna „Pęknięty Blaster”. Obiekt operacyjny kompleksu Kompleks Rozrywkowy „Czerwony Szyld”; przeznaczenie zgodne z kategorią kantyna.'),
+(5,'Klub Muzyczny „Głośny Hutt”','Kompleks Rozrywkowy „Czerwony Szyld”','budynek','inne',1454.92,146.32,1,'aktywna','[LORE: AUTORSKI] Klub Muzyczny „Głośny Hutt”. Obiekt uzupełniający kompleksu Kompleks Rozrywkowy „Czerwony Szyld”; przeznaczenie zgodne z kategorią inne.'),
+(5,'Rafineria Przyprawy „S-9”','Kompleks Przetwórstwa Przyprawy','budynek','inne',845.08,-896.32,1,'aktywna','[LORE: AUTORSKI] Rafineria Przyprawy „S-9”. Obiekt operacyjny kompleksu Kompleks Przetwórstwa Przyprawy; przeznaczenie zgodne z kategorią inne.'),
+(5,'Magazyn Substancji Kontrolowanych','Kompleks Przetwórstwa Przyprawy','budynek','magazyn',845.32,-896.48,1,'aktywna','[LORE: AUTORSKI] Magazyn Substancji Kontrolowanych. Obiekt uzupełniający kompleksu Kompleks Przetwórstwa Przyprawy; przeznaczenie zgodne z kategorią magazyn.'),
+(5,'Zakład Odzysku Metali „Złom-7”','Kompleks Recyklingu','budynek','inne',854.68,-903.52,1,'aktywna','[LORE: AUTORSKI] Zakład Odzysku Metali „Złom-7”. Obiekt operacyjny kompleksu Kompleks Recyklingu; przeznaczenie zgodne z kategorią inne.'),
+(5,'Warsztat Droidów „Drugi Obieg”','Kompleks Recyklingu','budynek','garaz',854.92,-903.68,1,'aktywna','[LORE: AUTORSKI] Warsztat Droidów „Drugi Obieg”. Obiekt uzupełniający kompleksu Kompleks Recyklingu; przeznaczenie zgodne z kategorią garaz.'),
+(5,'Blok Mieszkalny 17-K','Kompleks Mieszkalny „Szczelina”','budynek','inne',-654.92,-1046.32,1,'aktywna','[LORE: AUTORSKI] Blok Mieszkalny 17-K. Obiekt operacyjny kompleksu Kompleks Mieszkalny „Szczelina”; przeznaczenie zgodne z kategorią inne.'),
+(5,'Tania Gospoda „Pod Rurą”','Kompleks Mieszkalny „Szczelina”','budynek','hotel',-654.68,-1046.48,1,'aktywna','[LORE: AUTORSKI] Tania Gospoda „Pod Rurą”. Obiekt uzupełniający kompleksu Kompleks Mieszkalny „Szczelina”; przeznaczenie zgodne z kategorią hotel.'),
+(5,'Przepompownia Dolna','Kompleks Infrastruktury Podziemnej','budynek','inne',-645.32,-1053.52,1,'aktywna','[LORE: AUTORSKI] Przepompownia Dolna. Obiekt operacyjny kompleksu Kompleks Infrastruktury Podziemnej; przeznaczenie zgodne z kategorią inne.'),
+(5,'Warsztat Instalacji Miejskich','Kompleks Infrastruktury Podziemnej','budynek','garaz',-645.08,-1053.68,1,'aktywna','[LORE: AUTORSKI] Warsztat Instalacji Miejskich. Obiekt uzupełniający kompleksu Kompleks Infrastruktury Podziemnej; przeznaczenie zgodne z kategorią garaz.'),
+(5,'Magazyn Kontrabandy „Cichy Ładunek”','Kompleks Składów Cieni','budynek','magazyn',-1504.92,-246.32,1,'aktywna','[LORE: AUTORSKI] Magazyn Kontrabandy „Cichy Ładunek”. Obiekt operacyjny kompleksu Kompleks Składów Cieni; przeznaczenie zgodne z kategorią magazyn.'),
+(5,'Biuro Spedycji „Bez Pytań”','Kompleks Składów Cieni','budynek','biuro',-1504.68,-246.48,1,'aktywna','[LORE: AUTORSKI] Biuro Spedycji „Bez Pytań”. Obiekt uzupełniający kompleksu Kompleks Składów Cieni; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Kantyna „Zimny Trop”','Kompleks Pośredników Nagród','budynek','kantyna',-1495.32,-253.52,1,'aktywna','[LORE: AUTORSKI] Kantyna „Zimny Trop”. Obiekt operacyjny kompleksu Kompleks Pośredników Nagród; przeznaczenie zgodne z kategorią kantyna.'),
+(5,'Biuro Zleceń Łowców','Kompleks Pośredników Nagród','budynek','biuro',-1495.08,-253.68,1,'aktywna','[LORE: AUTORSKI] Biuro Zleceń Łowców. Obiekt uzupełniający kompleksu Kompleks Pośredników Nagród; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Biuro Inspekcji Ładunków','Kompleks Kontroli Portowej','budynek','biuro',195.08,1703.68,1,'aktywna','[LORE: AUTORSKI] Biuro Inspekcji Ładunków. Obiekt operacyjny kompleksu Kompleks Kontroli Portowej; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Posterunek Ochrony Huttańskiej','Kompleks Kontroli Portowej','budynek','baza',195.32,1703.52,1,'aktywna','[LORE: AUTORSKI] Posterunek Ochrony Huttańskiej. Obiekt uzupełniający kompleksu Kompleks Kontroli Portowej; przeznaczenie zgodne z kategorią baza.'),
+(5,'Biuro Łącznikowe Imperium','Kompleks Łącznikowy','budynek','biuro',204.68,1696.48,1,'aktywna','[LORE: AUTORSKI] Biuro Łącznikowe Imperium. Obiekt operacyjny kompleksu Kompleks Łącznikowy; przeznaczenie zgodne z kategorią biuro.'),
+(5,'Kwatera Prywatnej Ochrony','Kompleks Łącznikowy','budynek','baza',204.92,1696.32,1,'aktywna','[LORE: AUTORSKI] Kwatera Prywatnej Ochrony. Obiekt uzupełniający kompleksu Kompleks Łącznikowy; przeznaczenie zgodne z kategorią baza.'),
+(5,'Biuro Pełnomocnika Jabby','Kompleks Administracyjny Huttów','budynek','biuro',-354.92,1253.68,0,'aktywna','[LORE: AUTORSKI] Autorska placówka pośrednicząca w interesach klanu Desilijic i Jabby na Nar Shaddaa. Nie jest przedstawiana jako potwierdzona kanoniczna rezydencja Jabby.'),
+(5,'Dom Aukcyjny „Czerwony Łańcuch”','Kompleks Wielkiego Targu','budynek','inne',845.08,703.68,0,'aktywna','[LORE: AUTORSKI] Autorski dom aukcyjny obsługujący handel luksusowy, kontrabandę i nielegalne aukcje niewolników pod ochroną lokalnych pośredników Huttów.'),
+(5,'Lądowisko Przemytnicze P-17','Kompleks Składów Cieni','ladowisko','platforma',-1504.92,-246.32,0,'aktywna','[LORE: AUTORSKI] Ukryte stanowisko krótkiego postoju i przeładunku małych jednostek; projekt HOLOLINK.'),
+(5,'Lądowisko Kontrolne K-01','Kompleks Kontroli Portowej','ladowisko','platforma',195.08,1703.68,1,'aktywna','[LORE: AUTORSKI] Stanowisko inspekcyjne dla jednostek wytypowanych do kontroli; nie oznacza pełnej kontroli Imperium nad księżycem.'),
+(6,'Punkt Odprawy Frachtu','Dom Maklerski Trójkąta Corelliańskiego','lokacja','inne',-904.92,453.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Dom Maklerski Trójkąta Corelliańskiego; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Plac Prób Silników','Hangar Spacebarn','lokacja','inne',-895.32,446.48,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Hangar Spacebarn; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Sala Przyjęć','Biuro Danin Huttańskich','lokacja','inne',-354.92,1253.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Biuro Danin Huttańskich; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Prywatny Salon Huttański','Rezydencja Klanu Desilijic','lokacja','inne',-345.32,1246.48,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Rezydencja Klanu Desilijic; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Punkt Aukcyjny','Giełda Towarów Huttańskich','lokacja','inne',845.08,703.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Giełda Towarów Huttańskich; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Zaplecze Transakcji','Kantor Kredytowy „Złoty Ząb”','lokacja','inne',854.68,696.48,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Kantor Kredytowy „Złoty Ząb”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Sala Gry Wysokich Stawek','Kasyno „Ostatnia Szansa”','lokacja','inne',1445.08,153.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Kasyno „Ostatnia Szansa”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Prywatna Sala Rezerwacji','Klub Muzyczny „Głośny Hutt”','lokacja','inne',1454.68,146.48,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Klub Muzyczny „Głośny Hutt”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Laboratorium Analizy Partii','Rafineria Przyprawy „S-9”','lokacja','inne',845.08,-896.32,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Rafineria Przyprawy „S-9”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Plac Segregacji Złomu','Zakład Odzysku Metali „Złom-7”','lokacja','inne',854.68,-903.52,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Zakład Odzysku Metali „Złom-7”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Punkt Wydawania Wody','Blok Mieszkalny 17-K','lokacja','inne',-654.92,-1046.32,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Blok Mieszkalny 17-K; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Węzeł Serwisowy','Przepompownia Dolna','lokacja','inne',-645.32,-1053.52,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Przepompownia Dolna; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Skrytka Przekazowa','Magazyn Kontrabandy „Cichy Ładunek”','lokacja','inne',-1504.92,-246.32,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Magazyn Kontrabandy „Cichy Ładunek”; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Tablica Kontraktów','Biuro Zleceń Łowców','lokacja','inne',-1495.32,-253.52,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Biuro Zleceń Łowców; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Stanowisko Skanowania','Biuro Inspekcji Ładunków','lokacja','inne',195.08,1703.68,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Biuro Inspekcji Ładunków; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.'),
+(6,'Pokój Przesłuchań','Biuro Łącznikowe Imperium','lokacja','inne',204.68,1696.48,0,'aktywna','[LORE: AUTORSKI] Wewnętrzny punkt funkcjonalny w obiekcie Biuro Łącznikowe Imperium; lokalizacja operacyjna do wykorzystania w scenach i interakcjach HOLOLINK.');
+
+-- Import poziom po poziomie: rodzic odnajdywany po nazwie na tej planecie. Istniejące rekordy
+-- (ta sama planeta i nazwa) zostają bez zmian, więc ponowny import tylko dokłada brakujące.
+START TRANSACTION;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 1 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 2 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 3 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 4 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 5 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 6 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+COMMIT;
+
+-- Kontrola: lokacje z paczki w bazie, brakujące (np. brak planety albo rodzica) i osierocone.
+SELECT COUNT(*) AS w_paczce,
+  SUM(l.id IS NOT NULL) AS w_bazie,
+  SUM(l.id IS NULL) AS brakujace,
+  SUM(t.rodzic_nazwa IS NOT NULL AND l.id IS NOT NULL AND l.rodzic_id IS NULL) AS bez_rodzica
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje l ON l.planeta_id = @pl AND l.nazwa = t.nazwa;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v30-lokacje-nar-shaddaa', 'Lokacje: Nar Shaddaa (105)')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/031_lokacje_lothal.sql
+-- =====================================================================
+
+-- Lokacje Lothal: regiony, Capital City z dzielnicami i portem, Tarkintown, Jalath z instalacją imperialną,
+-- strefa przemysłowa, gospodarstwa, ruiny ze Świątynią Jedi, port Jhothal z Old Jhos Pit Stop.
+-- Przepisane z procedury składowanej na zwykły import (hosting współdzielony często nie pozwala tworzyć
+-- procedur). Publiczne: miasta, osady, dzielnice, porty, kantyny, sklepy, obiekty cywilne; instalacje
+-- imperialne, magazyny i zaplecza — niepubliczne. Import w phpMyAdmin; ponowny import niczego nie psuje.
+
+SET NAMES utf8mb4;
+
+SET @pl := (SELECT id FROM mapa_planety WHERE nazwa = 'Lothal' LIMIT 1);
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+CREATE TEMPORARY TABLE tmp_import_lokacji (
+  poziom TINYINT UNSIGNED NOT NULL,
+  nazwa VARCHAR(200) NOT NULL PRIMARY KEY,
+  rodzic_nazwa VARCHAR(200) NULL,
+  typ ENUM('uklad','orbita','powierzchnia','lokacja','budynek','ladowisko') NOT NULL,
+  rodzaj ENUM('hangar','port','hotel','bankomat','sklep','kantyna','biuro','garaz','baza','magazyn','platforma','inne') NULL,
+  x_km DECIMAL(12,3) NOT NULL,
+  y_km DECIMAL(12,3) NOT NULL,
+  publiczna TINYINT(1) NOT NULL,
+  status ENUM('aktywna','zamknieta','zniszczona') NOT NULL,
+  opis TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO tmp_import_lokacji (poziom, nazwa, rodzic_nazwa, typ, rodzaj, x_km, y_km, publiczna, status, opis) VALUES
+(1,'Region Stołeczny',NULL,'powierzchnia','inne',0.0,0.0,0,'aktywna','Projektowy region geograficzny obejmujący Capital City.'),
+(1,'Region Tarkintown',NULL,'powierzchnia','inne',-18.0,-12.0,0,'aktywna','Projektowy region obejmujący osiedle wysiedlonych mieszkańców.'),
+(1,'Region Jalath',NULL,'powierzchnia','inne',42.0,18.0,0,'aktywna','Projektowy region obejmujący miasto Jalath.'),
+(1,'Region Przemysłowy',NULL,'powierzchnia','inne',65.0,-24.0,0,'aktywna','Projektowy obszar imperialnej produkcji i infrastruktury przemysłowej.'),
+(1,'Region Rolniczy Zachodni',NULL,'powierzchnia','inne',-85.0,35.0,0,'aktywna','Projektowy obszar zachodnich gospodarstw rolnych.'),
+(1,'Region Rolniczy Wschodni',NULL,'powierzchnia','inne',105.0,55.0,0,'aktywna','Projektowy obszar wschodnich gospodarstw rolnych.'),
+(1,'Region Gór i Kanionów',NULL,'powierzchnia','inne',-145.0,-95.0,0,'aktywna','Projektowy region górski obejmujący obszar starożytnych ruin.'),
+(1,'Region Leśnych Wzgórz',NULL,'powierzchnia','inne',155.0,-115.0,0,'aktywna','Projektowy obszar leśnych wzgórz.'),
+(1,'Region Południowych Pustkowi',NULL,'powierzchnia','inne',20.0,-190.0,0,'aktywna','Projektowy obszar południowych pustkowi.'),
+(1,'Obszar Portowy Jhothal',NULL,'powierzchnia','inne',125.0,12.0,0,'aktywna','Projektowy obszar portowy związany z Old Jhos Pit Stop.'),
+(2,'Capital City','Region Stołeczny','powierzchnia','inne',0.0,0.0,1,'aktywna','Główne miasto planety Lothal.'),
+(2,'Tarkintown','Region Tarkintown','powierzchnia','inne',-18.0,-12.0,1,'aktywna','Osiedle wysiedlonych mieszkańców Lothal.'),
+(2,'Jalath','Region Jalath','powierzchnia','inne',42.0,18.0,1,'aktywna','Miasto na Lothal z imperialną infrastrukturą.'),
+(2,'Gospodarstwo Olletów','Region Rolniczy Zachodni','lokacja','inne',-72.0,42.0,0,'aktywna','Gospodarstwo rodziny Olletów.'),
+(2,'Osada Rolnicza Zachód','Region Rolniczy Zachodni','powierzchnia','inne',-105.0,48.0,1,'aktywna','Autorska osada rolnicza.'),
+(2,'Osada Rolnicza Wschód','Region Rolniczy Wschodni','powierzchnia','inne',121.0,61.0,1,'aktywna','Autorska osada rolnicza.'),
+(2,'Osada Leśna','Region Leśnych Wzgórz','powierzchnia','inne',159.0,-112.0,1,'aktywna','Autorska niewielka osada leśna.'),
+(2,'Opuszczona Osada Południowa','Region Południowych Pustkowi','powierzchnia','inne',18.0,-187.0,0,'aktywna','Autorska opuszczona osada.'),
+(2,'Lothal Imperial Factory','Region Przemysłowy','lokacja','baza',65.0,-24.0,0,'aktywna','Imperialny zakład przemysłowy.'),
+(2,'Lothal Fuel Depot','Region Przemysłowy','lokacja','magazyn',69.0,-27.0,0,'aktywna','Imperialny skład paliwa.'),
+(2,'Strefa Kopalń','Region Przemysłowy','lokacja','inne',75.0,-32.0,0,'aktywna','Autorska strefa wydobywcza.'),
+(2,'Strefa Rafineryjna','Region Przemysłowy','lokacja','inne',81.0,-29.0,0,'aktywna','Autorska strefa rafineryjna.'),
+(2,'Bocznica Transportowa','Region Przemysłowy','lokacja','inne',72.0,-20.0,0,'aktywna','Autorska bocznica transportowa.'),
+(2,'Obszar Starożytnych Ruin','Region Gór i Kanionów','lokacja','inne',-151.0,-91.0,0,'aktywna','Obszar starożytnych ruin na Lothal.'),
+(2,'Szlak Kanionów Północnych','Region Gór i Kanionów','lokacja','inne',-139.0,-88.0,0,'aktywna','Projektowy szlak terenowy.'),
+(2,'Szlak Kanionów Południowych','Region Gór i Kanionów','lokacja','inne',-147.0,-107.0,0,'aktywna','Projektowy szlak terenowy.'),
+(2,'Wejście do Jaskiń','Region Gór i Kanionów','lokacja','inne',-142.0,-99.0,0,'aktywna','Projektowe wejście do jaskiń.'),
+(2,'Gospodarstwo Leśne','Region Leśnych Wzgórz','lokacja','inne',166.0,-118.0,0,'aktywna','Projektowe gospodarstwo leśne.'),
+(2,'Punkt Obserwacyjny Wzgórz','Region Leśnych Wzgórz','lokacja','inne',150.0,-109.0,0,'aktywna','Projektowy punkt obserwacyjny.'),
+(2,'Stara Droga Południowa','Region Południowych Pustkowi','lokacja','inne',25.0,-198.0,0,'aktywna','Projektowa droga terenowa.'),
+(2,'Port Kosmiczny Jhothal','Obszar Portowy Jhothal','lokacja','port',125.5,12.2,1,'aktywna','Port kosmiczny powiązany z Old Jhos Pit Stop.'),
+(2,'Lothal Transmitter Tower','Region Stołeczny','budynek','inne',-4.0,4.0,1,'aktywna','Wieża komunikacyjna.'),
+(2,'Gospodarstwo Zachodnie Alfa','Region Rolniczy Zachodni','lokacja','inne',-88.0,37.0,0,'aktywna','Autorskie gospodarstwo rolne.'),
+(2,'Gospodarstwo Zachodnie Beta','Region Rolniczy Zachodni','lokacja','inne',-94.0,29.0,0,'aktywna','Autorskie gospodarstwo rolne.'),
+(2,'Stacja Irygacyjna Zachód','Region Rolniczy Zachodni','budynek','inne',-81.0,34.0,0,'aktywna','Autorska stacja irygacyjna.'),
+(2,'Skup Płodów Rolnych Zachód','Region Rolniczy Zachodni','budynek','magazyn',-91.0,38.0,0,'aktywna','Autorski punkt skupu płodów rolnych.'),
+(2,'Gospodarstwo Wschodnie Alfa','Region Rolniczy Wschodni','lokacja','inne',98.0,52.0,0,'aktywna','Autorskie gospodarstwo rolne.'),
+(2,'Gospodarstwo Wschodnie Beta','Region Rolniczy Wschodni','lokacja','inne',112.0,59.0,0,'aktywna','Autorskie gospodarstwo rolne.'),
+(2,'Stacja Irygacyjna Wschód','Region Rolniczy Wschodni','budynek','inne',109.0,50.0,0,'aktywna','Autorska stacja irygacyjna.'),
+(2,'Warsztat Maszyn Rolniczych Wschód','Region Rolniczy Wschodni','budynek','garaz',116.0,54.0,0,'aktywna','Autorski warsztat maszyn rolniczych.'),
+(3,'Imperialna Instalacja Jalath','Jalath','lokacja','baza',43.0,18.0,0,'aktywna','Imperialna instalacja wojskowa.'),
+(3,'Lothal Depot','Jalath','lokacja','port',44.0,16.0,0,'aktywna','Imperialny obiekt transportowy.'),
+(3,'Old City','Capital City','lokacja','inne',-1.5,1.2,1,'aktywna','Starsza część Capital City.'),
+(3,'Dzielnica Administracyjna','Capital City','lokacja','biuro',0.5,0.8,1,'aktywna','Projektowa dzielnica administracyjna.'),
+(3,'Dzielnica Akademicka','Capital City','lokacja','inne',1.8,1.5,1,'aktywna','Projektowa dzielnica akademicka.'),
+(3,'Dzielnica Dawnych Instytucji','Capital City','lokacja','inne',-0.8,1.7,1,'aktywna','Projektowa dzielnica dawnych instytucji.'),
+(3,'Dzielnica Mieszkalna','Capital City','lokacja','inne',-1.2,-0.5,1,'aktywna','Projektowa dzielnica mieszkalna.'),
+(3,'Dzielnica Medyczna','Capital City','lokacja','inne',1.3,-0.8,1,'aktywna','Projektowa dzielnica medyczna.'),
+(3,'Dzielnica Handlowa','Capital City','lokacja','inne',-0.5,0.2,1,'aktywna','Projektowa dzielnica handlowa.'),
+(3,'Port Kosmiczny Capital City','Capital City','lokacja','port',3.0,-0.5,1,'aktywna','Projektowany port kosmiczny Capital City.'),
+(3,'Centrum Jalath','Jalath','lokacja','inne',42.2,18.1,1,'aktywna','Projektowe centrum miasta Jalath.'),
+(3,'Główne Targowisko Tarkintown','Tarkintown','lokacja','inne',-18.2,-11.8,1,'aktywna','Projektowe targowisko osiedla.'),
+(3,'Osiedle Baraków Północnych','Tarkintown','lokacja','inne',-17.8,-11.5,0,'aktywna','Projektowa część mieszkalna Tarkintown.'),
+(3,'Osiedle Baraków Południowych','Tarkintown','lokacja','inne',-18.3,-12.4,0,'aktywna','Projektowa część mieszkalna Tarkintown.'),
+(3,'Zbiorniki Paliwowe','Lothal Fuel Depot','lokacja','magazyn',69.2,-27.1,0,'aktywna','Projektowy obszar zbiorników paliwowych.'),
+(3,'Terminal Przeładunkowy Paliwa','Lothal Fuel Depot','budynek','magazyn',69.5,-27.3,0,'aktywna','Projektowy terminal przeładunkowy paliwa.'),
+(3,'Świątynia Jedi na Lothal','Obszar Starożytnych Ruin','lokacja','inne',-153.0,-94.0,0,'aktywna','Starożytna świątynia Jedi na Lothal.'),
+(3,'Punkt Zaopatrzenia Tarkintown','Tarkintown','budynek','sklep',-18.1,-12.1,1,'aktywna','Projektowy punkt zaopatrzenia.'),
+(3,'Warsztat Speederów Tarkintown','Tarkintown','budynek','garaz',-17.6,-12.3,1,'aktywna','Projektowy warsztat speederów.'),
+(3,'Prowizoryczna Klinika Tarkintown','Tarkintown','budynek','inne',-18.5,-11.9,1,'aktywna','Projektowa klinika.'),
+(3,'Kantyna Tarkintown','Tarkintown','budynek','kantyna',-17.9,-12.2,1,'aktywna','Projektowa kantyna.'),
+(3,'Plac Zbiórek Tarkintown','Tarkintown','lokacja','inne',-18.4,-11.6,1,'aktywna','Projektowy plac zbiórek.'),
+(3,'Magazyn Wspólnoty Tarkintown','Tarkintown','budynek','magazyn',-18.6,-12.5,0,'aktywna','Projektowy magazyn wspólnoty.'),
+(3,'Posterunek Kontroli Jalath','Jalath','budynek','baza',41.7,18.3,0,'aktywna','Projektowy posterunek kontroli.'),
+(3,'Główny Budynek Produkcyjny','Lothal Imperial Factory','budynek','inne',65.3,-24.1,0,'aktywna','Projektowy główny budynek produkcyjny.'),
+(3,'Hala Montażowa','Lothal Imperial Factory','budynek','inne',65.6,-24.0,0,'aktywna','Projektowa hala montażowa.'),
+(3,'Magazyn Komponentów','Lothal Imperial Factory','budynek','magazyn',65.8,-24.3,0,'aktywna','Projektowy magazyn komponentów.'),
+(3,'Centrum Kontroli Produkcji','Lothal Imperial Factory','budynek','biuro',64.8,-23.8,0,'aktywna','Projektowe centrum kontroli produkcji.'),
+(3,'Posterunek Ochrony Fabryki','Lothal Imperial Factory','budynek','baza',64.7,-24.2,0,'aktywna','Projektowy posterunek ochrony.'),
+(3,'Posterunek Ochrony Fuel Depot','Lothal Fuel Depot','budynek','baza',68.8,-26.8,0,'aktywna','Projektowy posterunek ochrony składowiska paliwa.'),
+(3,'Szyb Wydobywczy Alfa','Strefa Kopalń','lokacja','inne',75.2,-32.3,0,'aktywna','Projektowy szyb wydobywczy.'),
+(3,'Magazyn Urobku','Strefa Kopalń','budynek','magazyn',75.5,-32.5,0,'aktywna','Projektowy magazyn urobku.'),
+(3,'Rafineria Północna','Strefa Rafineryjna','budynek','inne',81.2,-28.8,0,'aktywna','Projektowa rafineria.'),
+(3,'Magazyn Surowców','Bocznica Transportowa','budynek','magazyn',72.2,-20.1,0,'aktywna','Projektowy magazyn surowców.'),
+(3,'Dom Olletów','Gospodarstwo Olletów','budynek','inne',-72.1,42.1,0,'aktywna','Dom rodziny Olletów.'),
+(3,'Stodoła Olletów','Gospodarstwo Olletów','budynek','magazyn',-72.3,42.0,0,'aktywna','Stodoła gospodarstwa Olletów.'),
+(3,'Silos Olletów','Gospodarstwo Olletów','budynek','magazyn',-72.5,42.2,0,'aktywna','Silos gospodarstwa Olletów.'),
+(3,'Magazyn Płodów Rolnych Wschód','Osada Rolnicza Wschód','budynek','magazyn',121.3,61.2,0,'aktywna','Autorski magazyn płodów rolnych.'),
+(3,'Punkt Skupu Wschód','Osada Rolnicza Wschód','budynek','sklep',121.5,61.1,1,'aktywna','Autorski punkt skupu.'),
+(3,'Plac Osady Leśnej','Osada Leśna','lokacja','inne',159.1,-112.1,1,'aktywna','Projektowy plac osady.'),
+(3,'Dom Gospodarza Leśnego','Gospodarstwo Leśne','budynek','inne',166.1,-118.1,0,'aktywna','Dom gospodarza.'),
+(3,'Magazyn Gospodarstwa Leśnego','Gospodarstwo Leśne','budynek','magazyn',166.3,-118.2,0,'aktywna','Magazyn gospodarstwa leśnego.'),
+(3,'Opuszczone Zabudowania Południowe','Opuszczona Osada Południowa','lokacja','inne',18.1,-187.1,0,'aktywna','Projektowe opuszczone zabudowania.'),
+(3,'Stary Punkt Zaopatrzeniowy Południe','Opuszczona Osada Południowa','budynek','sklep',17.8,-187.5,0,'aktywna','Projektowy punkt zaopatrzeniowy.'),
+(3,'Posterunek Drogowy Południe','Stara Droga Południowa','budynek','baza',25.2,-198.1,0,'aktywna','Projektowy posterunek drogowy.'),
+(3,'Old Jhos Pit Stop','Port Kosmiczny Jhothal','budynek','kantyna',125.7,12.3,1,'aktywna','Kantyna Old Jho przy porcie kosmicznym.'),
+(3,'Stanowisko Ochrony Portu Jhothal','Port Kosmiczny Jhothal','budynek','baza',126.0,12.1,0,'aktywna','Projektowe stanowisko ochrony portu.'),
+(3,'Lądowisko Portu Jhothal','Port Kosmiczny Jhothal','ladowisko','platforma',126.2,12.0,1,'aktywna','Projektowe lądowisko portowe.'),
+(4,'Imperial Complex','Dzielnica Administracyjna','budynek','biuro',0.8,1.1,1,'aktywna','Imperialny kompleks administracyjny.'),
+(4,'Lothal Imperial Academy','Dzielnica Akademicka','budynek','inne',2.1,1.8,1,'aktywna','Imperialna akademia szkoląca kadetów.'),
+(4,'Lothal Old Republic Senate Building','Dzielnica Dawnych Instytucji','budynek','biuro',-1.1,1.9,1,'aktywna','Dawny budynek senatu Starej Republiki.'),
+(4,'Bridger Household','Dzielnica Mieszkalna','budynek','inne',-1.4,-0.7,0,'aktywna','Dawny dom rodziny Bridgerów.'),
+(4,'Lothal Hospital','Dzielnica Medyczna','budynek','inne',1.5,-1.0,1,'aktywna','Szpital w Capital City.'),
+(4,'Stary Rynek','Old City','lokacja','inne',-1.6,1.0,1,'aktywna','Projektowy stary rynek.'),
+(4,'Targowisko Old City','Old City','lokacja','inne',-1.8,1.1,1,'aktywna','Projektowe targowisko.'),
+(4,'Dzielnica Rzemieślnicza','Old City','lokacja','inne',-1.3,1.5,1,'aktywna','Projektowa dzielnica rzemieślnicza.'),
+(4,'Kantyna Starego Miasta','Old City','budynek','kantyna',-1.9,0.8,1,'aktywna','Projektowa kantyna.'),
+(4,'Terminal Pasażerski Capital City','Port Kosmiczny Capital City','budynek','inne',3.2,-0.3,1,'aktywna','Projektowy terminal pasażerski.'),
+(4,'Hangar Portu Capital City','Port Kosmiczny Capital City','budynek','hangar',3.5,-0.7,1,'aktywna','Projektowy hangar portowy.'),
+(4,'Lądowisko Portu Capital City','Port Kosmiczny Capital City','ladowisko','platforma',3.8,-0.2,1,'aktywna','Projektowe lądowisko.'),
+(4,'Magazyn Portowy Capital City','Port Kosmiczny Capital City','budynek','magazyn',3.3,-1.0,0,'aktywna','Projektowy magazyn portowy.'),
+(4,'Koszary Instalacji Jalath','Imperialna Instalacja Jalath','budynek','inne',43.1,17.9,0,'aktywna','Projektowe koszary imperialne.'),
+(4,'Magazyn Instalacji Jalath','Imperialna Instalacja Jalath','budynek','magazyn',43.3,17.7,0,'aktywna','Projektowy magazyn imperialny.'),
+(4,'Lądowisko Jalath','Imperialna Instalacja Jalath','ladowisko','platforma',43.5,17.8,0,'aktywna','Projektowe lądowisko instalacji.'),
+(4,'Hangar Lothal Depot','Lothal Depot','budynek','hangar',44.2,16.4,0,'aktywna','Projektowy hangar.'),
+(4,'Magazyn Lothal Depot','Lothal Depot','budynek','magazyn',44.4,16.6,0,'aktywna','Projektowy magazyn.'),
+(4,'Kantyna Jalath','Centrum Jalath','budynek','kantyna',41.8,18.0,1,'aktywna','Projektowa kantyna.'),
+(4,'Rynek Jalath','Centrum Jalath','lokacja','inne',42.1,18.3,1,'aktywna','Projektowy rynek.'),
+(4,'Opuszczony Magazyn Południowy','Opuszczone Zabudowania Południowe','budynek','magazyn',18.2,-187.2,0,'aktywna','Projektowy opuszczony magazyn.'),
+(4,'Zaplecze Kantyny Old Jho','Old Jhos Pit Stop','lokacja','inne',125.8,12.4,0,'aktywna','Projektowe zaplecze kantyny.'),
+(5,'Warsztat Speederów Capital City','Dzielnica Rzemieślnicza','budynek','garaz',-1.1,1.6,1,'aktywna','Projektowy warsztat speederów.'),
+(5,'Magazyn Kantyny Old Jho','Zaplecze Kantyny Old Jho','budynek','magazyn',125.9,12.5,0,'aktywna','Projektowy magazyn kantyny.');
+
+-- Import poziom po poziomie: rodzic odnajdywany po nazwie na tej planecie. Istniejące rekordy
+-- (ta sama planeta i nazwa) zostają bez zmian, więc ponowny import tylko dokłada brakujące.
+START TRANSACTION;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 1 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 2 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 3 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 4 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+WHERE t.poziom = 5 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+COMMIT;
+
+-- Kontrola: lokacje z paczki w bazie, brakujące (np. brak planety albo rodzica) i osierocone.
+SELECT COUNT(*) AS w_paczce,
+  SUM(l.id IS NOT NULL) AS w_bazie,
+  SUM(l.id IS NULL) AS brakujace,
+  SUM(t.rodzic_nazwa IS NOT NULL AND l.id IS NOT NULL AND l.rodzic_id IS NULL) AS bez_rodzica
+FROM tmp_import_lokacji t LEFT JOIN lokalizacje l ON l.planeta_id = @pl AND l.nazwa = t.nazwa;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v31-lokacje-lothal', 'Lokacje: Lothal (112)')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

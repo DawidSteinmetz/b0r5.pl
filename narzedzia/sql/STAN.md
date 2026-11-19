@@ -3,7 +3,7 @@
 Plik wynikowy: `node narzedzia/sql/stan.js`. Nie edytuj ręcznie.
 
 - Dokumenty JSON w `datapad_dane` nadal używane przez PHP: **19**
-- Tabele w `api/schema.sql`: **201**, z czego używane przez PHP: **29**
+- Tabele w `api/schema.sql`: **201**, z czego używane przez PHP: **31**
 
 Moduł jest przeniesiony, gdy jego dokument znika z pierwszej tabeli, a kod czyta i zapisuje
 tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają na moduły.
@@ -94,7 +94,7 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | portfele | — | `portfele`, `portfele_gieldowe`, `portfele_salda` |
 | posiadane | — | `posiadane_pakiety` |
 | posilki | — | `posilki_zalogi` |
-| postacie | — | `postacie`, `postacie_statystyki`, `postacie_reputacja`, `postacie_kontakty`, `postacie_tozsamosci`, `postacie_notatnik`, `postacie_pozycja` |
+| postacie | `postacie` | `postacie_statystyki`, `postacie_reputacja`, `postacie_kontakty`, `postacie_tozsamosci`, `postacie_notatnik`, `postacie_pozycja` |
 | proby | — | `proby_logowania` |
 | przelewy | — | `przelewy` |
 | przydzialy | — | `przydzialy_zalogi`, `przydzialy_hangaru`, `przydzialy_kwater` |
@@ -135,5 +135,5 @@ tabele SQL. Tabele „fundament” są celowo gotowe na przyszłość i czekają
 | zatrudnienie | — | `zatrudnienie` |
 | zdjecia | `zdjecia_gwiazd` | — |
 | zegar | — | `zegar_swiata` |
-| znane | — | `znane_lokacje`, `znane_planety` |
+| znane | `znane_lokacje` | `znane_planety` |
 | zuzycie | — | `zuzycie_zasobow`, `zuzycie_zasobow_pozycje` |

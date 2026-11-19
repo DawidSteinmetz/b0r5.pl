@@ -480,13 +480,29 @@ function floty_blokada_ladowiska(array $odbiorcy): void
     if ($n) blad('„' . $n . '” stoi na lądowisku. Najpierw start.');
 }
 
-// Lądowiska planety (po id planety z mapy).
-function floty_ladowiska(int $planetaId): array
+// Lądowiska planety (po id planety z mapy). Niepubliczne (ukryte, serwisowe) widzi MG i postać,
+// która je zna (znane_lokacje); pozostali — tylko publiczne.
+function floty_ladowiska(int $planetaId, ?array $u = null): array
 {
     if (!tabela_sql_dostepna('lokalizacje')) return [];
-    $q = polaczenie_bazy()->prepare("SELECT id, nazwa, COALESCE(rodzaj, typ) AS rodzaj FROM lokalizacje
-        WHERE planeta_id = ? AND status = 'aktywna' AND (typ = 'ladowisko' OR rodzaj IN ('hangar','port','platforma')) ORDER BY nazwa");
-    $q->execute([$planetaId]);
+    $u ??= ja();
+    $warunek = 'publiczna = 1';
+    $parametry = [$planetaId];
+    if (($u['rola'] ?? '') === 'mg') $warunek = '1';
+    elseif (tabela_sql_dostepna('znane_lokacje')) {
+        $warunek = '(publiczna = 1 OR EXISTS (SELECT 1 FROM znane_lokacje z JOIN postacie p ON p.podmiot_id = z.postac_id
+            WHERE z.lokalizacja_id = lokalizacje.id AND p.konto_id = ?))';
+        $parametry[] = (int) ($u['id'] ?? 0);
+    }
+    try {
+        $q = polaczenie_bazy()->prepare("SELECT id, nazwa, COALESCE(rodzaj, typ) AS rodzaj FROM lokalizacje
+            WHERE planeta_id = ? AND status = 'aktywna' AND (typ = 'ladowisko' OR rodzaj IN ('hangar','port','platforma')) AND $warunek ORDER BY nazwa");
+        $q->execute($parametry);
+    } catch (Throwable $e) {
+        $q = polaczenie_bazy()->prepare("SELECT id, nazwa, COALESCE(rodzaj, typ) AS rodzaj FROM lokalizacje
+            WHERE planeta_id = ? AND status = 'aktywna' AND (typ = 'ladowisko' OR rodzaj IN ('hangar','port','platforma')) AND publiczna = 1 ORDER BY nazwa");
+        $q->execute([$planetaId]);
+    }
     return array_map(fn($l) => ['id' => (int) $l['id'], 'nazwa' => $l['nazwa'], 'rodzaj' => $l['rodzaj']], $q->fetchAll(PDO::FETCH_ASSOC));
 }
 
@@ -531,6 +547,7 @@ function floty_ladowanie(array $odbiorcy, int $lokacjaId): array
     $q->execute([$lokacjaId]);
     $lok = $q->fetch(PDO::FETCH_ASSOC);
     if (!$lok) blad('Nie ma takiego lądowiska.');
+    if (!in_array((int) $lok['id'], array_column(floty_ladowiska((int) $lok['planeta_id']), 'id'), true)) blad('Nie ma takiego lądowiska.');
     $teraz = czas_teraz();
     foreach ($jednostki as $j) {
         if (!(int) $j['moze']) blad('„' . $j['nazwa'] . '” jest za duża, żeby lądować.');

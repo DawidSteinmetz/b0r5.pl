@@ -242,6 +242,15 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   jesteś. Karta statku: zakładki „Pasażerowie” i „Więźniowie” (`mapa_poklad`; widzą osoby na pokładzie,
   dowódca lub właściciel, MG). MG przełącza rolę przyciskiem w zakładce (`mg_poklad_rola`).
 
+## Paczki lokacji (migracje 029–031)
+
+- 029 Tatooine (56), 030 Nar Shaddaa (105, bez sześciu lokacji portu, które już były), 031 Lothal (112).
+- Wzór paczki: tabela tymczasowa z poziomem w hierarchii, import poziom po poziomie (rodzic po nazwie
+  na tej planecie), planeta wyszukiwana po nazwie, `ON DUPLICATE KEY UPDATE id = id` — istniejące
+  rekordy bez zmian, ponowny import dokłada tylko brakujące; na końcu kontrolny `SELECT`.
+- Lądowiska niepubliczne (`publiczna = 0`, np. przemytnicze P-17) widzi w „Wybierz lądowisko” tylko MG
+  i postać, która je zna (`znane_lokacje`); lądowanie na nieznanym lądowisku jest odrzucane.
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

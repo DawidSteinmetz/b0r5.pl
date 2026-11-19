@@ -115,7 +115,7 @@ export default {
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
     const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => {
-      const ja = obiektyMapy.find((o) => o.ja);
+      const ja = mojZnacznik();
       if (ja) przelec(ja.x, ja.y, Math.max(skala, 0.6), () => wybierz({ obiekt: ja }));
       else if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta }));
     } }, 'Moja pozycja');
@@ -170,8 +170,25 @@ export default {
       return o?.planeta ? wgKlucza.get(norm(o.planeta)) || null : null;
     }
 
+    // Postać na pokładzie statku nie ma własnego znacznika: kto jest na statku, widać w karcie statku.
+    const naPokladzie = (o) => o?.typ === 'postac' && !!o.na_pokladzie_id;
+
     function obiektyNaPlanecie(p) {
-      return obiektyMapy.filter((o) => norm(o.planeta || '') === p.klucz);
+      return obiektyMapy.filter((o) => norm(o.planeta || '') === p.klucz && !naPokladzie(o));
+    }
+
+    // Moja pozycja: własna postać albo statek, na którego pokładzie jestem.
+    function mojZnacznik() {
+      const ja = obiektyMapy.find((o) => o.ja);
+      if (!ja) return null;
+      return (ja.na_pokladzie_id && obiektyMapy.find((x) => x.id === ja.na_pokladzie_id)) || ja;
+    }
+
+    // Lot podświetlny w toku (po obrocie na kurs): postęp 0–1, poza lotem null.
+    function postepLotu(o, t = teraz()) {
+      const l = o?.podswietlny;
+      if (!l || t < l.od || t >= l.do) return null;
+      return (t - l.od) / Math.max(1, l.do - l.od);
     }
 
     function nazwaPostaci(o) {
@@ -255,9 +272,9 @@ export default {
     function grupaZwinieta(o) {
       if (skala >= PROG_ROZWINIECIA || !o?.flota || o.typ === 'postac') return null;
       const p = planetaObiektu(o);
-      if (!p || wNadprzestrzeni(o)) return null;
+      if (!p || wNadprzestrzeni(o) || postepLotu(o) != null) return null;
       const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac'
-        && planetaObiektu(x) === p && !wNadprzestrzeni(x));
+        && planetaObiektu(x) === p && !wNadprzestrzeni(x) && postepLotu(x) == null);
       return { glowny: czlonkowie[0]?.id === o.id, ile: czlonkowie.length };
     }
 
@@ -270,6 +287,17 @@ export default {
           const [sx, sy] = punktObiektu(okret);
           const katOsoby = -Math.PI / 2 + (2 * Math.PI * indeksOsoby / Math.max(osobyNaPokladzie.length, 1));
           return [sx + Math.cos(katOsoby) * 11, sy + Math.sin(katOsoby) * 11];
+        }
+      }
+      const pl = postepLotu(o);
+      if (pl != null) {
+        // Między układami: po linii lotu na mapie; w układzie: między planetą a celem (np. księżycem).
+        const l = o.podswietlny;
+        if (Math.hypot(l.x1 - l.x0, l.y1 - l.y0) >= 0.05) return naEkran(l.x0 + (l.x1 - l.x0) * pl, l.y0 + (l.y1 - l.y0) * pl);
+        const a = planetaObiektu(o), b = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
+        if (a && b && a !== b) {
+          const [ax, ay] = pozycjaPlanety(a), [bx, by] = pozycjaPlanety(b);
+          return [ax + (bx - ax) * pl, ay + (by - ay) * pl];
         }
       }
       const p = planetaObiektu(o);
@@ -581,7 +609,9 @@ export default {
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
       rysujUklady();
+      const moj = mojZnacznik();
       for (const o of obiektyMapy) {
+        if (naPokladzie(o)) continue;
         const zw = grupaZwinieta(o);
         if (zw && !zw.glowny) continue;
         const [sx, sy] = punktObiektu(o);
@@ -598,6 +628,12 @@ export default {
           c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
           if (wNadprzestrzeni(o)) kursRys = Math.atan2(-(cy - sy), cx - sx) / RAD;
         }
+        if (o.podswietlny && teraz() < o.podswietlny.do) {
+          // Lot podświetlny: kropkowana linia do celu.
+          const l = o.podswietlny, b = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
+          const [cx, cy] = b && Math.hypot(l.x1 - l.x0, l.y1 - l.y0) < 0.05 ? pozycjaPlanety(b) : naEkran(l.x1, l.y1);
+          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+        }
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
         if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
@@ -609,8 +645,8 @@ export default {
         c.fill();
         if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, 10, 0, Math.PI * 2); c.stroke(); }
         c.restore();
-        if (o.ja) {
-          // własna postać: pulsujący pierścień i „Jesteś tutaj” zamiast imienia
+        if (o === moj) {
+          // moja postać albo statek, na którym jestem: pulsujący pierścień i „Jesteś tutaj” zamiast nazwy
           const f = (t % 1800) / 1800;
           c.save(); c.strokeStyle = kolory.akcent; c.globalAlpha = 1 - f; c.lineWidth = 1.5;
           c.beginPath(); c.arc(sx, sy, 8 + f * 16, 0, Math.PI * 2); c.stroke(); c.restore();
@@ -635,7 +671,14 @@ export default {
         const eta = w.eta * 1000 > Date.now() ? `ETA ~${czasGry(w.eta)}` : 'wyjście szacowane';
         napis(c, `Skok · ${w.nazwa} · ${eta}`, bx + Math.min(r, 40) + 6, by + 4);
       }
-      if (tuPlaneta && !obiektyMapy.some((o) => o.ja)) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
+      if (tuPlaneta && !mojZnacznik()) znacznik(tuPlaneta, kolory.akcent, 'Jesteś tutaj', (t % 1800) / 1800);
+      if (wybrane?.punkt) {
+        // Wybrany punkt mapy: celownik.
+        const [sx, sy] = naEkran(wybrane.punkt.x, wybrane.punkt.y);
+        c.save(); c.strokeStyle = kolory.akcent2; c.lineWidth = 1.5; c.beginPath();
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { c.moveTo(sx + dx * 3, sy + dy * 3); c.lineTo(sx + dx * 11, sy + dy * 11); }
+        c.stroke(); c.restore();
+      }
       for (const [p, alfa] of [[najechane?.planeta, 0.7], [wybrane?.planeta, 1]]) {
         if (!p) continue;
         const [sx, sy] = naEkran(p.x, p.y);
@@ -655,6 +698,7 @@ export default {
     function trafienie(sx, sy) {
       let najblizszyObiekt = null, odlObiektu = 15;
       for (const obiekt of obiektyMapy) {
+        if (naPokladzie(obiekt)) continue;
         const zw = grupaZwinieta(obiekt);
         if (zw && !zw.glowny) continue;
         const [px, py] = punktObiektu(obiekt);
@@ -911,10 +955,122 @@ export default {
               h('div.mapa-nawigacja-wiersz', automat ? warianty : h('div.mapa-nawigacja-xy', x, y), oblicz),
               wykonaj, wynik));
           }
+          if (jednostki.some((j) => norm(j.planeta || '') !== p.klucz || j.lot)) {
+            tresc.append(blokLotu(f, { cel_planeta: p.nazwa }, `Lot podświetlny do ${p.nazwa}`, (j) => norm(j.planeta || '') !== p.klucz));
+          }
           tresc.append(info);
         };
         wybor.onchange = rysuj;
         sekcja.append(h('div.slaby.maly-tekst', 'Nawigacja floty'), floty.length > 1 ? wybor : null, tresc);
+        rysuj();
+      }).catch(() => {});
+      return sekcja;
+    }
+
+    // Czas trwania także w dniach i latach (lot podświetlny między układami trwa lata).
+    const czasDlugi = (s) => (s >= 2 * 31557600 ? `${liczba(s / 31557600)} lat` : s >= 2 * 86400 ? `${liczba(s / 86400)} dni` : czasTrwania(s));
+
+    // Blok lotu podświetlnego dla floty: trwający lot (przerwij) albo wyliczenie i rozkaz lotu do celu.
+    function blokLotu(f, cel, opis, czyLeci = () => true) {
+      const jednostki = f.jednostki || [];
+      const wynik = h('p.maly-tekst');
+      const blok = h('div.mapa-nawigacja-blok', h('b', opis));
+      const wLocie = jednostki.filter((j) => j.lot && j.lot.do > teraz());
+      if (wLocie.length) {
+        const l = wLocie[0].lot;
+        blok.append(h('div.slaby.maly-tekst', `W locie podświetlnym → ${l.planeta || `${liczba(l.x, 1)} · ${liczba(l.y, 1)}`} · ETA ${czasGry(l.do)}`),
+          h('button.przycisk.maly', { onclick: async () => {
+            try {
+              await api('mapa_lot_przerwij', { flota_id: f.id, jednostki: wLocie.map((j) => j.obiekt_id) });
+              wynik.textContent = 'Lot przerwany.';
+              await pobierzPozycje(); await odswiezFloty();
+            } catch (e) { wynik.textContent = e.message; }
+          } }, 'Przerwij lot'));
+      }
+      const zdolne = jednostki.filter((j) => !j.rozkaz_id && !j.ladowisko_id && czyLeci(j));
+      if (!zdolne.length) { blok.append(wynik); return blok; }
+      const dane = { flota_id: f.id, jednostki: zdolne.map((j) => j.obiekt_id), ...cel };
+      const lec = h('button.przycisk.glowny.mapa-nawigacja-wykonaj', { hidden: true, onclick: async () => {
+        try {
+          const w = await api('mapa_flota_lot', dane);
+          wynik.textContent = `Lot rozpoczęty. Silniki ${czasGry(w.start)}, ETA ${czasGry(w.eta)}.`;
+          lec.hidden = true;
+          await pobierzPozycje(); await odswiezFloty();
+        } catch (e) { wynik.textContent = e.message; }
+      } }, 'Leć');
+      const oblicz = h('button.przycisk', { onclick: async () => {
+        try {
+          const w = await api('mapa_flota_lot', { ...dane, plan: true });
+          wynik.textContent = `Trasa ${liczba(w.km)} km · ${liczba(w.predkosc_kms)} km/s · obrót ${czasTrwania(w.manewr_s)}`
+            + ` · lot ${czasDlugi(w.lot_s)} · ETA ${czasGry(w.eta)}`;
+          lec.hidden = false;
+        } catch (e) { wynik.textContent = e.message; lec.hidden = true; }
+      } }, 'Oblicz lot');
+      blok.append(h('div.mapa-nawigacja-wiersz', oblicz), lec, wynik);
+      return blok;
+    }
+
+    // Karta punktu mapy dla dowódcy floty: skok do punktu albo lot podświetlny.
+    function sekcjaPunktu(pkt) {
+      const sekcja = h('div.mapa-nawigacja');
+      api('mapa_floty_gracza').then((dane) => {
+        const floty = dane.floty || [];
+        if (!floty.length) return;
+        const wybor = h('select', floty.map((f) => h('option', { value: f.id }, f.nazwa)));
+        const tresc = h('div');
+        const rysuj = () => {
+          const f = floty.find((x) => String(x.id) === wybor.value) || floty[0];
+          wyczysc(tresc);
+          const wynik = h('p.maly-tekst');
+          const dane = { flota_id: f.id, x: pkt.x, y: pkt.y };
+          const wykonaj = h('button.przycisk.glowny.mapa-nawigacja-wykonaj', { hidden: true, onclick: async () => {
+            try {
+              const w = await api('mapa_flota_rozkaz', dane);
+              wynik.textContent = `Rozkaz przyjęty. Wejście w nadprzestrzeń ${czasGry(w.wejscie)}, ETA ${czasGry(w.eta)}.`;
+              wykonaj.hidden = true;
+              await pobierzPozycje();
+            } catch (e) { wynik.textContent = e.message; }
+          } }, 'Wykonaj skok');
+          const oblicz = h('button.przycisk', { onclick: async () => {
+            try {
+              const w = await api('mapa_flota_rozkaz', { ...dane, plan: true });
+              wynik.textContent = `${w.tryb === 'reczny' ? 'Obliczenia mostka' : 'Komputer'}: ${czasTrwania(w.obliczenia_s)} · obrót: ${czasTrwania(w.manewr_s)}`
+                + (w.punkt_s > 0 ? ` · do punktu skoku: ${czasTrwania(w.punkt_s)}` : '') + ` · lot: ${czasTrwania(w.lot_s)} · ETA ${czasGry(w.eta)}`;
+              wykonaj.hidden = false;
+            } catch (e) { wynik.textContent = e.message; wykonaj.hidden = true; }
+          } }, 'Oblicz skok');
+          tresc.append(h('div.mapa-nawigacja-blok', h('b', 'Skok do punktu'), h('div.mapa-nawigacja-wiersz', oblicz), wykonaj, wynik),
+            blokLotu(f, { x: pkt.x, y: pkt.y }, 'Lot podświetlny do punktu'));
+        };
+        wybor.onchange = rysuj;
+        sekcja.append(h('div.slaby.maly-tekst', 'Nawigacja floty'), floty.length > 1 ? wybor : null, tresc);
+        rysuj();
+      }).catch(() => {});
+      return sekcja;
+    }
+
+    // Pokład statku: pasażerowie i więźniowie (widzą osoby na pokładzie, dowódca lub właściciel i MG).
+    function sekcjaPokladu(o) {
+      const sekcja = h('div.mapa-poklad');
+      api('mapa_poklad', undefined, { obiekt: o.id }).then((d) => {
+        let zakladka = 'pasazerowie';
+        const zakladki = h('div.mapa-poklad-zakladki');
+        const tresc = h('div');
+        const rysuj = () => {
+          wyczysc(zakladki); wyczysc(tresc);
+          for (const [k, n] of [['pasazerowie', 'Pasażerowie'], ['wiezniowie', 'Więźniowie']]) {
+            zakladki.append(h(k === zakladka ? 'button.przycisk.maly' : 'button.przycisk.maly.drugi', { onclick: () => { zakladka = k; rysuj(); } }, `${n} (${d[k].length})`));
+          }
+          const lista = d[zakladka];
+          tresc.append(lista.length
+            ? h('ul.lista', lista.map((x) => h('li', h('span', x.nazwa), x.status ? h('span.slaby', ` · ${x.status}`) : null,
+              d.mg ? h('button.przycisk.maly.drugi', { onclick: async () => {
+                try { await api('mg_poklad_rola', { id: x.id, rola: x.rola === 'wiezien' ? 'pasazer' : 'wiezien' }); wybierz(wybrane); }
+                catch (e) { tresc.append(h('p.maly-tekst', e.message)); }
+              } }, x.rola === 'wiezien' ? '→ pasażer' : '→ więzień') : null)))
+            : h('p.slaby.maly-tekst', zakladka === 'wiezniowie' ? 'Brak więźniów.' : 'Brak pasażerów.'));
+        };
+        sekcja.append(h('div.slaby.maly-tekst', 'Pokład'), zakladki, tresc);
         rysuj();
       }).catch(() => {});
       return sekcja;
@@ -955,7 +1111,9 @@ export default {
             o.opis ? wiersz('Opis', o.opis) : null),
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
             h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
-            o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null);
+            o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null,
+          o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null,
+          o.typ !== 'postac' ? sekcjaPokladu(o) : null);
       } else if (obiekt.planeta) {
         const p = obiekt.planeta;
         const tutaj = statkiNaMapie.find((x) => x.planeta === p)?.statki || [];
@@ -982,6 +1140,16 @@ export default {
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
               s.w_locie ? h('span.slaby', s.cel ? ` · w nadprzestrzeni → ${s.cel}` : ' · na orbicie') : null)))) : null);
+      } else if (obiekt.punkt) {
+        const { x, y } = obiekt.punkt;
+        const moj = mojZnacznik();
+        const odl = moj ? Math.hypot(x - moj.x, y - moj.y) : null;
+        karta.append(zamknij,
+          h('h2', `Punkt ${liczba(x, 1)} · ${liczba(y, 1)}`),
+          h('table.tabela',
+            wiersz('Współrzędne', `${liczba(x, 1)} · ${liczba(y, 1)}`),
+            odl !== null ? wiersz('Odległość od ciebie', `${liczba(odl, 1)} pc`) : null),
+          sekcjaPunktu(obiekt.punkt));
       } else {
         const s = obiekt.szlak;
         karta.append(zamknij,
@@ -1081,7 +1249,10 @@ export default {
       const byl = wskazniki.has(e.pointerId);
       wskazniki.delete(e.pointerId);
       if (wskazniki.size < 2) szczypanie = null;
-      if (byl && !przesuniety && wskazniki.size === 0 && e.type === 'pointerup' && D) wybierz(trafienie(e.offsetX, e.offsetY));
+      if (byl && !przesuniety && wskazniki.size === 0 && e.type === 'pointerup' && D) {
+        const [mx, my] = naMape(e.offsetX, e.offsetY);
+        wybierz(trafienie(e.offsetX, e.offsetY) || (wybrane ? null : { punkt: { x: Math.round(mx * 10) / 10, y: Math.round(my * 10) / 10 } }));
+      }
     };
     plotno.addEventListener('pointerup', pusc);
     plotno.addEventListener('pointercancel', pusc);

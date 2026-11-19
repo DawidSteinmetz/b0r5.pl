@@ -228,6 +228,20 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - Pulpit: kafelek stanu (4 paski) jest zawsze kwadratowy; odliczanie etapu (nazwa, czas, pasek
   postępu) ma osobny kafelek obok i znika, gdy nic nie trwa.
 
+## Lot podświetlny, punkt na mapie i pokład (migracja 028)
+
+- **Lot podświetlny** (`mapa_flota_lot`, z `plan` tylko wyliczenie): zwykłe silniki, czas 1:1, MG może
+  przyspieszyć (resynchronizacja „Lot podświetlny”). Trasa w km: planeta ↔ jej księżyc z promienia obiegu,
+  poza tym z mapy (1 pc ≈ 30,9 bln km, więc lot do innego układu trwa lata i gra to pokazuje). Prędkości
+  (`predkosc_podswietlna_kms`): ISD 1500, Arquitens i Gozanti 2000, Kom'rk 3000 km/s. Flota: obrót na kurs,
+  potem lot tempem najwolniejszej jednostki; przylot przy planecie na daleką orbitę. `mapa_lot_przerwij`
+  zatrzymuje jednostki tam, gdzie są. W oknie cel rośnie w miarę zbliżania (rozmiar z kąta).
+- **Punkt na mapie**: klik w puste miejsce (gdy nic nie jest wybrane) otwiera kartę punktu: skok do punktu
+  albo lot podświetlny. Karta planety ma też „Lot podświetlny do …” (np. Nal Hutta → Nar Shaddaa).
+- **Pokład**: postacie na pokładzie nie mają znaczników na mapie; „Jesteś tutaj” pulsuje na statku, na którym
+  jesteś. Karta statku: zakładki „Pasażerowie” i „Więźniowie” (`mapa_poklad`; widzą osoby na pokładzie,
+  dowódca lub właściciel, MG). MG przełącza rolę przyciskiem w zakładce (`mg_poklad_rola`).
+
 ## Widok z mostka i sceny na okrętach
 
 - Postać na pokładzie okrętu z SQL (lokacja `okret:` albo `flota:`) dostaje scenę **liczoną

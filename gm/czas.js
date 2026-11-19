@@ -5,7 +5,7 @@
 import { h, wyczysc, czasGry } from '../js/rdzen/narzedzia.js';
 import { api } from '../js/rdzen/api.js';
 
-const RODZAJE = { skok_floty: 'Skok floty', manewr: 'Manewr (kurs)', dolot: 'Dolot (orbita)', skok_statku: 'Skok statku', podroz: 'Podróż postaci', obsluga_statku: 'Obsługa naziemna' };
+const RODZAJE = { skok_floty: 'Skok floty', manewr: 'Manewr (kurs)', dolot: 'Dolot (orbita)', lot: 'Lot podświetlny', skok_statku: 'Skok statku', podroz: 'Podróż postaci', obsluga_statku: 'Obsługa naziemna' };
 
 const msg = (t, rodzaj = 'blad') => h('div.msg.' + rodzaj, t);
 const btn = (tekst, fn, klasa = '') => h('button.btn' + klasa, { type: 'button', onclick: fn }, tekst);

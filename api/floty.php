@@ -102,6 +102,7 @@ function floty_dolot(array $odbiorcy, string $cel): array
     $q->execute($odbiorcy);
     if ($q->fetchColumn()) blad('Jednostki wykonujące skok nie zmienią teraz orbity.');
     floty_blokada_ladowiska($odbiorcy);
+    floty_blokada_lotu($odbiorcy);
     $q = $db->prepare("SELECT o.id,o.nazwa,o.planeta_id,o.rozbity,o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,
             COALESCE(n.obrot_deg_na_min,90) AS obrot FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
         WHERE o.id IN ($marks) AND o.aktywny=1");
@@ -227,6 +228,246 @@ function floty_czas_do_punktu(array $j, float $kierunek, int $teraz): int
     $orbita = $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kat(floty_kurs_teraz($j, $teraz) + 180);
     $luk = $R * deg2rad(abs(floty_kat_roznica($orbita, $kierunek)));
     return (int) ceil($luk / max(1.0, $v / 15) + max(0.0, PUNKT_SKOKU_KM - $R) / $v);
+}
+
+// ---------- lot podświetlny ----------
+// Zwykłe silniki: czas gry 1:1 (MG może przyspieszyć resynchronizacją). Trasa w km: między planetą
+// a jej księżycem z promienia obiegu, poza tym z odległości na mapie (1 pc ≈ 30,9 bln km — lot do
+// innego układu trwa lata i gra pokazuje to uczciwie). Flota leci razem tempem najwolniejszej jednostki:
+// obrót na kurs, rozpędzanie, przelot, hamowanie. Po przylocie przy planecie: daleka orbita.
+const KM_NA_PC = 30856775814913.7;
+const LOT_ROZPED_S = 120;        // rozpędzanie i hamowanie razem
+const LOT_W_UKLADZIE_PC = 0.05;  // bliżej niż tyle: ten sam układ (mapa liczy pozycje co 0,1 pc)
+
+function floty_lot_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT lot_do_utc, lot_cel_planeta_id, rola_na_pokladzie FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function floty_blokada_lotu(array $odbiorcy): void
+{
+    if (!floty_lot_dostepny() || !$odbiorcy) return;
+    $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
+    $q = polaczenie_bazy()->prepare("SELECT nazwa FROM mapa_obiekty WHERE id IN ($marks) AND lot_do_utc IS NOT NULL LIMIT 1");
+    $q->execute($odbiorcy);
+    $n = $q->fetchColumn();
+    if ($n) blad('„' . $n . '” jest w locie podświetlnym. Najpierw przerwij lot.');
+}
+
+// Planeta w punkcie mapy (ten sam układ); przy równej odległości planeta przed księżycem (niższe id).
+function floty_planeta_w_punkcie(float $x, float $y): ?int
+{
+    $q = polaczenie_bazy()->prepare('SELECT id FROM mapa_planety WHERE ABS(x-?) < ? AND ABS(y-?) < ? ORDER BY POW(x-?,2)+POW(y-?,2), id LIMIT 1');
+    $q->execute([$x, LOT_W_UKLADZIE_PC, $y, LOT_W_UKLADZIE_PC, $x, $y]);
+    $id = $q->fetchColumn();
+    return $id ? (int) $id : null;
+}
+
+// Długość trasy (km). W układzie: planeta ↔ jej księżyc (promień obiegu), dwa księżyce jednej planety
+// (przez planetę macierzystą), inne ciała układu — umownie 1 mln km.
+function floty_lot_km(?int $odPlanety, float $x0, float $y0, ?int $doPlanety, float $x1, float $y1): float
+{
+    $pc = hypot($x1 - $x0, $y1 - $y0);
+    if ($pc >= LOT_W_UKLADZIE_PC || !$odPlanety || !$doPlanety) return $pc * KM_NA_PC;
+    if ($odPlanety === $doPlanety) return 0.0;
+    $obiegi = [];
+    if (tabela_sql_dostepna('planety_cykle')) {
+        try {
+            $q = polaczenie_bazy()->prepare('SELECT planeta_id, macierz_planeta_id, promien_wokol_km FROM planety_cykle WHERE planeta_id IN (?,?)');
+            $q->execute([$odPlanety, $doPlanety]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $obiegi[(int) $r['planeta_id']] = $r;
+        } catch (Throwable $e) { $obiegi = []; }
+    }
+    $r = fn(int $id) => (float) ($obiegi[$id]['promien_wokol_km'] ?? 0);
+    $m = fn(int $id) => (int) ($obiegi[$id]['macierz_planeta_id'] ?? 0);
+    if ($m($doPlanety) === $odPlanety) return $r($doPlanety);
+    if ($m($odPlanety) === $doPlanety) return $r($odPlanety);
+    if ($m($odPlanety) && $m($odPlanety) === $m($doPlanety)) return hypot($r($odPlanety), $r($doPlanety));
+    return 1000000.0;
+}
+
+// Rozkaz lotu (albo sam plan): $w['cel_planeta'] (planeta lub księżyc) albo $w['x'], $w['y'].
+function floty_lot(array $odbiorcy, array $w): array
+{
+    if (!floty_lot_dostepny()) blad('Zaimportuj jeszcze api/migracje/028_lot_podswietlny_poklad.sql.');
+    floty_aktualizuj_ruch();
+    floty_blokada_skoku($odbiorcy);
+    floty_blokada_ladowiska($odbiorcy);
+    $db = polaczenie_bazy();
+    $celPlaneta = trim((string) ($w['cel_planeta'] ?? ''));
+    $celId = null;
+    if ($celPlaneta !== '') {
+        $q = $db->prepare('SELECT id,x,y FROM mapa_planety WHERE nazwa=? LIMIT 1');
+        $q->execute([$celPlaneta]);
+        $pl = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$pl || !mapa_planeta_widoczna((int) $pl['id'], ja())) blad('Nie znasz takiego celu.');
+        $celId = (int) $pl['id']; $x = (float) $pl['x']; $y = (float) $pl['y'];
+    } else {
+        $x = $w['x'] ?? null; $y = $w['y'] ?? null;
+        if (!is_numeric($x) || !is_numeric($y)) blad('Podaj punkt docelowy.');
+        $x = round((float) $x, 1); $y = round((float) $y, 1);
+        if (abs($x) > 1000000 || abs($y) > 1000000) blad('Współrzędne wykraczają poza zakres mapy.');
+        $celId = floty_planeta_w_punkcie($x, $y);
+        if ($celId && !mapa_planeta_widoczna($celId, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
+    }
+    $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
+    $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+            o.lot_do_utc,COALESCE(n.obrot_deg_na_min,90) AS obrot,COALESCE(n.predkosc_podswietlna_kms,300) AS v
+        FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($marks) AND o.aktywny=1");
+    $q->execute($odbiorcy);
+    $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
+    if (count($jednostki) !== count($odbiorcy)) blad('Brak jednej z jednostek.');
+    $teraz = czas_teraz();
+    $obrot = min(array_map(fn($j) => (float) $j['obrot'] ?: 90.0, $jednostki));
+    $v = max(10.0, min(array_map(fn($j) => (float) $j['v'], $jednostki)));
+    $wyliczone = [];
+    foreach ($jednostki as $j) {
+        if ($j['x'] === null || $j['y'] === null) blad('Jednostka „' . $j['nazwa'] . '” nie ma pozycji mapowej.');
+        // Trwający lot: nowy kurs od miejsca, w którym jednostka jest teraz.
+        $poz = floty_lot_pozycja($j['id'], $teraz);
+        $x0 = $poz ? $poz[0] : (float) $j['x']; $y0 = $poz ? $poz[1] : (float) $j['y'];
+        $odPl = $poz ? floty_planeta_w_punkcie($x0, $y0) : (((int) $j['planeta_id']) ?: floty_planeta_w_punkcie($x0, $y0));
+        $km = floty_lot_km($odPl, $x0, $y0, $celId, $x, $y);
+        if ($km < 1) blad('Jednostka „' . $j['nazwa'] . '” już jest w tym miejscu.');
+        $kursTeraz = floty_kurs_teraz($j, $teraz);
+        $pc = hypot($x - $x0, $y - $y0);
+        $kurs = $pc >= 0.05 ? floty_kat(rad2deg(atan2($y - $y0, $x - $x0))) : $kursTeraz;
+        $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => $x0, 'y0' => $y0, 'km' => $km,
+            'kurs0' => $kursTeraz, 'kurs' => $kurs, 'manewr' => floty_czas_manewru(floty_kat_roznica($kursTeraz, $kurs), $obrot)];
+    }
+    $km = max(array_column($wyliczone, 'km'));
+    $lotS = czas_trwania(($km / $v + LOT_ROZPED_S) / 60);
+    $od = $teraz + max(array_column($wyliczone, 'manewr'));
+    $do = $od + $lotS;
+    $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => $v, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
+        'cel' => ['x' => $x, 'y' => $y, 'planeta' => $celId ? ruch_planeta((string) $celId)['nazwa'] ?? null : null]];
+    if (!empty($w['plan'])) return $wynik + ['plan' => true];
+    $db->beginTransaction();
+    try {
+        $u = $db->prepare('UPDATE mapa_obiekty SET lot_start_x=?, lot_start_y=?, lot_cel_x=?, lot_cel_y=?, lot_cel_planeta_id=?, lot_km=?, lot_od_utc=?, lot_do_utc=?'
+            . (floty_nawigacja_dostepna() ? ', podlot_start=NULL, podlot_cel=NULL, podlot_od_utc=NULL, podlot_do_utc=NULL' : '') . ' WHERE id=?');
+        foreach ($wyliczone as $j) {
+            floty_ustaw_manewr($db, $j['id'], $j['kurs0'], $j['kurs'], $teraz, $teraz + $j['manewr']);
+            $u->execute([$j['x0'], $j['y0'], $x, $y, $celId, round($j['km'], 1), czas_utc($od), czas_utc($do), $j['id']]);
+        }
+        $db->commit();
+    } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+    return $wynik;
+}
+
+// Pozycja (x, y) jednostki w trwającym locie podświetlnym albo null.
+function floty_lot_pozycja(int|string $id, int $teraz): ?array
+{
+    if (!floty_lot_dostepny()) return null;
+    $q = polaczenie_bazy()->prepare('SELECT lot_start_x,lot_start_y,lot_cel_x,lot_cel_y,lot_od_utc,lot_do_utc FROM mapa_obiekty WHERE id=? AND lot_do_utc IS NOT NULL');
+    $q->execute([(int) $id]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) return null;
+    $od = czas_z_utc($r['lot_od_utc']); $do = czas_z_utc($r['lot_do_utc']);
+    $f = $do > $od ? max(0, min(1, ($teraz - $od) / ($do - $od))) : 1;
+    return [(float) $r['lot_start_x'] + ((float) $r['lot_cel_x'] - (float) $r['lot_start_x']) * $f,
+        (float) $r['lot_start_y'] + ((float) $r['lot_cel_y'] - (float) $r['lot_start_y']) * $f];
+}
+
+// Przerwanie lotu: jednostka zatrzymuje się tam, gdzie jest (w układzie: na dalekiej orbicie bliższego ciała).
+function floty_lot_przerwij(array $odbiorcy): array
+{
+    if (!floty_lot_dostepny()) blad('Zaimportuj jeszcze api/migracje/028_lot_podswietlny_poklad.sql.');
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    $ile = 0;
+    foreach ($odbiorcy as $id) {
+        $poz = floty_lot_pozycja($id, $teraz);
+        if (!$poz) continue;
+        $q = $db->prepare('SELECT lot_start_x,lot_start_y,lot_cel_planeta_id,lot_od_utc,lot_do_utc FROM mapa_obiekty WHERE id=?');
+        $q->execute([(int) $id]);
+        $r = $q->fetch(PDO::FETCH_ASSOC);
+        $od = czas_z_utc($r['lot_od_utc']); $do = czas_z_utc($r['lot_do_utc']);
+        $postep = $do > $od ? ($teraz - $od) / ($do - $od) : 1;
+        $pl = floty_planeta_w_punkcie(round($poz[0], 1), round($poz[1], 1));
+        // Lot w obrębie układu (np. do księżyca): bliżej celu niż startu → przy celu.
+        if ($pl && $r['lot_cel_planeta_id'] && $postep > 0.5) $pl = (int) $r['lot_cel_planeta_id'];
+        floty_lot_zakoncz($db, (int) $id, round($poz[0], 1), round($poz[1], 1), $pl, $teraz, false);
+        $k = $db->prepare('SELECT kurs_deg,kurs_start_deg,kurs_cel_deg,manewr_od_utc,manewr_do_utc FROM mapa_obiekty WHERE id=?');
+        $k->execute([(int) $id]);
+        $kurs = floty_kurs_teraz($k->fetch(PDO::FETCH_ASSOC), $teraz);
+        floty_ustaw_manewr($db, (int) $id, $kurs, $kurs, 0, 0);
+        $ile++;
+    }
+    if (!$ile) blad('Żadna z jednostek nie jest w locie.');
+    return ['ok' => true];
+}
+
+function floty_lot_zakoncz(PDO $db, int $id, float $x, float $y, ?int $planeta, int $teraz, bool $przylot): void
+{
+    $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=?, lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL,
+        lot_cel_planeta_id=NULL, lot_km=NULL, lot_od_utc=NULL, lot_do_utc=NULL WHERE id=?')->execute([$x, $y, $planeta, $id]);
+    if (floty_orbita_dostepna()) {
+        // Przy planecie: daleka orbita po stronie przylotu (rufa ku planecie); bez animacji wyjścia ze skoku.
+        $q = $db->prepare('SELECT kurs_deg FROM mapa_obiekty WHERE id=?');
+        $q->execute([$id]);
+        $kurs = (float) $q->fetchColumn();
+        $db->prepare('UPDATE mapa_obiekty SET orbita_deg=?, przylot_utc=?, rozbity=0 WHERE id=?')
+            ->execute([$planeta ? round(floty_kat($kurs + 180), 2) : null, $planeta ? czas_utc($teraz - 3600) : null, $id]);
+        if (floty_nawigacja_dostepna()) $db->prepare('UPDATE mapa_obiekty SET podejscie=? WHERE id=?')->execute([$planeta ? 'daleka' : null, $id]);
+    }
+}
+
+// Postęp lotów: przylot po czasie; w drodze między układami pozycja na mapie przesuwa się po linii lotu.
+function floty_aktualizuj_loty(): void
+{
+    if (!floty_lot_dostepny()) return;
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    $q = $db->query('SELECT id,lot_start_x,lot_start_y,lot_cel_x,lot_cel_y,lot_cel_planeta_id,lot_od_utc,lot_do_utc FROM mapa_obiekty WHERE lot_do_utc IS NOT NULL');
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $od = czas_z_utc($r['lot_od_utc']); $do = czas_z_utc($r['lot_do_utc']);
+        if ($teraz < $od) continue;
+        $x1 = (float) $r['lot_cel_x']; $y1 = (float) $r['lot_cel_y'];
+        if ($teraz >= $do) {
+            $pl = ((int) $r['lot_cel_planeta_id']) ?: floty_planeta_w_punkcie($x1, $y1);
+            floty_lot_zakoncz($db, (int) $r['id'], $x1, $y1, $pl, $teraz, true);
+            continue;
+        }
+        if (hypot($x1 - (float) $r['lot_start_x'], $y1 - (float) $r['lot_start_y']) < LOT_W_UKLADZIE_PC) continue;
+        $poz = floty_lot_pozycja($r['id'], $teraz);
+        $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=NULL' . (floty_orbita_dostepna() ? ', orbita_deg=NULL' : '')
+            . (floty_nawigacja_dostepna() ? ', podejscie=NULL' : '') . ' WHERE id=?')
+            ->execute([round($poz[0], 1), round($poz[1], 1), $r['id']]);
+    }
+}
+
+// ---------- osoby na pokładzie ----------
+// Kto jest na statku, gracz widzi dopiero w karcie statku (pasażerowie i więźniowie): osoby na tym
+// pokładzie, dowódca lub właściciel statku i MG.
+function floty_poklad(array $u, int $statekId): array
+{
+    $db = polaczenie_bazy();
+    $mg = ($u['rola'] ?? '') === 'mg';
+    $mozna = $mg || floty_jednostka_moze((string) $u['login'], $statekId);
+    if (!$mozna) {
+        $q = $db->prepare("SELECT 1 FROM mapa_obiekty WHERE legacy_uid=? AND typ='postac' AND na_pokladzie_id=?");
+        $q->execute([(string) $u['id'], $statekId]);
+        $mozna = (bool) $q->fetchColumn();
+    }
+    if (!$mozna && function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny()) {
+        $q = $db->prepare('SELECT 1 FROM mapa_obiekty WHERE id=? AND LOWER(wlasciciel_login)=LOWER(?)');
+        $q->execute([$statekId, (string) $u['login']]);
+        $mozna = (bool) $q->fetchColumn();
+    }
+    if (!$mozna) blad('Nie masz wglądu w pokład tej jednostki.', 403);
+    $rola = floty_lot_dostepny() ? 'rola_na_pokladzie' : "'pasazer'";
+    $q = $db->prepare("SELECT id, nazwa, status, $rola AS rola FROM mapa_obiekty WHERE typ='postac' AND aktywny=1 AND na_pokladzie_id=? ORDER BY nazwa");
+    $q->execute([$statekId]);
+    $osoby = array_map(fn($r) => ['id' => (int) $r['id'], 'nazwa' => $r['nazwa'], 'status' => $r['status'], 'rola' => $r['rola']], $q->fetchAll(PDO::FETCH_ASSOC));
+    return ['ok' => true, 'mg' => $mg,
+        'pasazerowie' => array_values(array_filter($osoby, fn($o) => $o['rola'] !== 'wiezien')),
+        'wiezniowie' => array_values(array_filter($osoby, fn($o) => $o['rola'] === 'wiezien'))];
 }
 
 function floty_blokada_ladowiska(array $odbiorcy): void
@@ -409,7 +650,7 @@ function floty_kurs(array $odbiorcy, float $kurs, bool $natychmiast = false): ar
     $q = $db->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki WHERE obiekt_id IN ($marks) AND status='w_nadprzestrzeni' LIMIT 1");
     $q->execute($odbiorcy);
     if ($q->fetchColumn() && !$natychmiast) blad('Jednostki wykonujące skok nie zmienią teraz kursu.');
-    if (!$natychmiast) floty_blokada_ladowiska($odbiorcy);
+    if (!$natychmiast) { floty_blokada_ladowiska($odbiorcy); floty_blokada_lotu($odbiorcy); }
     $q = $db->prepare("SELECT o.id,o.nazwa,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
             COALESCE(n.obrot_deg_na_min,90) AS obrot FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
         WHERE o.id IN ($marks) AND o.aktywny=1");
@@ -475,6 +716,7 @@ function floty_aktualizuj_ruch(): void
 {
     if (!tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) return;
     floty_domknij_manewry();
+    floty_aktualizuj_loty();
     $db = polaczenie_bazy();
     $kurs = floty_kurs_dostepny();
     $q = $db->query("SELECT j.rozkaz_id,j.obiekt_id,j.start_x,j.start_y,j.wyjscie_x,j.wyjscie_y,j.eta_utc,j.paliwo_zuzyte,j.planeta_id,r.wydano_utc"
@@ -546,7 +788,8 @@ function floty_lista(string $login, bool $mg = false): array
         . (floty_ladowanie_dostepne() ? 'o.ladowisko_id,o.start_utc,COALESCE(n.moze_ladowac,0) AS moze_ladowac,(SELECT nazwa FROM lokalizacje WHERE id=o.ladowisko_id) AS ladowisko,' : '')
         . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '')
         . (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny() ? 'o.wlasciciel_login,o.lokalizator_zasieg_pc,o.lokalizator_aktywny,' : '')
-        . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
+        . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '')
+        . (floty_lot_dostepny() ? 'o.lot_cel_x,o.lot_cel_y,o.lot_od_utc,o.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS lot_cel_planeta,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc,r.wariant
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
         LEFT JOIN mapa_planety p ON p.id=o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
@@ -567,6 +810,8 @@ function floty_lista(string $login, bool $mg = false): array
             $u['obrot_deg_na_min'] = (float) $u['obrot_deg_na_min'];
             $u['podejscie_teraz'] = floty_podejscie_teraz($u, czas_teraz());
             if ($u['podlot_do_utc']) $u['podlot_do'] = strtotime($u['podlot_do_utc'] . ' UTC');
+            if (!empty($u['lot_do_utc'])) $u['lot'] = ['od' => czas_z_utc($u['lot_od_utc']), 'do' => czas_z_utc($u['lot_do_utc']),
+                'x' => (float) $u['lot_cel_x'], 'y' => (float) $u['lot_cel_y'], 'planeta' => $u['lot_cel_planeta']];
             // Gracz widzi tylko, czy automat odpowiada (zhakowany wygląda jak sprawny).
             $u['automat'] = in_array($u['komputer_stan'], ['sprawny', 'zhakowany'], true);
             if (!$mg) unset($u['komputer_stan']);
@@ -600,6 +845,7 @@ function floty_rozkaz(string $login, array $w): array
     floty_aktualizuj_ruch();
     [$flotaId, $odbiorcy] = floty_odbiorcy($login, $w);
     floty_blokada_ladowiska($odbiorcy);
+    floty_blokada_lotu($odbiorcy);
     [$klasaKomputera, $stanKomputera, $automat] = floty_komputer($odbiorcy);
     $celObiekt = (int) ($w['cel_obiekt_id'] ?? 0);
     $celPlaneta = trim((string) ($w['cel_planeta'] ?? ''));
@@ -734,7 +980,7 @@ function floty_rozkaz(string $login, array $w): array
 function obsluz_floty(string $akcja, bool $post): void
 {
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj','mapa_flota_kurs','mapa_flota_dolot',
-        'mapa_flota_start','mapa_flota_ladowanie','mapa_ladowiska',
+        'mapa_flota_start','mapa_flota_ladowanie','mapa_ladowiska','mapa_flota_lot','mapa_lot_przerwij','mapa_poklad','mg_poklad_rola',
         'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport','mg_flota_kurs'];
     if (!in_array($akcja, $akcje, true)) return;
     floty_gotowe();
@@ -807,6 +1053,32 @@ function obsluz_floty(string $akcja, bool $post): void
             $u = wymagaj_logowania(); $w = wejscie();
             [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
             odpowiedz(floty_dolot($odbiorcy, (string) ($w['cel'] ?? '')));
+
+        case 'mapa_flota_lot':
+            // Lot podświetlny do planety/księżyca albo punktu mapy (z `plan`: tylko wyliczenie).
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
+            odpowiedz(floty_lot($odbiorcy, $w));
+
+        case 'mapa_lot_przerwij':
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
+            odpowiedz(floty_lot_przerwij($odbiorcy));
+
+        case 'mapa_poklad':
+            $u = wymagaj_logowania();
+            odpowiedz(floty_poklad($u, (int) ($_GET['obiekt'] ?? 0)));
+
+        case 'mg_poklad_rola':
+            // MG: osoba na pokładzie jest pasażerem albo więźniem.
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg(); $w = wejscie();
+            if (!floty_lot_dostepny()) blad('Zaimportuj jeszcze api/migracje/028_lot_podswietlny_poklad.sql.');
+            $rola = ($w['rola'] ?? '') === 'wiezien' ? 'wiezien' : 'pasazer';
+            polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET rola_na_pokladzie=? WHERE id=? AND typ='postac'")->execute([$rola, (int) ($w['id'] ?? 0)]);
+            odpowiedz(['ok' => true]);
 
         case 'mg_flota_kurs':
             // MG ustawia kurs od razu, bez manewru (flota albo pojedyncza jednostka).

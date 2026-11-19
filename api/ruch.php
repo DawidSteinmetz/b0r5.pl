@@ -199,7 +199,9 @@ function mapa_kurs_sql(): string
     if (!function_exists('floty_kurs_dostepny') || !floty_kurs_dostepny()) return '';
     return ',m.kurs_deg,m.kurs_start_deg,m.kurs_cel_deg,m.manewr_od_utc,m.manewr_do_utc'
         . (floty_orbita_dostepna() ? ',m.orbita_deg,m.rozbity' : '')
-        . (mapa_frakcja_dostepna() ? ',m.frakcja' : '');
+        . (mapa_frakcja_dostepna() ? ',m.frakcja' : '')
+        . (function_exists('floty_lot_dostepny') && floty_lot_dostepny()
+            ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -210,6 +212,12 @@ function mapa_kurs_pola(array $r): array
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
     if (!empty($r['frakcja'])) $w['frakcja'] = $r['frakcja'];
+    if (!empty($r['lot_do_utc'])) {
+        // Lot podświetlny: tablet przesuwa znacznik po linii lotu (w układzie: między planetą a księżycem).
+        $w['podswietlny'] = ['od' => czas_z_utc((string) $r['lot_od_utc']), 'do' => czas_z_utc((string) $r['lot_do_utc']),
+            'x0' => (float) $r['lot_start_x'], 'y0' => (float) $r['lot_start_y'], 'x1' => (float) $r['lot_cel_x'], 'y1' => (float) $r['lot_cel_y'],
+            'planeta' => $r['lot_cel_planeta'] ?? null, 'km' => (float) $r['lot_km']];
+    }
     if (!empty($r['manewr_do_utc']) && $r['kurs_cel_deg'] !== null) {
         $w['manewr'] = ['od' => czas_z_utc((string) $r['manewr_od_utc']), 'do' => czas_z_utc((string) $r['manewr_do_utc']),
             'start' => (float) $r['kurs_start_deg'], 'cel' => (float) $r['kurs_cel_deg']];

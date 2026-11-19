@@ -141,6 +141,23 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
             'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs), 'widok' => $widok + ($start ? [] : ['bez_planety' => true])];
     }
     $gwiazdy = scena_gwiazdy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
+    $lotOd = czas_z_utc($o['lot_od_utc'] ?? null); $lotDo = czas_z_utc($o['lot_do_utc'] ?? null);
+    if ($lotDo && $teraz >= $lotOd && $teraz < $lotDo) {
+        // Lot podświetlny: cel przed dziobem rośnie w miarę zbliżania (rozmiar z kąta na tablecie).
+        $cel = !empty($o['lot_cel_planeta_id']) ? ruch_planeta((string) $o['lot_cel_planeta_id']) : [];
+        $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy];
+        if (!empty($cel['nazwa'])) {
+            $cykl = astro_cykl((string) $cel['nazwa']);
+            $zostalo = (float) ($o['lot_km'] ?? 0) * ($lotDo - $teraz) / max(1, $lotDo - $lotOd);
+            $widok['orbita'] = floty_kat((float) ($widok['kurs'] ?? 0) + 180);
+            $widok['cykl'] = $cykl;
+            $widok['wysokosc_km'] = max(NISKA_ORBITA_KM, $zostalo + (float) $cykl['srednica_km'] * 15 / 2);
+            return $baza + ['scena' => 'orbita', 'planeta' => (string) (($cel['typ_planety'] ?? '') ?: 'skalista'), 'odleglosc' => 'daleko',
+                'miejsce' => (string) $cel['nazwa'], 'zmieniono' => max($lotOd * 1000, $zmianaPozycjiMs), 'widok' => $widok];
+        }
+        return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń',
+            'zmieniono' => max($lotOd * 1000, $zmianaPozycjiMs), 'widok' => $widok];
+    }
     if ($planeta === '') {
         return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
             'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy]];
@@ -195,7 +212,8 @@ function liczniki_okretu(int $id): ?array
     $nav = floty_nawigacja_dostepna();
     $l = liczniki_dostepne();
     $q = $db->prepare('SELECT o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc' . ($nav ? ',o.podlot_cel,o.podlot_do_utc' : '')
-        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',o.ladowisko_id,o.start_utc' : '') . ',
+        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',o.ladowisko_id,o.start_utc' : '')
+        . (function_exists('floty_lot_dostepny') && floty_lot_dostepny() ? ',o.lot_od_utc,o.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS lot_cel' : '') . ',
             n.paliwo,n.paliwo_maks,n.moc_reaktora,n.moc_hipernapedu,n.sprawnosc_reaktora' . ($l ? ',n.oslony,n.kadlub' : '') . '
         FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id=?');
     $q->execute([$id]);
@@ -230,6 +248,9 @@ function liczniki_okretu(int $id): ?array
             $odliczanie = ['etykieta' => 'Obrót na kurs skoku', 'koniec' => ($punktOd ?? 0) ?: $wejscie, 'od' => $manewrOd];
             $reaktor = 40;
         }
+    } elseif (czas_z_utc($o['lot_do_utc'] ?? null) > $teraz && czas_z_utc($o['lot_od_utc'] ?? null) <= $teraz) {
+        $odliczanie = ['etykieta' => 'Lot podświetlny' . (!empty($o['lot_cel']) ? ' → ' . $o['lot_cel'] : ''), 'koniec' => czas_z_utc($o['lot_do_utc']), 'od' => czas_z_utc($o['lot_od_utc'])];
+        $reaktor = 65;
     } elseif (!empty($o['ladowisko_id'])) {
         $reaktor = 5; // na lądowisku: zasilanie postojowe
     } elseif (czas_z_utc($o['start_utc'] ?? null) + START_WZNOSZENIE_S > $teraz) {

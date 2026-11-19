@@ -97,6 +97,25 @@ function czas_procesy(): array
         array_push($lista, ...array_values($grupy));
     }
 
+    if (function_exists('floty_lot_dostepny') && floty_lot_dostepny()) {
+        // Lot podświetlny, po flocie albo pojedynczej jednostce.
+        $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.lot_od_utc, o.lot_do_utc, (SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS cel,
+                o.lot_cel_x, o.lot_cel_y, f.id AS flota_id, f.nazwa AS flota
+            FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki j ON j.obiekt_id = o.id LEFT JOIN mapa_floty f ON f.id = j.flota_id
+            WHERE o.lot_do_utc > ?");
+        $q->execute([czas_utc($teraz)]);
+        $grupy = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
+            $k = $o['flota_id'] ? 'f:' . $o['flota_id'] : 'o:' . $o['id'];
+            $g = $grupy[$k] ?? ['rodzaj' => 'lot', 'obiekt' => $k,
+                'opis' => 'Lot podświetlny → ' . ($o['cel'] ?: $o['lot_cel_x'] . ' · ' . $o['lot_cel_y']) . ': ' . ($o['flota'] ?: $o['nazwa']),
+                'start' => czas_z_utc($o['lot_od_utc']), 'koniec' => 0];
+            $g['koniec'] = max($g['koniec'], czas_z_utc($o['lot_do_utc']));
+            $grupy[$k] = $g;
+        }
+        array_push($lista, ...array_values($grupy));
+    }
+
     foreach (wczytaj('firmy', ['firmy' => []])['firmy'] as $f) {
         foreach ($f['dane']['flota'] ?? [] as $s) {
             $p = $s['skok'] ?? null;
@@ -196,6 +215,19 @@ function czas_przestaw(string $rodzaj, string $obiekt, int $nowyKoniec): array
                 ->execute([czas_utc($nowyKoniec), czas_utc($teraz), (int) $id]);
             if ($nowyKoniec <= $teraz) floty_domknij_manewry();
             return [czas_z_utc((string) $do), 'Dolot ' . ($typ === 'f' ? 'floty #' : 'jednostki #') . $id];
+
+        case 'lot':
+            [$typ, $id] = explode(':', $obiekt) + ['', '0'];
+            $db = polaczenie_bazy();
+            $warunek = $typ === 'f' ? 'id IN (SELECT obiekt_id FROM mapa_floty_jednostki WHERE flota_id = ?)' : 'id = ?';
+            $q = $db->prepare("SELECT MAX(lot_do_utc) FROM mapa_obiekty WHERE lot_do_utc > ? AND $warunek");
+            $q->execute([czas_utc($teraz), (int) $id]);
+            $do = $q->fetchColumn();
+            if (!$do) blad('Ten lot już się zakończył.');
+            $db->prepare("UPDATE mapa_obiekty SET lot_do_utc = GREATEST(lot_od_utc, ?) WHERE lot_do_utc > ? AND $warunek")
+                ->execute([czas_utc($nowyKoniec), czas_utc($teraz), (int) $id]);
+            if ($nowyKoniec <= $teraz) floty_aktualizuj_ruch();
+            return [czas_z_utc((string) $do), 'Lot podświetlny ' . ($typ === 'f' ? 'floty #' : 'jednostki #') . $id];
 
         case 'skok_statku':
             $statek = ruch_statek($obiekt);

@@ -30,7 +30,12 @@ export const TYPY_PLANET = {
   pionowe_miasto: { nazwa: 'księżyc-miasto', kolory: ['#3d424b', '#2c3038', '#4d535d'], atmosfera: '#c9a46a', chmury: 0.05, swiatla: true },
 };
 
-export const ODLEGLOSCI = { blisko: 1.15, srednio: 0.5, daleko: 0.16, krawedz: 0.012 };
+// Wysokość orbity nad powierzchnią (km) dla podejścia; widok może też podać `wysokosc_km` wprost
+// (docelowo płynny lot ku planecie i od niej).
+export const WYSOKOSCI_KM = { blisko: 400, srednio: 20000, daleko: 150000, krawedz: 5000000 };
+const SREDNICA_DOMYSLNA_KM = 12000;
+// Rozmiar kątowy kuli (stopnie) o średnicy `srednica` z odległości `odSrodka` od jej środka.
+const rozmiarKatowy = (srednica, odSrodka) => (2 * Math.asin(Math.min(1, srednica / 2 / Math.max(srednica / 2, odSrodka))) * 180) / Math.PI;
 
 // Niebo i krajobraz z powierzchni: [góra nieba, horyzont], warstwy terenu (od dalekiej do bliskiej), styl terenu.
 const POWIERZCHNIE = {
@@ -295,10 +300,16 @@ export function utworzScene(canvas) {
 
   function przygotujPlanete() {
     const typ = TYPY_PLANET[stan.planeta] ? stan.planeta : 'skalista';
-    const d = Math.round(skalaWidoku() * (ODLEGLOSCI[stan.odleglosc] || 0.5));
-    if (planeta && planeta.typ === typ && planeta.d === d) return;
+    // Średnica na ekranie z rozmiaru kątowego: prawdziwa średnica planety i wysokość orbity,
+    // przeliczone przez pole widzenia (POLE_WIDZENIA stopni na szerokość wzoru).
+    const srednica = Number(stan.widok?.cykl?.srednica_km) || SREDNICA_DOMYSLNA_KM;
+    const wysokosc = Number(stan.widok?.wysokosc_km ?? WYSOKOSCI_KM[stan.odleglosc] ?? WYSOKOSCI_KM.srednio);
+    const d = Math.max(3, rozmiarKatowy(srednica, srednica / 2 + wysokosc) * w / POLE_WIDZENIA);
+    // Tekstura w rozmiarach potęgi dwójki (8–1024 px): przy zbliżaniu i oddalaniu nie generuje się co klatkę.
+    const dt = Math.min(1024, 2 ** Math.ceil(Math.log2(Math.max(8, d))));
+    if (planeta && planeta.typ === typ && planeta.dt === dt) { planeta.d = d; return; }
     const ziarno = hash((stan.miejsce || '') + typ);
-    planeta = { typ, d, tekstura: teksturaPlanety(typ, Math.max(8, d), ziarno), swiatla: TYPY_PLANET[typ].swiatla ? teksturaSwiatel(Math.max(8, d), ziarno) : null };
+    planeta = { typ, d, dt, tekstura: teksturaPlanety(typ, dt, ziarno), swiatla: TYPY_PLANET[typ].swiatla ? teksturaSwiatel(dt, ziarno) : null };
   }
 
   // ---------- warstwy ----------
@@ -516,7 +527,7 @@ export function utworzScene(canvas) {
 
   function rysujPlanete(t, pojawienie = 1) {
     przygotujPlanete();
-    const { d, tekstura, swiatla, typ } = planeta;
+    const { d, dt, tekstura, swiatla, typ } = planeta;
     const r = d / 2;
     // Położenie: duża planeta wchodzi od dołu ekranu, mała wisi z boku. Z mostka: tam, gdzie
     // wskazuje kierunek na planetę względem dziobu (za plecami — nie widać jej wcale).
@@ -547,8 +558,8 @@ export function utworzScene(canvas) {
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.clip();
-    const przes = ((t * 0.004 * (spokojnie ? 0 : 1)) % d);
-    ctx.drawImage(tekstura, przes, 0, d, d, cx - R, cy - R, R * 2, R * 2);
+    const przes = ((t * 0.004 * (spokojnie ? 0 : 1)) % dt);
+    ctx.drawImage(tekstura, przes, 0, dt, dt, cx - R, cy - R, R * 2, R * 2);
     const ciemna = k?.slonce != null ? (() => {
       // Z mostka: nocna strona tam, gdzie nie dociera słońce (faza zależna od miejsca na orbicie).
       const p = new Path2D();
@@ -563,7 +574,7 @@ export function utworzScene(canvas) {
         ctx.save();
         ctx.clip(ciemna, 'evenodd');
         ctx.globalCompositeOperation = 'lighter';
-        ctx.drawImage(swiatla, przes, 0, d, d, cx - R, cy - R, R * 2, R * 2);
+        ctx.drawImage(swiatla, przes, 0, dt, dt, cx - R, cy - R, R * 2, R * 2);
         ctx.restore();
       }
     } else {
@@ -824,7 +835,9 @@ export function utworzScene(canvas) {
     const u = stanUkladu(cykl, t);
     const katKsiezyca = (m.faza + 360 * (t - cykl.epoka) / 86400 / m.okres_dni) % 360; // kierunek planeta → księżyc
     const info = TYPY_PLANET[m.typ] || TYPY_PLANET.skalista;
-    const R = Math.min(w, h) * 0.2, cx = w * 0.3, cy = h * 0.2;
+    // Rozmiar z kąta: średnica planety macierzystej i odległość środek–środek (promień obiegu księżyca).
+    const R = Math.max(2, rozmiarKatowy(Number(m.srednica_km) || SREDNICA_DOMYSLNA_KM, Number(m.promien_km) || 400000) * w / POLE_WIDZENIA / 2);
+    const cx = w * 0.3, cy = h * 0.2;
     ctx.save();
     ctx.globalAlpha = noc() ? 0.95 : 0.75;
     ctx.fillStyle = info.kolory[0];

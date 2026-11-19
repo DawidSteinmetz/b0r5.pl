@@ -1182,7 +1182,9 @@ export default {
               } }, x.rola === 'wiezien' ? '→ pasażer' : '→ więzień') : null)))
             : h('p.slaby.maly-tekst', zakladka === 'wiezniowie' ? 'Brak więźniów.' : 'Brak pasażerów.'));
         };
-        sekcja.append(h('div.slaby.maly-tekst', 'Pokład'), zakladki, tresc);
+        sekcja.append(h('div.slaby.maly-tekst', 'Pokład'), zakladki, tresc,
+          d.hangar?.length ? h('div.maly-tekst', { style: 'margin-top:8px' }, h('span.slaby', 'Hangar: '),
+            d.hangar.map((p) => `${p.nazwa}${p.klasa ? ` (${p.klasa})` : ''}${p.w_hangarze ? '' : ' — poza hangarem'}`).join(', ')) : null);
         rysuj();
       }).catch(() => {});
       return sekcja;
@@ -1462,7 +1464,9 @@ export default {
 
     function stanJednostki(j) {
       const t = teraz();
+      if (j.w_hangarze) return `w hangarze ${j.okret_macierzysty || 'okrętu'}`;
       const czesci = [`kurs ${Math.round(j.kurs ?? 90)}°`];
+      if (j.cel_ladowania) czesci.push(`leci na lądowisko: ${j.cel_ladowania}`);
       if (j.manewr_do > t) czesci.push(`manewr → ${Math.round(j.kurs_cel)}° do ${czasGry(j.manewr_do)}`);
       if (j.wejscie > t) czesci.push(`skok od ${czasGry(j.wejscie)}`);
       if (j.eta) czesci.push(`ETA ${czasGry(j.eta)}`);
@@ -1533,6 +1537,16 @@ export default {
     }
 
     let wybranaFlota = null;
+    // Prom z hangaru okrętu: wylot (potem zwykłe rozkazy: skok, lot, lądowanie) albo powrót do hangaru.
+    function przyciskHangaru(j, info) {
+      const wylot = !!j.w_hangarze;
+      return h('button.przycisk.maly.drugi', { onclick: async () => {
+        if (!confirm(wylot ? `Wylot „${j.obiekt_nazwa}” z hangaru ${j.okret_macierzysty}?` : `Powrót „${j.obiekt_nazwa}” do hangaru ${j.okret_macierzysty}?`)) return;
+        try { const w = await api(wylot ? 'prom_wylot' : 'prom_powrot', { obiekt_id: j.obiekt_id }); info.textContent = w.komunikat || 'Gotowe.'; await odswiezFloty(); await pobierzPozycje(); }
+        catch (e) { info.textContent = e.message; }
+      } }, wylot ? `${j.obiekt_nazwa}: wylot z hangaru` : `${j.obiekt_nazwa}: powrót do hangaru`);
+    }
+
     function rysujPanelFlot() {
       wyczysc(panelFlot);
       panelFlot.append(h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => { panelFlot.hidden = true; } }, '×'), h('h2', 'Dowodzenie flotą'));
@@ -1587,6 +1601,7 @@ export default {
           h('p.slaby.maly-tekst', 'Skok do planety z wyborem orbity: kliknij planetę na mapie → „Nawigacja floty”. Tu: skok na współrzędne albo do innej jednostki.'),
           h('div.mapa-flota-form', x, y, cel, rozkaz),
           ...[...new Set(flota.jednostki.filter((j) => j.rozkaz_id).map((j) => j.rozkaz_id))].map((id) => przyciskPrzerwij(id, info)),
+          ...flota.jednostki.filter((j) => j.okret_macierzysty).map((j) => przyciskHangaru(j, info)),
           info,
           h('details', h('summary.slaby.maly-tekst', 'Podział na grupy'), h('div.mapa-flota-form', nazwaGrupy, podziel)),
           panelZgod({ filtr: (o) => flota.jednostki.some((j) => `okret:${j.obiekt_id}` === o.klucz) })));

@@ -225,15 +225,59 @@ export default {
       })));
     }
 
-    // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start.
+    // Prom: lot na planetę (wylot z hangaru, dolot na bliską orbitę i lądowanie jednym rozkazem) albo sam wylot.
+    function rozkazyWylotu(prom, ladowiska) {
+      const wybor = h('select', ladowiska.map((l) => h('option', { value: l.id }, l.nazwa)));
+      return h('div', { style: 'margin-top:8px' },
+        ladowiska.length
+          ? h('div.rzad', h('div.pole.rozpycha', { style: 'margin:0' }, wybor),
+            h('button.przycisk', { onclick: () => { if (confirm(`Lot promem „${prom.nazwa}” na lądowisko? Wszyscy na pokładzie promu lecą razem.`)) akcja('prom_wylot', { obiekt_id: prom.id, ladowisko_id: Number(wybor.value) }, (r) => r.komunikat); } }, 'Lot na planetę'))
+          : null,
+        h('div.rzad', { style: 'margin-top:8px' },
+          h('button.przycisk.drugi', { onclick: () => { if (confirm(`Wylot „${prom.nazwa}” z hangaru? Dalej: mapa galaktyki → panel floty (skok, lot, lądowanie).`)) akcja('prom_wylot', { obiekt_id: prom.id }, (r) => r.komunikat); } }, 'Wylot z hangaru')));
+    }
+
+    function stanPromu(prom) {
+      if (prom.w_hangarze) return `w hangarze ${prom.okret}`;
+      if (prom.na_ladowisku) return 'na lądowisku';
+      if (prom.cel_ladowania) return `leci na lądowisko: ${prom.cel_ladowania}`;
+      return prom.przy_okrecie ? 'na orbicie przy okręcie' : 'poza okrętem';
+    }
+
+    // Hangar okrętu (promy) albo panel promu, na którego pokładzie jest postać.
+    function panelPromow(p) {
+      if (p.prom) {
+        const prom = p.prom;
+        return h('div', { style: 'margin-top:10px' },
+          h('div.slaby.maly-tekst', `Prom ${prom.klasa || ''} · ${stanPromu(prom)}`),
+          prom.w_hangarze
+            ? h('div', h('div.rzad', { style: 'margin-top:8px' },
+              h('button.przycisk.drugi', { onclick: () => akcja('prom_wyjdz', {}, `Jesteś na pokładzie ${prom.okret}.`) }, 'Wyjdź do hangaru')),
+              prom.kapitan ? rozkazyWylotu(prom, p.ladowiska || []) : null)
+            : (prom.kapitan && prom.przy_okrecie
+              ? h('div.rzad', { style: 'margin-top:8px' },
+                h('button.przycisk', { onclick: () => akcja('prom_powrot', { obiekt_id: prom.id }, (r) => r.komunikat) }, `Powrót do hangaru ${prom.okret}`))
+              : null));
+      }
+      if (!p.promy?.length) return null;
+      return h('div', { style: 'margin-top:12px' }, h('h3', 'Hangar'),
+        h('ul.lista', p.promy.map((prom) => h('li',
+          h('div.rzad', h('div.rozpycha', h('div', prom.nazwa, h('span.slaby.maly-tekst', prom.klasa ? ` · ${prom.klasa}` : '')),
+            h('div.slaby.maly-tekst', stanPromu(prom))),
+            prom.w_hangarze ? h('button.przycisk.drugi', { onclick: () => akcja('prom_wejdz', { obiekt_id: prom.id }, `Jesteś na pokładzie ${prom.nazwa}.`) }, 'Wejdź do promu') : null),
+          prom.w_hangarze && prom.kapitan ? rozkazyWylotu(prom, p.ladowiska || []) : null))));
+    }
+
+    // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start; hangar z promami.
     function pokladOkretu(p) {
       return h('div.panel', { style: 'border-color:var(--akcent)' }, h('h2', `Pokład: ${p.nazwa}`),
-        p.na_ladowisku
+        p.prom?.w_hangarze ? null : p.na_ladowisku
           ? h('div', h('div.slaby.maly-tekst', `Na lądowisku: ${p.ladowisko || '—'}`),
             h('div.rzad', { style: 'margin-top:10px' },
               p.kapitan ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start') : null,
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
-          : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'));
+          : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
+        panelPromow(p));
     }
 
     function statki() {

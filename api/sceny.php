@@ -98,6 +98,16 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         || !floty_kurs_dostepny() || !floty_orbita_dostepna()) return null;
     if (tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
+    // Prom w hangarze okrętu: za oknem to samo co z okrętu, ale przez wrota hangaru (bez okna mostka).
+    if (function_exists('floty_hangar_dostepny') && floty_hangar_dostepny()) {
+        $q = $db->prepare('SELECT p.nazwa, p.okret_macierzysty_id, o.nazwa AS okret FROM mapa_obiekty p JOIN mapa_obiekty o ON o.id = p.okret_macierzysty_id
+            WHERE p.id = ? AND p.w_hangarze = 1');
+        $q->execute([$okretId]);
+        if (($prom = $q->fetch(PDO::FETCH_ASSOC)) && (int) $prom['okret_macierzysty_id'] !== $okretId) {
+            $s = scena_okretu((int) $prom['okret_macierzysty_id'], $zmianaPozycjiMs);
+            if ($s) return ['okno' => '', 'wnetrze' => 'hangar', 'opis' => $prom['nazwa'] . ' · hangar ' . $prom['okret']] + $s;
+        }
+    }
     $gry = tabela_sql_dostepna('planety_gry');
     $nav = floty_nawigacja_dostepna();
     $lad = function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne();

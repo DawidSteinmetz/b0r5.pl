@@ -134,6 +134,16 @@ function mapa_dodatkowe(array $u): array
     return $w;
 }
 
+// Warunek SQL: bez jednostek stojących w hangarze okrętu (migracja 035). $uid: postać na takim promie
+// widzi go dalej (znacznik „Jesteś tutaj” stoi wtedy na okręcie).
+function mapa_bez_hangaru(?string $uid = null): string
+{
+    if (!function_exists('floty_hangar_dostepny') || !floty_hangar_dostepny()) return '';
+    if ($uid === null) return ' AND m.w_hangarze=0';
+    $uid = polaczenie_bazy()->quote($uid);
+    return " AND (m.w_hangarze=0 OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=$uid AND c.typ='postac' LIMIT 1))";
+}
+
 function mapa_obiekty_poklad_sync(): void
 {
     if (tabela_sql_dostepna('mapa_obiekty')) polaczenie_bazy()->exec("UPDATE mapa_obiekty postac JOIN mapa_obiekty okret ON okret.id=postac.na_pokladzie_id
@@ -249,10 +259,10 @@ function mapa_obiekty_widoczne(array $u): array
         foreach (uzytkownicy() as $konto) {
             if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
         }
-        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL ORDER BY m.typ,m.nazwa");
+        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru() . " ORDER BY m.typ,m.nazwa");
     } else {
         karta((string) $u['id']);
-        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?) OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=? AND c.typ='postac' LIMIT 1)) ORDER BY m.typ,m.nazwa");
+        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru((string) $u['id']) . " AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?) OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=? AND c.typ='postac' LIMIT 1)) ORDER BY m.typ,m.nazwa");
         $q->execute([(string) $u['id'], (string) $u['login'], (string) $u['id']]);
     }
     $obiekty = array_map(static fn($r) => [
@@ -324,7 +334,7 @@ function mapa_radar_lokalny(array $u, string $nazwaPlanety, array $obiekty): arr
             FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id
             LEFT JOIN mapa_bitwy_uczestnicy bu ON bu.obiekt_id=m.id
             LEFT JOIN mapa_bitwy b ON b.id=bu.bitwa_id AND b.status='aktywna' AND b.planeta_id=?
-            WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL
+            WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru() . "
               AND ((m.planeta_id=? AND m.typ IN ('statek','jednostka')) OR b.id IS NOT NULL)
             ORDER BY b.id,m.nazwa";
     $q = $db->prepare($sql);
@@ -866,6 +876,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                         if ($ok = $q->fetch(PDO::FETCH_ASSOC)) {
                             $wynik['poklad_okret'] = ['id' => (int) $ok['id'], 'nazwa' => $ok['nazwa'], 'ladowisko' => $ok['ladowisko'],
                                 'na_ladowisku' => (bool) $ok['ladowisko_id'], 'kapitan' => wskazniki_kapitan('okret:' . (int) $ok['id'], $u)];
+                            if (function_exists('floty_prom_info') && ($pr = floty_prom_info($u, (int) $ok['id']))) $wynik['poklad_okret'] += $pr;
                         }
                     }
                 }
@@ -904,6 +915,44 @@ function obsluz_ruch(string $akcja, bool $post): void
             if (($gdzie['klucz'] ?? '') !== 'sql:' . (int) $s['ladowisko_id']) blad('Najpierw dojdź na lądowisko.');
             zmien('karty', function (&$k) use ($u, $id) {
                 $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . $id;
+                $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
+            });
+            pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
+            odpowiedz(['ok' => true]);
+
+        case 'prom_wejdz':
+            // Z pokładu okrętu do promu stojącego w jego hangarze.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            if (!function_exists('floty_hangar_dostepny') || !floty_hangar_dostepny()) blad('Zaimportuj jeszcze api/migracje/035_promy_w_hangarach.sql.');
+            $id = (int) (wejscie()['obiekt_id'] ?? 0);
+            $gdzie = ruch_gdzie(karta($u['id']), ruch_lokacje());
+            $q = polaczenie_bazy()->prepare('SELECT okret_macierzysty_id, w_hangarze FROM mapa_obiekty WHERE id = ? AND aktywny = 1');
+            $q->execute([$id]);
+            $p = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$p || !$p['okret_macierzysty_id']) blad('Nie ma takiego promu.');
+            if (!(int) $p['w_hangarze']) blad('Promu nie ma w hangarze.');
+            if ((int) ($gdzie['okret_id'] ?? 0) !== (int) $p['okret_macierzysty_id']) blad('Prom stoi w hangarze innego okrętu.');
+            zmien('karty', function (&$k) use ($u, $id) {
+                $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . $id;
+                $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
+            });
+            pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
+            odpowiedz(['ok' => true]);
+
+        case 'prom_wyjdz':
+            // Z promu stojącego w hangarze z powrotem na pokład okrętu.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            if (!function_exists('floty_hangar_dostepny') || !floty_hangar_dostepny()) blad('Zaimportuj jeszcze api/migracje/035_promy_w_hangarach.sql.');
+            $gdzie = ruch_gdzie(karta($u['id']), ruch_lokacje());
+            $q = polaczenie_bazy()->prepare('SELECT okret_macierzysty_id, w_hangarze FROM mapa_obiekty WHERE id = ?');
+            $q->execute([(int) ($gdzie['okret_id'] ?? 0)]);
+            $p = $q->fetch(PDO::FETCH_ASSOC);
+            if (!$p || !$p['okret_macierzysty_id']) blad('Nie jesteś na promie.');
+            if (!(int) $p['w_hangarze']) blad('Prom nie stoi w hangarze — nie da się wyjść.');
+            zmien('karty', function (&$k) use ($u, $p) {
+                $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . (int) $p['okret_macierzysty_id'];
                 $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
             });
             pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);

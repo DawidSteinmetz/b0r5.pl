@@ -764,6 +764,24 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - W locie nie da się zejść z pokładu, jechać ani iść. Pulpit pokazuje szybką akcję
   z odliczaniem wznoszenia i informację o orbicie albo nadprzestrzeni.
 
+## Promy w hangarach okrętów (migracja 035)
+
+- Każdy ISD ma w hangarze prom klasy Lambda (np. „Lambda Walako”): osobna jednostka z napędem
+  (hipernapęd, paliwo, może lądować) w podgrupie floty ISD bez własnego dowódcy, więc dowodzi nim
+  dowódca floty ISD (dziś kpt. Stingert; kolejni kapitanowie dostają prom razem z okrętem).
+- **W hangarze** (`w_hangarze = 1`) prom stoi razem z okrętem (także w skoku), nie ma znacznika na
+  mapie (w karcie ISD: „Hangar: …”) i nie przyjmuje rozkazów floty. Z promu w hangarze widać
+  kosmos przez wrota hangaru.
+- **Nawigacja na pokładzie ISD → Hangar:** „Wejdź do promu” (każdy na pokładzie), dla kapitana
+  „Lot na planetę” (wersja krótka: wylot, dolot na bliską orbitę i lądowanie na wybranym lądowisku
+  jednym rozkazem) i „Wylot z hangaru” (wersja długa: prom staje na orbicie obok ISD, dalej zwykłe
+  rozkazy z panelu floty na mapie — skok, lot podświetlny, lądowanie).
+- **Na promie:** w hangarze „Wyjdź do hangaru”; na lądowisku zwykłe „Zejdź z pokładu” i „Start”;
+  na orbicie planety, przy której stoi ISD (albo w tym samym punkcie przestrzeni) — „Powrót do
+  hangaru”. Wylot i powrót są też w panelu floty na mapie.
+- Wrota są zamknięte, gdy ISD jest w nadprzestrzeni albo w locie podświetlnym.
+- Do zrobienia po imporcie listy lokacji ISD I: „Wejdź do promu” tylko z lokacji hangaru.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

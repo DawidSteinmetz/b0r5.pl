@@ -506,7 +506,14 @@ function floty_poklad(array $u, int $statekId): array
     $q = $db->prepare("SELECT id, nazwa, status, $rola AS rola FROM mapa_obiekty WHERE typ='postac' AND aktywny=1 AND na_pokladzie_id=? ORDER BY nazwa");
     $q->execute([$statekId]);
     $osoby = array_map(fn($r) => ['id' => (int) $r['id'], 'nazwa' => $r['nazwa'], 'status' => $r['status'], 'rola' => $r['rola']], $q->fetchAll(PDO::FETCH_ASSOC));
-    return ['ok' => true, 'mg' => $mg,
+    // Hangar: promy tego okrętu (w hangarze albo poza nim).
+    $hangar = [];
+    if (floty_hangar_dostepny()) {
+        $q = $db->prepare('SELECT nazwa, klasa, w_hangarze FROM mapa_obiekty WHERE okret_macierzysty_id = ? AND aktywny = 1 ORDER BY nazwa');
+        $q->execute([$statekId]);
+        $hangar = array_map(fn($r) => ['nazwa' => $r['nazwa'], 'klasa' => $r['klasa'], 'w_hangarze' => (bool) $r['w_hangarze']], $q->fetchAll(PDO::FETCH_ASSOC));
+    }
+    return ['ok' => true, 'mg' => $mg, 'hangar' => $hangar,
         'pasazerowie' => array_values(array_filter($osoby, fn($o) => $o['rola'] !== 'wiezien')),
         'wiezniowie' => array_values(array_filter($osoby, fn($o) => $o['rola'] === 'wiezien'))];
 }
@@ -695,6 +702,7 @@ function floty_odbiorcy(string $login, array $w): array
         $odbiorcy = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
     } else blad('Nie dowodzisz tą flotą.', 403);
     if (!$odbiorcy) blad('Ta grupa nie ma jednostek.');
+    floty_blokada_hangaru($odbiorcy);
     return [$flotaId, $odbiorcy];
 }
 
@@ -837,6 +845,7 @@ function floty_aktualizuj_ruch(): void
         WHERE r.status='w_nadprzestrzeni' AND NOT EXISTS (
           SELECT 1 FROM mapa_rozkazy_skokow_jednostki j WHERE j.rozkaz_id=r.id AND j.status='w_nadprzestrzeni'
         )");
+    floty_aktualizuj_hangary();
 }
 
 function floty_lista(string $login, bool $mg = false): array
@@ -856,6 +865,7 @@ function floty_lista(string $login, bool $mg = false): array
         o.podejscie,o.podlot_start,o.podlot_cel,o.podlot_od_utc,o.podlot_do_utc,o.orbita_deg,o.rozbity,"
         . (floty_ladowanie_dostepne() ? 'o.ladowisko_id,o.start_utc,COALESCE(n.moze_ladowac,0) AS moze_ladowac,(SELECT nazwa FROM lokalizacje WHERE id=o.ladowisko_id) AS ladowisko,' : '')
         . (mapa_frakcja_dostepna() ? 'o.frakcja,' : '')
+        . (floty_hangar_dostepny() ? 'o.w_hangarze,(SELECT nazwa FROM mapa_obiekty WHERE id=o.okret_macierzysty_id) AS okret_macierzysty,(SELECT nazwa FROM lokalizacje WHERE id=o.ladowanie_cel_id) AS cel_ladowania,' : '')
         . (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny() ? 'o.wlasciciel_login,o.lokalizator_zasieg_pc,o.lokalizator_aktywny,' : '')
         . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '')
         . (floty_lot_dostepny() ? 'o.lot_cel_x,o.lot_cel_y,o.lot_od_utc,o.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS lot_cel_planeta,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
@@ -883,6 +893,7 @@ function floty_lista(string $login, bool $mg = false): array
                 'x' => (float) $u['lot_cel_x'], 'y' => (float) $u['lot_cel_y'], 'planeta' => $u['lot_cel_planeta']];
             // Gracz widzi tylko, czy automat odpowiada (zhakowany wygląda jak sprawny).
             $u['automat'] = in_array($u['komputer_stan'], ['sprawny', 'zhakowany'], true);
+            if (isset($u['w_hangarze'])) $u['w_hangarze'] = (bool) (int) $u['w_hangarze'];
             if (!$mg) unset($u['komputer_stan']);
         }
         unset($u);
@@ -1126,11 +1137,170 @@ function floty_przerwij_skok(array $u, int $id): array
         'komunikat' => $wNadprzestrzeni ? 'Gwałtowne wyjście z nadprzestrzeni. Reaktor i hipernapęd uszkodzone.' : 'Skok odwołany przed wejściem w nadprzestrzeń.'];
 }
 
+// ---------- promy w hangarach ----------
+// Prom (np. Lambda) należy do hangaru okrętu macierzystego (okret_macierzysty_id). W hangarze
+// (w_hangarze = 1) jego pozycja idzie za okrętem, nie ma znacznika na mapie i nie przyjmuje rozkazów.
+// Dowodzi nim dowódca jego grupy (podgrupa floty okrętu: dziedziczy dowódcę). Wylot: prom staje na
+// orbicie obok okrętu; z wybranym lądowiskiem sam leci na bliską orbitę i ląduje (ladowanie_cel_id).
+// Powrót: z orbity tej samej planety (albo z tego samego punktu przestrzeni) z powrotem do hangaru.
+function floty_hangar_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT okret_macierzysty_id, w_hangarze, ladowanie_cel_id FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function floty_blokada_hangaru(array $odbiorcy): void
+{
+    if (!floty_hangar_dostepny() || !$odbiorcy) return;
+    $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
+    $q = polaczenie_bazy()->prepare("SELECT nazwa FROM mapa_obiekty WHERE id IN ($marks) AND w_hangarze = 1 LIMIT 1");
+    $q->execute($odbiorcy);
+    $n = $q->fetchColumn();
+    if ($n) blad('„' . $n . '” stoi w hangarze. Najpierw wylot z hangaru.');
+}
+
+// Promy w hangarze stoją razem z okrętem; promy w drodze na lądowisko lądują po dotarciu na bliską orbitę.
+function floty_aktualizuj_hangary(): void
+{
+    if (!floty_hangar_dostepny()) return;
+    $db = polaczenie_bazy();
+    $db->exec("UPDATE mapa_obiekty p JOIN mapa_obiekty o ON o.id = p.okret_macierzysty_id
+        SET p.planeta_id = o.planeta_id, p.x = o.x, p.y = o.y, p.kurs_deg = o.kurs_deg, p.orbita_deg = o.orbita_deg,
+            p.podejscie = o.podejscie, p.podlot_start = NULL, p.podlot_cel = NULL, p.podlot_od_utc = NULL, p.podlot_do_utc = NULL
+        WHERE p.w_hangarze = 1");
+    $teraz = czas_teraz();
+    $q = $db->query('SELECT id, planeta_id, podejscie, podlot_start, podlot_cel, podlot_od_utc, podlot_do_utc, ladowanie_cel_id, ladowisko_id
+        FROM mapa_obiekty WHERE ladowanie_cel_id IS NOT NULL');
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
+        if ($o['ladowisko_id'] || !$o['planeta_id']) {
+            $db->prepare('UPDATE mapa_obiekty SET ladowanie_cel_id = NULL WHERE id = ?')->execute([$o['id']]);
+            continue;
+        }
+        if (czas_z_utc($o['podlot_do_utc'] ?? null) > $teraz || floty_podejscie_teraz($o, $teraz) !== 'bliska') continue;
+        $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = ?, przylot_utc = ?, status = 'na lądowisku', podejscie = 'bliska', ladowanie_cel_id = NULL,
+            podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL WHERE id = ?")
+            ->execute([(int) $o['ladowanie_cel_id'], czas_utc($teraz), $o['id']]);
+    }
+}
+
+// Prom i jego okręt macierzysty (do kontroli przy wylocie i powrocie).
+function floty_prom(int $id): array
+{
+    if (!floty_hangar_dostepny()) blad('Zaimportuj jeszcze api/migracje/035_promy_w_hangarach.sql.');
+    $lot = floty_lot_dostepny();
+    $q = polaczenie_bazy()->prepare('SELECT p.id, p.nazwa, p.w_hangarze, p.okret_macierzysty_id, p.planeta_id, p.ladowisko_id, p.x, p.y,
+            o.nazwa AS okret, o.planeta_id AS okret_planeta_id, o.x AS okret_x, o.y AS okret_y,
+            o.kurs_deg AS okret_kurs, o.orbita_deg AS okret_orbita, o.podejscie AS okret_podejscie, o.podlot_start AS okret_podlot_start,
+            o.podlot_cel AS okret_podlot_cel, o.podlot_od_utc AS okret_podlot_od_utc, o.podlot_do_utc AS okret_podlot_do_utc,'
+        . ($lot ? ' p.lot_do_utc, o.lot_do_utc AS okret_lot_do_utc,' : '') . '
+            COALESCE(n.moze_ladowac, 0) AS moze_ladowac
+        FROM mapa_obiekty p JOIN mapa_obiekty o ON o.id = p.okret_macierzysty_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = p.id
+        WHERE p.id = ? AND p.aktywny = 1');
+    $q->execute([$id]);
+    $p = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$p) blad('Nie ma takiego promu.');
+    return $p;
+}
+
+function floty_w_skoku(int $id): bool
+{
+    $q = polaczenie_bazy()->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki WHERE obiekt_id = ? AND status = 'w_nadprzestrzeni' LIMIT 1");
+    $q->execute([$id]);
+    return (bool) $q->fetchColumn();
+}
+
+// Wylot z hangaru; z lądowiskiem — lot na planetę: dolot na bliską orbitę i lądowanie bez kolejnych rozkazów.
+function floty_prom_wylot(string $login, int $id, int $ladowiskoId = 0): array
+{
+    if (!floty_jednostka_moze($login, $id)) blad('Nie dowodzisz tym promem.', 403);
+    floty_aktualizuj_ruch();
+    $p = floty_prom($id);
+    if (!(int) $p['w_hangarze']) blad('„' . $p['nazwa'] . '” nie stoi w hangarze.');
+    $okret = (int) $p['okret_macierzysty_id'];
+    if (floty_w_skoku($okret)) blad('„' . $p['okret'] . '” jest w nadprzestrzeni — wrota hangaru zostają zamknięte.');
+    if (!empty($p['okret_lot_do_utc'])) blad('„' . $p['okret'] . '” jest w locie — poczekaj, aż się zatrzyma.');
+    $planeta = $p['okret_planeta_id'] ? (int) $p['okret_planeta_id'] : null;
+    if ($ladowiskoId) {
+        if (!$planeta) blad('Okręt nie stoi przy żadnej planecie.');
+        if (!(int) $p['moze_ladowac']) blad('„' . $p['nazwa'] . '” nie może lądować.');
+        if (!in_array($ladowiskoId, array_column(floty_ladowiska($planeta), 'id'), true)) blad('Nie ma takiego lądowiska.');
+    }
+    $teraz = czas_teraz();
+    // Prom wychodzi tam, gdzie okręt jest teraz (także w trakcie dolotu okrętu: etap osiągnięty do tej chwili).
+    $podejscie = $planeta ? (floty_podejscie_teraz(['podejscie' => $p['okret_podejscie'], 'podlot_start' => $p['okret_podlot_start'],
+        'podlot_cel' => $p['okret_podlot_cel'], 'podlot_od_utc' => $p['okret_podlot_od_utc'], 'podlot_do_utc' => $p['okret_podlot_do_utc']], $teraz) ?: 'daleka') : null;
+    $db = polaczenie_bazy();
+    $db->prepare("UPDATE mapa_obiekty SET w_hangarze = 0, planeta_id = ?, x = ?, y = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL,
+        manewr_od_utc = NULL, manewr_do_utc = NULL, orbita_deg = ?, podejscie = ?, przylot_utc = ?, rozbity = 0,
+        podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL, ladowanie_cel_id = ?, status = 'w locie' WHERE id = ?")
+        ->execute([$planeta, $p['okret_x'], $p['okret_y'], round((float) ($p['okret_kurs'] ?? 90), 2), $p['okret_orbita'], $podejscie,
+            $planeta ? czas_utc($teraz - 3600) : null, $ladowiskoId ?: null, $id]);
+    if (!$ladowiskoId) return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” opuścił hangar.'];
+    if ($podejscie === 'bliska') {
+        floty_aktualizuj_hangary();
+        return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” wylądował.', 'koniec' => $teraz];
+    }
+    $w = floty_dolot([$id], 'bliska');
+    return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” opuścił hangar i leci na lądowisko.', 'koniec' => $w['koniec']];
+}
+
+// Powrót do hangaru okrętu macierzystego: z orbity tej samej planety albo z tego samego punktu przestrzeni.
+function floty_prom_powrot(string $login, int $id): array
+{
+    if (!floty_jednostka_moze($login, $id)) blad('Nie dowodzisz tym promem.', 403);
+    floty_aktualizuj_ruch();
+    $p = floty_prom($id);
+    if ((int) $p['w_hangarze']) blad('„' . $p['nazwa'] . '” już stoi w hangarze.');
+    if ($p['ladowisko_id']) blad('„' . $p['nazwa'] . '” stoi na lądowisku. Najpierw start.');
+    if (floty_w_skoku($id) || !empty($p['lot_do_utc'])) blad('„' . $p['nazwa'] . '” jest w locie.');
+    if (floty_w_skoku((int) $p['okret_macierzysty_id']) || !empty($p['okret_lot_do_utc'])) blad('„' . $p['okret'] . '” jest w locie — nie przyjmie promu.');
+    $razem = $p['planeta_id'] && $p['okret_planeta_id']
+        ? (int) $p['planeta_id'] === (int) $p['okret_planeta_id']
+        : (!$p['planeta_id'] && !$p['okret_planeta_id'] && hypot((float) $p['x'] - (float) $p['okret_x'], (float) $p['y'] - (float) $p['okret_y']) < 0.05);
+    if (!$razem) blad('„' . $p['okret'] . '” jest gdzie indziej. Najpierw dolećcie do niego.');
+    polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET w_hangarze = 1, ladowanie_cel_id = NULL, status = 'w hangarze' WHERE id = ?")->execute([$id]);
+    floty_aktualizuj_hangary();
+    return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” wrócił do hangaru ' . $p['okret'] . '.'];
+}
+
+// Panel promów w Nawigacji: na okręcie z hangarem — promy w hangarze; na promie — jego stan.
+function floty_prom_info(array $u, int $okretId): ?array
+{
+    if (!floty_hangar_dostepny() || !$okretId) return null;
+    $db = polaczenie_bazy();
+    $login = (string) $u['login'];
+    $q = $db->prepare('SELECT p.id, p.nazwa, p.klasa, p.w_hangarze, p.planeta_id, p.ladowisko_id, o.nazwa AS okret, o.planeta_id AS okret_planeta_id,
+            (SELECT nazwa FROM lokalizacje WHERE id = p.ladowanie_cel_id) AS cel_ladowania
+        FROM mapa_obiekty p JOIN mapa_obiekty o ON o.id = p.okret_macierzysty_id WHERE p.aktywny = 1 AND (p.okret_macierzysty_id = ? OR p.id = ?) ORDER BY p.nazwa');
+    $q->execute([$okretId, $okretId]);
+    $promy = [];
+    $ten = null;
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+        $wpis = ['id' => (int) $p['id'], 'nazwa' => $p['nazwa'], 'klasa' => $p['klasa'], 'w_hangarze' => (bool) $p['w_hangarze'],
+            'okret' => $p['okret'], 'kapitan' => (bool) floty_jednostka_moze($login, (int) $p['id']),
+            'cel_ladowania' => $p['cel_ladowania'], 'na_ladowisku' => (bool) $p['ladowisko_id'],
+            'przy_okrecie' => !$p['ladowisko_id'] && $p['planeta_id'] && (int) $p['planeta_id'] === (int) $p['okret_planeta_id']];
+        if ((int) $p['id'] === $okretId) $ten = $wpis; else $promy[] = $wpis;
+    }
+    if (!$ten && !$promy) return null;
+    // Lądowiska planety, przy której stoi okręt (lot na planetę prosto z hangaru).
+    $q = $db->prepare('SELECT planeta_id FROM mapa_obiekty WHERE id = ?');
+    $q->execute([$okretId]);
+    $planeta = (int) $q->fetchColumn();
+    $ladowiska = $planeta && ($ten ? $ten['w_hangarze'] && $ten['kapitan'] : true) ? floty_ladowiska($planeta, $u) : [];
+    return $ten ? ['prom' => $ten, 'ladowiska' => $ladowiska] : ['promy' => $promy, 'ladowiska' => $ladowiska];
+}
+
 function obsluz_floty(string $akcja, bool $post): void
 {
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj','mapa_flota_kurs','mapa_flota_dolot',
         'mapa_flota_start','mapa_flota_ladowanie','mapa_ladowiska','mapa_flota_lot','mapa_lot_przerwij','mapa_poklad','mg_poklad_rola',
-        'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport','mg_flota_kurs'];
+        'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport','mg_flota_kurs',
+        'prom_wylot','prom_powrot'];
     if (!in_array($akcja, $akcje, true)) return;
     floty_gotowe();
     switch ($akcja) {
@@ -1215,6 +1385,17 @@ function obsluz_floty(string $akcja, bool $post): void
             $u = wymagaj_logowania(); $w = wejscie();
             [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
             odpowiedz(floty_lot_przerwij($odbiorcy));
+
+        case 'prom_wylot':
+            // Wylot promu z hangaru; z lądowiskiem: lot na planetę (dolot i lądowanie jednym rozkazem).
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            odpowiedz(floty_prom_wylot((string) $u['login'], (int) ($w['obiekt_id'] ?? 0), (int) ($w['ladowisko_id'] ?? 0)));
+
+        case 'prom_powrot':
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania();
+            odpowiedz(floty_prom_powrot((string) $u['login'], (int) (wejscie()['obiekt_id'] ?? 0)));
 
         case 'mapa_poklad':
             $u = wymagaj_logowania();

@@ -997,7 +997,9 @@ export function utworzScene(canvas) {
     const ruch = spokojnie ? 0.15 : 1;
     // Scena z ramą: rysujemy na kwadratowym wzorze o boku dłuższego wymiaru ekranu, wyśrodkowanym —
     // ekran pokazuje jego środek. Bez ramy: cały ekran.
-    const zRama = stan.okno === 'isd' || stan.okno === 'komrk'
+    // Prom w hangarze okrętu: kosmos przez wrota hangaru (wnetrze „hangar” poza powierzchnią).
+    const zHangaru = !stan.okno && stan.scena !== 'powierzchnia' && stan.scena !== 'start' && HANGARY.includes(stan.wnetrze);
+    const zRama = stan.okno === 'isd' || stan.okno === 'komrk' || zHangaru
       || (stan.scena === 'powierzchnia' && (OKNA_BUDYNKOW.includes(stan.wnetrze) || HANGARY.includes(stan.wnetrze)));
     const bok = zRama ? Math.max(ekranW, ekranH) : 0;
     w = zRama ? bok : ekranW; h = zRama ? bok : ekranH;
@@ -1068,6 +1070,7 @@ export function utworzScene(canvas) {
         if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.00003 * ruch, dt, 1, 0.05); }
         rysujSasiednieGwiazdy();
     }
+    if (zHangaru) rysujRame(stan.wnetrze);
     if (stan.okno === 'isd' || stan.okno === 'komrk') {
       if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h || oknoIsd.typ !== stan.okno) oknoIsd = { w, h, typ: stan.okno, plotno: rysujOknoIsd(w, h, dpr, stan.okno) };
       ctx.drawImage(oknoIsd.plotno, 0, 0, w, h);

@@ -177,17 +177,19 @@ function wielokat(g, pkt, r) {
 // wzoru we własnych proporcjach („cover”): wąski ekran ucina boki, szeroki — górę i dół. Wzór nigdy
 // się nie rozciąga, a tło (niebo, planeta, krajobraz) leży w tym samym kadrze.
 //
-// Mostek ISD: trzy okna (środkowe — trapez rozszerzający się ku dołowi, boczne — lustrzane, równoległe
-// do jego skosów) w środkowym pasie wzoru. Przerwy są wąskie, więc na telefonie w pionie obok
-// środkowego okna widać jeszcze wewnętrzne skosy bocznych.
+// Mostek ISD: trzy środkowe okna w proporcjach z rysunku mostka (H = wysokość okna):
+// środkowe — trapez rozszerzający się ku dołowi (góra 0,9 H, dół 1,65 H); boczne — odwrócone trapezy
+// (góra 1,33 H, dół 0,7 H), których wewnętrzne boki biegną równolegle do boków środkowego, za skośnym
+// słupkiem szerokości 0,3 H. Na telefonie w pionie obok środkowego okna widać górne skosy bocznych.
 function geometriaOknaIsd(w, h) {
-  const sx = w / 2;
-  const gora = h * 0.31, dol = h * 0.69;
-  const pGora = w * 0.1, pDol = w * 0.165, przerwa = w * 0.022, bok = w * 0.3;
+  const sx = w / 2, H = Math.min(w, h) * 0.23;
+  const gora = h / 2 - H / 2, dol = gora + H;
+  const sGora = 0.45 * H, sDol = 0.825 * H, slupek = 0.3 * H, bokGora = 1.33 * H, bokDol = 0.7 * H;
+  const wGora = sGora + slupek, wDol = sDol + slupek; // wewnętrzne krawędzie bocznych okien
   return { gora, dol, okna: [
-    [[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]],
-    [[sx - pGora - przerwa - bok, gora], [sx - pGora - przerwa, gora], [sx - pDol - przerwa, dol], [sx - pDol - przerwa - bok, dol]],
-    [[sx + pGora + przerwa, gora], [sx + pGora + przerwa + bok, gora], [sx + pDol + przerwa + bok, dol], [sx + pDol + przerwa, dol]],
+    [[sx - sGora, gora], [sx + sGora, gora], [sx + sDol, dol], [sx - sDol, dol]],
+    [[sx - wGora - bokGora, gora], [sx - wGora, gora], [sx - wDol, dol], [sx - wDol - bokDol, dol]],
+    [[sx + wGora, gora], [sx + wGora + bokGora, gora], [sx + wDol + bokDol, dol], [sx + wDol, dol]],
   ] };
 }
 

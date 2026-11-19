@@ -1,6 +1,6 @@
 // Pliki systemu w pamięci tabletu: datapad uruchamia się nawet przy słabym zasięgu.
 // Dane gry (api/) zawsze idą z sieci. Po zmianie plików systemu podbijcie WERSJA.
-const WERSJA = 'hololink-50';
+const WERSJA = 'hololink-51';
 const PLIKI = [
   './', 'index.html', 'manifest.webmanifest', 'css/system.css', 'assets/ikona.svg', 'assets/czcionki/aurebesh.otf',
   'js/system.js', 'js/rdzen/api.js', 'js/rdzen/narzedzia.js', 'js/rdzen/urzadzenie.js', 'js/rdzen/scena.js', 'js/rdzen/astro.js', 'js/rdzen/wskazniki.js',

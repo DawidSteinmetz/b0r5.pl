@@ -17,6 +17,15 @@ const kolorObiektu = (o) => {
 };
 const teraz = () => Date.now() / 1000;
 
+// Rzeczywista skala: km na parsek i jednostkę astronomiczną, promienie gwiazd według typu (km),
+// największe zbliżenie (px na pc) — okręt długości ok. 1,6 km na cały ekran.
+const KM_NA_PC = 30856775814913.7;
+const KM_NA_AU = 149597870.7;
+const PROMIEN_GWIAZDY_KM = { O: 6960000, B: 3480000, A: 1250000, F: 905000, G: 696000, K: 557000, M: 278000, WD: 8400, RG: 69600000 };
+const ZOOM_MAKS = 2e16;
+// Mieszanie logarytmiczne: schemat (f = 0) → rzeczywista wielkość (f = 1), bez przeskoków.
+const mieszajLog = (a, b, f) => (f <= 0 ? a : f >= 1 ? b : Math.exp(Math.log(Math.max(a, 1e-6)) * (1 - f) + Math.log(Math.max(b, 1e-6)) * f));
+
 // Kurs jednostki teraz (stopnie, układ mapy: 0° = wschód, 90° = północ), z trwającym manewrem.
 export function kursTeraz(o, t = teraz()) {
   const m = o?.manewr;
@@ -140,8 +149,10 @@ export default {
     };
     czytajMotyw();
 
-    // Widok: ekran x = X·skala + ox, ekran y = −Y·skala + oy (północ galaktyki u góry).
-    let skala = 0.03, ox = 0, oy = 0, szer = 0, wys = 0, dpr = 1;
+    // Kamera: środek widoku w parsekach (camX, camY) plus przesunięcie w kilometrach (camKx, camKy).
+    // W rzeczywistej skali (do ~10¹⁶ px/pc) sama liczba w parsekach traciłaby dokładność i obraz by skakał.
+    // Ekran x = środek + ((X − camX)·km/pc + kx − camKx)·px/km; północ galaktyki u góry.
+    let skala = 0.03, camX = 0, camY = 0, camKx = 0, camKy = 0, szer = 0, wys = 0, dpr = 1;
     let D = null;
     // Planety tego widoku: baza mapy plus planety z katalogu MG, które ta postać może widzieć
     // (także zastrzeżone). Dodatkowe żyją tylko w tej instancji, nie we wspólnej pamięci modułu.
@@ -162,8 +173,23 @@ export default {
     let ramka = 0;
     let animacja = null;
 
-    const naEkran = (x, y) => [x * skala + ox, -y * skala + oy];
-    const naMape = (sx, sy) => [(sx - ox) / skala, -(sy - oy) / skala];
+    const pxNaKm = () => skala / KM_NA_PC;
+    const naEkran = (x, y, kx = 0, ky = 0) => {
+      const k = skala / KM_NA_PC;
+      return [szer / 2 + ((x - camX) * KM_NA_PC + (kx - camKx)) * k, wys / 2 - ((y - camY) * KM_NA_PC + (ky - camKy)) * k];
+    };
+    const naMape = (sx, sy) => {
+      const k = skala / KM_NA_PC;
+      return [camX + ((sx - szer / 2) / k + camKx) / KM_NA_PC, camY + (-(sy - wys / 2) / k + camKy) / KM_NA_PC];
+    };
+    const ustawSrodek = (x, y) => { camX = x; camY = y; camKx = 0; camKy = 0; };
+    let sledz = null; // { poz: () => [x, y] na ekranie, ekran: [x, y] — gdzie ma zostać }
+    // Przesunięcie w km przenoszone do parseków, gdy to bezpieczne (dokładność parseków ≪ piksel).
+    const scalKamere = () => {
+      if (Math.max(Math.abs(camX), Math.abs(camY), 1) * 2.3e-16 * skala < 0.001) {
+        camX += camKx / KM_NA_PC; camY += camKy / KM_NA_PC; camKx = 0; camKy = 0;
+      }
+    };
     const odswiez = () => { brudna = true; };
 
     function planetaObiektu(o) {
@@ -226,13 +252,16 @@ export default {
       }
       return cykle.get(p.nazwa);
     }
-    // Promień orbity planety na ekranie i promień planety (0 = jeszcze kropka).
+    // Układ na ekranie: najpierw schemat (rośnie z przybliżeniem do 0,42 ekranu), a gdy prawdziwa orbita
+    // planety go przerośnie — rzeczywista skala: orbita z promien_orbity_au, średnice z danych planet.
+    // f: 0 = schemat, 1 = rzeczywiste rozmiary (po kolejnych trzech rzędach wielkości zbliżenia).
     function ukladNaEkranie(p) {
       if (skala < PROG_UKLADU) return null;
-      const R = Math.min(Math.min(szer, wys) * 0.42, (skala / PROG_UKLADU - 1) * 90);
-      if (R < 14) return null;
+      const Rs = Math.min(Math.min(szer, wys) * 0.42, (skala / PROG_UKLADU - 1) * 90);
+      if (Rs < 14) return null;
       const cykl = cyklPlanety(p);
       if (!cykl) return null;
+      const skm = skala / KM_NA_PC;
       if (cykl.macierz) {
         // Księżyc: miejsce na orbicie planety macierzystej (tam, gdzie rysuje go jej układ).
         const rodzic = wgKlucza.get(norm(cykl.macierz.nazwa));
@@ -241,48 +270,75 @@ export default {
         const i = Math.max(0, pu.u.ksiezyce.findIndex((k) => norm(k.nazwa) === p.klucz));
         const k = pu.u.ksiezyce[i];
         if (!k) return null;
-        const rk = pu.rp * 2.4 + i * pu.rp * 1.1, a = -k.kat * RAD;
-        return { ...pu, ksiezyc: true, cykl, rp: Math.max(3, pu.rp * 0.35), px: pu.px + Math.cos(a) * rk, py: pu.py + Math.sin(a) * rk };
+        const rk = mieszajLog(pu.rpS * 2.4 + i * pu.rpS * 1.1, (k.promien_km || cykl.macierz.promien_km || 400000) * skm, pu.f), a = -k.kat * RAD;
+        const rpS = Math.max(3, pu.rpS * 0.35), srednicaKm = cykl.srednica_km || k.srednica_km || 3000;
+        return { ...pu, ksiezyc: true, cykl, rpS, srednicaKm, rp: mieszajLog(rpS, Math.max(1.5, srednicaKm / 2 * skm), pu.f),
+          px: pu.px + Math.cos(a) * rk, py: pu.py + Math.sin(a) * rk };
       }
       const u = stanUkladu(cykl);
       const [sx, sy] = naEkran(p.x, p.y);
-      const a = -u.katPlanety * RAD;
-      return { R, rp: Math.max(4, R * 0.06), sx, sy, px: sx + Math.cos(a) * R, py: sy + Math.sin(a) * R, u, cykl };
+      const Rr = (cykl.promien_orbity_au || 1) * KM_NA_AU * skm;
+      const f = Rr <= Rs ? 0 : Math.min(1, Math.log(Rr / Rs) / Math.log(1000));
+      const R = Math.max(Rs, Rr), a = -u.katPlanety * RAD;
+      const rpS = Math.max(4, Rs * 0.06), srednicaKm = cykl.srednica_km || 12000;
+      return { R, Rs, f, skm, rpS, srednicaKm, rp: mieszajLog(rpS, Math.max(1.5, srednicaKm / 2 * skm), f),
+        sx, sy, px: sx + Math.cos(a) * R, py: sy + Math.sin(a) * R, u, cykl };
     }
     const pozycjaPlanety = (p) => { const u = ukladNaEkranie(p); return u ? [u.px, u.py] : naEkran(p.x, p.y); };
 
     function rysujUklady() {
       if (skala < PROG_UKLADU) return;
+      const [cxp, cyp] = naMape(szer / 2, wys / 2);
+      const zasieg = 2 * Math.max(szer, wys);
+      // Na ekranie (z zapasem); przy rzeczywistej skali ciała daleko poza ekranem pomijamy (i ogromne okręgi).
+      const widac = (x, y, r) => x + r > -20 && x - r < szer + 20 && y + r > -20 && y - r < wys + 20;
+      const OKRAG_MAKS = 2e5;
       for (const p of P) {
         const [sx0, sy0] = naEkran(p.x, p.y);
-        if (sx0 < -szer || sy0 < -wys || sx0 > szer * 2 || sy0 > wys * 2) continue;
+        // układ blisko ekranu albo kamera w jego wnętrzu (rzeczywista skala: słońce daleko poza ekranem)
+        if (Math.hypot(sx0 - szer / 2, sy0 - wys / 2) > zasieg && Math.hypot(p.x - cxp, p.y - cyp) > 2e-4) continue;
         const u = ukladNaEkranie(p);
         if (!u || u.ksiezyc) continue; // księżyc rysuje układ planety macierzystej
-        const { R, rp, sx, sy, px, py } = u;
+        const { R, rp, sx, sy, px, py, f, skm } = u;
         // słońca układu (typ: kolor i wielkość; towarzysze obok) i orbita planety
-        (u.cykl.gwiazdy?.length ? u.cykl.gwiazdy : [{ rgb: [255, 244, 225], rozmiar: 1 }]).forEach((gw, i) => {
+        (u.cykl.gwiazdy?.length ? u.cykl.gwiazdy : [{ rgb: [255, 244, 225], rozmiar: 1, typ: 'G' }]).forEach((gw, i) => {
           const [cr, cg, cb] = gw.rgb;
-          const rs = Math.max(6, R * 0.12 * Math.sqrt(gw.rozmiar));
-          const gx = sx + (i ? Math.cos(i * 2.4) * rs * 1.6 : 0), gy = sy + (i ? Math.sin(i * 2.4) * rs * 1.6 : 0);
+          const rsS = Math.max(6, u.Rs * 0.12 * Math.sqrt(gw.rozmiar));
+          const rs = mieszajLog(rsS, Math.max(2, (PROMIEN_GWIAZDY_KM[gw.typ] || 696000) * skm), f);
+          const odstep = i ? mieszajLog(rsS * 1.6, rs * 6, f) : 0;
+          const gx = sx + Math.cos(i * 2.4) * odstep, gy = sy + Math.sin(i * 2.4) * odstep;
+          if (!widac(gx, gy, rs) || rs > 1e7) return;
           const blask = c.createRadialGradient(gx, gy, 0, gx, gy, rs);
-          blask.addColorStop(0, 'rgba(255, 252, 245, 1)'); blask.addColorStop(0.3, `rgba(${cr}, ${cg}, ${cb}, 0.65)`); blask.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
+          blask.addColorStop(0, 'rgba(255, 252, 245, 1)'); blask.addColorStop(f > 0.5 ? 0.85 : 0.3, `rgba(${cr}, ${cg}, ${cb}, ${f > 0.5 ? 0.95 : 0.65})`); blask.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
           c.fillStyle = blask; c.beginPath(); c.arc(gx, gy, rs, 0, Math.PI * 2); c.fill();
         });
-        c.strokeStyle = 'rgba(160, 200, 220, 0.22)'; c.lineWidth = 1; c.beginPath(); c.arc(sx, sy, R, 0, Math.PI * 2); c.stroke();
-        // księżyce (schematycznie, kolejno od planety)
+        if (R < OKRAG_MAKS) { c.strokeStyle = 'rgba(160, 200, 220, 0.22)'; c.lineWidth = 1; c.beginPath(); c.arc(sx, sy, R, 0, Math.PI * 2); c.stroke(); }
+        // księżyce: schemat (kolejno od planety) → prawdziwe promienie obiegu i średnice
         u.u.ksiezyce.forEach((k, i) => {
-          const rk = rp * 2.4 + i * rp * 1.1, a = -k.kat * RAD;
-          c.strokeStyle = 'rgba(160, 190, 220, 0.14)'; c.beginPath(); c.arc(px, py, rk, 0, Math.PI * 2); c.stroke();
-          c.fillStyle = '#9fb2c4'; c.beginPath(); c.arc(px + Math.cos(a) * rk, py + Math.sin(a) * rk, Math.max(1.5, rp * 0.28), 0, Math.PI * 2); c.fill();
+          const rk = mieszajLog(u.rpS * 2.4 + i * u.rpS * 1.1, (k.promien_km || 400000) * skm, f), a = -k.kat * RAD;
+          const mr = mieszajLog(Math.max(1.5, u.rpS * 0.28), Math.max(1, (k.srednica_km || u.srednicaKm * 0.27) / 2 * skm), f);
+          const mx = px + Math.cos(a) * rk, my = py + Math.sin(a) * rk;
+          if (rk < OKRAG_MAKS) { c.strokeStyle = 'rgba(160, 190, 220, 0.14)'; c.beginPath(); c.arc(px, py, rk, 0, Math.PI * 2); c.stroke(); }
+          if (!widac(mx, my, mr)) return;
+          c.fillStyle = '#9fb2c4'; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.fill();
+          if (f > 0.6) { c.font = `11px ${kroj}`; c.fillStyle = kolory.slaby; napis(c, k.nazwa, mx + mr + 4, my - mr - 2); }
         });
         // planeta: oświetlona połowa od strony słońca
+        if (!widac(px, py, rp)) continue;
         const as = -u.u.katSlonca * RAD;
         c.fillStyle = '#1b2433'; c.beginPath(); c.arc(px, py, rp, 0, Math.PI * 2); c.fill();
         c.fillStyle = '#6fa8d8'; c.beginPath(); c.arc(px, py, rp, as - Math.PI / 2, as + Math.PI / 2); c.closePath(); c.fill();
         c.font = `11px ${kroj}`; c.fillStyle = kolory.tekst;
-        napis(c, p.nazwa, px + rp + 5, py - rp - 3);
+        napis(c, p.nazwa, px + Math.min(rp, szer) * 0.71 + 5, py - Math.min(rp, wys) * 0.71 - 3);
       }
     }
+    // Połowa długości okrętu na ekranie (px), gdy przerasta znacznik; inaczej null.
+    function rozmiarNaEkranie(o) {
+      if (!o?.dlugosc_m || o.typ === 'postac') return null;
+      const r = (o.dlugosc_m / 2000) * (skala / KM_NA_PC);
+      return r > 8 ? r : null;
+    }
+
     function grupaZwinieta(o) {
       if (skala >= PROG_ROZWINIECIA || !o?.flota || o.typ === 'postac') return null;
       const p = planetaObiektu(o);
@@ -328,12 +384,22 @@ export default {
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const zwinieta = !!grupaZwinieta(o);
       const uklad = ukladNaEkranie(p);
-      const promien = uklad ? uklad.rp + 12 + numerOrbity * 11
+      let promien = uklad ? uklad.rp + 12 + numerOrbity * 11
         : orbita ? (zwinieta ? 18 + numerOrbity * 10 : 26 + numerOrbity * 14) : 30;
+      let rozrzutReal = null;
+      if (uklad?.f > 0 && orbita) {
+        // Rzeczywista skala: promień orbity według podejścia (bliska 300 km nad powierzchnią, średnia 4 R,
+        // daleka 15 R, krawędź 60 R); okręty floty obok siebie co trzy długości.
+        const Rpl = (uklad.srednicaKm || 12000) / 2;
+        const km = { bliska: Rpl + 300, srednia: Rpl * 4, daleka: Rpl * 15, krawedz: Rpl * 60 }[o.podejscie || 'daleka'] || Rpl * 15;
+        promien = mieszajLog(uklad.rpS + 12 + numerOrbity * 11, km * uklad.skm, uklad.f);
+        rozrzutReal = { f: uklad.f, st: ((3 * Math.max(0.05, (o.dlugosc_m || 100) / 1000)) / km) / RAD };
+      }
       const [px, py] = pozycjaPlanety(p);
       if (orbita && (o.orbita != null || o.kurs != null)) {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
-        const rozrzut = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
+        const rozrzutS = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
+        const rozrzut = rozrzutReal ? rozrzutS * (1 - rozrzutReal.f) + rozrzutReal.st * rozrzutReal.f : rozrzutS;
         const kat = -((o.orbita ?? kursTeraz(o)) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
         return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
       }
@@ -379,11 +445,9 @@ export default {
     function rozmiar() {
       const r = plotno.getBoundingClientRect();
       dpr = Math.min(2, window.devicePixelRatio || 1);
-      // Zachowaj środek widoku przy obrocie ekranu.
-      const [sx, sy] = szer ? naMape(szer / 2, wys / 2) : [0, 0];
+      // Środek widoku (kamera) zostaje przy obrocie ekranu.
       szer = r.width; wys = r.height;
       for (const p of [plotno, warstwa]) { p.width = Math.round(szer * dpr); p.height = Math.round(wys * dpr); }
-      if (D) { ox = szer / 2 - sx * skala; oy = wys / 2 + sy * skala; }
       odswiez();
     }
 
@@ -394,12 +458,13 @@ export default {
       const s = Math.min(szer / ((maxX - minX) * 1.08), wys / ((maxY - minY) * 1.08));
       const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
       if (plynnie) return przelec(cx, cy, s);
-      skala = s; ox = szer / 2 - cx * s; oy = wys / 2 + cy * s;
+      skala = s; ustawSrodek(cx, cy);
       odswiez();
     }
 
     // Płynny przelot do punktu mapy.
     function przelec(x, y, docelowa, potem) {
+      sledz = null;
       const [x0, y0] = naMape(szer / 2, wys / 2);
       const s0 = skala;
       const t0 = performance.now();
@@ -408,9 +473,8 @@ export default {
         const e = 1 - (1 - p) ** 3;
         // Skala w logarytmie, żeby przybliżanie wyglądało równo; środek widoku sunie do celu.
         skala = Math.exp(Math.log(s0) + (Math.log(docelowa) - Math.log(s0)) * e);
-        const cx = x0 + (x - x0) * e, cy = y0 + (y - y0) * e;
-        ox = szer / 2 - cx * skala;
-        oy = wys / 2 + cy * skala;
+        if (p >= 1) ustawSrodek(x, y);
+        else ustawSrodek(x0 + (x - x0) * e, y0 + (y - y0) * e);
         odswiez();
         if (p >= 1) { animacja = null; potem?.(); }
       };
@@ -465,8 +529,8 @@ export default {
     function rysujSzlak(g, s) {
       g.beginPath();
       for (const p of s.sciezki) {
-        g.moveTo(p[0] * skala + ox, -p[1] * skala + oy);
-        for (let i = 2; i < p.length; i += 2) g.lineTo(p[i] * skala + ox, -p[i + 1] * skala + oy);
+        g.moveTo(...naEkran(p[0], p[1]));
+        for (let i = 2; i < p.length; i += 2) g.lineTo(...naEkran(p[i], p[i + 1]));
       }
       g.stroke();
     }
@@ -591,6 +655,16 @@ export default {
       ramka = requestAnimationFrame(klatka);
       if (animacja) animacja(t);
       if (!D || !warstwa.width || !warstwa.height) return; // np. ekran w trakcie obrotu
+      // Śledzenie ciała w widoku układu: planety krążą naprawdę (dziesiątki km/s), więc w rzeczywistej
+      // skali kamera leci za ciałem, w które przybliżano, i trzyma je w tym samym miejscu ekranu.
+      if (sledz) {
+        const p = skala >= PROG_UKLADU ? sledz.poz() : null;
+        if (!p) sledz = null;
+        else if (Math.abs(p[0] - sledz.ekran[0]) + Math.abs(p[1] - sledz.ekran[1]) > 0.05) {
+          camKx += (p[0] - sledz.ekran[0]) / pxNaKm(); camKy -= (p[1] - sledz.ekran[1]) / pxNaKm();
+          scalKamere(); odswiez();
+        }
+      }
       if (brudna) { rysujWarstwe(); brudna = false; }
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.drawImage(warstwa, 0, 0);
@@ -651,19 +725,21 @@ export default {
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
         if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
-        if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys);
-        else if (o.znacznik === 'komrk') sylwetkaKomrk(c, sx, sy, kursRys);
-        else if (o.znacznik === 'kwadrat') c.rect(sx - 5, sy - 5, 10, 10);
-        else if (o.znacznik === 'romb') { c.moveTo(sx, sy - 7); c.lineTo(sx + 7, sy); c.lineTo(sx, sy + 7); c.lineTo(sx - 7, sy); c.closePath(); }
-        else c.arc(sx, sy, 5, 0, Math.PI * 2);
+        // Rzeczywista długość, gdy okręt na ekranie jest większy od znacznika; inaczej znacznik.
+        const rz = rozmiarNaEkranie(o);
+        if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys, rz ?? 8);
+        else if (o.znacznik === 'komrk') sylwetkaKomrk(c, sx, sy, kursRys, rz ?? 10);
+        else if (o.znacznik === 'kwadrat') { const r = rz ?? 5; c.rect(sx - r, sy - r, r * 2, r * 2); }
+        else if (o.znacznik === 'romb') { const r = rz ?? 7; c.moveTo(sx, sy - r); c.lineTo(sx + r, sy); c.lineTo(sx, sy + r); c.lineTo(sx - r, sy); c.closePath(); }
+        else c.arc(sx, sy, rz ?? 5, 0, Math.PI * 2);
         c.fill();
-        if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, 10, 0, Math.PI * 2); c.stroke(); }
+        if ((najechane?.obiekt?.id === o.id) || (wybrane?.obiekt?.id === o.id)) { c.beginPath(); c.arc(sx, sy, Math.max(10, (rz ?? 0) + 4), 0, Math.PI * 2); c.stroke(); }
         c.restore();
         if (o === moj) {
           // moja postać albo statek, na którym jestem: pulsujący pierścień i „Jesteś tutaj” zamiast nazwy
           const f = (t % 1800) / 1800;
           c.save(); c.strokeStyle = kolory.akcent; c.globalAlpha = 1 - f; c.lineWidth = 1.5;
-          c.beginPath(); c.arc(sx, sy, 8 + f * 16, 0, Math.PI * 2); c.stroke(); c.restore();
+          c.beginPath(); c.arc(sx, sy, (rozmiarNaEkranie(o) ?? 0) + 8 + f * 16, 0, Math.PI * 2); c.stroke(); c.restore();
           c.font = 'bold 12px monospace'; c.fillStyle = kolory.akcent;
           napis(c, 'Jesteś tutaj', sx + 10, sy - 7);
         } else if (najechane?.obiekt?.id === o.id || wybrane?.obiekt?.id === o.id) {
@@ -716,14 +792,15 @@ export default {
         const zw = grupaZwinieta(obiekt);
         if (zw && !zw.glowny) continue;
         const [px, py] = punktObiektu(obiekt);
-        const d = Math.hypot(px - sx, py - sy);
+        const d = Math.hypot(px - sx, py - sy) - (rozmiarNaEkranie(obiekt) ?? 0);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
       }
       if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       let najblizsza = null, odl = 16;
       for (const p of P) {
+        const rp = skala >= PROG_UKLADU && Math.hypot(...naMape(sx, sy).map((v, i) => v - (i ? p.y : p.x))) < 2e-4 ? ukladNaEkranie(p)?.rp || 0 : 0;
         for (const [px, py] of [naEkran(p.x, p.y), pozycjaPlanety(p)]) {
-          const d = Math.hypot(px - sx, py - sy);
+          const d = Math.hypot(px - sx, py - sy) - rp;
           if (d < odl) { odl = d; najblizsza = p; }
         }
       }
@@ -922,6 +999,8 @@ export default {
           // Skok w toku do tej planety: plan przylotu zostaje na widoku układu do przylotu.
           const wDrodze = jednostki.find((j) => j.rozkaz_id && j.cel_x != null && Math.hypot(j.cel_x - p.x, j.cel_y - p.y) < STREFA_UKLADU_PC);
           if (wDrodze) {
+            tresc.append(h('div.mapa-nawigacja-blok', h('b', `Skok do układu ${p.nazwa} w toku`),
+              h('div.slaby.maly-tekst', `ETA ${czasGry(wDrodze.eta)}`), przyciskPrzerwij(wDrodze.rozkaz_id, info)));
             planSkoku = { planeta: p.nazwa, kierunek: Math.atan2(p.y - wDrodze.y, p.x - wDrodze.x) / RAD,
               wariant: wDrodze.wariant || 'daleka', reczny: !wDrodze.wariant, policzony: true, aktywny: true };
             odswiezUkladKarty?.();
@@ -982,6 +1061,18 @@ export default {
         rysuj();
       }).catch(() => {});
       return sekcja;
+    }
+
+    // Przerwanie skoku (z potwierdzeniem): w nadprzestrzeni grozi uszkodzeniem reaktora i hipernapędu.
+    function przyciskPrzerwij(rozkazId, info) {
+      return h('button.przycisk.maly', { onclick: async () => {
+        if (!confirm('Przerwać skok? W nadprzestrzeni gwałtowne wyjście uszkodzi reaktor i hipernapęd.')) return;
+        try {
+          const w = await api('mapa_rozkaz_anuluj', { id: rozkazId });
+          info.textContent = w.komunikat || 'Skok przerwany.';
+          await pobierzPozycje(); await odswiezFloty();
+        } catch (e) { info.textContent = e.message; }
+      } }, 'Przerwij skok');
     }
 
     // Czas trwania także w dniach i latach (lot podświetlny między układami trwa lata).
@@ -1056,6 +1147,8 @@ export default {
               wykonaj.hidden = false;
             } catch (e) { wynik.textContent = e.message; wykonaj.hidden = true; }
           } }, 'Oblicz skok');
+          const skoki = [...new Set((f.jednostki || []).filter((j) => j.rozkaz_id).map((j) => j.rozkaz_id))];
+          if (skoki.length) tresc.append(h('div.mapa-nawigacja-blok', h('b', 'Skok w toku'), ...skoki.map((id) => przyciskPrzerwij(id, wynik))));
           tresc.append(h('div.mapa-nawigacja-blok', h('b', 'Skok do punktu'), h('div.mapa-nawigacja-wiersz', oblicz), wykonaj, wynik),
             blokLotu(f, { x: pkt.x, y: pkt.y }, 'Lot podświetlny do punktu'));
         };
@@ -1253,7 +1346,9 @@ export default {
       if (Math.abs(dx) + Math.abs(dy) > 3) przesuniety = true;
       wskazniki.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
       if (wskazniki.size === 1) {
-        ox += dx; oy += dy;
+        camKx -= dx / pxNaKm(); camKy += dy / pxNaKm();
+        if (sledz) sledz.ekran = [sledz.ekran[0] + dx, sledz.ekran[1] + dy];
+        scalKamere();
       } else if (wskazniki.size === 2 && szczypanie) {
         const [a, b] = [...wskazniki.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -1283,11 +1378,41 @@ export default {
     }, { passive: false });
 
     function przybliz(mnoznik, sx, sy) {
-      const [mx, my] = naMape(sx, sy);
-      skala = Math.max(0.005, Math.min(3000, skala * mnoznik));
-      ox = sx - mx * skala;
-      oy = sy + my * skala;
+      // Punkt pod kursorem zostaje w miejscu (liczone w km, dokładne także w rzeczywistej skali). Gdy pod
+      // kursorem jest planeta, księżyc albo okręt w widoku układu — w miejscu zostaje to ciało (na schemacie
+      // nie leży w stałym punkcie mapy, więc inaczej uciekałoby przy zbliżaniu).
+      const kotwica = kotwicaPod(sx, sy);
+      const przed = kotwica?.();
+      const k0 = pxNaKm();
+      skala = Math.max(0.005, Math.min(ZOOM_MAKS, skala * mnoznik));
+      const d = 1 / k0 - 1 / pxNaKm();
+      camKx += (sx - szer / 2) * d;
+      camKy -= (sy - wys / 2) * d;
+      const po = przed && kotwica();
+      if (po) { camKx += (po[0] - przed[0]) / pxNaKm(); camKy -= (po[1] - przed[1]) / pxNaKm(); }
+      // Zbliżanie w ciało: kamera dalej za nim leci; zbliżanie w pusty punkt kończy śledzenie.
+      if (przed) sledz = { poz: kotwica, ekran: przed };
+      else if (!sledz || mnoznik > 1) sledz = null;
+      scalKamere();
       odswiez();
+    }
+
+    // Ciało pod kursorem w widoku układu: funkcja zwracająca jego pozycję na ekranie albo null.
+    function kotwicaPod(sx, sy) {
+      if (skala < PROG_UKLADU) return null;
+      for (const o of obiektyMapy) {
+        if (naPokladzie(o) || o.typ === 'postac') continue;
+        const [px, py] = punktObiektu(o);
+        if (Math.hypot(px - sx, py - sy) < Math.max(14, rozmiarNaEkranie(o) ?? 0)) return () => punktObiektu(o);
+      }
+      const [cxp, cyp] = naMape(szer / 2, wys / 2);
+      for (const p of P) {
+        const [sx0, sy0] = naEkran(p.x, p.y);
+        if (Math.hypot(sx0 - szer / 2, sy0 - wys / 2) > 2 * Math.max(szer, wys) && Math.hypot(p.x - cxp, p.y - cyp) > 2e-4) continue;
+        const u = ukladNaEkranie(p);
+        if (u && Math.hypot(u.px - sx, u.py - sy) < Math.max(20, u.rp)) return () => pozycjaPlanety(p);
+      }
+      return null;
     }
 
     // ---------- pozycja postaci ----------
@@ -1458,7 +1583,9 @@ export default {
           tarcza,
           h('p.slaby.maly-tekst', 'Kurs to kierunek dziobu: 0° = wschód, 90° = północ. Miejsce na orbicie się nie zmienia, okręty tylko obracają dziób. Przed skokiem flota sama obraca się na kurs skoku.'),
           h('p.slaby.maly-tekst', 'Skok do planety z wyborem orbity: kliknij planetę na mapie → „Nawigacja floty”. Tu: skok na współrzędne albo do innej jednostki.'),
-          h('div.mapa-flota-form', x, y, cel, rozkaz), info,
+          h('div.mapa-flota-form', x, y, cel, rozkaz),
+          ...[...new Set(flota.jednostki.filter((j) => j.rozkaz_id).map((j) => j.rozkaz_id))].map((id) => przyciskPrzerwij(id, info)),
+          info,
           h('details', h('summary.slaby.maly-tekst', 'Podział na grupy'), h('div.mapa-flota-form', nazwaGrupy, podziel)),
           panelZgod({ filtr: (o) => flota.jednostki.some((j) => `okret:${j.obiekt_id}` === o.klucz) })));
       }
@@ -1509,7 +1636,7 @@ export default {
       rozmiar();
       await pobierzPozycje();
       if (tuPlaneta) {
-        skala = 0.25; ox = szer / 2 - tuPlaneta.x * skala; oy = wys / 2 + tuPlaneta.y * skala;
+        skala = 0.25; ustawSrodek(tuPlaneta.x, tuPlaneta.y);
       } else {
         calaGalaktyka();
       }

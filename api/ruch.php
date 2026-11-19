@@ -194,12 +194,25 @@ function mapa_strony(array $obiekty, array $u): array
 }
 
 // Kolumny kursu do zapytań mapy (puste, dopóki nie ma migracji 015).
+// Długość jednostek (migracja 033) — mapa w rzeczywistej skali.
+function mapa_dlugosc_dostepna(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT dlugosc_m FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
 function mapa_kurs_sql(): string
 {
     if (!function_exists('floty_kurs_dostepny') || !floty_kurs_dostepny()) return '';
     return ',m.kurs_deg,m.kurs_start_deg,m.kurs_cel_deg,m.manewr_od_utc,m.manewr_do_utc'
         . (floty_orbita_dostepna() ? ',m.orbita_deg,m.rozbity' : '')
         . (mapa_frakcja_dostepna() ? ',m.frakcja' : '')
+        . (floty_nawigacja_dostepna() ? ',m.podejscie' : '')
+        . (mapa_dlugosc_dostepna() ? ',m.dlugosc_m' : '')
         . (function_exists('floty_lot_dostepny') && floty_lot_dostepny()
             ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '');
 }
@@ -212,6 +225,8 @@ function mapa_kurs_pola(array $r): array
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
     if (!empty($r['frakcja'])) $w['frakcja'] = $r['frakcja'];
+    if (!empty($r['podejscie'])) $w['podejscie'] = $r['podejscie'];
+    if (!empty($r['dlugosc_m'])) $w['dlugosc_m'] = (float) $r['dlugosc_m'];
     if (!empty($r['lot_do_utc'])) {
         // Lot podświetlny: tablet przesuwa znacznik po linii lotu (w układzie: między planetą a księżycem).
         $w['podswietlny'] = ['od' => czas_z_utc((string) $r['lot_od_utc']), 'do' => czas_z_utc((string) $r['lot_do_utc']),

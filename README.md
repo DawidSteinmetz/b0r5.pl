@@ -228,6 +228,25 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - Pulpit: kafelek stanu (4 paski) jest zawsze kwadratowy; odliczanie etapu (nazwa, czas, pasek
   postępu) ma osobny kafelek obok i znika, gdy nic nie trwa.
 
+## Rzeczywista skala na mapie i przerwanie skoku (migracja 033)
+
+- Zoom do ok. 2·10¹⁶ px/pc. Kamera: środek w parsekach + przesunięcie w km (`camX/camY`, `camKx/camKy`),
+  bo sama liczba w parsekach przy takiej skali traciłaby dokładność; km przechodzą do parseków, gdy to
+  bezpieczne (`scalKamere`).
+- Widok układu: najpierw schemat; gdy prawdziwa orbita planety (`promien_orbity_au`) przerośnie schemat,
+  płynne przejście (mieszanie logarytmiczne przez trzy rzędy wielkości) do rzeczywistej skali: średnice
+  gwiazd według typu, planet i księżyców z danych, księżyce na prawdziwych promieniach obiegu, okręty na
+  orbicie według podejścia (bliska 300 km nad powierzchnią, średnia 4 R, daleka 15 R, krawędź 60 R).
+- Okręty: znacznik, dopóki okręt na ekranie jest mniejszy; potem sylwetka w prawdziwej długości
+  (`mapa_obiekty.dlugosc_m`: ISD 1600, Arquitens 450, Gozanti 64, Kom'rk 75, reszta 100 m).
+- Zoom w ciało (planeta, księżyc, okręt) trzyma je pod kursorem, a kamera dalej za nim leci (planety krążą
+  naprawdę, dziesiątki km/s); przeciągnięcie przesuwa kadr, zoom w pusty punkt kończy śledzenie.
+- „Przerwij skok” (karta floty, karta planety, karta punktu; `mapa_rozkaz_anuluj`): przed wejściem w
+  nadprzestrzeń bez skutków; w nadprzestrzeni wyjście tam, dokąd okręt doleciał (w studni układu — na jego
+  krawędzi), paliwo według przebytej drogi i uszkodzenia (sprawność reaktora 10–30, hipernapędu 15–40,
+  osłony 5–15, kadłub 2–8 pkt) × jakość podzespołów (`jakosc_podzespolow` 1–5: ×1,6 … ×0,4) × zapas mocy
+  reaktora (do −25%). Przerwać może dowódca floty, wydający rozkaz albo MG.
+
 ## Strefy grawitacyjne układów
 
 - `STREFA_UKLADU_PC` (0,05 pc, `api/floty.php`; ta sama wartość w mapie i scenie): w tym promieniu od planety

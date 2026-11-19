@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–032 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–033 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -7172,4 +7172,41 @@ DROP TEMPORARY TABLE IF EXISTS tmp_import_lokacji;
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v32-lokacje-naboo', 'Lokacje: Naboo (101)')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/033_dlugosc_okretow_jakosc_podzespolow.sql
+-- =====================================================================
+
+-- Rzeczywista skala na mapie i skutki przerwania skoku.
+--
+-- mapa_obiekty.dlugosc_m: długość jednostki (m) — mapa w rzeczywistej skali rysuje sylwetkę tej długości.
+-- mapa_naped_jednostki.jakosc_podzespolow (1–5, domyślnie 3): jakość reaktora, hipernapędu i osłon.
+--   Przerwanie skoku w nadprzestrzeni uszkadza je tym mniej, im wyższa jakość (1: ×1,6 … 5: ×0,4).
+--
+-- Import w phpMyAdmin: zakładka SQL albo Import. Ponowny import: ALTER zgłosi „Duplicate column” —
+-- wtedy wystarczy reszta pliku od UPDATE.
+
+SET NAMES utf8mb4;
+
+ALTER TABLE mapa_obiekty
+  ADD COLUMN dlugosc_m DECIMAL(8,1) NULL;
+
+ALTER TABLE mapa_naped_jednostki
+  ADD COLUMN jakosc_podzespolow TINYINT UNSIGNED NOT NULL DEFAULT 3;
+
+-- Długości według klasy (m); pozostałe jednostki 100 m.
+UPDATE mapa_obiekty SET dlugosc_m = 1600
+  WHERE dlugosc_m IS NULL AND (klasa LIKE '%Imperial%' OR klasa LIKE '%ISD%' OR nazwa LIKE 'ISD%');
+UPDATE mapa_obiekty SET dlugosc_m = 450
+  WHERE dlugosc_m IS NULL AND (klasa LIKE '%Arquitens%' OR nazwa LIKE 'Arquitens%');
+UPDATE mapa_obiekty SET dlugosc_m = 64
+  WHERE dlugosc_m IS NULL AND (klasa LIKE '%Gozanti%' OR nazwa LIKE 'Gozanti%');
+UPDATE mapa_obiekty SET dlugosc_m = 75
+  WHERE dlugosc_m IS NULL AND klasa LIKE '%Kom%rk%';
+UPDATE mapa_obiekty SET dlugosc_m = 100
+  WHERE dlugosc_m IS NULL AND typ IN ('statek', 'jednostka', 'pojazd');
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v33-dlugosc-okretow-jakosc', 'Długość jednostek (mapa w rzeczywistej skali), jakość podzespołów (przerwanie skoku)')
 ON DUPLICATE KEY UPDATE opis = VALUES(opis);

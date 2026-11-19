@@ -1052,6 +1052,80 @@ function floty_rozkaz(string $login, array $w): array
         'jednostki' => array_map(static fn($j) => ['id' => $j['id'],'nazwa' => $j['nazwa'],'szum_stopnie' => $j['kat'],'eta' => $j['eta']], $wyliczone)];
 }
 
+// ---------- przerwanie skoku ----------
+// Przed wejściem w nadprzestrzeń (obliczenia, obrót, lot do punktu skoku): bez skutków. W nadprzestrzeni:
+// gwałtowne wyjście tam, dokąd jednostka doleciała (w studni układu — na jego krawędzi), część paliwa
+// zużyta, uszkodzenia reaktora, hipernapędu, osłon i kadłuba. Mniejsze przy lepszych podzespołach
+// (jakosc_podzespolow 1–5) i przy zapasie mocy reaktora nad hipernapędem. Gra nie podaje liczb.
+const PRZERWANIE_USZKODZENIA = ['sprawnosc_reaktora' => [10, 30], 'sprawnosc_hipernapedu' => [15, 40], 'oslony' => [5, 15], 'kadlub' => [2, 8]];
+const PRZERWANIE_JAKOSC = [1 => 1.6, 2 => 1.3, 3 => 1.0, 4 => 0.7, 5 => 0.4];
+
+function floty_przerwij_skok(array $u, int $id): array
+{
+    $db = polaczenie_bazy();
+    $q = $db->prepare("SELECT id, flota_id, wydajacy_login, COALESCE(wejscie_utc, wydano_utc) AS wejscie FROM mapa_rozkazy_skokow WHERE id=? AND status='w_nadprzestrzeni'");
+    $q->execute([$id]);
+    $r = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$r) blad('Ten skok już się zakończył.');
+    $mozna = ($u['rola'] ?? '') === 'mg' || mb_strtolower((string) $r['wydajacy_login']) === mb_strtolower((string) $u['login'])
+        || ($r['flota_id'] && floty_czy_dowodca((int) $r['flota_id'], (string) $u['login']));
+    if (!$mozna) blad('Nie możesz przerwać tego skoku.', 403);
+    floty_aktualizuj_ruch(); // pozycje w nadprzestrzeni na tę chwilę
+    $teraz = czas_teraz();
+    $wNadprzestrzeni = $teraz >= czas_z_utc((string) $r['wejscie']);
+    $jakosc = false;
+    try { $db->query('SELECT jakosc_podzespolow FROM mapa_naped_jednostki LIMIT 0'); $jakosc = true; } catch (Throwable $e) {}
+    $q = $db->prepare("SELECT o.id, o.x, o.y, o.kurs_deg, o.kurs_start_deg, o.kurs_cel_deg, o.manewr_od_utc, o.manewr_do_utc,
+            j.start_x, j.start_y, j.wyjscie_x, j.wyjscie_y, j.paliwo_zuzyte, j.eta_utc,
+            COALESCE(n.moc_reaktora,100) AS moc_reaktora, COALESCE(n.moc_hipernapedu,80) AS moc_hipernapedu,
+            COALESCE(n.sprawnosc_reaktora,100) AS sprawnosc_reaktora" . ($jakosc ? ', COALESCE(n.jakosc_podzespolow,3) AS jakosc' : '') . "
+        FROM mapa_obiekty o JOIN mapa_rozkazy_skokow_jednostki j ON j.obiekt_id=o.id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id
+        WHERE j.rozkaz_id=? AND j.status='w_nadprzestrzeni'");
+    $q->execute([$id]);
+    $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
+    $kolumny = ['sprawnosc_reaktora', 'sprawnosc_hipernapedu'];
+    if (function_exists('liczniki_dostepne') && liczniki_dostepne()) array_push($kolumny, 'oslony', 'kadlub');
+    $db->beginTransaction();
+    try {
+        foreach ($jednostki as $o) {
+            $k = floty_kurs_teraz($o, $teraz);
+            floty_ustaw_manewr($db, (int) $o['id'], $k, $k, 0, 0);
+            if (!$wNadprzestrzeni) continue;
+            // Wyjście w miejscu, do którego jednostka doleciała; w studni układu — na jego krawędzi.
+            $x = round((float) $o['x'], 1); $y = round((float) $o['y'], 1);
+            $planeta = floty_planeta_w_punkcie($x, $y);
+            if ($planeta) [$x, $y] = floty_wsp_planety($planeta);
+            $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=? WHERE id=?')->execute([$x, $y, $planeta, $o['id']]);
+            if (floty_orbita_dostepna()) {
+                $db->prepare('UPDATE mapa_obiekty SET orbita_deg=?, przylot_utc=? WHERE id=?')
+                    ->execute([$planeta ? round(floty_kat($k + 180), 2) : null, $planeta ? czas_utc($teraz) : null, $o['id']]);
+                if (floty_nawigacja_dostepna()) $db->prepare('UPDATE mapa_obiekty SET podejscie=? WHERE id=?')->execute([$planeta ? 'krawedz' : null, $o['id']]);
+            }
+            // Paliwo: zużyte proporcjonalnie do przebytej drogi.
+            $cala = hypot((float) $o['wyjscie_x'] - (float) $o['start_x'], (float) $o['wyjscie_y'] - (float) $o['start_y']);
+            $przebyta = hypot((float) $o['x'] - (float) $o['start_x'], (float) $o['y'] - (float) $o['start_y']);
+            $paliwo = (float) $o['paliwo_zuzyte'] * ($cala > 0 ? min(1, $przebyta / $cala) : 1);
+            // Uszkodzenia: losowo w granicach, × jakość podzespołów, × zapas mocy (do −25%).
+            $czynnik = PRZERWANIE_JAKOSC[max(1, min(5, (int) ($o['jakosc'] ?? 3)))];
+            $zapas = ((float) $o['moc_reaktora'] * max(0.1, (int) $o['sprawnosc_reaktora'] / 100)) / max(1.0, (float) $o['moc_hipernapedu']);
+            $czynnik *= 1 - min(0.25, max(0.0, ($zapas - 1) * 0.25));
+            $set = ['paliwo=GREATEST(0,paliwo-?)']; $wart = [round($paliwo, 2)];
+            foreach ($kolumny as $kol) {
+                [$od, $do] = PRZERWANIE_USZKODZENIA[$kol];
+                $set[] = "$kol=GREATEST(0, CAST($kol AS SIGNED) - ?)";
+                $wart[] = (int) round(random_int($od * 10, $do * 10) / 10 * $czynnik);
+            }
+            $wart[] = $o['id'];
+            $db->prepare('UPDATE mapa_naped_jednostki SET ' . implode(', ', $set) . ' WHERE obiekt_id=?')->execute($wart);
+        }
+        $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$id]);
+        $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany', zakonczono_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$id]);
+        $db->commit();
+    } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+    return ['ok' => true, 'w_nadprzestrzeni' => $wNadprzestrzeni,
+        'komunikat' => $wNadprzestrzeni ? 'Gwałtowne wyjście z nadprzestrzeni. Reaktor i hipernapęd uszkodzone.' : 'Skok odwołany przed wejściem w nadprzestrzeń.'];
+}
+
 function obsluz_floty(string $akcja, bool $post): void
 {
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj','mapa_flota_kurs','mapa_flota_dolot',
@@ -1198,22 +1272,8 @@ function obsluz_floty(string $akcja, bool $post): void
 
         case 'mapa_rozkaz_anuluj':
             if (!$post) blad('Zła metoda.', 405);
-            $u = wymagaj_logowania(); $id = (int) (wejscie()['id'] ?? 0);
-            $db = polaczenie_bazy();
-            $q = $db->prepare('SELECT id,flota_id,wydajacy_login FROM mapa_rozkazy_skokow WHERE id=? AND status=\'w_nadprzestrzeni\'');
-            $q->execute([$id]); $r = $q->fetch(PDO::FETCH_ASSOC);
-            if (!$r || (mb_strtolower($r['wydajacy_login']) !== mb_strtolower($u['login']) && (!($u['rola'] === 'mg')))) blad('Nie możesz anulować tego rozkazu.', 403);
-            floty_aktualizuj_ruch();
-            $q = $db->prepare("SELECT o.id,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc FROM mapa_obiekty o
-                JOIN mapa_rozkazy_skokow_jednostki j ON j.obiekt_id=o.id WHERE j.rozkaz_id=? AND j.status='w_nadprzestrzeni'");
-            $q->execute([$id]);
-            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
-                $k = floty_kurs_teraz($o, czas_teraz());
-                floty_ustaw_manewr($db, (int) $o['id'], $k, $k, 0, 0);
-            }
-            $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$id]);
-            $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany',zakonczono_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$id]);
-            odpowiedz(['ok' => true]);
+            $u = wymagaj_logowania();
+            odpowiedz(floty_przerwij_skok($u, (int) (wejscie()['id'] ?? 0)));
 
         case 'mg_floty':
             wymagaj_mg();

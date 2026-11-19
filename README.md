@@ -242,9 +242,10 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   jesteś. Karta statku: zakładki „Pasażerowie” i „Więźniowie” (`mapa_poklad`; widzą osoby na pokładzie,
   dowódca lub właściciel, MG). MG przełącza rolę przyciskiem w zakładce (`mg_poklad_rola`).
 
-## Paczki lokacji (migracje 029–031)
+## Paczki lokacji (migracje 029–032)
 
-- 029 Tatooine (56), 030 Nar Shaddaa (105, bez sześciu lokacji portu, które już były), 031 Lothal (112).
+- 029 Tatooine (56), 030 Nar Shaddaa (105, bez sześciu lokacji portu, które już były), 031 Lothal (112),
+  032 Naboo (101).
 - Wzór paczki: tabela tymczasowa z poziomem w hierarchii, import poziom po poziomie (rodzic po nazwie
   na tej planecie), planeta wyszukiwana po nazwie, `ON DUPLICATE KEY UPDATE id = id` — istniejące
   rekordy bez zmian, ponowny import dokłada tylko brakujące; na końcu kontrolny `SELECT`.

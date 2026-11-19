@@ -180,11 +180,11 @@ function wielokat(g, pkt, r) {
 // Mostek ISD: trzy środkowe okna w proporcjach z rysunku mostka (H = wysokość okna):
 // środkowe — trapez rozszerzający się ku dołowi (góra 0,9 H, dół 1,65 H); boczne — odwrócone trapezy
 // (góra 1,33 H, dół 0,7 H), których wewnętrzne boki biegną równolegle do boków środkowego, za skośnym
-// słupkiem szerokości 0,3 H. Na telefonie w pionie obok środkowego okna widać górne skosy bocznych.
+// słupkiem szerokości 0,12 H. Na telefonie w pionie obok środkowego okna widać górne skosy bocznych.
 function geometriaOknaIsd(w, h) {
-  const sx = w / 2, H = Math.min(w, h) * 0.23;
+  const sx = w / 2, H = Math.min(w, h) * 0.27;
   const gora = h / 2 - H / 2, dol = gora + H;
-  const sGora = 0.45 * H, sDol = 0.825 * H, slupek = 0.3 * H, bokGora = 1.33 * H, bokDol = 0.7 * H;
+  const sGora = 0.45 * H, sDol = 0.825 * H, slupek = 0.12 * H, bokGora = 1.33 * H, bokDol = 0.7 * H;
   const wGora = sGora + slupek, wDol = sDol + slupek; // wewnętrzne krawędzie bocznych okien
   return { gora, dol, okna: [
     [[sx - sGora, gora], [sx + sGora, gora], [sx + sDol, dol], [sx - sDol, dol]],

@@ -168,21 +168,18 @@ function wielokat(g, pkt, r) {
   g.closePath();
 }
 
-// Okno mostka ISD: ciemne poszycie z trzema oknami (środkowe — trapez rozszerzający się ku dołowi,
-// boczne — lustrzane, równoległe do jego skosów) i wielowarstwową, fazowaną ramą.
-// Geometria okien mostka. Poziomo: trzy okna (środkowe trapez, boczne lustrzane). Pionowo (telefon):
-// tylko środkowe okno na prawie całą szerokość, w tych samych proporcjach, wyśrodkowane w pionie —
-// nad i pod nim rośnie poszycie mostka.
+// Ramy okien rysujemy na stałym, kwadratowym WZORZE (w = h). Ekran pokazuje zawsze środkowy wycinek
+// wzoru we własnych proporcjach („cover”): wąski ekran ucina boki, szeroki — górę i dół. Wzór nigdy
+// się nie rozciąga, a tło (niebo, planeta, krajobraz) leży w tym samym kadrze.
+//
+// Mostek ISD: trzy okna (środkowe — trapez rozszerzający się ku dołowi, boczne — lustrzane, równoległe
+// do jego skosów) w środkowym pasie wzoru. Przerwy są wąskie, więc na telefonie w pionie obok
+// środkowego okna widać jeszcze wewnętrzne skosy bocznych.
 function geometriaOknaIsd(w, h) {
   const sx = w / 2;
-  if (h > w) {
-    const pDol = w * 0.47, pGora = pDol * 0.563, wys = pDol * 2 * 0.6;
-    const gora = (h - wys) / 2, dol = gora + wys;
-    return { pion: true, gora, dol, okna: [[[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]]] };
-  }
-  const gora = h * 0.08, dol = h * 0.84;
-  const pGora = w * 0.2, pDol = w * 0.355, przerwa = w * 0.05, bok = w * 0.32;
-  return { pion: false, gora, dol, okna: [
+  const gora = h * 0.31, dol = h * 0.69;
+  const pGora = w * 0.1, pDol = w * 0.165, przerwa = w * 0.022, bok = w * 0.3;
+  return { gora, dol, okna: [
     [[sx - pGora, gora], [sx + pGora, gora], [sx + pDol, dol], [sx - pDol, dol]],
     [[sx - pGora - przerwa - bok, gora], [sx - pGora - przerwa, gora], [sx - pDol - przerwa, dol], [sx - pDol - przerwa - bok, dol]],
     [[sx + pGora + przerwa, gora], [sx + pGora + przerwa + bok, gora], [sx + pDol + przerwa + bok, dol], [sx + pDol + przerwa, dol]],
@@ -190,18 +187,21 @@ function geometriaOknaIsd(w, h) {
 }
 
 // Kokpit Kom'rka: szeroka, kanciasta owiewka (rozciągnięty sześciokąt) podzielona pionowym wspornikiem
-// na dwie szyby; pod nią konsola. W pionie owiewka na całą szerokość, konsola rośnie w dół.
+// na dwie szyby; pod nią konsola do dołu wzoru.
 function geometriaOknaKomrk(w, h) {
-  const pion = h > w;
-  const x0 = pion ? w * 0.02 : w * 0.03, x1 = w - x0, sx = w / 2;
-  const wys = pion ? (x1 - x0) * 0.55 : h * 0.6;
-  const gora = pion ? h * 0.4 - wys / 2 : h * 0.1, dol = gora + wys, srodek = (gora + dol) / 2;
-  const skos = (x1 - x0) * 0.07, wspornik = Math.max(5, w * 0.012);
-  return { pion, gora, dol, konsola: true, okna: [
+  const x0 = w * 0.08, x1 = w - x0, sx = w / 2;
+  const gora = h * 0.3, dol = h * 0.6, srodek = (gora + dol) / 2;
+  const skos = (x1 - x0) * 0.07, wspornik = Math.max(4, w * 0.006);
+  return { gora, dol, konsola: true, okna: [
     [[x0 + skos, gora], [sx - wspornik, gora], [sx - wspornik, dol], [x0 + skos, dol], [x0, srodek]],
     [[sx + wspornik, gora], [x1 - skos, gora], [x1, srodek], [x1 - skos, dol], [sx + wspornik, dol]],
   ] };
 }
+
+// Wnętrza z ramą: okno budynku (szyby na środku wzoru, ściana dookoła) i wrota hangaru (widok na całą
+// szerokość, rama tylko u góry i u dołu).
+const OKNA_BUDYNKOW = ['biuro', 'hotel', 'kantyna', 'sklep', 'garaz'];
+const HANGARY = ['hangar', 'port', 'poklad'];
 
 const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : geometriaOknaIsd(w, h));
 
@@ -212,7 +212,7 @@ function rysujOknoIsd(w, h, dpr, typ = 'isd') {
   g.scale(dpr, dpr);
   const geo = geometriaOkna(typ, w, h);
   const { gora, dol, okna } = geo;
-  const r = Math.min(w, h) * 0.045;
+  const r = Math.min(w, h) * 0.02;
   // poszycie
   const kad = g.createLinearGradient(0, 0, 0, h);
   kad.addColorStop(0, '#202326'); kad.addColorStop(0.6, '#1a1c1f'); kad.addColorStop(1, '#141618');
@@ -261,6 +261,8 @@ function rysujOknoIsd(w, h, dpr, typ = 'isd') {
 export function utworzScene(canvas) {
   const ctx = canvas.getContext('2d');
   let w = 0, h = 0, dpr = 1;
+  // Ekran (CSS px) i przesunięcie kadru: przy ramie w × h to wymiary wzoru, większe od ekranu.
+  let ekranW = 0, ekranH = 0, kadrX = 0;
   let stan = { scena: 'kosmos', planeta: 'oceaniczna', odleglosc: 'srednio', zmieniono: 0 };
   let start = performance.now();
   let klatka = null;
@@ -275,10 +277,11 @@ export function utworzScene(canvas) {
 
   function rozmiar() {
     dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    w = canvas.clientWidth;
-    h = canvas.clientHeight;
-    canvas.width = Math.max(1, w * dpr);
-    canvas.height = Math.max(1, h * dpr);
+    ekranW = canvas.clientWidth;
+    ekranH = canvas.clientHeight;
+    w = ekranW; h = ekranH;
+    canvas.width = Math.max(1, ekranW * dpr);
+    canvas.height = Math.max(1, ekranH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     planeta = null;
     krajobraz = null;
@@ -292,7 +295,7 @@ export function utworzScene(canvas) {
 
   function przygotujPlanete() {
     const typ = TYPY_PLANET[stan.planeta] ? stan.planeta : 'skalista';
-    const d = Math.round(Math.min(w, h) * (ODLEGLOSCI[stan.odleglosc] || 0.5));
+    const d = Math.round(skalaWidoku() * (ODLEGLOSCI[stan.odleglosc] || 0.5));
     if (planeta && planeta.typ === typ && planeta.d === d) return;
     const ziarno = hash((stan.miejsce || '') + typ);
     planeta = { typ, d, tekstura: teksturaPlanety(typ, Math.max(8, d), ziarno), swiatla: TYPY_PLANET[typ].swiatla ? teksturaSwiatel(Math.max(8, d), ziarno) : null };
@@ -385,9 +388,17 @@ export function utworzScene(canvas) {
   // Wysokość na ekranie dla ułamka „poziomego” projektu (okno 0,08–0,84 h). W pionie z oknem ISD
   // liczona względem środkowego okna, żeby planeta i słońce nie chowały się pod poszyciem.
   const yWidoku = (u) => {
-    if (!stan.okno || (stan.okno === 'isd' && h <= w)) return h * u;
+    if (!stan.okno) return h * u;
     const { gora, dol } = geometriaOkna(stan.okno, w, h);
     return gora + (u - 0.08) / 0.76 * (dol - gora);
+  };
+
+  // Wielkość planety i słońca: z oknem mostka względem wysokości okna (jak dawny pas 0,08–0,84 ekranu),
+  // bez okna względem krótszego boku ekranu.
+  const skalaWidoku = () => {
+    if (!stan.okno) return Math.min(w, h);
+    const { gora, dol } = geometriaOkna(stan.okno, w, h);
+    return (dol - gora) / 0.76;
   };
 
   // Kierunki z mostka (stopnie w układzie mapy) liczone z `stan.widok` w danej chwili.
@@ -464,8 +475,8 @@ export function utworzScene(canvas) {
       const kier = k.slonce + (gw.przesuniecie || 0);
       if (Math.abs(norm180(kier - k.kurs)) > POLE_WIDZENIA / 2 + 15) continue;
       const [cr, cg, cb] = gw.rgb;
-      const x = xKierunku(k.kurs, kier), y = yWidoku(0.3 + (gw.wysokosc || 0)), r = Math.min(w, h) * 0.022 * gw.rozmiar;
-      const R = Math.min(w, h) * 0.022 * 14 * gw.jasnosc;
+      const x = xKierunku(k.kurs, kier), y = yWidoku(0.3 + (gw.wysokosc || 0)), r = skalaWidoku() * 0.022 * gw.rozmiar;
+      const R = skalaWidoku() * 0.022 * 14 * gw.jasnosc;
       const g = ctx.createRadialGradient(x, y, 0, x, y, R);
       g.addColorStop(0, 'rgba(255, 253, 248, 1)'); g.addColorStop(0.07, `rgba(${cr}, ${cg}, ${cb}, 0.9)`);
       g.addColorStop(0.25, `rgba(${cr}, ${cg}, ${cb}, 0.18)`); g.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
@@ -482,7 +493,7 @@ export function utworzScene(canvas) {
       const k = kierunki();
       if (!stan.widok) return stan.scena === 'orbita';
       if (k?.slonce == null) return false;
-      return Math.abs(norm180(k.slonce - k.kurs)) <= POLE_WIDZENIA / 2 + 5;
+      return Math.abs(norm180(k.slonce - k.kurs)) <= POLE_WIDZENIA / 2 * Math.min(1, ekranW / Math.max(1, w)) + 5;
     }
     if (stan.scena === 'powierzchnia') return !!stan.swiatlo?.cykl && poraTeraz() === 'dzien';
     return false;
@@ -516,7 +527,8 @@ export function utworzScene(canvas) {
       if (Math.abs(norm180(k.doPlanety - k.kurs)) > POLE_WIDZENIA / 2 + 40) return;
       cx = xKierunku(k.kurs, k.doPlanety);
     }
-    const cy = blisko ? yWidoku(0.98) : yWidoku(0.55);
+    // Z okna mostka planeta na wprost wisi dokładnie w środku okna (0,46 = środek pasa 0,08–0,84).
+    const cy = blisko ? yWidoku(0.98) : yWidoku(stan.okno ? 0.46 : 0.55);
     const skala = 0.85 + 0.15 * pojawienie;
     const R = r * skala;
     if (cx + R * 1.3 < 0 || cx - R * 1.3 > w) return;
@@ -873,34 +885,38 @@ export function utworzScene(canvas) {
     rysujRame(stan.wnetrze);
   }
 
-  // Rama okna (biuro, hotel…) albo wrota hangaru. Na zewnątrz (bankomat, inne) — bez ramy.
+  // Rama okna (biuro, hotel…) albo wrota hangaru, na kwadratowym wzorze. Na zewnątrz — bez ramy.
   function rysujRame(wnetrze) {
-    const okno = ['biuro', 'hotel', 'kantyna', 'sklep', 'garaz'].includes(wnetrze);
-    const hangar = ['hangar', 'port', 'poklad'].includes(wnetrze); // platforma: otwarty widok
+    const okno = OKNA_BUDYNKOW.includes(wnetrze);
+    const hangar = HANGARY.includes(wnetrze);
     if (!okno && !hangar) return;
     ctx.save();
     ctx.fillStyle = '#0a0e12';
     if (okno) {
-      const r = Math.max(14, Math.min(w, h) * 0.035);
-      ctx.fillRect(0, 0, w, r); ctx.fillRect(0, h - r * 1.6, w, r * 1.6); ctx.fillRect(0, 0, r, h); ctx.fillRect(w - r, 0, r, h);
-      ctx.fillRect(w / 3 - r / 4, 0, r / 2, h); ctx.fillRect((2 * w) / 3 - r / 4, 0, r / 2, h);
-      ctx.fillRect(0, h * 0.38, w, r / 2.5);
-      // odbicie w szybie
-      const g = ctx.createLinearGradient(0, 0, w, h);
+      // Okno z trzema szybami i ślemieniem na środku wzoru; dookoła ściana w kolorze ramy.
+      const L = w * 0.1, R = w * 0.9, T = h * 0.26, B = h * 0.74;
+      const r = Math.max(10, w * 0.018);
+      ctx.fillRect(0, 0, w, T + r); ctx.fillRect(0, B - r * 1.6, w, h - B + r * 1.6);
+      ctx.fillRect(0, T, L + r, B - T); ctx.fillRect(R - r, T, w - R + r, B - T);
+      ctx.fillRect(w / 3 - r / 4, T, r / 2, B - T); ctx.fillRect((2 * w) / 3 - r / 4, T, r / 2, B - T);
+      ctx.fillRect(L, T + (B - T) * 0.25, R - L, r / 2.5);
+      // krawędź ramy i odbicie w szybie
+      ctx.strokeStyle = 'rgba(120, 130, 140, 0.25)'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(L + r, T + r, R - L - 2 * r, B - T - r * 2.6);
+      const g = ctx.createLinearGradient(L, T, R, B);
       g.addColorStop(0, 'rgba(255,255,255,0.06)'); g.addColorStop(0.4, 'rgba(255,255,255,0)'); g.addColorStop(0.6, 'rgba(255,255,255,0.04)'); g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = g; ctx.fillRect(L + r, T + r, R - L - 2 * r, B - T - r * 2.6);
     } else {
-      // Wrota hangaru: ciemne wnętrze u góry i po bokach, posadzka z pasami ostrzegawczymi.
-      const gora = h * 0.12, bok = w * 0.06, podloga = h * 0.86;
+      // Wrota hangaru: cały środek to widok; strop z lampami u góry, posadzka z pasami u dołu.
+      const gora = h * 0.32, podloga = h * 0.7;
       ctx.fillRect(0, 0, w, gora);
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(bok, gora); ctx.lineTo(bok, podloga); ctx.lineTo(0, h); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(w, 0); ctx.lineTo(w - bok, gora); ctx.lineTo(w - bok, podloga); ctx.lineTo(w, h); ctx.fill();
+      ctx.fillStyle = '#1a2128'; ctx.fillRect(0, gora - 8, w, 8);
       ctx.fillStyle = '#14191e'; ctx.fillRect(0, podloga, w, h - podloga);
-      for (let x = bok; x < w - bok; x += 28) {
+      for (let x = 0; x < w; x += 28) {
         ctx.fillStyle = (x / 28) % 2 < 1 ? '#c9a227' : '#14191e';
         ctx.fillRect(x, podloga, 14, 6);
       }
-      for (let x = w * 0.15; x < w * 0.9; x += w * 0.12) {
+      for (let x = w * 0.04; x < w; x += Math.max(40, w * 0.08)) {
         ctx.fillStyle = '#2a3a44'; ctx.fillRect(x, gora - 6, 4, 6);
         const g = ctx.createRadialGradient(x + 2, gora, 0, x + 2, gora, 40);
         g.addColorStop(0, 'rgba(255,240,200,0.25)'); g.addColorStop(1, 'rgba(255,240,200,0)');
@@ -960,6 +976,15 @@ export function utworzScene(canvas) {
     poprzednio = teraz;
     const t = teraz - start; // czas od wejścia w bieżącą scenę
     const ruch = spokojnie ? 0.15 : 1;
+    // Scena z ramą: rysujemy na kwadratowym wzorze o boku dłuższego wymiaru ekranu, wyśrodkowanym —
+    // ekran pokazuje jego środek. Bez ramy: cały ekran.
+    const zRama = stan.okno === 'isd' || stan.okno === 'komrk'
+      || (stan.scena === 'powierzchnia' && (OKNA_BUDYNKOW.includes(stan.wnetrze) || HANGARY.includes(stan.wnetrze)));
+    const bok = zRama ? Math.max(ekranW, ekranH) : 0;
+    w = zRama ? bok : ekranW; h = zRama ? bok : ekranH;
+    kadrX = zRama ? (ekranW - bok) / 2 : 0;
+    const kadrY = zRama ? (ekranH - bok) / 2 : 0;
+    ctx.setTransform(dpr, 0, 0, dpr, kadrX * dpr, kadrY * dpr);
 
     switch (stan.scena) {
       case 'wejscie': {

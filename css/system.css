@@ -152,6 +152,10 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
   cursor: pointer;
 }
 #dok button:active { border-color: var(--linia-mocna); color: var(--akcent); }
+/* Wyciszenie dźwięku: mała ikonka w prawym dolnym rogu. */
+#dok #dok-dzwiek { position: absolute; right: 10px; bottom: 10px; width: 30px; height: 30px; padding: 5px; border-radius: 50%; }
+#dok-dzwiek svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+#dok-dzwiek.wyciszony { opacity: 0.55; }
 
 /* ---------- pulpit / aplikacje ---------- */
 

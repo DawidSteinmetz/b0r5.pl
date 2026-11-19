@@ -27,3 +27,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Dźwięki (duże, licencja zewnętrzna) — wgrywane ręcznie na serwer
+/sound/*.mp3

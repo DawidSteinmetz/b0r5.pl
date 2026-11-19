@@ -4,6 +4,7 @@ import { h, wyczysc, ikona, godzina, dataGST, czekaj, pamiec } from './rdzen/nar
 import { api } from './rdzen/api.js';
 import { URZADZENIE } from './rdzen/urzadzenie.js';
 import { utworzScene, TYPY_PLANET } from './rdzen/scena.js';
+import { ustawDzwiek, przelaczWyciszenie, wyciszony } from './rdzen/dzwiek.js';
 
 import holonet from './aplikacje/holonet.js';
 import kalendarz from './aplikacje/kalendarz.js';
@@ -253,12 +254,28 @@ async function sprawdzScene() {
     stanSceny = s;
     pamiec.zapisz('scena', s);
     scena.ustaw({ ...s, przesuniecie: przesuniecieZegara });
+    // Dźwięk: skok w nadprzestrzeń albo tło mostka (także bez sceny — poza skokiem gra zawsze tło).
+    ustawDzwiek(s?.scena || 'kosmos', Date.now() + przesuniecieZegara - (s?.zmieniono || 0));
     document.querySelectorAll('[data-miejsce]').forEach((el) => { el.textContent = opisMiejsca(); });
   } catch { /* brak zasięgu — zostaje ostatni znany stan */ }
 }
 setInterval(sprawdzScene, 6000);
 // Podpis na pulpicie dogania tło (skok → nadprzestrzeń) bez czekania na serwer.
 setInterval(() => document.querySelectorAll('[data-miejsce]').forEach((el) => { el.textContent = opisMiejsca(); }), 2000);
+
+// Wyciszenie: mała ikonka w prawym dolnym rogu (na doku).
+const GLOSNIK = '<path d="M8 19h7l9-8v26l-9-8H8z"/>';
+const przyciskDzwieku = h('button#dok-dzwiek', { type: 'button' });
+function rysujPrzyciskDzwieku() {
+  const w = wyciszony();
+  wyczysc(przyciskDzwieku).append(ikona(GLOSNIK + (w ? '<path d="M31 18l10 12M41 18L31 30"/>' : '<path d="M31 19c3 3 3 7 0 10M35 15c5 5 5 13 0 18"/>')));
+  przyciskDzwieku.setAttribute('aria-label', w ? 'Włącz dźwięk' : 'Wycisz');
+  przyciskDzwieku.title = w ? 'Włącz dźwięk' : 'Wycisz';
+  przyciskDzwieku.classList.toggle('wyciszony', w);
+}
+przyciskDzwieku.addEventListener('click', () => { przelaczWyciszenie(); rysujPrzyciskDzwieku(); });
+rysujPrzyciskDzwieku();
+dok.append(przyciskDzwieku);
 
 function pokazPowloke(widoczna) {
   pasek.hidden = !widoczna;
@@ -340,6 +357,7 @@ function ekranBlokady(komunikat = '') {
   zamknijAplikacje();
   pokazPowloke(false);
   stan.uzytkownik = null;
+  ustawDzwiek(null);
   const bladEl = h('div');
   const login = h('input', { autocomplete: 'username', autocapitalize: 'off', spellcheck: false, required: true });
   const klucz = h('input', { type: 'password', autocomplete: 'current-password', required: true });

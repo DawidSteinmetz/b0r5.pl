@@ -764,6 +764,20 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - W locie nie da się zejść z pokładu, jechać ani iść. Pulpit pokazuje szybką akcję
   z odliczaniem wznoszenia i informację o orbicie albo nadprzestrzeni.
 
+## Dźwięk pokładu
+
+`js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):
+
+- **wejście w skok** — `sound/hiper_wejscie.mp3`, potem w pętli `sound/hiper.mp3`; każda kopia startuje
+  1 s przed końcem poprzedniej (płynne przenikanie, planowane w Web Audio co do milisekundy);
+- **wyjście** (także przerwanie skoku) — pętla urwana, `sound/hiper_wyjscie.mp3`, zaraz po nim tło;
+- **poza nadprzestrzenią** — `sound/mostek_isd.mp3` w pętli, odtwarzany strumieniowo (plik ma ~170 MB);
+- ekran blokady — cisza. Dźwięk rusza po pierwszym dotknięciu ekranu (wymóg przeglądarek).
+
+Ikonka głośnika w prawym dolnym rogu (na doku) wycisza wszystko; wybór zostaje na tablecie.
+Pliki `sound/*.mp3` nie są w repozytorium (rozmiar, licencja) ani w pamięci service workera —
+wgrywa się je ręcznie na serwer do `sound/`.
+
 ## Konta i bezpieczeństwo
 
 - **Jedno konto** (identyfikator i klucz) działa w całym datapadzie. Zamiast trzech różnych

@@ -877,6 +877,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                             $wynik['poklad_okret'] = ['id' => (int) $ok['id'], 'nazwa' => $ok['nazwa'], 'ladowisko' => $ok['ladowisko'],
                                 'na_ladowisku' => (bool) $ok['ladowisko_id'], 'kapitan' => wskazniki_kapitan('okret:' . (int) $ok['id'], $u)];
                             if (function_exists('floty_prom_info') && ($pr = floty_prom_info($u, (int) $ok['id']))) $wynik['poklad_okret'] += $pr;
+                            if (function_exists('wnetrze_info') && ($wn = wnetrze_info($u, (int) $ok['id']))) $wynik['poklad_okret']['wnetrze'] = $wn;
                         }
                     }
                 }
@@ -933,6 +934,7 @@ function obsluz_ruch(string $akcja, bool $post): void
             if (!$p || !$p['okret_macierzysty_id']) blad('Nie ma takiego promu.');
             if (!(int) $p['w_hangarze']) blad('Promu nie ma w hangarze.');
             if ((int) ($gdzie['okret_id'] ?? 0) !== (int) $p['okret_macierzysty_id']) blad('Prom stoi w hangarze innego okrętu.');
+            if (function_exists('wnetrze_przy_promie') && !wnetrze_przy_promie((string) $u['id'], (int) $p['okret_macierzysty_id'])) blad('Prom stoi w hangarze promów. Najpierw tam dojdź.');
             zmien('karty', function (&$k) use ($u, $id) {
                 $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . $id;
                 $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
@@ -956,6 +958,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                 $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
             });
             pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);
+            if (function_exists('wnetrze_do_hangaru')) wnetrze_do_hangaru((string) $u['id'], (int) $p['okret_macierzysty_id']);
             odpowiedz(['ok' => true]);
 
         case 'statek_zejdz':

@@ -210,7 +210,21 @@ function geometriaOknaKomrk(w, h) {
 const OKNA_BUDYNKOW = ['biuro', 'hotel', 'kantyna', 'sklep', 'garaz'];
 const HANGARY = ['hangar', 'port', 'poklad'];
 
-const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : geometriaOknaIsd(w, h));
+// Boczne iluminatory w burcie okrętu: rząd prostokątnych okien na środku wzoru (na telefonie w pionie
+// widać jedno–dwa, na szerokim ekranie cały rząd).
+function geometriaOknaBoczne(w, h) {
+  const H = Math.min(w, h) * 0.2, W = H * 1.15, odstep = H * 0.42;
+  const gora = h / 2 - H / 2, dol = gora + H;
+  const okna = [];
+  for (let i = -3; i <= 3; i++) {
+    const x = w / 2 + i * (W + odstep) - W / 2;
+    okna.push([[x, gora], [x + W, gora], [x + W, dol], [x, dol]]);
+  }
+  return { gora, dol, okna };
+}
+
+const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : typ === 'iluminator' ? geometriaOknaBoczne(w, h) : geometriaOknaIsd(w, h));
+const OKNA_Z_RAMA = ['isd', 'komrk', 'iluminator'];
 
 function rysujOknoIsd(w, h, dpr, typ = 'isd') {
   const c = document.createElement('canvas');
@@ -275,6 +289,7 @@ export function utworzScene(canvas) {
   let klatka = null;
   let gwiazdy = [];
   let tunel = [];
+  let gwiazdyBok = []; // z bocznego iluminatora: gwiazdy przesuwają się poziomo (x, y w ułamkach wzoru, z = odległość)
   let planeta = null; // { tekstura, swiatla, d, typ }
   let krajobraz = null; // { klucz, plotno, swiatla: [{x, y}] }
   let chmury = [];
@@ -298,6 +313,7 @@ export function utworzScene(canvas) {
   function noweGwiazdy() {
     gwiazdy = Array.from({ length: 420 }, () => ({ x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2, z: Math.random(), pz: 0 }));
     tunel = Array.from({ length: 360 }, () => ({ a: Math.random() * Math.PI * 2, z: Math.random(), r: 0.6 + Math.random() * 0.8, j: Math.random() }));
+    gwiazdyBok = Array.from({ length: 320 }, () => ({ x: Math.random(), y: Math.random(), z: 0.08 + Math.random() * 0.92, j: Math.random() }));
   }
 
   function przygotujPlanete() {
@@ -401,6 +417,72 @@ export function utworzScene(canvas) {
     }
   }
 
+  // Z bocznego iluminatora: gwiazdy płyną poziomo od dziobu ku rufie (lewa burta: z prawej na lewo,
+  // prawa burta: z lewej na prawo). `predkosc` w szerokościach wzoru na ms dla najbliższych gwiazd;
+  // dalsze płyną wolniej (paralaksa), smuga = droga z ostatnich ~70 ms × `smugi`.
+  const kierunekBoku = () => (stan.burta === 'prawa' ? 1 : -1);
+  function rysujGwiazdyBok(predkosc, dt, jasnosc = 1, smugi = 1) {
+    const kier = kierunekBoku();
+    ctx.lineCap = 'round';
+    for (const s of gwiazdyBok) {
+      const v = predkosc * (0.12 / s.z);
+      s.x += kier * v * dt;
+      if (s.x < -0.3 || s.x > 1.3) { s.x = kier > 0 ? -0.25 * Math.random() : 1 + 0.25 * Math.random(); s.y = Math.random(); }
+      const x = s.x * w, y = s.y * h;
+      const dl = Math.min(w * 0.9, v * w * 70 * smugi);
+      const a = Math.min(1, (1.1 - s.z) * 1.2) * jasnosc;
+      ctx.strokeStyle = s.j > 0.85 ? `rgba(255, 255, 255, ${a})` : `rgba(${200 + s.j * 50 | 0}, ${215 + s.j * 35 | 0}, 255, ${a * 0.85})`;
+      ctx.lineWidth = Math.max(0.6, (1.1 - s.z) * 2.2);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - kier * Math.max(0.5, dl), y); ctx.stroke();
+    }
+  }
+
+  // Tunel widziany z boku: niebiesko-białe pasma i długie poziome smugi pędzące ku rufie.
+  function rysujTunelBok(t, dt, sila = 1) {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    // Iluminatory widzą tylko pas wokół środka wzoru (ok. 0,4–0,6 h), więc tam leży cała gra światła.
+    g.addColorStop(0, `rgba(2, 6, 20, ${sila})`);
+    g.addColorStop(0.38, `rgba(6, 16, 52, ${sila})`);
+    g.addColorStop(0.5, `rgba(28, 64, 150, ${0.9 * sila})`);
+    g.addColorStop(0.62, `rgba(6, 16, 52, ${sila})`);
+    g.addColorStop(1, `rgba(2, 6, 20, ${sila})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    // falujące pasma mgły tunelu
+    const kier = kierunekBoku();
+    for (let i = 0; i < 5; i++) {
+      const y = h * (0.41 + 0.045 * i + 0.012 * Math.sin(t * 0.0007 + i * 1.7));
+      const grub = h * (0.008 + 0.006 * Math.sin(t * 0.0011 + i));
+      const pas = ctx.createLinearGradient(0, y - grub, 0, y + grub);
+      pas.addColorStop(0, 'rgba(170, 210, 255, 0)'); pas.addColorStop(0.5, `rgba(150, 200, 255, ${0.22 * sila})`); pas.addColorStop(1, 'rgba(170, 210, 255, 0)');
+      ctx.fillStyle = pas; ctx.fillRect(0, y - grub, w, grub * 2);
+    }
+    rysujGwiazdyBok(0.0045 * (spokojnie ? 0.2 : 1) * (0.6 + 0.4 * sila), dt, sila, 2.2);
+    void kier;
+  }
+
+  // Pomieszczenie bez okien: ściana z panelami, pas świateł i konsola; scena za burtą niewidoczna.
+  function rysujWnetrze(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#15191d'); g.addColorStop(0.55, '#1c2126'); g.addColorStop(1, '#0d1013');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+    const krok = Math.max(70, w * 0.12);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)'; ctx.lineWidth = 2;
+    for (let x = (w % krok) / 2; x < w; x += krok) { ctx.beginPath(); ctx.moveTo(x, h * 0.18); ctx.lineTo(x, h * 0.78); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)'; ctx.fillRect(0, h * 0.18 - 3, w, 3); ctx.fillRect(0, h * 0.78, w, 3);
+    // pas świateł pod stropem
+    const sw = ctx.createLinearGradient(0, h * 0.1, 0, h * 0.2);
+    sw.addColorStop(0, 'rgba(200, 225, 255, 0)'); sw.addColorStop(0.5, 'rgba(200, 225, 255, 0.16)'); sw.addColorStop(1, 'rgba(200, 225, 255, 0)');
+    ctx.fillStyle = sw; ctx.fillRect(0, h * 0.1, w, h * 0.1);
+    // wskaźniki na panelach (mrugają powoli)
+    const takt = Math.floor(t / 1300);
+    for (let i = 0; i < 18; i++) {
+      const x = ((i * 977) % 1000) / 1000 * w, y = h * (0.3 + (((i * 389) % 100) / 100) * 0.4);
+      if ((i + takt) % 7 === 0) continue;
+      ctx.fillStyle = i % 3 ? 'rgba(77, 226, 201, 0.55)' : 'rgba(255, 179, 71, 0.5)';
+      ctx.fillRect(x, y, 6, 2.5);
+    }
+  }
+
   // Wysokość na ekranie dla ułamka „poziomego” projektu (okno 0,08–0,84 h). W pionie z oknem ISD
   // liczona względem środkowego okna, żeby planeta i słońce nie chowały się pod poszyciem.
   const yWidoku = (u) => {
@@ -422,8 +504,10 @@ export function utworzScene(canvas) {
     const v = stan.widok;
     if (!v) return null;
     const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
-    const kurs = kursDziobu(v, t);
-    const orbita = v.orbita ?? norm180(kurs + 180);           // strona planety, przy której stoi okręt
+    const dziob = kursDziobu(v, t);
+    // Z bocznego iluminatora patrzymy prostopadle do kursu; reszta (orbita, słońce) zostaje bez zmian.
+    const kurs = dziob + (stan.okno === 'iluminator' ? (stan.burta === 'prawa' ? -90 : 90) : 0);
+    const orbita = v.orbita ?? norm180(dziob + 180);           // strona planety, przy której stoi okręt
     const doPlanety = orbita + 180;                           // kierunek z okrętu na planetę
     const slonce = v.cykl ? stanUkladu(v.cykl, t).katSlonca : null; // kierunek planeta → słońce
     return { kurs, orbita, doPlanety, slonce };
@@ -436,7 +520,8 @@ export function utworzScene(canvas) {
   function rysujPanorame(t, zTlem = true) {
     const k = kierunki();
     if (!k) return false;
-    const ziarno = hash(String(stan.opis || stan.miejsce || 'niebo'));
+    // Niebo zależy od miejsca (układu), nie od pomieszczenia na okręcie.
+    const ziarno = hash(String(stan.miejsce || stan.opis || 'niebo'));
     if (panorama?.ziarno !== ziarno) {
       const los = losowe(ziarno);
       panorama = { ziarno, gwiazdy: Array.from({ length: 900 }, () => {
@@ -999,13 +1084,17 @@ export function utworzScene(canvas) {
     // ekran pokazuje jego środek. Bez ramy: cały ekran.
     // Prom w hangarze okrętu: kosmos przez wrota hangaru (wnetrze „hangar” poza powierzchnią).
     const zHangaru = !stan.okno && stan.scena !== 'powierzchnia' && stan.scena !== 'start' && HANGARY.includes(stan.wnetrze);
-    const zRama = stan.okno === 'isd' || stan.okno === 'komrk' || zHangaru
+    const zRama = OKNA_Z_RAMA.includes(stan.okno) || zHangaru
       || (stan.scena === 'powierzchnia' && (OKNA_BUDYNKOW.includes(stan.wnetrze) || HANGARY.includes(stan.wnetrze)));
     const bok = zRama ? Math.max(ekranW, ekranH) : 0;
     w = zRama ? bok : ekranW; h = zRama ? bok : ekranH;
     kadrX = zRama ? (ekranW - bok) / 2 : 0;
     const kadrY = zRama ? (ekranH - bok) / 2 : 0;
     ctx.setTransform(dpr, 0, 0, dpr, kadrX * dpr, kadrY * dpr);
+
+    // Pomieszczenie okrętu bez okien: tylko wnętrze (przestrzeń i skok niewidoczne).
+    if (stan.okno === 'brak' && stan.scena !== 'powierzchnia' && stan.scena !== 'start') { rysujWnetrze(t); return; }
+    const zBoku = stan.okno === 'iluminator';
 
     switch (stan.scena) {
       case 'wejscie': {
@@ -1026,24 +1115,28 @@ export function utworzScene(canvas) {
             ctx.restore();
             if (zanik > 0 && !stan.widok.bez_planety) rysujPlanete(t, zanik);
           }
-          rysujGwiazdy((0.00004 + Math.pow(k, 3) * 0.004) * ruch, dt, 1, 0.2 + k * 1.5);
+          if (zBoku) rysujGwiazdyBok((0.000002 + Math.pow(k, 3) * 0.004) * ruch, dt, 1, 0.1 + k * 2);
+          else rysujGwiazdy((0.00004 + Math.pow(k, 3) * 0.004) * ruch, dt, 1, 0.2 + k * 1.5);
         } else if (f < 1) {
-          rysujTunel(t, dt, (f - 0.72) / 0.28);
+          if (zBoku) rysujTunelBok(t, dt, (f - 0.72) / 0.28); else rysujTunel(t, dt, (f - 0.72) / 0.28);
           blysk(1 - (f - 0.72) / 0.28);
+        } else if (zBoku) {
+          rysujTunelBok(t, dt);
         } else {
           rysujTunel(t, dt);
         }
         break;
       }
       case 'nadswietlna':
-        rysujTunel(t, dt * ruch);
+        if (zBoku) rysujTunelBok(t, dt * ruch); else rysujTunel(t, dt * ruch);
         break;
       case 'wyjscie': {
         // 0–15%: błysk ze smug; 15–60%: smugi zwalniają; potem pojawia się planeta.
         const f = t / CZAS_WYJSCIA;
         tlo();
         const k = Math.min(1, f / 0.6);
-        rysujGwiazdy((0.004 * Math.pow(1 - k, 2.2) + 0.00003) * ruch, dt, 1, 1.6 * (1 - k) + 0.05);
+        if (zBoku) rysujGwiazdyBok((0.004 * Math.pow(1 - k, 2.2) + 0.000002) * ruch, dt, 1, 2 * (1 - k) + 0.05);
+        else rysujGwiazdy((0.004 * Math.pow(1 - k, 2.2) + 0.00003) * ruch, dt, 1, 1.6 * (1 - k) + 0.05);
         if (f > 0.45) {
           // Słońce i gwiazdy sąsiednich układów wyłaniają się razem z planetą, gdy smugi gasną.
           ctx.save(); ctx.globalAlpha = Math.min(1, (f - 0.45) / 0.55);
@@ -1071,7 +1164,7 @@ export function utworzScene(canvas) {
         rysujSasiednieGwiazdy();
     }
     if (zHangaru) rysujRame(stan.wnetrze);
-    if (stan.okno === 'isd' || stan.okno === 'komrk') {
+    if (OKNA_Z_RAMA.includes(stan.okno)) {
       if (!oknoIsd || oknoIsd.w !== w || oknoIsd.h !== h || oknoIsd.typ !== stan.okno) oknoIsd = { w, h, typ: stan.okno, plotno: rysujOknoIsd(w, h, dpr, stan.okno) };
       ctx.drawImage(oknoIsd.plotno, 0, 0, w, h);
     }
@@ -1091,7 +1184,8 @@ export function utworzScene(canvas) {
         || nowy.zmieniono !== stan.zmieniono || nowy.wnetrze !== stan.wnetrze || nowy.miejsce !== stan.miejsce;
       if (!zmiana) {
         // Ten sam stan, nowy widok z mostka (np. trwa manewr) albo światło: bez restartu animacji.
-        stan.widok = nowy.widok; stan.swiatlo = nowy.swiatlo; stan.okno = nowy.okno; stan.przesuniecie = nowy.przesuniecie;
+        stan.widok = nowy.widok; stan.swiatlo = nowy.swiatlo; stan.okno = nowy.okno; stan.burta = nowy.burta; stan.opis = nowy.opis;
+        stan.przesuniecie = nowy.przesuniecie;
         return;
       }
       const zmienionoLokalnie = (nowy.zmieniono || 0) - (nowy.przesuniecie || 0);

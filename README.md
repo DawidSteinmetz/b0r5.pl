@@ -782,6 +782,24 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - Wrota są zamknięte, gdy ISD jest w nadprzestrzeni albo w locie podświetlnym.
 - Do zrobienia po imporcie listy lokacji ISD I: „Wejdź do promu” tylko z lokacji hangaru.
 
+## Wnętrza okrętów i okna (migracja 036)
+
+- **Plan wnętrza** to drzewo w `lokalizacje` (szablon klasy: sekcja → pokład → pomieszczenie), wskazane
+  przez `mapa_obiekty.plan_wnetrza_id`. Wszystkie ISD I korzystają z „Imperial Star Destroyer Type I –
+  wnętrze”; inna klasa dostanie własny szablon i inny korzeń (`api/poklad.php`).
+- **Pomieszczenie postaci** zapisuje się w karcie (`wnetrze`: okręt, pomieszczenie, przejście). Bez zapisu
+  kapitan (dowódca floty okrętu) jest na Mostku głównym, pozostali w Głównym korytarzu centralnym.
+- **Nawigacja na pokładzie:** „Jesteś: …”, skróty „→ Hangar promów” / „→ Mostek” i „Idź do…”
+  (pomieszczenia pogrupowane po pokładach, z czasem dojścia). Czas z drzewa: krok między
+  pomieszczeniami 0,75 min, turbowinda między pokładami 1,25 min, między sekcjami 1,75 min (× 1,2) —
+  mostek → hangar promów ok. 10 min. W drodze widok to korytarz bez okien.
+- **Prom** wsiada się tylko na Stanowisku obsługi promów Lambda; „Wyjdź do hangaru” stawia tam postać.
+- **Okna** (`lokalizacje.okno`, MG zmienia w bazie): `przod` — okna mostka; `lewa` / `prawa` — boczne
+  iluminatory (widok prostopadle do kursu; w nadprzestrzeni smugi lecą poziomo ku rufie: przez lewą
+  burtę z prawej na lewo, przez prawą z lewej na prawo); `hangar` — wrota hangaru; `brak` — wnętrze bez
+  okien. Przydział z migracji: Pokład 01 — przód, hangary — wrota, kwatery i sale oficerskie, mesy,
+  kantyny, rekreacja, oddział szpitalny — burty na przemian, reszta bez okien.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

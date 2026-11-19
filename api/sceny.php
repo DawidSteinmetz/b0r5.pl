@@ -404,6 +404,13 @@ function scena_efektywna(string $uid): array
                 'miejsce' => $pl['nazwa'] ?? 'Przestrzeń', 'opis' => (string) ($gdzie['nazwa'] ?? ''), 'wnetrze' => '',
                 'okno' => scena_okno(($gdzie['klasa'] ?? '') . ' ' . ($gdzie['nazwa'] ?? '')), 'zmieniono' => $zmianaPozycji];
         }
+        // Pomieszczenie na okręcie z planem wnętrza: okna mostka, boczne iluminatory, wrota hangaru albo brak okien.
+        if (function_exists('wnetrze_widok') && ($wid = wnetrze_widok($uid, (int) $gdzie['okret_id']))) {
+            $okret['opis'] = $wid['nazwa'];
+            if ($wid['okno'] === 'lewa' || $wid['okno'] === 'prawa') $okret = ['okno' => 'iluminator', 'burta' => $wid['okno']] + $okret;
+            elseif ($wid['okno'] === 'hangar') $okret = ['okno' => '', 'wnetrze' => 'hangar'] + $okret;
+            elseif ($wid['okno'] === 'brak') $okret = ['okno' => 'brak'] + $okret;
+        }
         return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;
     }
     if ($gdzie && !ruch_w_locie($karta['pozycja']['lokacja'] ?? '')) {

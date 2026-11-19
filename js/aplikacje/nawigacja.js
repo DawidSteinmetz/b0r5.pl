@@ -260,12 +260,36 @@ export default {
               : null));
       }
       if (!p.promy?.length) return null;
+      const wn = p.wnetrze;
+      const wHangarze = !wn || (!wn.przejscie && wn.tu.id === wn.hangar_promow);
       return h('div', { style: 'margin-top:12px' }, h('h3', 'Hangar'),
+        wHangarze ? null : h('div.slaby.maly-tekst', 'Promy stoją w hangarze promów — żeby wsiąść, najpierw tam dojdź.'),
         h('ul.lista', p.promy.map((prom) => h('li',
           h('div.rzad', h('div.rozpycha', h('div', prom.nazwa, h('span.slaby.maly-tekst', prom.klasa ? ` · ${prom.klasa}` : '')),
             h('div.slaby.maly-tekst', stanPromu(prom))),
-            prom.w_hangarze ? h('button.przycisk.drugi', { onclick: () => akcja('prom_wejdz', { obiekt_id: prom.id }, `Jesteś na pokładzie ${prom.nazwa}.`) }, 'Wejdź do promu') : null),
+            prom.w_hangarze && wHangarze ? h('button.przycisk.drugi', { onclick: () => akcja('prom_wejdz', { obiekt_id: prom.id }, `Jesteś na pokładzie ${prom.nazwa}.`) }, 'Wejdź do promu') : null),
           prom.w_hangarze && prom.kapitan ? rozkazyWylotu(prom, p.ladowiska || []) : null))));
+    }
+
+    const OKNA = { przod: 'okna mostka', lewa: 'iluminatory lewej burty', prawa: 'iluminatory prawej burty', hangar: 'wrota hangaru', brak: 'bez okien' };
+
+    // Wnętrze okrętu: gdzie jestem, przejście w toku, skróty i „Idź do…” (pomieszczenia pogrupowane po pokładach).
+    function panelWnetrza(wn) {
+      if (!wn) return null;
+      const idz = (id) => akcja('poklad_idz', { cel: id }, (r) => (r.cel ? `Idziesz: ${r.cel} (${r.min} min).` : 'Jesteś na miejscu.'));
+      const grupy = new Map();
+      for (const x of wn.pomieszczenia) { if (!grupy.has(x.grupa)) grupy.set(x.grupa, []); grupy.get(x.grupa).push(x); }
+      const wybor = h('select', [...grupy].map(([g, lista]) => h('optgroup', { label: g || 'Okręt' },
+        lista.map((x) => h('option', { value: x.id }, `${x.nazwa} · ${x.min} min`)))));
+      const p = wn.przejscie;
+      return h('div', { style: 'margin-top:10px' },
+        h('div', h('span.slaby.maly-tekst', 'Jesteś: '), h('b', wn.tu.nazwa), h('span.slaby.maly-tekst', ` · ${wn.tu.grupa} · ${OKNA[wn.tu.okno] || ''}`)),
+        p ? h('div', { style: 'margin-top:6px' }, `Idziesz: ${p.cel_nazwa} — na miejscu za `,
+          h('b', { 'data-koniec': p.do, 'data-przeladuj': '1' }, odliczanie(p.do - teraz()))) : null,
+        wn.skroty.length ? h('div.rzad', { style: 'margin-top:8px' }, wn.skroty.map((x) =>
+          h('button.przycisk.drugi', { onclick: () => idz(x.id) }, `→ ${x.nazwa} (${x.min} min)`))) : null,
+        h('div.rzad', { style: 'margin-top:8px' }, h('div.pole.rozpycha', { style: 'margin:0' }, wybor),
+          h('button.przycisk', { onclick: () => idz(Number(wybor.value)) }, 'Idź')));
     }
 
     // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start; hangar z promami.
@@ -277,6 +301,7 @@ export default {
               p.kapitan ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start') : null,
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
+        panelWnetrza(p.wnetrze),
         panelPromow(p));
     }
 

@@ -14,6 +14,7 @@ CREATE TEMPORARY TABLE tmp_import_lokacji (
   poziom TINYINT UNSIGNED NOT NULL,
   nazwa VARCHAR(200) NOT NULL PRIMARY KEY,
   rodzic_nazwa VARCHAR(200) NULL,
+  rodzic_id BIGINT UNSIGNED NULL,
   typ ENUM('uklad','orbita','powierzchnia','lokacja','budynek','ladowisko') NOT NULL,
   rodzaj ENUM('hangar','port','hotel','bankomat','sklep','kantyna','biuro','garaz','baza','magazyn','platforma','inne') NULL,
   x_km DECIMAL(12,3) NOT NULL,
@@ -141,34 +142,39 @@ INSERT INTO tmp_import_lokacji (poziom, nazwa, rodzic_nazwa, typ, rodzaj, x_km, 
 -- (ta sama planeta i nazwa) zostają bez zmian, więc ponowny import tylko dokłada brakujące.
 START TRANSACTION;
 
+UPDATE tmp_import_lokacji t JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+SET t.rodzic_id = r.id WHERE t.poziom = 1;
 INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
-SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
-FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
-WHERE t.poziom = 1 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+SELECT typ, rodzaj, rodzic_id, NULL, @pl, nazwa, x_km, y_km, publiczna, status, opis FROM tmp_import_lokacji
+WHERE poziom = 1 AND @pl IS NOT NULL AND (rodzic_nazwa IS NULL OR rodzic_id IS NOT NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
+UPDATE tmp_import_lokacji t JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+SET t.rodzic_id = r.id WHERE t.poziom = 2;
 INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
-SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
-FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
-WHERE t.poziom = 2 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+SELECT typ, rodzaj, rodzic_id, NULL, @pl, nazwa, x_km, y_km, publiczna, status, opis FROM tmp_import_lokacji
+WHERE poziom = 2 AND @pl IS NOT NULL AND (rodzic_nazwa IS NULL OR rodzic_id IS NOT NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
+UPDATE tmp_import_lokacji t JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+SET t.rodzic_id = r.id WHERE t.poziom = 3;
 INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
-SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
-FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
-WHERE t.poziom = 3 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+SELECT typ, rodzaj, rodzic_id, NULL, @pl, nazwa, x_km, y_km, publiczna, status, opis FROM tmp_import_lokacji
+WHERE poziom = 3 AND @pl IS NOT NULL AND (rodzic_nazwa IS NULL OR rodzic_id IS NOT NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
+UPDATE tmp_import_lokacji t JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+SET t.rodzic_id = r.id WHERE t.poziom = 4;
 INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
-SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
-FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
-WHERE t.poziom = 4 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+SELECT typ, rodzaj, rodzic_id, NULL, @pl, nazwa, x_km, y_km, publiczna, status, opis FROM tmp_import_lokacji
+WHERE poziom = 4 AND @pl IS NOT NULL AND (rodzic_nazwa IS NULL OR rodzic_id IS NOT NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
+UPDATE tmp_import_lokacji t JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
+SET t.rodzic_id = r.id WHERE t.poziom = 5;
 INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
-SELECT t.typ, t.rodzaj, r.id, NULL, @pl, t.nazwa, t.x_km, t.y_km, t.publiczna, t.status, t.opis
-FROM tmp_import_lokacji t LEFT JOIN lokalizacje r ON r.planeta_id = @pl AND r.nazwa = t.rodzic_nazwa
-WHERE t.poziom = 5 AND @pl IS NOT NULL AND (t.rodzic_nazwa IS NULL OR r.id IS NOT NULL)
+SELECT typ, rodzaj, rodzic_id, NULL, @pl, nazwa, x_km, y_km, publiczna, status, opis FROM tmp_import_lokacji
+WHERE poziom = 5 AND @pl IS NOT NULL AND (rodzic_nazwa IS NULL OR rodzic_id IS NOT NULL)
 ON DUPLICATE KEY UPDATE id = id;
 
 COMMIT;

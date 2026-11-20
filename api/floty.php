@@ -421,13 +421,6 @@ function floty_odcinek_cialo(array $ciala, array $a, array $b): ?string
     return null;
 }
 
-// Promień orbity (km od środka planety) dla wariantu podejścia — tak samo jak na mapie.
-function floty_promien_orbity_km(float $srednica, ?string $podejscie): float
-{
-    $r = $srednica / 2;
-    return ['bliska' => $r + 300, 'srednia' => $r * 4][$podejscie ?? ''] ?? $r * 15;
-}
-
 // Punkt w studni (opis) albo null.
 function floty_punkt_w_studni(float $x, float $y, array $k, int $t): ?string
 {
@@ -601,7 +594,7 @@ function floty_lot(array $odbiorcy, array $w): array
             // Start z orbity: z miejsca okrętu na orbicie planety (nie z jej środka).
             if (!$poz && $odPl) {
                 $sr = (float) (astro_cykl((string) (ruch_planeta((string) $odPl)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
-                $ro = floty_promien_orbity_km($sr, $j['podejscie'] ?? null);
+                $ro = floty_promien_orbity_km($sr / 2, ($j['podejscie'] ?? null) ?: 'daleka') ?? $sr / 2 * 15;
                 $kat = deg2rad(isset($j['orbita_deg']) && $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kurs_teraz($j, $teraz) + 180);
                 $k0 = [$k0[0] + cos($kat) * $ro, $k0[1] + sin($kat) * $ro];
             }
@@ -609,7 +602,7 @@ function floty_lot(array $odbiorcy, array $w): array
             if (!$celK && $celId) {
                 $sr = (float) (astro_cykl((string) (ruch_planeta((string) $celId)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
                 $dl = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
-                $ro = min(floty_promien_orbity_km($sr, 'daleka'), max(0.0, $dl - 1));
+                $ro = min(floty_promien_orbity_km($sr / 2, 'daleka'), max(0.0, $dl - 1));
                 if ($dl > 0) $k1 = [$k1[0] - ($k1[0] - $k0[0]) / $dl * $ro, $k1[1] - ($k1[1] - $k0[1]) / $dl * $ro];
             }
             $km = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);

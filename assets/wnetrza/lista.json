@@ -1,0 +1,140 @@
+[
+ {
+  "plik": "assets/wnetrza/isd-winda.svg",
+  "nazwa": "Turbowinda",
+  "reguly": [
+   "wind"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-stolowka.svg",
+  "nazwa": "Stołówka / mesa",
+  "reguly": [
+   "stołów",
+   "mesa",
+   "kantyn",
+   "jadal"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-umywalnia.svg",
+  "nazwa": "Umywalnia",
+  "reguly": [
+   "umywal",
+   "łaźni",
+   "sanitar",
+   "prysznic"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-szatnia.svg",
+  "nazwa": "Szatnia / magazyn pancerzy",
+  "reguly": [
+   "szatni",
+   "pancerzy"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-reaktor.svg",
+  "nazwa": "Główny reaktor",
+  "reguly": [
+   "komora reaktora",
+   "reaktor"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-korytarz.svg",
+  "nazwa": "Korytarz",
+  "reguly": [
+   "korytarz",
+   "tunel",
+   "magistral"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-kajuta.svg",
+  "nazwa": "Kajuta / kwatera oficerska",
+  "reguly": [
+   "kajut",
+   "kwater",
+   "apartament"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-koszary.svg",
+  "nazwa": "Koszary",
+  "reguly": [
+   "koszar"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-hangar.svg",
+  "nazwa": "Hangar",
+  "reguly": [
+   "hangar",
+   "zatoka"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-ambulatorium.svg",
+  "nazwa": "Ambulatorium / szpital",
+  "reguly": [
+   "medycz",
+   "szpital",
+   "lekarz",
+   "zabieg",
+   "operac",
+   "izolatk",
+   "izba przyjęć"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-cela.svg",
+  "nazwa": "Cela więzienna",
+  "reguly": [
+   "cele ",
+   "cele izol",
+   "zatrzyma",
+   "przesłuch"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-maszynownia.svg",
+  "nazwa": "Maszynownia",
+  "reguly": [
+   "maszynown",
+   "silnik",
+   "napęd",
+   "generator",
+   "chłodz"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-centrum.svg",
+  "nazwa": "Centrum dowodzenia / kontroli",
+  "reguly": [
+   "centrum",
+   "kontroli",
+   "stanowisk",
+   "sala odpraw"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-zbrojownia.svg",
+  "nazwa": "Zbrojownia",
+  "reguly": [
+   "zbrojown",
+   "amunic",
+   "torped"
+  ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-magazyn.svg",
+  "nazwa": "Magazyn",
+  "reguly": [
+   "magazyn",
+   "ładowni",
+   "apteka"
+  ]
+ }
+]

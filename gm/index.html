@@ -52,6 +52,17 @@
     .gen-formularz .rzad { flex-wrap: nowrap; }
     .gen-formularz .rzad > input { flex: 1; min-width: 0; }
     .gen-uwagi { margin: 6px 0 0; padding-left: 18px; color: var(--zly); font-size: 13px; }
+    /* Grafiki lokacji: biblioteka miniatur, duży podgląd, miniatury w tabelach. */
+    .gr-uklad { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .gr-siatka { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .gr-kafel { display: grid; gap: 4px; padding: 4px; border: 2px solid var(--linia); border-radius: 8px; background: var(--tlo); color: var(--tekst); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+    .gr-kafel.on { border-color: var(--akcent); }
+    .gr-kafel img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; display: block; }
+    .gr-podglad-karta { position: sticky; top: 12px; }
+    .gr-podglad img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 8px; }
+    .gr-mini { width: 96px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; display: block; cursor: zoom-in; }
+    .gr-mini-td { width: 104px; }
+    @media (max-width: 900px) { .gr-uklad { grid-template-columns: 1fr; } .gr-podglad-karta { position: static; } }
     @media (max-width: 900px) { .gen-siatka { grid-template-columns: 1fr; } .gen-podglad { position: static; max-height: none; } }
   </style>
   <link rel="stylesheet" href="../css/cv.css">

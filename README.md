@@ -925,6 +925,19 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - **Lot podświetlny w studni**: start z orbity po stronie zwróconej ku celowi; księżyce mają na serwerze prawdziwą pozycję
   na orbicie planety macierzystej (wcześniej leżały w jej środku).
 
+## Grafiki lokacji (wnętrza)
+
+- **Panel MG → Grafiki lokacji** (`gm/grafiki.js`): biblioteka grafik z miniaturami i podglądem, wgrywanie własnych
+  (PNG/JPG/WebP do 3 MB → `assets/wnetrza/wlasne/`, katalog musi być zapisywalny dla PHP), przypisania do pomieszczeń
+  okrętów i lokacji na planetach oraz **reguły po nazwie** (fragment nazwy → grafika; pierwsza pasująca wygrywa,
+  „Wczytaj domyślne reguły ISD” dodaje gotowe). Przypisanie do miejsca wygrywa z regułą, „Bez grafiki” wyłącza obie.
+- Gracz widzi grafikę jako **tło pulpitu**, gdy postać jest w tym miejscu (w przejściu między pomieszczeniami — reguła
+  „korytarz”). Dane: `datapad_dane` → `grafiki_lokacji` (bez migracji); API: `mg_grafiki`, `mg_grafiki_zapisz`,
+  `mg_grafika_wgraj`; scena dostaje pole `grafika` (api/sceny.php, `grafika_miejsca`).
+- Biblioteka wnętrz ISD (`assets/wnetrza/isd-*.svg`, lista: `lista.json`): turbowinda, stołówka, umywalnia, szatnia,
+  główny reaktor, korytarz, kajuta, koszary, hangar, ambulatorium, cela, maszynownia, centrum kontroli, zbrojownia,
+  magazyn. Schematyczne SVG z generatora `narzedzia/wnetrza_svg.py` (dopisz funkcję i wpis w `GRAFIKI`, uruchom).
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

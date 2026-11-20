@@ -144,6 +144,63 @@ function scena_z_punktu_ukladu(array $o, array $gwiazdy, string $planeta, float 
         'odleglosc' => hypot($kx, $ky) > $kraw * 0.8 ? 'krawedz' : 'daleko', 'miejsce' => $planeta, 'widok' => $widok];
 }
 
+// ---------- grafiki miejsc (panel MG → Grafiki lokacji) ----------
+// Przypisanie: klucz lokacji (pomieszczenie okrętu i lokacja SQL: „sql:<id>”, inne: klucz z ruch_lokacje) → plik
+// w assets/ (albo „brak”: bez grafiki, także bez reguł). Reguły: fragment nazwy → plik, pierwsza pasująca wygrywa.
+function grafiki_dane(): array
+{
+    $g = wczytaj('grafiki_lokacji', []);
+    return ['przypisania' => (array) ($g['przypisania'] ?? []), 'reguly' => array_values((array) ($g['reguly'] ?? []))];
+}
+
+function grafika_poprawna(string $plik): bool
+{
+    return (bool) preg_match('#^assets/wnetrza/(wlasne/)?[a-z0-9_-]+\.(svg|png|jpg|webp)$#', $plik) && is_file(dirname(__DIR__) . '/' . $plik);
+}
+
+// Biblioteka: grafiki z listy (nazwy, reguły domyślne) i własne pliki MG.
+function grafiki_lista(): array
+{
+    $baza = dirname(__DIR__) . '/assets/wnetrza';
+    $lista = is_file($baza . '/lista.json') ? (json_decode((string) file_get_contents($baza . '/lista.json'), true) ?: []) : [];
+    $znane = array_column($lista, 'plik');
+    $pliki = array_filter(array_merge(glob($baza . '/*') ?: [], glob($baza . '/wlasne/*') ?: []), fn($f) => preg_match('/\.(svg|png|jpg|webp)$/', $f));
+    foreach ($pliki as $f) {
+        $p = 'assets/wnetrza/' . (str_contains($f, '/wlasne/') ? 'wlasne/' : '') . basename($f);
+        if (!in_array($p, $znane, true)) $lista[] = ['plik' => $p, 'nazwa' => pathinfo($f, PATHINFO_FILENAME), 'reguly' => [], 'wlasna' => true];
+    }
+    return $lista;
+}
+
+// Grafika miejsca, w którym jest postać: pomieszczenie okrętu (w drodze — korytarz) albo lokacja z pozycji.
+function grafika_miejsca(string $uid): ?string
+{
+    $g = grafiki_dane();
+    if (!$g['przypisania'] && !$g['reguly']) return null;
+    $karta = karta($uid);
+    $gdzie = ruch_gdzie($karta, ruch_lokacje());
+    $klucz = null; $nazwa = '';
+    if ($gdzie && !empty($gdzie['okret_id']) && function_exists('wnetrze_postaci') && ($st = wnetrze_postaci($uid, (int) $gdzie['okret_id']))) {
+        if ($st['przejscie']) { $nazwa = 'korytarz'; }
+        else {
+            $w = wnetrze_wezly($st['plan']);
+            $klucz = 'sql:' . $st['pomieszczenie'];
+            $nazwa = (string) ($w[$st['pomieszczenie']]['krotka'] ?? '');
+        }
+    } elseif ($gdzie) {
+        $klucz = (string) ($karta['pozycja']['lokacja'] ?? '') ?: null;
+        $nazwa = (string) ($gdzie['nazwa'] ?? '');
+    }
+    if ($klucz && isset($g['przypisania'][$klucz])) {
+        $p = $g['przypisania'][$klucz];
+        return $p !== 'brak' && grafika_poprawna($p) ? $p : null;
+    }
+    $n = mb_strtolower($nazwa);
+    if ($n === '') return null;
+    foreach ($g['reguly'] as $r) if (mb_strpos($n, (string) $r['tekst']) !== false && grafika_poprawna((string) $r['plik'])) return (string) $r['plik'];
+    return null;
+}
+
 function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
 {
     if (!function_exists('floty_orbita_dostepna') || !tabela_sql_dostepna('mapa_obiekty')
@@ -527,7 +584,52 @@ function obsluz_sceny(string $akcja, bool $post): void
             ruch_skoki_dokoncz();
             $liczniki = null;
             try { $liczniki = liczniki_postaci($u['id']); } catch (Throwable $e) {}
-            odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms(), 'liczniki' => $liczniki]);
+            $scena = scena_efektywna($u['id']);
+            // Grafika miejsca (pomieszczenie okrętu albo lokacja), przypisana przez MG: tło pulpitu zamiast rysunku.
+            try { $scena['grafika'] = grafika_miejsca((string) $u['id']); } catch (Throwable $e) {}
+            odpowiedz(['scena' => $scena, 'teraz' => teraz_ms(), 'liczniki' => $liczniki]);
+
+        case 'mg_grafiki':
+            wymagaj_mg();
+            odpowiedz(grafiki_dane() + ['lista' => grafiki_lista()]);
+
+        case 'mg_grafiki_zapisz':
+            // Przypisania (klucz lokacji → plik) i reguły po nazwie ([{tekst, plik}], w kolejności).
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $przyp = [];
+            foreach ((array) ($w['przypisania'] ?? []) as $k => $plik) {
+                $k = mb_substr((string) $k, 0, 80);
+                if ($k === '' || !preg_match('/^(sql|l|b|okret|flota):/', $k)) continue;
+                if ($plik === 'brak') { $przyp[$k] = 'brak'; continue; }
+                if (grafika_poprawna((string) $plik)) $przyp[$k] = (string) $plik;
+            }
+            $reguly = [];
+            foreach ((array) ($w['reguly'] ?? []) as $r) {
+                $t = mb_strtolower(trim((string) ($r['tekst'] ?? '')));
+                if ($t !== '' && grafika_poprawna((string) ($r['plik'] ?? ''))) $reguly[] = ['tekst' => mb_substr($t, 0, 60), 'plik' => (string) $r['plik']];
+            }
+            zmien('grafiki_lokacji', function (&$g) use ($przyp, $reguly) { $g = ['przypisania' => $przyp, 'reguly' => array_slice($reguly, 0, 200)]; });
+            odpowiedz(['ok' => true]);
+
+        case 'mg_grafika_wgraj':
+            // Własny obraz (PNG/JPG/WebP do 3 MB) do assets/wnetrza/wlasne/ — od razu dostępny w bibliotece.
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $dane = base64_decode((string) preg_replace('/^data:[^,]*,/', '', (string) ($w['dane'] ?? '')), true);
+            if ($dane === false || strlen($dane) < 100) blad('Nieprawidłowy plik.');
+            if (strlen($dane) > 3 * 1024 * 1024) blad('Plik większy niż 3 MB.');
+            $info = @getimagesizefromstring($dane);
+            $roz = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'][$info['mime'] ?? ''] ?? null;
+            if (!$roz) blad('Dozwolone są obrazy PNG, JPG albo WebP.');
+            $nazwa = trim((string) preg_replace('/[^a-z0-9_-]+/', '-', mb_strtolower(iconv('UTF-8', 'ASCII//TRANSLIT', (string) ($w['nazwa'] ?? 'grafika')) ?: 'grafika')), '-') ?: 'grafika';
+            $katalog = dirname(__DIR__) . '/assets/wnetrza/wlasne';
+            if (!is_dir($katalog) && !@mkdir($katalog, 0775, true)) blad('Serwer nie pozwala utworzyć katalogu assets/wnetrza/wlasne.');
+            $plik = mb_substr($nazwa, 0, 40) . '-' . substr(bin2hex(random_bytes(3)), 0, 6) . '.' . $roz;
+            if (@file_put_contents($katalog . '/' . $plik, $dane) === false) blad('Nie udało się zapisać pliku na serwerze (uprawnienia katalogu).');
+            odpowiedz(['ok' => true, 'plik' => 'assets/wnetrza/wlasne/' . $plik]);
 
         case 'gwiazda_skan':
             if (!$post) blad('Zła metoda.', 405);

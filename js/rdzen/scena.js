@@ -521,6 +521,30 @@ export function utworzScene(canvas) {
     void kier;
   }
 
+  // Grafiki miejsc (pliki z assets/wnetrza): wczytane raz; do czasu wczytania — zwykłe tło.
+  const grafiki = new Map();
+  function obrazGrafiki(plik) {
+    let g = grafiki.get(plik);
+    if (!g) {
+      g = { img: new Image(), gotowy: false };
+      g.img.onload = () => { g.gotowy = true; };
+      g.img.src = plik;
+      grafiki.set(plik, g);
+    }
+    return g.gotowy ? g.img : null;
+  }
+  // Wypełnia ekran (jak object-fit: cover), przyciemnia brzegi; światło lekko „oddycha”.
+  function rysujGrafike(img, t) {
+    const iw = img.naturalWidth || 1600, ih = img.naturalHeight || 900;
+    const s = Math.max(w / iw, h / ih);
+    ctx.fillStyle = '#05080a'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, (w - iw * s) / 2, (h - ih * s) / 2, iw * s, ih * s);
+    const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = `rgba(0,0,0,${0.04 + 0.03 * Math.sin(t / 2300)})`; ctx.fillRect(0, 0, w, h);
+  }
+
   // Pomieszczenie bez okien: ściana z panelami, pas świateł i konsola; scena za burtą niewidoczna.
   function rysujWnetrze(t) {
     const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -1180,6 +1204,15 @@ export function utworzScene(canvas) {
     // Scena z ramą: rysujemy na kwadratowym wzorze o boku dłuższego wymiaru ekranu, wyśrodkowanym —
     // ekran pokazuje jego środek. Bez ramy: cały ekran.
     // Prom w hangarze okrętu: kosmos przez wrota hangaru (wnetrze „hangar” poza powierzchnią).
+    // Grafika miejsca przypisana przez MG (pomieszczenie, lokacja): całe tło, dopasowane do ekranu.
+    const obraz = stan.grafika ? obrazGrafiki(stan.grafika) : null;
+    if (obraz) {
+      w = ekranW; h = ekranH; kadrX = 0; kadrYTeraz = 0;
+      narysowane = zbierane; zbierane = [];
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      rysujGrafike(obraz, t);
+      return;
+    }
     const zHangaru = !stan.okno && stan.scena !== 'powierzchnia' && stan.scena !== 'start' && HANGARY.includes(stan.wnetrze);
     const zRama = OKNA_Z_RAMA.includes(stan.okno) || zHangaru
       || (stan.scena === 'powierzchnia' && (OKNA_BUDYNKOW.includes(stan.wnetrze) || HANGARY.includes(stan.wnetrze)));
@@ -1285,7 +1318,7 @@ export function utworzScene(canvas) {
       if (!zmiana) {
         // Ten sam stan, nowy widok z mostka (np. trwa manewr) albo światło: bez restartu animacji.
         stan.widok = nowy.widok; stan.swiatlo = nowy.swiatlo; stan.okno = nowy.okno; stan.burta = nowy.burta; stan.opis = nowy.opis;
-        stan.przesuniecie = nowy.przesuniecie;
+        stan.przesuniecie = nowy.przesuniecie; stan.grafika = nowy.grafika;
         return;
       }
       const zmienionoLokalnie = (nowy.zmieniono || 0) - (nowy.przesuniecie || 0);

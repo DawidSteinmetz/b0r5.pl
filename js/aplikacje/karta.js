@@ -3,6 +3,7 @@
 import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 import { TYPY_PLANET } from '../rdzen/scena.js';
+import { rysujCV } from '../rdzen/eote.js';
 
 const ROLE = { wlasciciel: 'właściciel', menedzer: 'menedżer', pracownik: 'pracownik' };
 const STATUS = {
@@ -40,7 +41,7 @@ export default {
 
   uruchom(w, ctx) {
     let d = null;
-    let zakladka = 'tozsamosc';
+    let zakladka = 'cv';
     let licznik = null;
     const zakladki = h('div.zakladki');
     const tresc = h('div');
@@ -58,14 +59,20 @@ export default {
     }
 
     function rysuj() {
-      const NAZWY = [['tozsamosc', 'Tożsamość'], ['pozycja', 'Pozycja'], ['statystyki', 'Statystyki'], ['reputacja', 'Reputacja'],
+      const NAZWY = [['cv', 'CV'], ['tozsamosc', 'Tożsamość'], ['pozycja', 'Pozycja'], ['statystyki', 'Statystyki'], ['reputacja', 'Reputacja'],
         ['kontakty', 'Kontakty'], ['ekwipunek', 'Ekwipunek'], ['album', 'Album gwiazd'], ['notatnik', 'Notatnik']];
       wyczysc(zakladki).append(...NAZWY.map(([k, n]) => h('button' + (k === zakladka ? '.aktywna' : ''), { onclick: () => { zakladka = k; rysuj(); } }, n)));
       if (!d) return;
-      wyczysc(tresc).append({ tozsamosc, pozycja, statystyki, reputacja, kontakty, ekwipunek, album, notatnik }[zakladka]());
+      wyczysc(tresc).append({ cv, tozsamosc, pozycja, statystyki, reputacja, kontakty, ekwipunek, album, notatnik }[zakladka]());
     }
 
     const wiersz = (k, v) => (v === '' || v === null || v === undefined ? null : h('tr', h('th', k), h('td', v)));
+
+    // ---------- CV (karta EotE od MG) ----------
+    function cv() {
+      return h('div.panel', d.karta.eote ? rysujCV(h, d.karta.eote)
+        : h('div.slaby', 'MG nie przygotował jeszcze twojej karty postaci (CV). Zajrzyj tu później.'));
+    }
 
     // ---------- tożsamość ----------
     function tozsamosc() {

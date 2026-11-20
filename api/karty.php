@@ -172,6 +172,22 @@ function karta_pojazdy(array $lista): array
     return $wynik;
 }
 
+// Karta EotE NPC (osoby_karta_eote, migracja 040): JSON albo null.
+function eote_npc_odczytaj(int $osoba): ?array
+{
+    if (!$osoba || !tabela_sql_dostepna('osoby_karta_eote')) return null;
+    $q = polaczenie_bazy()->prepare('SELECT dane FROM osoby_karta_eote WHERE osoba_id = ?');
+    $q->execute([$osoba]);
+    $v = $q->fetchColumn();
+    return $v === false ? null : json_decode((string) $v, true);
+}
+function eote_npc_zapisz(int $osoba, array $e): void
+{
+    $json = json_encode($e, JSON_UNESCAPED_UNICODE);
+    polaczenie_bazy()->prepare('INSERT INTO osoby_karta_eote (osoba_id, dane) VALUES (?, ?) ON DUPLICATE KEY UPDATE dane = VALUES(dane), zmieniono = CURRENT_TIMESTAMP')
+        ->execute([$osoba, $json]);
+}
+
 function karta(string $uid): array
 {
     $k = wczytaj('karty', [])[$uid] ?? [];
@@ -252,6 +268,8 @@ function obsluz_karty(string $akcja, bool $post): void
                     if ($c['uid'] === $u['id']) $firmy[] = ['nazwa' => $f['nazwa'], 'rola' => $c['rola']];
                 }
             }
+            // Karta EotE (CV): gracz widzi całą, bez notatek MG.
+            if (isset($k['eote']) && is_array($k['eote'])) unset($k['eote']['notatki_mg']);
             odpowiedz([
                 'karta' => $k,
                 'planeta' => $planeta,
@@ -334,6 +352,54 @@ function obsluz_karty(string $akcja, bool $post): void
                     WHERE o.postac_id IS NULL AND p.status='aktywny' ORDER BY p.nazwa")->fetchAll(PDO::FETCH_ASSOC);
             }
             odpowiedz(['postacie' => $lista, 'npc' => $npc, 'budynki' => $budynki, 'lokacje' => $lokacje, 'planety' => $planetyMg, 'floty' => array_values($flotyMg)]);
+
+        case 'mg_eote':
+            // Karta EotE (CV) gracza (?uid=) albo NPC (?osoba=).
+            wymagaj_mg();
+            if (isset($_GET['uid'])) {
+                $uid = (string) $_GET['uid'];
+                if (!in_array($uid, array_column(uzytkownicy(), 'id'), true)) blad('Nie ma takiego gracza.', 404);
+                odpowiedz(['eote' => karta($uid)['eote'] ?? null]);
+            }
+            odpowiedz(['eote' => eote_npc_odczytaj((int) ($_GET['osoba'] ?? 0))]);
+
+        case 'mg_eote_zapisz':
+            // Zapis CV: gracz (uid) — w karcie postaci; NPC (osoba_id) — w osoby_karta_eote; nowy NPC — podmiot + osoba + CV.
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_mg();
+            $w = wejscie();
+            $e = $w['eote'] ?? null;
+            if (!is_array($e)) blad('Brak karty.');
+            $json = json_encode($e, JSON_UNESCAPED_UNICODE);
+            if ($json === false || strlen($json) > 60000) blad('Karta jest za duża.');
+            $e = json_decode($json, true);
+            if (!empty($w['uid'])) {
+                $uid = (string) $w['uid'];
+                if (!in_array($uid, array_column(uzytkownicy(), 'id'), true)) blad('Nie ma takiego gracza.', 404);
+                zmien('karty', function (&$k) use ($uid, $e) { $k[$uid]['eote'] = $e; });
+                odpowiedz(['ok' => true, 'uid' => $uid]);
+            }
+            if (!tabela_sql_dostepna('osoby_karta_eote')) blad('Zaimportuj api/migracje/040_karta_eote.sql (karty NPC).');
+            $osoba = (int) ($w['osoba_id'] ?? 0);
+            $db = polaczenie_bazy();
+            if (!$osoba) {
+                $nazwa = mb_substr(trim((string) ($e['imie'] ?? '')), 0, 160);
+                if ($nazwa === '') blad('Nowy NPC potrzebuje imienia.');
+                $db->beginTransaction();
+                try {
+                    $db->prepare("INSERT INTO podmioty (typ, nazwa) VALUES ('osoba', ?)")->execute([$nazwa]);
+                    $osoba = (int) $db->lastInsertId();
+                    $db->prepare("INSERT INTO osoby (podmiot_id, rola) VALUES (?, ?)")->execute([$osoba, mb_substr((string) ($e['rola'] ?? ''), 0, 120)]);
+                    eote_npc_zapisz($osoba, $e);
+                    $db->commit();
+                } catch (Throwable $ex) { if ($db->inTransaction()) $db->rollBack(); throw $ex; }
+                odpowiedz(['ok' => true, 'osoba_id' => $osoba, 'nowy' => true]);
+            }
+            $q = $db->prepare('SELECT 1 FROM osoby WHERE podmiot_id = ?');
+            $q->execute([$osoba]);
+            if (!$q->fetchColumn()) blad('Nie ma takiego NPC.', 404);
+            eote_npc_zapisz($osoba, $e);
+            odpowiedz(['ok' => true, 'osoba_id' => $osoba]);
 
         case 'mg_wnetrze':
             // Pomieszczenia okrętu (plan wnętrza) do hierarchicznego wyboru pozycji w panelu MG.

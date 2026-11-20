@@ -887,6 +887,20 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - **Okno w locie podświetlnym w układzie**: gwiazda i planeta (celu albo najbliższa) w kierunkach i rozmiarach
   z prawdziwych odległości; tablet przesuwa okręt po linii lotu między odpowiedziami serwera, więc rosną płynnie.
 
+## Karta postaci EotE (CV) i generator postaci
+
+- System **Star Wars: Edge of the Empire**: cechy (Krzepa, Zwinność, Intelekt, Spryt, Siła Woli, Prezencja), umiejętności
+  ogólne / walki / wiedzy, 8 gatunków, 6 karier, 18 specjalizacji, talenty (lista z poziomem i rangą, opisy własne — bez
+  pełnych drzewek), zobowiązanie, motywacja, sprzęt i historia. Dane i reguły: `js/rdzen/eote.js`, wygląd CV: `css/cv.css`.
+- **Panel MG → Generator postaci** (`gm/generator.js`): karta gracza (kreator z rachunkiem PD: koszty cech 10 × wartość,
+  rang 5 × ranga, +5 spoza kariery, talentów 5 × poziom, dodatkowych specjalizacji; darmowe rangi kariery, specjalizacji
+  i gatunku; ostrzeżenia o regułach — MG może je świadomie złamać) albo NPC: sługus (grupa), rywal, nemezis, z szablonami
+  i „Losuj NPC”. Progi, pancerz i obronę liczy sam; wartości wpisane ręcznie wygrywają. „Szkic historii” wypełnia puste pola.
+  Podgląd CV obok formularza.
+- Zapis: gracz — klucz `eote` w karcie postaci (`?a=mg_eote_zapisz`, `uid`); gracz widzi CV w **Karcie postaci → CV**
+  bez notatek MG. NPC — tabela `osoby_karta_eote` (**migracja 040**); „Zapisz jako nowy NPC” zakłada też podmiot i osobę.
+  Dotychczasowe statystyki karty i cechy NPC (firmy, rekrutacja) zostają bez zmian.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

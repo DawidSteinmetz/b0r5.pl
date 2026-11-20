@@ -1,0 +1,38 @@
+/* CV postaci (karta EotE): wspólne dla datapada (css/system.css) i panelu MG (gm/index.html).
+   Kolory z motywu strony: --akcent, --linia i słabszy tekst (--tekst-slaby w datapadzie, --slaby w panelu). */
+.cv { --cv-akcent: var(--akcent, #0b7a6a); --cv-linia: var(--linia, rgba(128, 128, 128, 0.35)); --cv-slaby: var(--tekst-slaby, var(--slaby, #888));
+  display: grid; gap: 14px; line-height: 1.45; }
+.cv-pusto { padding: 16px; color: var(--tekst-slaby, var(--slaby, #888)); }
+.cv-glowa { display: flex; gap: 14px; align-items: center; padding-bottom: 12px; border-bottom: 2px solid var(--cv-akcent); }
+.cv-portret { flex: none; width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 30px;
+  border: 2px solid var(--cv-akcent); color: var(--cv-akcent); }
+.cv-kto { min-width: 0; }
+.cv-imie { font-size: 24px; letter-spacing: 0.04em; color: var(--cv-akcent); }
+.cv-grupa { font-size: 16px; color: var(--cv-slaby); }
+.cv-linia { font-weight: 600; }
+.cv-dane, .cv-slaby { color: var(--cv-slaby); font-size: 0.9em; }
+.cv-cechy { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.cv-cecha, .cv-pochodne > div { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 1px solid var(--cv-linia); border-radius: 8px; text-align: center; }
+.cv-cecha b, .cv-pochodne b { font-size: 24px; line-height: 1.1; color: var(--cv-akcent); }
+.cv-cecha span, .cv-pochodne span { font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--cv-slaby); overflow-wrap: anywhere; line-height: 1.2; }
+.cv-pochodne { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.cv-sekcja h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--cv-akcent);
+  border-bottom: 1px solid var(--cv-linia); padding-bottom: 4px; }
+.cv-sekcja h4 { margin: 8px 0 2px; font-size: 13px; }
+.cv-tekst { margin: 0 0 6px; white-space: pre-line; }
+.cv-sekcja p { margin: 4px 0; }
+.cv table { width: 100%; border-collapse: collapse; }
+.cv td, .cv th { padding: 4px 6px; border-bottom: 1px solid var(--cv-linia); text-align: left; vertical-align: middle; }
+.cv-umiej .cv-gr th { padding-top: 10px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cv-slaby); border-bottom: 0; }
+.cv-rangi { letter-spacing: 0.1em; color: var(--cv-akcent); white-space: nowrap; }
+.cv-kar { color: var(--cv-akcent); font-size: 0.8em; }
+.cv-kosci { display: inline-flex; gap: 3px; vertical-align: middle; }
+.cv-kosci i { width: 12px; height: 12px; display: inline-block; }
+.cv-k-b { background: #f2c94c; clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }  /* biegłość: żółta */
+.cv-k-z { background: #3fbf6f; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }            /* zdolność: zielona */
+.cv-lista { margin: 0; padding-left: 18px; }
+.cv-bronie td, .cv-bronie th { font-size: 0.92em; }
+@media (max-width: 560px) {
+  .cv-cechy { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cv-bronie th:nth-child(6), .cv-bronie td:nth-child(6) { display: none; }
+}

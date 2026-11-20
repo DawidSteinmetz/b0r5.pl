@@ -39,7 +39,22 @@
     .msg.ok { background: rgba(11, 122, 106, .12); color: var(--akcent); }
     .slaby { color: var(--slaby); font-size: 13px; }
     .przewijana { overflow-x: auto; }
+    /* Generator postaci: formularz i podgląd CV obok siebie (na wąskim ekranie jedno pod drugim). */
+    main:has(.gen-siatka) { max-width: 1500px; }
+    .gen-siatka { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+    .gen-podglad { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    .gen-formularz textarea { font-family: inherit; font-size: 14px; min-height: 70px; }
+    .gen-formularz td, .gen-formularz th { padding: 4px 6px; vertical-align: middle; }
+    .gen-cechy { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+    .gen-checki { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px; margin-top: 8px; }
+    .gen-check { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--tekst); }
+    .gen-rachunek { margin: 8px 0; }
+    .gen-formularz .rzad { flex-wrap: nowrap; }
+    .gen-formularz .rzad > input { flex: 1; min-width: 0; }
+    .gen-uwagi { margin: 6px 0 0; padding-left: 18px; color: var(--zly); font-size: 13px; }
+    @media (max-width: 900px) { .gen-siatka { grid-template-columns: 1fr; } .gen-podglad { position: static; max-height: none; } }
   </style>
+  <link rel="stylesheet" href="../css/cv.css">
 </head>
 <body>
   <header>

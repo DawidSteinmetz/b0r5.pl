@@ -67,8 +67,16 @@ export const KARIERY = {
   technik: { nazwa: 'Technik', umiejetnosci: ['astronawigacja', 'komputery', 'koordynacja', 'dyscyplina', 'w_rubieze', 'mechanika', 'percepcja', 'pilotaz_plan'],
     specjalizacje: ['mechanik', 'technik_wyjety', 'haker'] },
   // Kariera kampanii: absolwent akademii floty — wszystko, czego kapitan potrzebuje do dowodzenia okrętem liniowym.
-  kadet: { nazwa: 'Kadet', umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc'],
+  // Ścieżka służby we flocie (kolejne poziomy tej samej kariery): Kadet → Młodszy oficer → Oficer. Każdy poziom
+  // ma umiejętności kariery poprzedniego i dokłada nowe, a do specjalizacji poprzednich dochodzi własna.
+  kadet: { nazwa: 'Kadet', sciezka: 'flota', poziom: 1, umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc'],
     specjalizacje: ['mowca'] },
+  mlodszy_oficer: { nazwa: 'Młodszy oficer', sciezka: 'flota', poziom: 2,
+    umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc', 'artyleria', 'komputery'],
+    specjalizacje: ['mowca', 'oficer_pokladowy'] },
+  oficer: { nazwa: 'Oficer', sciezka: 'flota', poziom: 3,
+    umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc', 'artyleria', 'komputery', 'percepcja', 'zastraszanie'],
+    specjalizacje: ['mowca', 'oficer_pokladowy', 'dowodca'] },
 };
 
 export const SPECJALIZACJE = {
@@ -91,6 +99,8 @@ export const SPECJALIZACJE = {
   technik_wyjety: { nazwa: 'Technik spod ciemnej gwiazdy', kariera: 'technik', umiejetnosci: ['w_edukacja', 'w_polswiatek', 'mechanika', 'ulica'] },
   haker: { nazwa: 'Haker', kariera: 'technik', umiejetnosci: ['komputery', 'w_edukacja', 'w_polswiatek', 'skradanie'] },
   mowca: { nazwa: 'Mówca', kariera: 'kadet', umiejetnosci: ['urok', 'zastraszanie', 'percepcja', 'komputery'] },
+  oficer_pokladowy: { nazwa: 'Oficer pokładowy', kariera: 'mlodszy_oficer', umiejetnosci: ['artyleria', 'komputery', 'pilotaz_kosm', 'mechanika'] },
+  dowodca: { nazwa: 'Dowódca okrętu', kariera: 'oficer', umiejetnosci: ['przywodztwo', 'zastraszanie', 'opanowanie', 'w_rubieze'] },
 };
 
 // Talenty: [nazwa, poziom (koszt 5 × poziom), rangi (true = można brać wielokrotnie), skrót działania (własny)].
@@ -151,6 +161,16 @@ export const kosztCechy = (nowa) => 10 * nowa;
 export const kosztRangi = (nowa, kariery) => 5 * nowa + (kariery ? 0 : 5);
 export const kosztTalentu = (poziom) => 5 * Math.max(0, poziom);
 export const kosztSpecjalizacji = (ktora, kariery) => 10 * ktora + (kariery ? 0 : 10); // ktora: 2 = druga, 3 = trzecia…
+
+// Specjalizacja należy do kariery (także z niższego poziomu tej samej ścieżki, np. Mówca dla Oficera).
+export const specjalizacjaKariery = (kariera, spec) => (KARIERY[kariera]?.specjalizacje || []).includes(spec);
+
+// Ścieżka kariery do opisu: „Kadet › Młodszy oficer › Oficer” (aktualny poziom ostatni).
+export function sciezkaKariery(kariera) {
+  const k = KARIERY[kariera];
+  if (!k?.sciezka) return k?.nazwa || '';
+  return Object.values(KARIERY).filter((x) => x.sciezka === k.sciezka && x.poziom <= k.poziom).sort((a, b) => a.poziom - b.poziom).map((x) => x.nazwa).join(' › ');
+}
 
 // Umiejętności kariery: z kariery i ze wszystkich specjalizacji postaci.
 export function umiejetnosciKariery(e) {
@@ -250,14 +270,14 @@ export function rachunekPD(e) {
     - (g.talent && (e.talenty || []).some((t) => t.nazwa === g.talent) ? kosztTalentu(TALENT[g.talent]?.poziom || 1) : 0);
   if (talenty) pozycje.push(['Talenty', talenty]);
   let specKoszt = 0;
-  (e.specjalizacje || []).slice(1).forEach((s, i) => { specKoszt += kosztSpecjalizacji(i + 2, SPECJALIZACJE[s]?.kariera === e.kariera); });
+  (e.specjalizacje || []).slice(1).forEach((s, i) => { specKoszt += kosztSpecjalizacji(i + 2, specjalizacjaKariery(e.kariera, s)); });
   if (specKoszt) pozycje.push(['Dodatkowe specjalizacje', specKoszt]);
   const dodatkowe = Number(e.zobowiazanie?.dodatki?.pd || 0);
   const start = g.pd + dodatkowe;
   const wydane = pozycje.reduce((s, [, v]) => s + v, 0);
   const wszystkie = start + Number(e.pd?.zdobyte || 0);
   if (wydane > wszystkie) uwagi.push(`Wydano ${wydane} PD, dostępne ${wszystkie}.`);
-  if (e.kariera && e.specjalizacje?.[0] && SPECJALIZACJE[e.specjalizacje[0]]?.kariera !== e.kariera) uwagi.push('Pierwsza specjalizacja musi pochodzić z kariery.');
+  if (e.kariera && e.specjalizacje?.[0] && !specjalizacjaKariery(e.kariera, e.specjalizacje[0])) uwagi.push('Pierwsza specjalizacja musi pochodzić z kariery.');
   return { start: g.pd, dodatkowe, zdobyte: Number(e.pd?.zdobyte || 0), wydane, zostalo: wszystkie - wydane, pozycje, uwagi };
 }
 
@@ -356,6 +376,8 @@ const SZKIC = {
     najemnik: 'Oddział, w którym służył(a), został poświęcony dla czyjegoś zysku. Przeżył(a) jako jedyny(a).',
     przemytnik: 'Zrzucił(a) ładunek przed imperialną kontrolą — i od tej pory jest winny(a) komuś bardzo dużo.',
     technik: 'Złożył(a) z części coś, co działało za dobrze. Teraz szukają tego ludzie w szarych mundurach.',
+    oficer: 'Przeszedł(przeszła) całą drogę od kadeta do oficera floty; dziś dowodzi i odpowiada za tysiące ludzi na pokładzie.',
+    mlodszy_oficer: 'Po akademii awansował(a) szybko; jako młodszy oficer pełnił(a) wachty na mostku i w centrum kierowania ogniem.',
     kadet: 'Ukończył(a) akademię floty z wyróżnieniem z retoryki i taktyki; pierwszy przydział dostał(a) na pokładzie gwiezdnego niszczyciela.',
     '': 'Los rzucił go(ją) tam, gdzie pracuje dziś, i trzyma mocno.',
   },
@@ -392,7 +414,7 @@ export function rysujCV(h, e, opcje = {}) {
   const rangiTxt = (k) => (e.tryb === 'slugus' ? '' : '●'.repeat(ranga(e, k)) + '○'.repeat(Math.max(0, 5 - ranga(e, k))));
   const rachunek = e.tryb === 'gracz' ? rachunekPD(e) : null;
   const ob = e.zobowiazanie;
-  const linia = [g?.nazwa, kariera?.nazwa, (e.specjalizacje || []).map((s) => SPECJALIZACJE[s]?.nazwa).filter(Boolean).join(' / '),
+  const linia = [g?.nazwa, sciezkaKariery(e.kariera), (e.specjalizacje || []).map((s) => SPECJALIZACJE[s]?.nazwa).filter(Boolean).join(' / '),
     e.tryb !== 'gracz' ? TRYBY[e.tryb] : null, e.rola].filter(Boolean).join(' · ');
   return h('article.cv',
     h('header.cv-glowa',

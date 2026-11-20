@@ -89,7 +89,7 @@ export async function panelGeneratora(kontener) {
           e.specjalizacje = cb.checked ? [...e.specjalizacje, k] : e.specjalizacje.filter((x) => x !== k);
           przebuduj();
         });
-        return h('label.gen-check', cb, ` ${s.nazwa}${s.kariera !== e.kariera ? ' (spoza kariery)' : ''}`);
+        return h('label.gen-check', cb, ` ${s.nazwa}${E.specjalizacjaKariery(e.kariera, k) ? '' : ' (spoza kariery)'}`);
       }));
       elementy.push(pole('Kariera', kariera), pole('Specjalizacja startowa', spec),
         h('details', h('summary.slaby', `Dodatkowe specjalizacje (kolejna: ${10 * ((e.specjalizacje || []).length + 1)} PD w karierze, +10 spoza)`), dodatkowe));
@@ -263,6 +263,25 @@ export async function panelGeneratora(kontener) {
     } catch (err) { info.append(msg(err.message)); }
   }
 
+  // Import / eksport karty jako JSON (kopia, przeniesienie między postaciami, gotowa karta z pliku).
+  function importEksport() {
+    const pole0 = h('textarea', { style: 'min-height:160px;font-family:monospace;font-size:12px', placeholder: 'Wklej tu kartę w JSON i kliknij „Wczytaj”.' });
+    return h('details', h('summary.slaby', 'Import / eksport karty (JSON)'),
+      pole0,
+      h('div.rzad', { style: 'margin-top:6px' },
+        btn('Eksportuj obecną', () => { pole0.value = JSON.stringify(e, null, 1); pole0.select(); }),
+        btn('Wczytaj z JSON', () => {
+          wyczysc(info);
+          try {
+            const n = JSON.parse(pole0.value);
+            if (!n || typeof n !== 'object' || !n.cechy || !n.tryb) throw new Error('To nie wygląda na kartę EotE (brak „tryb” albo „cechy”).');
+            e = { ...E.nowaKarta(n.tryb), ...n };
+            przebuduj();
+            info.append(msg('Wczytano kartę. Sprawdź podgląd i kliknij „Zapisz”, żeby zapisać ją w wybranej karcie.', 'ok'));
+          } catch (err) { info.append(msg(`Nie udało się wczytać: ${err.message}`)); }
+        })));
+  }
+
   function przebuduj() {
     const przewiniecie = kontener.closest('main')?.scrollTop ?? window.scrollY;
     wyczysc(formularz).append(tozsamosc(), szablony(), cechy(), umiejetnosci(), talenty(), ...pochodneISprzet(), zobowiazanie(), historia());
@@ -278,6 +297,7 @@ export async function panelGeneratora(kontener) {
         btn('Zapisz jako nowy NPC', () => zapisz(true)),
         btn('Wyczyść', () => { e = E.nowaKarta(cel.startsWith('u:') ? 'gracz' : 'rywal'); przebuduj(); })),
       h('p.slaby', 'Gracz widzi swoje CV w Karcie postaci (bez notatek MG). Karty NPC wymagają migracji 040.'),
+      importEksport(),
       rachunek, info),
     h('div.gen-siatka', formularz, podglad));
   przebuduj();

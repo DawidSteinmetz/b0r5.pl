@@ -1432,6 +1432,8 @@ export default {
           const w = await api('mapa_rozkaz_anuluj', { id: rozkazId });
           info.textContent = w.komunikat || 'Skok przerwany.';
           await pobierzPozycje(); await odswiezFloty();
+          // Wyjście awaryjne: po przeliczeniu odśwież mapę (jednostka wychodzi z nadprzestrzeni).
+          if (w.wyjscie) setTimeout(() => { pobierzPozycje().then(odswiezFloty).catch(() => {}); }, Math.max(1000, (w.wyjscie - teraz() + 1) * 1000));
         } catch (e) { info.textContent = e.message; }
       } }, 'Przerwij skok');
     }

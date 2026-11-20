@@ -321,10 +321,29 @@ export function utworzScene(canvas) {
     gwiazdyBok = Array.from({ length: 320 }, () => ({ x: Math.random(), y: Math.random(), z: 0.08 + Math.random() * 0.92, j: Math.random() }));
   }
 
+  // Widok w tej chwili: w locie podświetlnym w obrębie układu tablet sam przesuwa okręt po linii lotu
+  // (km od słońca) między odpowiedziami serwera — gwiazda i planeta rosną albo maleją płynnie.
+  function widokTeraz() {
+    const v = stan.widok;
+    const l = v?.podswietlny;
+    if (!l?.k0 || !l?.k1 || !v.cykl || !v.slonce) return v;
+    const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+    if (t < l.od || t >= l.do) return v;
+    const RAD = Math.PI / 180;
+    const f = (t - l.od) / Math.max(1, l.do - l.od);
+    const kx = l.k0[0] + (l.k1[0] - l.k0[0]) * f, ky = l.k0[1] + (l.k1[1] - l.k0[1]) * f;
+    const R = (v.cykl.promien_orbity_au || 1) * KM_NA_AU_SCENA, kp = stanUkladu(v.cykl, t).katPlanety * RAD;
+    const px = R * Math.cos(kp), py = R * Math.sin(kp);
+    const d = Math.max(1, Math.hypot(kx - px, ky - py));
+    return { ...v, orbita: Math.atan2(ky - py, kx - px) / RAD, wysokosc_km: Math.max(300, d - (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2),
+      slonce: { kat: Math.atan2(-ky, -kx) / RAD, km: Math.max(1, Math.hypot(kx, ky)) } };
+  }
+
   // Wysokość nad planetą (km): z serwera (lot, punkt układu) albo z wariantu orbity — tak samo jak na mapie
   // (bliska 300 km nad powierzchnią, średnia 4 R, daleka 15 R od środka).
   function wysokoscOrbity(srednica) {
-    if (stan.widok?.wysokosc_km != null) return Number(stan.widok.wysokosc_km);
+    const v = widokTeraz();
+    if (v?.wysokosc_km != null) return Number(v.wysokosc_km);
     const R = srednica / 2;
     return { blisko: 300, srednio: 3 * R, daleko: 14 * R }[stan.odleglosc] ?? WYSOKOSCI_KM[stan.odleglosc] ?? 3 * R;
   }
@@ -332,7 +351,7 @@ export function utworzScene(canvas) {
   // Księżyce planety za oknem: kierunek i wielkość z położenia okrętu (strona orbity, wysokość) i księżyca
   // (ten sam cykl co mapa), oświetlona połowa od strony słońca.
   function rysujKsiezyce() {
-    const v = stan.widok, k = kierunki();
+    const v = widokTeraz(), k = kierunki();
     if (!v?.cykl?.ksiezyce?.length || !k || v.bez_planety) return;
     const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
     const RAD = Math.PI / 180;
@@ -542,7 +561,7 @@ export function utworzScene(canvas) {
 
   // Kierunki z mostka (stopnie w układzie mapy) liczone z `stan.widok` w danej chwili.
   function kierunki() {
-    const v = stan.widok;
+    const v = widokTeraz();
     if (!v) return null;
     const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
     const dziob = kursDziobu(v, t);
@@ -633,7 +652,8 @@ export function utworzScene(canvas) {
       const [cr, cg, cb] = gw.rgb;
       // Tarcza w prawdziwej wielkości kątowej (promień gwiazdy i odległość: z punktu układu albo orbita
       // planety); łuna słabnie z odległością (jasność pozorna ∝ √L / d, przy planecie w ekosferze = 1).
-      const dKm = stan.widok?.slonce?.km ?? (stan.widok?.cykl?.promien_orbity_au || 1) * KM_NA_AU_SCENA;
+      const vt = widokTeraz();
+      const dKm = vt?.slonce?.km ?? (vt?.cykl?.promien_orbity_au || 1) * KM_NA_AU_SCENA;
       const rKm = gw.promien_km || 695700 * gw.rozmiar;
       const r = Math.max(1.2, rozmiarKatowy(2 * rKm, dKm) * w / POLE_WIDZENIA / 2);
       const blask = Math.max(0.12, Math.min(1.6, Math.sqrt(gw.moc || 1) / (dKm / KM_NA_AU_SCENA)));
@@ -1206,7 +1226,7 @@ export function utworzScene(canvas) {
           rysujSasiednieGwiazdy(); rysujSlonce();
           ctx.restore();
         }
-        if (f > 0.45) rysujPlanete(t, Math.min(1, (f - 0.45) / 0.55));
+        if (f > 0.45 && !stan.widok?.bez_planety) rysujPlanete(t, Math.min(1, (f - 0.45) / 0.55));
         blysk(f < 0.15 ? 1 - f / 0.15 : 0);
         break;
       }

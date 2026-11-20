@@ -244,6 +244,37 @@ function floty_czas_do_punktu(array $j, float $kierunek, int $teraz): int
     return (int) ceil($luk / max(1.0, $v / 15) + max(0.0, PUNKT_SKOKU_KM - $R) / $v);
 }
 
+// Punkt skoku jako prawdziwe miejsce w układzie (km od słońca): z miejsca na orbicie planety startu
+// jednostka leci podświetlnie PUNKT_SKOKU_KM przed planetę w kierunku skoku, z bocznym odejściem po swojej
+// stronie tak, by ani przelot do punktu, ani droga skoku nie prowadziły przez planetę.
+// [k0 (orbita), kp (punkt skoku), km] albo null (jednostka nie stoi przy planecie / bez migracji 037).
+function floty_punkt_skoku_km(array $j, float $kierunek, int $teraz): ?array
+{
+    if (!floty_uklad_dostepny() || empty($j['planeta_startu'])) return null;
+    $q = polaczenie_bazy()->prepare('SELECT nazwa FROM mapa_planety WHERE id = ?');
+    $q->execute([(int) $j['planeta_startu']]);
+    $nazwa = (string) $q->fetchColumn();
+    if ($nazwa === '') return null;
+    $c = astro_cykl($nazwa);
+    $r = (float) $c['srednica_km'] / 2;
+    $pc = astro_pozycja_km($c, $teraz);
+    $ro = floty_promien_orbity_km($r, floty_podejscie_teraz($j, $teraz)) ?? $r * 15;
+    $orb = deg2rad(($j['orbita_deg'] ?? null) !== null ? (float) $j['orbita_deg'] : floty_kat(floty_kurs_teraz($j, $teraz) + 180));
+    $k0 = [$pc[0] + cos($orb) * $ro, $pc[1] + sin($orb) * $ro];
+    $a = deg2rad($kierunek);
+    [$ux, $uy] = [cos($a), sin($a)];
+    [$px, $py] = [-$uy, $ux];
+    $bok = (($k0[0] - $pc[0]) * $px + ($k0[1] - $pc[1]) * $py) >= 0 ? 1 : -1;
+    $d = max(PUNKT_SKOKU_KM, $ro * 1.5);
+    $cialo = [[$pc[0], $pc[1], $r + 50, 'planeta']];
+    $kp = [$pc[0] + $ux * $d, $pc[1] + $uy * $d];
+    for ($s = 0.0; $s <= 8.0; $s += 0.5) {
+        $kp = [$pc[0] + $ux * $d + $px * $bok * $s * $ro, $pc[1] + $uy * $d + $py * $bok * $s * $ro];
+        if (!floty_odcinek_cialo($cialo, $k0, $kp)) break;
+    }
+    return [$k0, $kp, hypot($kp[0] - $k0[0], $kp[1] - $k0[1])];
+}
+
 // ---------- lot podświetlny ----------
 // Zwykłe silniki: czas gry 1:1 (MG może przyspieszyć resynchronizacją). Trasa w km: między planetą
 // a jej księżycem z promienia obiegu, w układzie — w km od słońca, poza tym z odległości na mapie.
@@ -1127,7 +1158,7 @@ function floty_aktualizuj_ruch(): void
                 if (floty_orbita_dostepna()) {
                     // Przy planecie: orbita po stronie przylotu, dziób (kurs lotu) ku planecie.
                     $db->prepare('UPDATE mapa_obiekty SET orbita_deg=?, przylot_utc=?, rozbity=0 WHERE id=?')
-                        ->execute([$planeta ? round(floty_kat($kierunek + 180), 2) : null, $planeta || $k ? czas_utc(min($eta ?: $teraz, $teraz)) : null, $r['obiekt_id']]);
+                        ->execute([$planeta ? round(floty_kat($kierunek + 180), 2) : null, czas_utc(min($eta ?: $teraz, $teraz)), $r['obiekt_id']]);
                     if (floty_nawigacja_dostepna()) {
                         $db->prepare('UPDATE mapa_obiekty SET podejscie=? WHERE id=?')
                             ->execute([$planeta ? ($krawedz ? 'krawedz' : (($r['wariant'] ?? null) ?: 'daleka')) : null, $r['obiekt_id']]);
@@ -1322,6 +1353,13 @@ function floty_rozkaz(string $login, array $w): array
         $kursTeraz = floty_kurs_teraz($j, $teraz);
         $manewr = floty_czas_manewru(floty_kat_roznica($kursTeraz, $kursSkoku), $obrotFloty);
         $punkt = floty_czas_do_punktu($j, $kursSkoku, $teraz);
+        // Lot do punktu skoku to prawdziwy przelot w układzie (mapa i okno go pokazują); czas — z odległości.
+        $punktKm = $punkt > 0 ? floty_punkt_skoku_km($j, $kursSkoku, $teraz) : null;
+        if ($punktKm) {
+            $punkt = isset($j['podswietlna_pc_doba'])
+                ? (int) ceil(floty_czas_lotu_w_ukladzie_s($punktKm[2], (float) $j['podswietlna_pc_doba']))
+                : (int) ceil($punktKm[2] / max(10.0, (float) ($j['predkosc_podswietlna_kms'] ?? 300)));
+        }
         $paliwoZuzyte = $dystans * (float) $j['paliwo_na_parsek'];
         if ((float) $j['paliwo'] < $paliwoZuzyte) blad('Jednostka „' . $j['nazwa'] . '” ma za mało paliwa.');
         $bladMax = max((float) $j['szum_bazowy'], 0) + (100 - min((int) $j['sprawnosc_reaktora'], (int) $j['sprawnosc_hipernapedu'])) * 0.3 + (1 - $mnoznikMocy) * 10;
@@ -1337,7 +1375,7 @@ function floty_rozkaz(string $login, array $w): array
         $koniecY = $wUkladzie ? $y + $dystans * (sin($kierunek) - sin(atan2($dy, $dx))) : (float) $j['y'] + $dystans * sin($kierunek);
         $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => (float) $j['x'], 'y0' => (float) $j['y'],
             'x1' => $koniecX, 'y1' => $koniecY, 'kat' => $kat, 'moc' => $mnoznikMocy, 'paliwo' => $paliwoZuzyte, 'lot' => $czasLotu,
-            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr, 'punkt' => $punkt];
+            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr, 'punkt' => $punkt, 'punkt_km' => $punktKm];
     }
     // Obliczenia skoku (automat: sekundy zależne od klasy komputera; mostek ręcznie: 20 min),
     // potem obrót na kurs; wejście w nadprzestrzeń, gdy ostatnia jednostka stanie na kursie.
@@ -1374,6 +1412,19 @@ function floty_rozkaz(string $login, array $w): array
         $db->prepare('UPDATE mapa_obiekty SET podlot_start=NULL, podlot_cel=NULL, podlot_od_utc=NULL, podlot_do_utc=NULL WHERE id IN (' . implode(',', array_fill(0, count($wyliczone), '?')) . ')')
             ->execute(array_column($wyliczone, 'id'));
         foreach ($wyliczone as $j) $q->execute([$rozkazId,$j['id'],$j['x0'],$j['y0'],$j['x1'],$j['y1'],$celPlanetaId ?: null,$j['kat'],$j['moc'],$j['paliwo'],czas_utc($j['eta'])]);
+        // Lot do punktu skoku: po obrocie na kurs przelot podświetlny z orbity do punktu skoku (km od słońca);
+        // na jego końcu jednostka stoi w punkcie układu, a o czasie wejścia skacze stamtąd.
+        if (floty_lot_dostepny()) {
+            $lot = $db->prepare('UPDATE mapa_obiekty SET lot_start_x=?, lot_start_y=?, lot_cel_x=?, lot_cel_y=?, lot_cel_planeta_id=NULL, lot_km=?, lot_od_utc=?, lot_do_utc=?,
+                lot_start_kx=?, lot_start_ky=?, lot_cel_kx=?, lot_cel_ky=? WHERE id=?');
+            foreach ($wyliczone as $j) {
+                if (!$j['punkt_km'] || $j['punkt'] <= 0) continue;
+                [$k0, $kp, $km] = $j['punkt_km'];
+                $od = $start + $j['manewr'];
+                $lot->execute([$j['x0'], $j['y0'], $j['x0'], $j['y0'], round($km, 1), czas_utc($od), czas_utc($od + $j['punkt']),
+                    round($k0[0], 1), round($k0[1], 1), round($kp[0], 1), round($kp[1], 1), $j['id']]);
+            }
+        }
         if ($celK) $db->prepare('UPDATE mapa_rozkazy_skokow_jednostki SET wyjscie_kx=?, wyjscie_ky=? WHERE rozkaz_id=?')->execute([round($celK[0], 1), round($celK[1], 1), $rozkazId]);
         $db->commit();
     } catch (Throwable $e) {
@@ -1399,17 +1450,22 @@ function floty_rozkaz(string $login, array $w): array
 // (jakosc_podzespolow 1–5) i przy zapasie mocy reaktora nad hipernapędem. Gra nie podaje liczb.
 const PRZERWANIE_USZKODZENIA = ['sprawnosc_reaktora' => [10, 30], 'sprawnosc_hipernapedu' => [15, 40], 'oslony' => [5, 15], 'kadlub' => [2, 8]];
 const PRZERWANIE_JAKOSC = [1 => 1.6, 2 => 1.3, 3 => 1.0, 4 => 0.7, 5 => 0.4];
+// W nadprzestrzeni przerwanie nie jest natychmiastowe: komputer przelicza wyjście awaryjne (tyle sekund),
+// jednostka leci dalej po linii skoku i wychodzi zwykłym końcem skoku (scena i dźwięk wyjścia).
+const PRZERWANIE_OBLICZENIA_S = 12;
+const PRZERWANIE_ZNACZNIK = ' | Przerwany: wyjście awaryjne.';
 
 function floty_przerwij_skok(array $u, int $id): array
 {
     $db = polaczenie_bazy();
-    $q = $db->prepare("SELECT id, flota_id, wydajacy_login, COALESCE(wejscie_utc, wydano_utc) AS wejscie FROM mapa_rozkazy_skokow WHERE id=? AND status='w_nadprzestrzeni'");
+    $q = $db->prepare("SELECT id, flota_id, wydajacy_login, opis, COALESCE(wejscie_utc, wydano_utc) AS wejscie FROM mapa_rozkazy_skokow WHERE id=? AND status='w_nadprzestrzeni'");
     $q->execute([$id]);
     $r = $q->fetch(PDO::FETCH_ASSOC);
     if (!$r) blad('Ten skok już się zakończył.');
     $mozna = ($u['rola'] ?? '') === 'mg' || mb_strtolower((string) $r['wydajacy_login']) === mb_strtolower((string) $u['login'])
         || ($r['flota_id'] && floty_czy_dowodca((int) $r['flota_id'], (string) $u['login']));
     if (!$mozna) blad('Nie możesz przerwać tego skoku.', 403);
+    if (str_contains((string) ($r['opis'] ?? ''), PRZERWANIE_ZNACZNIK)) blad('Komputer nawigacyjny już przelicza wyjście awaryjne.');
     floty_aktualizuj_ruch(); // pozycje w nadprzestrzeni na tę chwilę
     $teraz = czas_teraz();
     $wNadprzestrzeni = $teraz >= czas_z_utc((string) $r['wejscie']);
@@ -1428,27 +1484,34 @@ function floty_przerwij_skok(array $u, int $id): array
     $db->beginTransaction();
     try {
         foreach ($jednostki as $o) {
-            $k = floty_kurs_teraz($o, $teraz);
-            floty_ustaw_manewr($db, (int) $o['id'], $k, $k, 0, 0);
-            if (!$wNadprzestrzeni) continue;
-            // Wyjście w miejscu, do którego jednostka doleciała; w układzie — na brzegu całego układu
-            // (od strony nadlotu), bez migracji 037 — przy planecie na krawędzi.
-            $x = round((float) $o['x'], 1); $y = round((float) $o['y'], 1);
-            $planeta = floty_planeta_w_punkcie($x, $y);
-            if ($planeta) [$x, $y] = floty_wsp_planety($planeta);
-            $kBrzeg = $planeta && floty_uklad_dostepny() ? floty_krawedz_km($x, $y, (float) $o['start_x'], (float) $o['start_y']) : null;
-            if ($kBrzeg) $planeta = null;
-            $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=? WHERE id=?')->execute([$x, $y, $planeta, $o['id']]);
-            floty_ustaw_k($db, (int) $o['id'], $kBrzeg);
-            if (floty_orbita_dostepna()) {
-                $db->prepare('UPDATE mapa_obiekty SET orbita_deg=?, przylot_utc=? WHERE id=?')
-                    ->execute([$planeta ? round(floty_kat($k + 180), 2) : null, $planeta ? czas_utc($teraz) : null, $o['id']]);
-                if (floty_nawigacja_dostepna()) $db->prepare('UPDATE mapa_obiekty SET podejscie=? WHERE id=?')->execute([$planeta ? 'krawedz' : null, $o['id']]);
+            if (!$wNadprzestrzeni) {
+                // Przed wejściem: odwołanie bez skutków. Lot do punktu skoku w toku — zatrzymanie tam, gdzie jednostka
+                // jest; jeszcze nie ruszyła — zostaje na orbicie. Kurs: ten, na którym jest.
+                $poz = floty_lot_dostepny() ? floty_lot_pozycja($o['id'], $teraz) : null;
+                $qo = floty_lot_dostepny() ? $db->prepare('SELECT lot_od_utc FROM mapa_obiekty WHERE id=?') : null;
+                if ($qo) $qo->execute([$o['id']]);
+                $lotOd = $qo ? czas_z_utc((string) $qo->fetchColumn()) : 0;
+                if ($poz && $lotOd && $teraz >= $lotOd) floty_lot_przerwij([(int) $o['id']]);
+                elseif ($poz) $db->prepare('UPDATE mapa_obiekty SET lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL, lot_cel_planeta_id=NULL,
+                    lot_km=NULL, lot_od_utc=NULL, lot_do_utc=NULL' . (floty_uklad_dostepny() ? ', lot_start_kx=NULL, lot_start_ky=NULL, lot_cel_kx=NULL, lot_cel_ky=NULL' : '') . ' WHERE id=?')->execute([$o['id']]);
+                $k = floty_kurs_teraz($o, $teraz);
+                floty_ustaw_manewr($db, (int) $o['id'], $k, $k, 0, 0);
+                continue;
             }
-            // Paliwo: zużyte proporcjonalnie do przebytej drogi.
-            $cala = hypot((float) $o['wyjscie_x'] - (float) $o['start_x'], (float) $o['wyjscie_y'] - (float) $o['start_y']);
-            $przebyta = hypot((float) $o['x'] - (float) $o['start_x'], (float) $o['y'] - (float) $o['start_y']);
-            $paliwo = (float) $o['paliwo_zuzyte'] * ($cala > 0 ? min(1, $przebyta / $cala) : 1);
+            // W nadprzestrzeni: wyjście za PRZERWANIE_OBLICZENIA_S sekund w punkcie, do którego jednostka do tej
+            // chwili doleci (ta sama linia i tempo). Bez planety celu — zwykły koniec skoku wyprowadzi ją tam
+            // (w studni układu — na jego brzegu), z animacją i dźwiękiem wyjścia.
+            $wej = czas_z_utc((string) $r['wejscie']);
+            $eta = czas_z_utc((string) $o['eta_utc']);
+            $koniec = $teraz + PRZERWANIE_OBLICZENIA_S;
+            $f = $eta > $wej ? min(1.0, max(0.0, ($koniec - $wej) / ($eta - $wej))) : 1.0;
+            if ($f >= 1.0) continue; // i tak wyjdzie wcześniej niż po przeliczeniu — zwykłym końcem skoku
+            $wx = (float) $o['start_x'] + ((float) $o['wyjscie_x'] - (float) $o['start_x']) * $f;
+            $wy = (float) $o['start_y'] + ((float) $o['wyjscie_y'] - (float) $o['start_y']) * $f;
+            $db->prepare('UPDATE mapa_rozkazy_skokow_jednostki SET wyjscie_x=?, wyjscie_y=?, eta_utc=?, planeta_id=NULL, paliwo_zuzyte=? WHERE rozkaz_id=? AND obiekt_id=?')
+                ->execute([round($wx, 4), round($wy, 4), czas_utc($koniec), round((float) $o['paliwo_zuzyte'] * $f, 2), $id, $o['id']]);
+            if (floty_uklad_dostepny()) $db->prepare('UPDATE mapa_rozkazy_skokow_jednostki SET wyjscie_kx=NULL, wyjscie_ky=NULL WHERE rozkaz_id=? AND obiekt_id=?')->execute([$id, $o['id']]);
+            $paliwo = 0.0; // paliwo za przebytą drogę zejdzie przy wyjściu (paliwo_zuzyte × ułamek drogi)
             // Uszkodzenia: losowo w granicach, × jakość podzespołów, × zapas mocy (do −25%).
             $czynnik = PRZERWANIE_JAKOSC[max(1, min(5, (int) ($o['jakosc'] ?? 3)))];
             $zapas = ((float) $o['moc_reaktora'] * max(0.1, (int) $o['sprawnosc_reaktora'] / 100)) / max(1.0, (float) $o['moc_hipernapedu']);
@@ -1462,12 +1525,18 @@ function floty_przerwij_skok(array $u, int $id): array
             $wart[] = $o['id'];
             $db->prepare('UPDATE mapa_naped_jednostki SET ' . implode(', ', $set) . ' WHERE obiekt_id=?')->execute($wart);
         }
-        $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$id]);
-        $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany', zakonczono_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$id]);
+        if ($wNadprzestrzeni) {
+            // Skok trwa do wyjścia awaryjnego (kończy go floty_aktualizuj_ruch); znacznik blokuje drugie przerwanie.
+            $db->prepare('UPDATE mapa_rozkazy_skokow SET opis=CONCAT(COALESCE(opis,\'\'), ?) WHERE id=?')->execute([PRZERWANIE_ZNACZNIK, $id]);
+        } else {
+            $db->prepare("UPDATE mapa_rozkazy_skokow_jednostki SET status='przerwany' WHERE rozkaz_id=? AND status='w_nadprzestrzeni'")->execute([$id]);
+            $db->prepare("UPDATE mapa_rozkazy_skokow SET status='przerwany', zakonczono_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$id]);
+        }
         $db->commit();
     } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
-    return ['ok' => true, 'w_nadprzestrzeni' => $wNadprzestrzeni,
-        'komunikat' => $wNadprzestrzeni ? 'Gwałtowne wyjście z nadprzestrzeni. Reaktor i hipernapęd uszkodzone.' : 'Skok odwołany przed wejściem w nadprzestrzeń.'];
+    return ['ok' => true, 'w_nadprzestrzeni' => $wNadprzestrzeni, 'wyjscie' => $wNadprzestrzeni ? $teraz + PRZERWANIE_OBLICZENIA_S : null,
+        'komunikat' => $wNadprzestrzeni ? 'Komputer nawigacyjny przelicza wyjście awaryjne. Wyjście z nadprzestrzeni za chwilę — reaktor i hipernapęd ucierpią.'
+            : 'Skok odwołany przed wejściem w nadprzestrzeń.'];
 }
 
 // ---------- promy w hangarach ----------

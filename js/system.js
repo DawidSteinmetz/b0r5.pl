@@ -349,7 +349,7 @@ async function sprawdzScene() {
     pamiec.zapisz('scena', s);
     scena.ustaw({ ...s, przesuniecie: przesuniecieZegara });
     // Dźwięk: skok w nadprzestrzeń albo tło mostka (także bez sceny — poza skokiem gra zawsze tło).
-    ustawDzwiek(s?.scena || 'kosmos', Date.now() + przesuniecieZegara - (s?.zmieniono || 0));
+    ustawDzwiek(s?.scena || 'kosmos', Date.now() + przesuniecieZegara - (s?.zmieniono || 0), Number(s?.zmieniono) || 0);
     document.querySelectorAll('[data-miejsce]').forEach((el) => { el.textContent = opisMiejsca(); });
   } catch { /* brak zasięgu — zostaje ostatni znany stan */ }
 }

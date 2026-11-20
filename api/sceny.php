@@ -123,6 +123,27 @@ function scena_okno(string $tekst): string
     return '';
 }
 
+// Widok z punktu układu (km od słońca): planeta i gwiazda w kierunkach i rozmiarach z prawdziwych odległości.
+function scena_z_punktu_ukladu(array $o, array $gwiazdy, string $planeta, float $kx, float $ky, int $teraz, bool $wyjscie): array
+{
+    $cykl = astro_cykl($planeta);
+    [$px, $py] = astro_pozycja_km($cykl, $teraz);
+    $d = max(1.0, hypot($kx - $px, $ky - $py));
+    $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy, 'cykl' => $cykl,
+        'orbita' => round(floty_kat(rad2deg(atan2($ky - $py, $kx - $px))), 2),
+        'wysokosc_km' => max(NISKA_ORBITA_KM, $d - (float) $cykl['srednica_km'] / 2),
+        'slonce' => ['kat' => round(floty_kat(rad2deg(atan2(-$ky, -$kx))), 2), 'km' => round(max(1.0, hypot($kx, $ky)))]];
+    $kraw = (float) ($cykl['krawedz_au'] ?? 50) * ASTRO_KM_NA_AU;
+    $typ = 'skalista'; // typ planety: z katalogu gry, gdy dostępny
+    if (tabela_sql_dostepna('planety_gry')) {
+        $q = polaczenie_bazy()->prepare('SELECT g.typ_planety FROM planety_gry g JOIN mapa_planety p ON p.id = g.planeta_id WHERE p.nazwa = ?');
+        $q->execute([$planeta]);
+        $typ = (string) ($q->fetchColumn() ?: $typ);
+    }
+    return ['scena' => $wyjscie ? 'wyjscie' : 'orbita', 'planeta' => $typ,
+        'odleglosc' => hypot($kx, $ky) > $kraw * 0.8 ? 'krawedz' : 'daleko', 'miejsce' => $planeta, 'widok' => $widok];
+}
+
 function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
 {
     if (!function_exists('floty_orbita_dostepna') || !tabela_sql_dostepna('mapa_obiekty')
@@ -185,6 +206,23 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     }
     $gwiazdy = scena_gwiazdy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
     $lotOd = czas_z_utc($o['lot_od_utc'] ?? null); $lotDo = czas_z_utc($o['lot_do_utc'] ?? null);
+    if ($lotDo && $teraz >= $lotOd && $teraz < $lotDo && ($o['lot_start_kx'] ?? null) !== null && ($o['lot_cel_kx'] ?? null) !== null
+        && function_exists('floty_planety_ukladu')) {
+        // Lot podświetlny w obrębie układu: okręt naprawdę się przemieszcza (km od słońca), więc gwiazda i planety
+        // rosną albo maleją zgodnie z odległością. Pokazujemy planetę celu albo najbliższą planetę układu.
+        $f = floty_lot_ulamek(($teraz - $lotOd) / max(1, $lotDo - $lotOd));
+        $kx = (float) $o['lot_start_kx'] + ((float) $o['lot_cel_kx'] - (float) $o['lot_start_kx']) * $f;
+        $ky = (float) $o['lot_start_ky'] + ((float) $o['lot_cel_ky'] - (float) $o['lot_start_ky']) * $f;
+        $planety = floty_planety_ukladu((float) $o['lot_start_x'], (float) $o['lot_start_y']);
+        $pl = null; $min = INF;
+        foreach ($planety as $p) {
+            if (!empty($o['lot_cel_planeta_id']) && (int) $p['id'] === (int) $o['lot_cel_planeta_id']) { $pl = $p; break; }
+            [$px, $py] = astro_pozycja_km(astro_cykl((string) $p['nazwa']), $teraz);
+            if (($d = hypot($kx - $px, $ky - $py)) < $min) { $min = $d; $pl = $p; }
+        }
+        if ($pl) return $baza + scena_z_punktu_ukladu($o, $gwiazdy, (string) $pl['nazwa'], $kx, $ky, $teraz, false)
+            + ['zmieniono' => max($lotOd * 1000, $zmianaPozycjiMs)];
+    }
     if ($lotDo && $teraz >= $lotOd && $teraz < $lotDo) {
         // Lot podświetlny: cel przed dziobem rośnie w miarę zbliżania (rozmiar z kąta na tablecie).
         $cel = !empty($o['lot_cel_planeta_id']) ? ruch_planeta((string) $o['lot_cel_planeta_id']) : [];
@@ -204,24 +242,16 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     if ($planeta === '' && ($o['uklad_kx'] ?? null) !== null && ($pl = scena_planeta_przy((float) $o['x'], (float) $o['y']))) {
         // Punkt w układzie (np. między planetą a słońcem, krawędź układu): planeta i słońce widziane
         // z tego miejsca — kierunek i rozmiar z odległości (km od słońca i od planety).
-        $cykl = astro_cykl($pl['nazwa']);
-        [$px, $py] = astro_pozycja_km($cykl, $teraz);
-        $kx = (float) $o['uklad_kx']; $ky = (float) $o['uklad_ky'];
-        $d = max(1.0, hypot($kx - $px, $ky - $py));
-        $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy, 'cykl' => $cykl,
-            'orbita' => round(floty_kat(rad2deg(atan2($ky - $py, $kx - $px))), 2),
-            'wysokosc_km' => max(NISKA_ORBITA_KM, $d - (float) $cykl['srednica_km'] / 2),
-            'slonce' => ['kat' => round(floty_kat(rad2deg(atan2(-$ky, -$kx))), 2), 'km' => round(max(1.0, hypot($kx, $ky)))]];
-        $kraw = (float) ($cykl['krawedz_au'] ?? 50) * ASTRO_KM_NA_AU;
         // Świeże wyjście ze skoku w tym punkcie: animacja wyjścia z nadprzestrzeni.
         $swieze = $przylot && $teraz - $przylot < 120;
-        return $baza + ['scena' => $swieze ? 'wyjscie' : 'orbita', 'planeta' => $pl['typ'],
-            'odleglosc' => hypot($kx, $ky) > $kraw * 0.8 ? 'krawedz' : 'daleko', 'miejsce' => $pl['nazwa'],
-            'zmieniono' => $zmieniono, 'widok' => $widok];
+        return $baza + scena_z_punktu_ukladu($o, $gwiazdy, (string) $pl['nazwa'], (float) $o['uklad_kx'], (float) $o['uklad_ky'], $teraz, $swieze)
+            + ['zmieniono' => $zmieniono];
     }
     if ($planeta === '') {
-        return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
-            'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy]];
+        // Świeże wyjście ze skoku w pustej przestrzeni (także awaryjne): animacja wyjścia bez planety.
+        $swieze = $przylot && $teraz - $przylot < 120;
+        return $baza + ['scena' => $swieze ? 'wyjscie' : 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
+            'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy] + ($swieze ? ['bez_planety' => true] : [])];
     }
     if (!empty($o['ladowisko_id'])) {
         // Na lądowisku: za oknem kokpitu powierzchnia planety (dzień/noc z cyklu planety i miejsca).

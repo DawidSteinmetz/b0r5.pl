@@ -874,6 +874,19 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   MG może wydać nowy kod (`mg_zaproszenie_nowe`). Lista kont pokazuje gotowość: konto, pozycja, przewodnik. Hasło w formularzu
   MG jest ukryte. **Przewodnik** pierwszego wejścia (4 kroki, pomiń / wznów) — stan w `ustawienia_kont` (klucz `przewodnik`).
 
+## Skok: punkt skoku, przerwanie, dźwięki (2026-11-20)
+
+- **Lot do punktu skoku** to prawdziwy przelot podświetlny w układzie (pola `lot_*`, km od słońca): po obrocie na kurs
+  jednostka leci z miejsca na orbicie do punktu `PUNKT_SKOKU_KM` przed planetą, z bocznym odejściem tak, by ani przelot,
+  ani droga skoku nie szły przez planetę (`floty_punkt_skoku_km`). Mapa i okno pokazują ten ruch.
+- **Przerwij skok** w nadprzestrzeni: komputer przelicza wyjście awaryjne (`PRZERWANIE_OBLICZENIA_S` = 12 s), jednostka
+  leci dalej po linii skoku i wychodzi zwykłym końcem skoku — z animacją i dźwiękiem wyjścia. Uszkodzenia od razu, paliwo
+  za przebytą drogę. Przed wejściem w nadprzestrzeń: odwołanie bez skutków (lot do punktu skoku zatrzymuje się).
+- **Dźwięki wejścia i wyjścia** grają tylko przy skoku, raz na skok (klucz = czas zmiany sceny). Scena starsza od ostatnio
+  przyjętej jest ignorowana. Każdy koniec skoku zapisuje `przylot_utc` (także w pustej przestrzeni: scena „wyjście” bez planety).
+- **Okno w locie podświetlnym w układzie**: gwiazda i planeta (celu albo najbliższa) w kierunkach i rozmiarach
+  z prawdziwych odległości; tablet przesuwa okręt po linii lotu między odpowiedziami serwera, więc rosną płynnie.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

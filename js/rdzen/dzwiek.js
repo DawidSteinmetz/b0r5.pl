@@ -19,6 +19,12 @@ let zrodla = [], nastepny = 0, zegarPetli = null;
 let tryb = null;           // 'skok' | 'tlo' | 'cisza'
 let pokolenie = 0;         // unieważnia spóźnione wywołania po zmianie trybu
 let odblokowane = false, oczekujace = null;
+// Ostatnio przyjęta scena (czas zmiany, ms): scena starsza od niej to spóźniona albo „cofnięta” odpowiedź
+// serwera — ignorujemy ją, żeby skok nie przerywał się na chwilę (i nie grał wyjścia/wejścia bez skoku).
+let zmienionoSceny = 0;
+// Wejście i wyjście grają tylko raz dla danego skoku (klucz = czas zmiany sceny), także po odświeżeniu strony.
+const zagrane = (klucz) => { try { return sessionStorage.getItem('hololink.dzwiek.' + klucz) === '1'; } catch { return false; } };
+const oznacz = (klucz) => { try { sessionStorage.setItem('hololink.dzwiek.' + klucz, '1'); } catch { /* bez pamięci */ } };
 let wyciszone = pamiec.czytaj('wyciszone', false);
 const sluchacze = new Set();
 
@@ -128,9 +134,14 @@ function tloStop(zanik = 1) {
   zmienGlosnosc(0, zanik, () => tlo.pause());
 }
 
-// Stan sceny z serwera: nazwa sceny i ile ms minęło od jej zmiany. Bez sceny (wylogowanie) — cisza.
-export function ustawDzwiek(scena, odZmiany = Infinity) {
+// Stan sceny z serwera: nazwa sceny, ile ms minęło od jej zmiany i chwila zmiany (ms). Bez sceny (wylogowanie) — cisza.
+// Dźwięki wejścia i wyjścia należą wyłącznie do skoku: wejście — świeża scena „wejscie”, wyjście — świeża scena
+// po skoku (nowsza niż sam skok), każde raz na skok. Nigdy jako zwykłe tło.
+export function ustawDzwiek(scena, odZmiany = Infinity, zmieniono = 0) {
   const nowy = !scena ? 'cisza' : (scena === 'wejscie' || scena === 'nadswietlna') ? 'skok' : 'tlo';
+  if (nowy !== 'cisza' && zmieniono && zmieniono < zmienionoSceny) return;
+  if (nowy === 'cisza') zmienionoSceny = 0;
+  else if (zmieniono) zmienionoSceny = Math.max(zmienionoSceny, zmieniono);
   if (!odblokowane) { oczekujace = nowy; return; }
   if (nowy === tryb) return;
   const poprzedni = tryb;
@@ -145,14 +156,19 @@ export function ustawDzwiek(scena, odZmiany = Infinity) {
     wczytaj().then(() => {
       if (moje !== pokolenie) return;
       const t = ctx.currentTime + 0.05;
-      if (scena === 'wejscie' && odZmiany < 8000) petlaOd(graj(bufory.wejscie, t, 0, NAKLADKA) - NAKLADKA);
-      else petlaOd(t);
+      const klucz = `wejscie.${zmieniono}`;
+      if (scena === 'wejscie' && odZmiany < 8000 && zmieniono && !zagrane(klucz)) {
+        oznacz(klucz);
+        petlaOd(graj(bufory.wejscie, t, 0, NAKLADKA) - NAKLADKA);
+      } else petlaOd(t);
     }).catch(() => {});
     return;
   }
 
   // Tło. Wyjście ze skoku (także przerwanego) słychać tylko, gdy przed chwilą trwał skok.
-  if (poprzedni === 'skok' && odZmiany < 15000 && ctx && bufory.wyjscie) {
+  const kluczWyjscia = `wyjscie.${zmieniono}`;
+  if (poprzedni === 'skok' && odZmiany < 15000 && zmieniono && !zagrane(kluczWyjscia) && ctx && bufory.wyjscie) {
+    oznacz(kluczWyjscia);
     zatrzymajSkok(0.3);
     const t = ctx.currentTime + 0.05;
     graj(bufory.wyjscie, t);

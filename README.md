@@ -963,9 +963,10 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   i Edukacja, Astronawigacja, Czujność) ze specjalizacją **Mówca** (Urok, Zastraszanie, Percepcja, Komputery) i talenty
   dowódcze: Natchniona przemowa, Głos dowodzenia, Autorytet, Oficer pokładowy, Dowódca polowy, Zgrana załoga, Taktyk floty,
   Mistrz retoryki.
-- **Ścieżka kariery we flocie**: Kadet → Młodszy oficer (+ Artyleria, Komputery; specjalizacja Oficer pokładowy) → Oficer
-  (+ Percepcja, Zastraszanie; specjalizacja Dowódca okrętu). Wyższy poziom ma umiejętności i specjalizacje niższych; CV pokazuje
-  ścieżkę „Kadet › Młodszy oficer › Oficer”. Generator: **Import / eksport karty (JSON)**.
+- **Kariera floty z poziomami**: postać zaczyna jako **Kadet**, a nazwa kariery zmienia się sama z PD zdobytymi: Kadet (0) →
+  Chorąży (100) → Porucznik (250, specjalizacja Oficer pokładowy) → Komandor porucznik (450) → Komandor (700) → Kapitan
+  (1000, specjalizacja Dowódca okrętu). Każdy poziom dokłada umiejętności kariery. MG może ustawić poziom ręcznie
+  (`poziom_kariery`). CV pokazuje bieżący poziom. Generator: **Import / eksport karty (JSON)**.
 
 ## Inspekcja załogi i morale
 

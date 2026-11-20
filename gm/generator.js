@@ -32,7 +32,7 @@ export async function panelGeneratora(kontener) {
     try {
       const [rodzaj, id] = [cel.slice(0, 1), cel.slice(2)];
       const r = await api('mg_eote', undefined, rodzaj === 'u' ? { uid: id } : { osoba: id });
-      if (r.eote) e = r.eote;
+      if (r.eote) e = E.normalizujKarte(r.eote);
       else if (rodzaj === 'u') { e = E.nowaKarta('gracz'); e.imie = postacie.find((p) => p.uid === id)?.postac || ''; }
       else { const n = npc.find((x) => String(x.id) === id); e = E.nowaKarta('rywal'); e.imie = n?.nazwa || ''; e.rola = n?.rola || ''; }
       przebuduj();
@@ -81,7 +81,8 @@ export async function panelGeneratora(kontener) {
         e.kariera = v;
         e.specjalizacje = [E.KARIERY[v].specjalizacje[0], ...(e.specjalizacje || []).slice(1).filter((s) => s !== E.KARIERY[v].specjalizacje[0])];
       }, { przebudowa: true });
-      const spec = wiaz(h('select', opcje(E.KARIERY[e.kariera].specjalizacje.map((s) => [s, E.SPECJALIZACJE[s].nazwa]), e.specjalizacje?.[0])),
+      const kp = E.karieraPostaci(e);
+      const spec = wiaz(h('select', opcje(kp.specjalizacje.map((s) => [s, E.SPECJALIZACJE[s].nazwa]), e.specjalizacje?.[0])),
         () => e.specjalizacje?.[0], (v) => { e.specjalizacje = [v, ...(e.specjalizacje || []).slice(1).filter((s) => s !== v)]; }, { przebudowa: true });
       const dodatkowe = h('div.gen-checki', Object.entries(E.SPECJALIZACJE).filter(([k]) => k !== e.specjalizacje?.[0]).map(([k, s]) => {
         const cb = h('input', { type: 'checkbox', checked: (e.specjalizacje || []).includes(k), style: 'width:auto' });
@@ -89,9 +90,15 @@ export async function panelGeneratora(kontener) {
           e.specjalizacje = cb.checked ? [...e.specjalizacje, k] : e.specjalizacje.filter((x) => x !== k);
           przebuduj();
         });
-        return h('label.gen-check', cb, ` ${s.nazwa}${E.specjalizacjaKariery(e.kariera, k) ? '' : ' (spoza kariery)'}`);
+        return h('label.gen-check', cb, ` ${s.nazwa}${E.specjalizacjaKariery(e, k) ? '' : ' (spoza kariery)'}`);
       }));
-      elementy.push(pole('Kariera', kariera), pole('Specjalizacja startowa', spec),
+      // Poziom kariery (kariera z poziomami, np. flota): automatycznie z PD zdobytych albo ręcznie.
+      const poziom = kp.poziomy.length ? wiaz(h('select', opcje([['', `auto: ${E.nazwaKariery({ ...e, poziom_kariery: null })} (wg PD zdobytych)`],
+        ...kp.poziomy.map((p, i) => [String(i), `${p.nazwa} (od ${p.pd} PD)`])], e.poziom_kariery ?? '')),
+      () => (e.poziom_kariery ?? ''), (v) => { e.poziom_kariery = v === '' ? null : Number(v); }, { przebudowa: true }) : null;
+      elementy.push(pole('Kariera', kariera),
+        poziom ? pole(`Poziom kariery — teraz: ${kp.nazwa}${kp.nastepny && !kp.reczny ? ` (następny: ${kp.nastepny.nazwa} od ${kp.nastepny.pd} PD)` : ''}`, poziom) : null,
+        pole('Specjalizacja startowa', spec),
         h('details', h('summary.slaby', `Dodatkowe specjalizacje (kolejna: ${10 * ((e.specjalizacje || []).length + 1)} PD w karierze, +10 spoza)`), dodatkowe));
     } else {
       elementy.push(pole('Rola / zajęcie', tekst(() => e.rola, (v) => { e.rola = v; })));
@@ -128,7 +135,7 @@ export async function panelGeneratora(kontener) {
   function umiejetnosci() {
     const gracz = e.tryb === 'gracz', slugus = e.tryb === 'slugus';
     const kar = E.umiejetnosciKariery(e);
-    const karieraSet = new Set(E.KARIERY[e.kariera]?.umiejetnosci || []);
+    const karieraSet = new Set(E.karieraPostaci(e).umiejetnosci);
     const specSet = new Set((e.specjalizacje || []).flatMap((s) => E.SPECJALIZACJE[s]?.umiejetnosci || []));
     const g = E.GATUNKI[e.gatunek] || {};
     const lim = E.limityDarmowych(e);
@@ -275,7 +282,7 @@ export async function panelGeneratora(kontener) {
           try {
             const n = JSON.parse(pole0.value);
             if (!n || typeof n !== 'object' || !n.cechy || !n.tryb) throw new Error('To nie wygląda na kartę EotE (brak „tryb” albo „cechy”).');
-            e = { ...E.nowaKarta(n.tryb), ...n };
+            e = E.normalizujKarte({ ...E.nowaKarta(n.tryb), ...n });
             przebuduj();
             info.append(msg('Wczytano kartę. Sprawdź podgląd i kliknij „Zapisz”, żeby zapisać ją w wybranej karcie.', 'ok'));
           } catch (err) { info.append(msg(`Nie udało się wczytać: ${err.message}`)); }

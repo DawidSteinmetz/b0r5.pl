@@ -88,31 +88,49 @@ export default {
       }, 1000);
     }
 
+    // Układ: nagłówek „gdzie jestem” i zakładki — Tutaj (co trwa, działania w miejscu), Idź po okręcie / Dokąd?,
+    // Statek (start, lądowanie, skok, łączność, promy, stocznia), Statki i pojazdy. Zakładka zostaje po odświeżeniu.
+    let zakladka = 'miejsce';
     function rysuj() {
       if (!d.gdzie) {
         wyczysc(tresc).append(h('div.panel', h('div.pusto', 'Brak sygnału pozycjonowania. Nadajnik nie ustalił twojego położenia.')));
         return;
       }
-      const [typNazwa, znak] = TYPY[d.gdzie.typ] || TYPY.inne;
-      wyczysc(tresc).append(...[
-        // Gdzie jestem
-        h('div.panel.nawi-tu',
-          h('div.rzad',
-            h('div.nawi-znak', znak),
-            h('div.rozpycha',
-              h('div.slaby.maly-tekst', `${d.planeta?.nazwa || '?'} · ${typNazwa}`),
-              h('div', { style: 'font-size:20px;color:var(--akcent)' }, d.gdzie.nazwa)),
-            h('div', { style: 'text-align:right' },
-              h('div.maly-tekst', `Gotówka: ${kr(d.gotowka)}`),
-              h('div.slaby.maly-tekst', `Rachunek: ${kr(d.saldo)}`)))),
-        d.podroz ? podroz() : null,
-        akcjeWMiejscu(),
-        d.statki.length ? statki() : null,
-        d.moje_statki?.length ? mojeStatki() : null,
-        d.podroz || d.poklad?.w_locie ? null : dokad(),
-        d.pojazdy.length ? pojazdy() : null,
+      const okr = d.poklad_okret, wn = okr?.wnetrze;
+      const zak = [['miejsce', 'Tutaj']];
+      if (wn) zak.push(['idz', 'Idź po okręcie']);
+      else if (!d.podroz && !d.poklad?.w_locie && d.miejsca.length) zak.push(['idz', 'Dokąd?']);
+      if (d.poklad || okr) zak.push(['statek', 'Statek']);
+      if (d.statki.length || d.moje_statki?.length || d.pojazdy.length) zak.push(['pojazdy', 'Statki i pojazdy']);
+      if (!zak.some(([k]) => k === zakladka)) zakladka = 'miejsce';
+      const tresci = {
+        miejsce: () => [d.podroz ? podroz() : null, wn ? stanPrzejscia(wn) : null, akcjeWMiejscu(),
+          !wn && !d.podroz && !d.poklad?.w_locie && d.miejsca.length ? h('div.panel', h('button.przycisk.drugi', { onclick: () => { zakladka = 'idz'; rysuj(); } }, `Dokąd? (${d.miejsca.length} znanych miejsc)`)) : null],
+        idz: () => [wn ? listaPomieszczen(wn) : dokad()],
+        statek: () => [d.poklad ? poklad(d.poklad) : null, okr ? pokladOkretu(okr) : null],
+        pojazdy: () => [d.statki.length ? statki() : null, d.moje_statki?.length ? mojeStatki() : null, d.pojazdy.length ? pojazdy() : null],
+      };
+      wyczysc(tresc).append(...[kartaMiejsca(),
+        zak.length > 1 ? h('div.zakladki.nawi-zakladki', zak.map(([k, n]) => h('button' + (k === zakladka ? '.aktywna' : ''), { onclick: () => { zakladka = k; rysuj(); } }, n))) : null,
+        ...tresci[zakladka](),
       ].filter(Boolean)); // natywne append zamieniłoby null na tekst „null”
       tykaj();
+    }
+
+    // Nagłówek: gdzie jestem (na okręcie — pomieszczenie i pokład), portfel.
+    function kartaMiejsca() {
+      const [typNazwa, znak] = TYPY[d.gdzie.typ] || TYPY.inne;
+      const okr = d.poklad_okret, wn = okr?.wnetrze;
+      return h('div.panel.nawi-tu',
+        h('div.rzad',
+          h('div.nawi-znak', znak),
+          h('div.rozpycha',
+            h('div.slaby.maly-tekst', wn ? `${okr.nazwa} · ${wn.tu.grupa || 'okręt'}` : `${d.planeta?.nazwa || '?'} · ${typNazwa}`),
+            h('div.nawi-nazwa', wn ? wn.tu.nazwa : d.gdzie.nazwa),
+            wn ? h('div.slaby.maly-tekst', [OKNA[wn.tu.okno], d.planeta?.nazwa ? `przy: ${d.planeta.nazwa}` : null].filter(Boolean).join(' · ')) : null),
+          h('div.nawi-portfel',
+            h('div.maly-tekst', `Gotówka: ${kr(d.gotowka)}`),
+            h('div.slaby.maly-tekst', `Rachunek: ${kr(d.saldo)}`))));
     }
 
     function podroz() {
@@ -127,8 +145,6 @@ export default {
     // Bankomat, sklep, zejście z pokładu.
     function akcjeWMiejscu() {
       const el = [];
-      if (d.poklad) el.push(poklad(d.poklad));
-      if (d.poklad_okret) el.push(pokladOkretu(d.poklad_okret));
       if (d.bankomat) {
         const kwota = h('input', { type: 'number', min: 1, step: 1, placeholder: 'kwota' });
         el.push(h('div.panel', h('h2', 'Bankomat'),
@@ -282,12 +298,12 @@ export default {
 
     // Jeden sposób chodzenia po okręcie: każdy cel (lista, ulubione, skrót „Idź do promu”) to ten sam rozkaz poklad_idz.
     // Nowy cel w trakcie przejścia zastępuje poprzedni (serwer liczy od pomieszczenia, z którego się wyszło).
-    const idzPoklad = (id) => akcja('poklad_idz', { cel: id }, (r) => (r.cel ? `Idziesz: ${r.cel} (${r.min} min).` : 'Zostajesz na miejscu.'));
+    // Po wyborze celu widok wraca na „Tutaj” (licznik przejścia, Zmień cel, Zawróć).
+    const idzPoklad = (id) => { zakladka = 'miejsce'; return akcja('poklad_idz', { cel: id }, (r) => (r.cel ? `Idziesz: ${r.cel} (${r.min} min).` : 'Zostajesz na miejscu.')); };
 
     // Ulubione pomieszczenia: ustawienie konta na serwerze, kopia na urządzeniu.
     const kluczUlubionych = `hololink.ulubione.${ctx.uzytkownik.id ?? ctx.uzytkownik.postac}`;
     let ulubione = null;
-    let ostatniWybor = null;
     async function wczytajUlubione() {
       try { ulubione = JSON.parse(localStorage.getItem(kluczUlubionych) || '[]').map(Number); } catch { ulubione = []; }
       try {
@@ -312,40 +328,62 @@ export default {
         h('button.przycisk.drugi', { onclick: () => idzPoklad(cel) }, `Idź do promu${s ? ` (${s.min} min)` : ''}`));
     }
 
-    // Wnętrze okrętu: gdzie jestem, przejście w toku, skróty, ulubione i pełna lista pomieszczeń (po pokładach).
-    function panelWnetrza(wn) {
-      if (!wn) return null;
+    // Przejście w toku albo szybkie cele (skróty i ulubione) — w zakładce „Tutaj”.
+    function stanPrzejscia(wn) {
       if (ulubione === null) { ulubione = []; wczytajUlubione().then(() => { if (w.isConnected && d) rysuj(); }); }
-      const grupy = new Map();
-      for (const x of wn.pomieszczenia) { if (!grupy.has(x.grupa)) grupy.set(x.grupa, []); grupy.get(x.grupa).push(x); }
-      const ulub = wn.pomieszczenia.filter((x) => ulubione.includes(x.id));
-      const opcja = (x) => h('option', { value: x.id, disabled: !!x.zamkniete, title: x.zamkniete || '' }, `${x.zamkniete ? '🔒 ' : ulubione.includes(x.id) ? '★ ' : ''}${x.nazwa} · ${x.min} min`);
-      const wybor = h('select', { 'aria-label': 'Pomieszczenie docelowe' },
-        ...[ulub.length ? h('optgroup', { label: '★ Ulubione' }, ulub.map(opcja)) : null,
-          ...[...grupy].map(([g, lista]) => h('optgroup', { label: g || 'Okręt' }, lista.map(opcja)))].filter(Boolean));
-      if (ostatniWybor && wn.pomieszczenia.some((x) => x.id === ostatniWybor)) wybor.value = String(ostatniWybor);
-      const gwiazdka = h('button.przycisk.drugi', { type: 'button', style: 'min-width:44px;padding:0 10px' });
-      const ustawGwiazdke = () => {
-        const jest = ulubione.includes(Number(wybor.value));
-        gwiazdka.textContent = jest ? '★' : '☆';
-        gwiazdka.title = jest ? 'Usuń z ulubionych' : 'Dodaj do ulubionych';
-      };
-      wybor.addEventListener('change', () => { ostatniWybor = Number(wybor.value); ustawGwiazdke(); });
-      gwiazdka.onclick = () => { ostatniWybor = Number(wybor.value); przelaczUlubione(Number(wybor.value)); };
-      ustawGwiazdke();
       const p = wn.przejscie;
-      // Skróty: hangar promów i mostek (z serwera) oraz ulubione, bez powtórzeń.
-      const skroty = [...wn.skroty, ...ulub.filter((x) => !wn.skroty.some((s) => s.id === x.id)).map((x) => ({ ...x, nazwa: `★ ${x.nazwa}` }))];
-      return h('div', { style: 'margin-top:10px' },
-        h('div', h('span.slaby.maly-tekst', p ? 'Wyszedłeś z: ' : 'Jesteś: '), h('b', wn.tu.nazwa),
-          h('span.slaby.maly-tekst', ` · ${wn.tu.grupa}${p ? '' : ` · ${OKNA[wn.tu.okno] || ''}`}`)),
-        p ? h('div.rzad', { style: 'margin-top:6px' },
-          h('span.rozpycha', `Idziesz: ${p.cel_nazwa} — na miejscu za `, h('b', { 'data-koniec': p.do, 'data-przeladuj': '1' }, odliczanie(p.do - teraz()))),
-          h('button.przycisk.drugi.maly', { onclick: () => idzPoklad(wn.tu.id) }, 'Zawróć')) : null,
-        skroty.length ? h('div.rzad', { style: 'margin-top:8px;flex-wrap:wrap' }, skroty.map((x) =>
-          h('button.przycisk.drugi', { disabled: p?.cel === x.id, onclick: () => idzPoklad(x.id) }, `→ ${x.nazwa} (${x.min} min)`))) : null,
-        h('div.rzad', { style: 'margin-top:8px' }, h('div.pole.rozpycha', { style: 'margin:0' }, wybor), gwiazdka,
-          h('button.przycisk', { onclick: () => idzPoklad(Number(wybor.value)) }, p ? 'Zmień cel' : 'Idź')));
+      if (p) {
+        return h('div.panel.nawi-w-drodze',
+          h('div.rzad', h('div.rozpycha', h('div.slaby.maly-tekst', `Wyszedłeś z: ${wn.tu.nazwa}`),
+            h('div', 'Idziesz: ', h('b', p.cel_nazwa))),
+          h('b.nawi-licznik', { 'data-koniec': p.do, 'data-przeladuj': '1' }, odliczanie(p.do - teraz()))),
+          h('div.pasek-postepu', h('i', { 'data-koniec': p.do, 'data-start': p.od, 'data-pasek': '1' })),
+          h('div.rzad', { style: 'margin-top:10px' },
+            h('button.przycisk.drugi', { onclick: () => { zakladka = 'idz'; rysuj(); } }, 'Zmień cel'),
+            h('button.przycisk.drugi', { onclick: () => idzPoklad(wn.tu.id) }, 'Zawróć')));
+      }
+      const ulub = wn.pomieszczenia.filter((x) => ulubione.includes(x.id) && !x.zamkniete);
+      const szybkie = [...wn.skroty, ...ulub.filter((x) => !wn.skroty.some((s) => s.id === x.id)).map((x) => ({ ...x, nazwa: `★ ${x.nazwa}` }))];
+      if (!szybkie.length) return null;
+      return h('div.panel', h('h2', 'Szybko'),
+        h('div.nawi-chipy', szybkie.map((x) => h('button.przycisk.drugi.maly', { onclick: () => idzPoklad(x.id) }, `${x.nazwa} · ${x.min} min`))));
+    }
+
+    // Zakładka „Idź po okręcie”: wyszukiwarka i pomieszczenia po pokładach (zwijane), dotknięcie = idź.
+    let filtrPom = '';
+    const otwarteGrupy = new Set();
+    function listaPomieszczen(wn) {
+      if (ulubione === null) { ulubione = []; wczytajUlubione().then(() => { if (w.isConnected && d) rysuj(); }); }
+      const p = wn.przejscie;
+      const szukaj = h('input.nawi-szukaj', { placeholder: 'Szukaj: mesa, hangar, pokład 4…', value: filtrPom, spellcheck: false, autocomplete: 'off' });
+      const lista = h('div.nawi-pom');
+      const wiersz = (x) => h('div.nawi-pom-wiersz' + (x.zamkniete ? '.zamkniete' : '') + (p?.cel === x.id ? '.cel' : ''),
+        h('button.nawi-pom-idz', { type: 'button', disabled: !!x.zamkniete, title: x.zamkniete || `Idź: ${x.nazwa}`, onclick: () => idzPoklad(x.id) },
+          h('span.nawi-pom-nazwa', `${x.zamkniete ? '🔒 ' : ''}${x.nazwa}`),
+          h('span.slaby.maly-tekst', p?.cel === x.id ? 'tu idziesz' : x.zamkniete ? 'zamknięte' : `${x.min} min`)),
+        h('button.nawi-gwiazdka', { type: 'button', title: ulubione.includes(x.id) ? 'Usuń z ulubionych' : 'Dodaj do ulubionych', onclick: () => przelaczUlubione(x.id) },
+          ulubione.includes(x.id) ? '★' : '☆'));
+      const rysujListe = () => {
+        filtrPom = szukaj.value;
+        const f = filtrPom.trim().toLowerCase();
+        const pasuje = wn.pomieszczenia.filter((x) => !f || x.nazwa.toLowerCase().includes(f) || (x.grupa || '').toLowerCase().includes(f));
+        const ulub = pasuje.filter((x) => ulubione.includes(x.id));
+        const grupy = new Map();
+        for (const x of pasuje) { const g = x.grupa || 'Okręt'; if (!grupy.has(g)) grupy.set(g, []); grupy.get(g).push(x); }
+        wyczysc(lista).append(
+          ulub.length && !f ? h('div.nawi-pom-grupa', h('div.nawi-pom-tytul', '★ Ulubione'), ulub.map(wiersz)) : null,
+          ...[...grupy].map(([g, l]) => {
+            if (f) return h('div.nawi-pom-grupa', h('div.nawi-pom-tytul', g), l.map(wiersz));
+            const el = h('details.nawi-pom-grupa', { open: otwarteGrupy.has(g) || g === wn.tu.grupa },
+              h('summary', h('span', g), h('span.slaby.maly-tekst', ` ${l.length}${g === wn.tu.grupa ? ' · jesteś tutaj' : ''}`)), l.map(wiersz));
+            el.addEventListener('toggle', () => { if (el.open) otwarteGrupy.add(g); else otwarteGrupy.delete(g); });
+            return el;
+          }),
+          pasuje.length ? null : h('div.slaby', 'Nic nie pasuje.'));
+      };
+      szukaj.addEventListener('input', rysujListe);
+      rysujListe();
+      return h('div.panel', h('h2', p ? `Zmień cel (teraz: ${p.cel_nazwa})` : 'Idź do…'), szukaj, lista);
     }
 
     // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start; hangar z promami.
@@ -357,7 +395,6 @@ export default {
               p.kapitan ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start') : null,
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
-        panelWnetrza(p.wnetrze),
         panelPromow(p),
         panelStoczni(p));
     }

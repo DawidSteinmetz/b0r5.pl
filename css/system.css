@@ -571,6 +571,26 @@ html.z-tlem .szybka { background: rgba(20, 14, 4, 0.7); backdrop-filter: blur(3p
 .nawi-tu { border-color: var(--linia-mocna); }
 .nawi-znak { width: 48px; height: 48px; flex: none; display: grid; place-items: center; font-size: 24px; color: var(--akcent); border: 1px solid var(--linia-mocna); border-radius: 50%; font-family: var(--lat); }
 .nawi-znak.maly { width: 32px; height: 32px; font-size: 16px; }
+/* Nawigacja: nagłówek, zakładki, przejście w toku, szybkie cele, lista pomieszczeń po pokładach. */
+.nawi-nazwa { font-size: 20px; color: var(--akcent); line-height: 1.25; }
+.nawi-portfel { text-align: right; flex: none; }
+.nawi-zakladki { margin: 0 0 12px; }
+.nawi-w-drodze { border-color: var(--akcent-2); }
+.nawi-licznik { font-size: 26px; font-weight: normal; color: var(--akcent-2); font-variant-numeric: tabular-nums; }
+.nawi-chipy { display: flex; flex-wrap: wrap; gap: 8px; }
+.nawi-szukaj { width: 100%; min-height: 44px; padding: 0 12px; margin-bottom: 10px; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(0, 0, 0, 0.35); }
+.nawi-szukaj:focus { border-color: var(--akcent); outline: none; }
+.nawi-pom { display: grid; gap: 8px; }
+.nawi-pom-grupa { border: 1px solid var(--linia); border-radius: var(--promien); padding: 4px 8px 8px; }
+.nawi-pom-grupa > summary, .nawi-pom-tytul { cursor: pointer; padding: 8px 2px; letter-spacing: 0.06em; color: var(--tekst); list-style-position: inside; }
+.nawi-pom-tytul { cursor: default; color: var(--akcent-2); }
+.nawi-pom-wiersz { display: flex; gap: 6px; align-items: stretch; margin-top: 6px; }
+.nawi-pom-idz { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; text-align: left;
+  border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(0, 0, 0, 0.3); color: var(--tekst); font: inherit; cursor: pointer; }
+.nawi-pom-idz:hover:not(:disabled), .nawi-pom-idz:focus-visible { border-color: var(--akcent); color: var(--akcent); outline: none; }
+.nawi-pom-idz:disabled { opacity: 0.5; cursor: not-allowed; }
+.nawi-pom-wiersz.cel .nawi-pom-idz { border-color: var(--akcent-2); color: var(--akcent-2); }
+.nawi-gwiazdka { width: 44px; flex: none; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(0, 0, 0, 0.3); color: var(--akcent-2); font-size: 18px; cursor: pointer; }
 .licznik-paliwa { display: inline-block; width: 120px; height: 8px; border: 1px solid var(--linia); border-radius: 4px; overflow: hidden; vertical-align: middle; }
 .licznik-paliwa i { display: block; height: 100%; background: var(--akcent-2); }
 

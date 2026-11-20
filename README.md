@@ -953,6 +953,17 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - **Zoom**: punkt zbliżenia to zaznaczony obiekt, a bez zaznaczenia — moja postać / okręt (dosuwa się do środka).
   Zbliżanie zatrzymuje się, gdy gwiazda zajmuje ok. 40% ekranu (bez wjeżdżania w słońce); maks. zbliżenie ISD ~500 px.
 
+## Nawigacja (nowy układ) i kariera Kadet
+
+- **Nawigacja**: nagłówek „gdzie jestem” (na okręcie: pomieszczenie, pokład, okno) i zakładki: **Tutaj** (przejście w toku
+  z licznikiem, Zmień cel / Zawróć, szybkie cele, bankomat, sklep), **Idź po okręcie** (wyszukiwarka, ulubione, pomieszczenia
+  po pokładach — zwijane, dotknięcie = idź, 🔒 kwatery wyższych stopni) albo **Dokąd?** na planecie, **Statek** (start,
+  lądowanie, skok, łączność, promy, stocznia) i **Statki i pojazdy**.
+- **Karta EotE**: kariera **Kadet** (akademia floty: Przywództwo, Dyscyplina, Opanowanie, Negocjacje, Wiedza: Światy Jądra
+  i Edukacja, Astronawigacja, Czujność) ze specjalizacją **Mówca** (Urok, Zastraszanie, Percepcja, Komputery) i talenty
+  dowódcze: Natchniona przemowa, Głos dowodzenia, Autorytet, Oficer pokładowy, Dowódca polowy, Zgrana załoga, Taktyk floty,
+  Mistrz retoryki.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

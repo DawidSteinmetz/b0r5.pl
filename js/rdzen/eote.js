@@ -66,6 +66,9 @@ export const KARIERY = {
     specjalizacje: ['pilot', 'lotr', 'zlodziej'] },
   technik: { nazwa: 'Technik', umiejetnosci: ['astronawigacja', 'komputery', 'koordynacja', 'dyscyplina', 'w_rubieze', 'mechanika', 'percepcja', 'pilotaz_plan'],
     specjalizacje: ['mechanik', 'technik_wyjety', 'haker'] },
+  // Kariera kampanii: absolwent akademii floty — wszystko, czego kapitan potrzebuje do dowodzenia okrętem liniowym.
+  kadet: { nazwa: 'Kadet', umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc'],
+    specjalizacje: ['mowca'] },
 };
 
 export const SPECJALIZACJE = {
@@ -87,6 +90,7 @@ export const SPECJALIZACJE = {
   mechanik: { nazwa: 'Mechanik', kariera: 'technik', umiejetnosci: ['bijatyka', 'mechanika', 'pilotaz_kosm', 'kretactwo'] },
   technik_wyjety: { nazwa: 'Technik spod ciemnej gwiazdy', kariera: 'technik', umiejetnosci: ['w_edukacja', 'w_polswiatek', 'mechanika', 'ulica'] },
   haker: { nazwa: 'Haker', kariera: 'technik', umiejetnosci: ['komputery', 'w_edukacja', 'w_polswiatek', 'skradanie'] },
+  mowca: { nazwa: 'Mówca', kariera: 'kadet', umiejetnosci: ['urok', 'zastraszanie', 'percepcja', 'komputery'] },
 };
 
 // Talenty: [nazwa, poziom (koszt 5 × poziom), rangi (true = można brać wielokrotnie), skrót działania (własny)].
@@ -120,6 +124,15 @@ export const TALENTY = [
   ['Mistrz pancerza', 4, false, 'Zbroja daje dodatkowy pancerz.'],
   ['Poświęcenie', 5, true, '+1 do wybranej cechy (do 6).'],
   ['Adwersarz', 0, true, 'NPC: utrudnia ataki przeciwko niemu o rangę.'],
+  // Talenty dowódcze (Kadet / Mówca): przemowy, rozkazy, prowadzenie załogi okrętu.
+  ['Natchniona przemowa', 1, false, 'Akcja Przywództwa: każdy sukces przywraca sojusznikom w zasięgu 1 punkt wysiłku.'],
+  ['Głos dowodzenia', 1, true, 'Testy Przywództwa łatwiejsze o rangę (kości wzmocnienia).'],
+  ['Autorytet', 1, true, 'Opanowanie i Przywództwo łatwiejsze o rangę; trudniej podważyć twoje rozkazy.'],
+  ['Oficer pokładowy', 2, true, 'Na mostku i w centrach kontroli: Dyscyplina i Czujność łatwiejsze o rangę.'],
+  ['Dowódca polowy', 2, false, 'Wysiłkiem i testem Przywództwa daje sojusznikom dodatkowy manewr.'],
+  ['Zgrana załoga', 3, true, 'Załoga twojego okrętu działa sprawniej: testy obsługi okrętu łatwiejsze o rangę, morale spada wolniej.'],
+  ['Taktyk floty', 4, false, 'Raz na starcie: twoja flota zaczyna z przewagą (np. wolny manewr całej formacji).'],
+  ['Mistrz retoryki', 5, false, 'Raz na sesję ulepsza kość w teście Uroku, Zastraszania albo Przywództwa.'],
 ];
 export const TALENT = Object.fromEntries(TALENTY.map(([n, p, r, o]) => [n, { poziom: p, rangi: r, opis: o }]));
 
@@ -343,6 +356,7 @@ const SZKIC = {
     najemnik: 'Oddział, w którym służył(a), został poświęcony dla czyjegoś zysku. Przeżył(a) jako jedyny(a).',
     przemytnik: 'Zrzucił(a) ładunek przed imperialną kontrolą — i od tej pory jest winny(a) komuś bardzo dużo.',
     technik: 'Złożył(a) z części coś, co działało za dobrze. Teraz szukają tego ludzie w szarych mundurach.',
+    kadet: 'Ukończył(a) akademię floty z wyróżnieniem z retoryki i taktyki; pierwszy przydział dostał(a) na pokładzie gwiezdnego niszczyciela.',
     '': 'Los rzucił go(ją) tam, gdzie pracuje dziś, i trzyma mocno.',
   },
   charakter: ['Ostrożny(a) i nieufny(a), ale lojalny(a) wobec tych, którzy raz udowodnili swoje.', 'Gaduła z poczuciem humoru, który maskuje strach.',

@@ -207,7 +207,7 @@ export default {
     } }, 'Floty / nawigacja');
 
     // Zbliżenie: małe ikonki w doku (obok głośnika), tylko gdy mapa jest otwarta — +/− (×4) i progi:
-    // galaktyka, sektor, układ, planeta, 1:1 (płynny przelot). Działa bez kółka i bez szczypania (tablet).
+    // galaktyka, sektor, układ, planeta (płynny przelot na zaznaczony obiekt albo moją pozycję).
     const IKONY_ZOOMU = [
       ['<path d="M24 12v24M12 24h24"/>', 'Przybliż', () => zoomOkolo(4)],
       ['<path d="M12 24h24"/>', 'Oddal', () => zoomOkolo(1 / 4)],
@@ -215,7 +215,6 @@ export default {
       ['<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>', 'Sektor (okolica wybranego miejsca)', () => doProgu('sektor')],
       ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ planetarny', () => doProgu('uklad')],
       ['<circle cx="21" cy="27" r="10"/><circle cx="37" cy="12" r="3.5"/>', 'Planeta i księżyce', () => doProgu('planeta')],
-      ['<path d="M13 17l5-4v23M31 17l5-4v23M24 21v1M24 30v1"/>', 'Zbliżenie 1:1 na twój okręt', () => doProgu('max')],
     ].map(([ikona, tytul, akcja]) => ({ ikona, tytul, akcja }));
     if (ctx.dok) ctx.dok(IKONY_ZOOMU);
 
@@ -743,43 +742,51 @@ export default {
       };
     }
 
-    // Układ, wokół którego ustawiamy próg: wybrany (planeta/gwiazda/punkt), mój okręt, środek ekranu, moja planeta.
-    function fokus() {
+    // Cel progu zbliżenia: zaznaczony obiekt, a bez zaznaczenia — moja pozycja (okręt na orbicie, w punkcie układu,
+    // w locie). { x, y (pc), k (km od słońca albo null), p (układ — do skali) } albo null.
+    function celProgu() {
+      const w0 = wybrane;
+      const zObiektu = (o) => {
+        const poz = pozycjaTeraz(o);
+        if (!poz) return null;
+        const pl = planetaObiektu(o);
+        let k = poz.k;
+        if (pl && !o.uklad_k && postepLotu(o) == null) {
+          // na orbicie: dokładne miejsce okrętu (promień według podejścia, kąt z miejsca na orbicie)
+          const c = cyklPlanety(pl);
+          const kP = kmWUkladzie(pl);
+          if (kP) {
+            const Rpl = (c?.srednica_km || 12000) / 2;
+            const ro = { bliska: Rpl + 300, srednia: Rpl * 4 }[o.podejscie] ?? Rpl * 15;
+            const a = miejsceNaOrbicie(o) * RAD;
+            k = [kP[0] + Math.cos(a) * ro, kP[1] + Math.sin(a) * ro];
+          }
+        }
+        return { x: poz.x, y: poz.y, k, p: pl || ukladWPunkcie(poz.x, poz.y) };
+      };
+      if (w0?.obiekt) return zObiektu(w0.obiekt);
+      if (w0?.planeta) return { x: w0.planeta.x, y: w0.planeta.y, k: kmWUkladzie(w0.planeta), p: w0.planeta };
+      if (w0?.gwiazda) return { x: w0.gwiazda.x, y: w0.gwiazda.y, k: [0, 0], p: w0.gwiazda };
+      if (w0?.punkt) return { x: w0.punkt.x, y: w0.punkt.y, k: w0.punkt.k || null, p: w0.punkt.uklad || ukladWPunkcie(w0.punkt.x, w0.punkt.y) };
       const moj = mojZnacznik();
-      return wybrane?.planeta || wybrane?.gwiazda || wybrane?.punkt?.uklad
-        || (wybrane?.obiekt && planetaObiektu(wybrane.obiekt)) || (moj && planetaObiektu(moj))
-        || (moj && ukladWPunkcie(Number(moj.x), Number(moj.y))) || ukladWPunkcie(...naMape(szer / 2, wys / 2)) || tuPlaneta;
+      if (moj) return zObiektu(moj);
+      return tuPlaneta ? { x: tuPlaneta.x, y: tuPlaneta.y, k: kmWUkladzie(tuPlaneta), p: tuPlaneta } : null;
     }
+
+    // Progi: sektor, układ, planeta — skala progu, środek na celu (zaznaczenie się nie zmienia).
     function doProgu(prog) {
-      const p = fokus();
+      const c = celProgu();
+      if (!c) return;
       const kr = Math.min(szer, wys) * 0.42; // promień widoku w px
-      if (prog === 'sektor') {
-        const c = p || { x: naMape(szer / 2, wys / 2)[0], y: naMape(szer / 2, wys / 2)[1] };
-        return przelec(c.x, c.y, 4);
-      }
-      if (!p) return;
-      const cykl = cyklPlanety(p);
+      if (prog === 'sektor') return przelec(c.x, c.y, 4, null, c.k);
+      const cykl = c.p ? cyklPlanety(c.p) : null;
       if (prog === 'uklad') {
         const Rbrzeg = (cykl?.krawedz_au || 50) * KM_NA_AU;
-        return przelec(p.x, p.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), () => wybierz({ planeta: p }));
+        return przelec(c.x, c.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), null, c.k);
       }
-      const kP = kmWUkladzie(p) || [0, 0];
-      if (prog === 'planeta') {
-        const ks = cykl?.ksiezyce || [];
-        const R = Math.max((cykl?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
-        return przelec(p.x, p.y, Math.min(ZOOM_MAKS, kr / (R / KM_NA_PC)), () => wybierz({ planeta: p }), kP);
-      }
-      // 1:1 — zaznaczona jednostka albo mój okręt (na orbicie: w jego miejscu na orbicie), inaczej planeta.
-      const moj = wybrane?.obiekt || mojZnacznik();
-      let k = kP;
-      if (moj?.uklad_k) k = moj.uklad_k;
-      else if (moj && planetaObiektu(moj) === p) {
-        const Rpl = (cykl?.srednica_km || 12000) / 2;
-        const ro = { bliska: Rpl + 300, srednia: Rpl * 4 }[moj.podejscie] ?? Rpl * 15;
-        const a = miejsceNaOrbicie(moj) * RAD;
-        k = [kP[0] + Math.cos(a) * ro, kP[1] + Math.sin(a) * ro];
-      }
-      przelec(p.x, p.y, ZOOM_MAKS / 4, null, k);
+      const ks = cykl?.ksiezyce || [];
+      const R = Math.max((cykl?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
+      przelec(c.x, c.y, Math.min(ZOOM_MAKS, Math.max(PROG_UKLADU, kr / (R / KM_NA_PC))), null, c.k);
     }
 
     // ---------- rysowanie ----------

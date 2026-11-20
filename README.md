@@ -903,7 +903,7 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## Mapa: zbliżenie przyciskami, księżyce, tajne planety (2026-11-20)
 
-- **Zbliżenie przyciskami** (ikonki w doku przy otwartej mapie): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta · 1:1** z płynnym
+- **Zbliżenie przyciskami** (ikonki w doku przy otwartej mapie): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta** z płynnym
   przelotem. Próg dotyczy wybranego ciała, a bez wyboru — układu twojego okrętu albo środka ekranu. 1:1 — twój okręt.
 - **Księżyce** na mapie mają stronę dzienną i nocną (od kierunku na słońce), jak planety.
 - Dane mapy w pamięci tabletu są przypisane do konta: po zmianie konta bez przeładowania strony mapa pobiera planety od nowa
@@ -941,7 +941,7 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   Generator: `narzedzia/wnetrza_svg.py` (dopisz funkcję i wpis w `GRAFIKI`, uruchom).
 - **Hangar** (pomieszczenie z oknem „hangar”): rama i wrota — zamknięte w nadprzestrzeni, otwarte poza nią (ok. 3 s ruchu).
   W ISD to szyb startowy w brzuchu okrętu: pokład dookoła, ściany szybu z poszycia, na dnie przestrzeń albo planeta.
-- **Zbliżenie mapy**: małe ikonki w doku obok głośnika (+, −, galaktyka, sektor, układ, planeta, 1:1), tylko przy
+- **Zbliżenie mapy**: małe ikonki w doku obok głośnika (+, −, galaktyka, sektor, układ, planeta), tylko przy
   otwartej mapie (`ctx.dok([...])` — aplikacja może dodać własne ikonki doku; znikają przy jej zamknięciu).
 
 ## Dostęp do pomieszczeń według stopnia; zoom wokół gracza

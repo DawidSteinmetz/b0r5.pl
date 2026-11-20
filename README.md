@@ -792,10 +792,10 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   brzeg układu; ciała mniejsze niż kilka pikseli to kropki. Pusty punkt w widoku układu otwiera kartę
   punktu (odległość od słońca i planety) ze skokiem i lotem podświetlnym tam. Zoom przyciąga się do ciała
   tylko, gdy kursor jest na nim. Bez napisu „Jesteś tutaj” — sam pierścień radaru.
-- **Silniki podświetlne** (migracja 038, `mapa_naped_jednostki.przyspieszenie_g`): lot to rozpędzanie do połowy
-  drogi i hamowanie, czas = 2 · √(droga / przyspieszenie); flota leci tempem najsłabszej jednostki. ISD 2300 G,
-  Lambda 1400 G, Gozanti 2500 G, Arquitens 3000 G, Kom'rk 3500 G (MG: profil napędu). ISD: księżyc ok. 5 min,
-  1 j.a. ok. 1,4 h, brzeg układu → planeta ok. 10 h, 1 pc ok. 27 dni.
+- **Silniki podświetlne** (migracja 039, `mapa_naped_jednostki.podswietlna_pc_doba`): szybki rozpęd i hamowanie
+  (2 min), potem stała prędkość przelotowa; flota leci tempem najwolniejszej jednostki. Skala: Sokół Millennium
+  z Hoth na Bespin (132,9 pc) w ok. 3 dni = 45 pc/doba. Kom'rk 35, Arquitens 28, ISD 22, Gozanti 20, Lambda 15
+  (MG: profil napędu). Lot w układzie ok. 2 min. Migracja 038 (przyspieszenie w G) jest zastąpiona.
 - **Pozycja w układzie:** `mapa_obiekty.uklad_kx/ky` — km od słońca, gdy jednostka nie stoi przy planecie.
 - **Studnie grawitacyjne** wokół ciał: słońce 20 promieni, planeta 100 promieni. Skok i lot nie mogą
   przez nie przejść ani w nich się kończyć — poza skokiem automatem na orbitę planety (wariant B) i odlotem.

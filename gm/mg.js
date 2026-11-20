@@ -224,7 +224,7 @@ async function floty() {
         komputer_klasa: num('Komputer (1–5)', j.komputer_klasa, '1'),
         oslony: num('Osłony %', j.oslony ?? 100, '1'), kadlub: num('Kadłub %', j.kadlub ?? 100, '1'),
         predkosc_podswietlna_kms: num('Podświetlna km/s', j.predkosc_podswietlna_kms ?? 300, '10'),
-        ...(j.przyspieszenie_g != null ? { przyspieszenie_g: num('Przyspieszenie G', j.przyspieszenie_g, '50') } : {}),
+        ...(j.podswietlna_pc_doba != null ? { podswietlna_pc_doba: num('Podświetlna pc/doba', j.podswietlna_pc_doba, '0.5') } : {}),
       };
       // Stan komputera: zhakowany = automat działa, ale po cichu daje duży rozrzut; przejęty/brak = mostek liczy ręcznie.
       const stanKomputera = h('select', ['sprawny', 'zhakowany', 'przejety', 'brak'].map((v) => h('option', { value: v, selected: (j.komputer_stan || 'sprawny') === v }, v)));

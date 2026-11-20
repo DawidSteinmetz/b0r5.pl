@@ -1,3 +1,6 @@
+-- ZASTĄPIONA przez 039 (prędkość przelotowa w pc na dobę): tej migracji nie trzeba importować;
+-- jeśli już jest w bazie, kolumna przyspieszenie_g po prostu nie jest używana.
+--
 -- Silniki podświetlne: przyspieszenie zamiast stałej prędkości.
 --
 -- mapa_naped_jednostki.przyspieszenie_g — przyspieszenie (w G = 9,81 m/s²). Lot podświetlny to rozpędzanie

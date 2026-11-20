@@ -239,42 +239,48 @@ function floty_czas_do_punktu(array $j, float $kierunek, int $teraz): int
     if ($R === null) return 0;
     $orbita = $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kat(floty_kurs_teraz($j, $teraz) + 180);
     $luk = $R * deg2rad(abs(floty_kat_roznica($orbita, $kierunek)));
-    if (isset($j['przyspieszenie_g'])) return (int) ceil(floty_czas_lotu_s($luk + max(0.0, PUNKT_SKOKU_KM - $R), (float) $j['przyspieszenie_g']));
+    if (isset($j['podswietlna_pc_doba'])) return (int) ceil(floty_czas_lotu_s($luk + max(0.0, PUNKT_SKOKU_KM - $R), (float) $j['podswietlna_pc_doba']));
     $v = max(10.0, (float) ($j['predkosc_podswietlna_kms'] ?? 300));
     return (int) ceil($luk / max(1.0, $v / 15) + max(0.0, PUNKT_SKOKU_KM - $R) / $v);
 }
 
 // ---------- lot podświetlny ----------
 // Zwykłe silniki: czas gry 1:1 (MG może przyspieszyć resynchronizacją). Trasa w km: między planetą
-// a jej księżycem z promienia obiegu, poza tym z odległości na mapie (1 pc ≈ 30,9 bln km — lot do
-// innego układu trwa lata i gra pokazuje to uczciwie). Flota leci razem tempem najwolniejszej jednostki:
+// a jej księżycem z promienia obiegu, w układzie — w km od słońca, poza tym z odległości na mapie.
+// Prędkość przelotowa w pc na dobę (migracja 039; ISD 22 — sąsiedni układ w kilka dni, lot w układzie
+// ok. 2 minut na rozpęd i hamowanie). Flota leci razem tempem najwolniejszej jednostki:
 // obrót na kurs, rozpędzanie, przelot, hamowanie. Po przylocie przy planecie: daleka orbita.
 const KM_NA_PC = 30856775814913.7;
-const LOT_ROZPED_S = 120;        // rozpędzanie i hamowanie razem (model stałej prędkości, bez migracji 038)
-const G_MS2 = 9.80665;
+const LOT_ROZPED_S = 120;        // rozpędzanie i hamowanie razem
 
-// Silniki podświetlne z przyspieszeniem (migracja 038): rozpędzanie do połowy drogi, potem hamowanie.
+// Silniki podświetlne (migracja 039): szybki rozpęd i hamowanie (LOT_ROZPED_S), potem stała prędkość
+// przelotowa w pc na dobę. Skala: Sokół Millennium z Hoth na Bespin (132,9 pc) w ok. 3 dni = 45 pc/doba.
 function floty_przyspieszenie_dostepne(): bool
 {
     static $jest = null;
     if ($jest === null) {
-        try { polaczenie_bazy()->query('SELECT przyspieszenie_g FROM mapa_naped_jednostki LIMIT 0'); $jest = true; }
+        try { polaczenie_bazy()->query('SELECT podswietlna_pc_doba FROM mapa_naped_jednostki LIMIT 0'); $jest = true; }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
 }
 
-// Czas lotu (s): 2 · √(droga / przyspieszenie).
-function floty_czas_lotu_s(float $km, float $g): float
+// Prędkość przelotowa (km/s) z pc na dobę.
+function floty_kms_z_pc_doba(float $pcDoba): float
 {
-    return 2 * sqrt(max(0.0, $km) * 1000 / (max(1.0, $g) * G_MS2));
+    return max(0.01, $pcDoba) * KM_NA_PC / 86400;
 }
 
-// Ułamek drogi po ułamku czasu u: przyspieszanie do połowy, potem hamowanie.
+// Czas lotu (s): rozpęd i hamowanie + droga / prędkość przelotowa.
+function floty_czas_lotu_s(float $km, float $pcDoba): float
+{
+    return LOT_ROZPED_S + max(0.0, $km) / floty_kms_z_pc_doba($pcDoba);
+}
+
+// Ułamek drogi po ułamku czasu u (rozpęd i hamowanie są krótkie — równe tempo).
 function floty_lot_ulamek(float $u): float
 {
-    $u = max(0.0, min(1.0, $u));
-    return $u < 0.5 ? 2 * $u * $u : 1 - 2 * (1 - $u) ** 2;
+    return max(0.0, min(1.0, $u));
 }
 // Strefa grawitacyjna układu (studnia): w tym promieniu od planety jednostka jest w jej układzie. Komputer
 // nawigacyjny nie pozwala w niej wyjść z nadprzestrzeni (poza skokiem do tego układu) ani przez nią przeskoczyć
@@ -525,7 +531,7 @@ function floty_lot(array $odbiorcy, array $w): array
     $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
             o.lot_do_utc,COALESCE(n.obrot_deg_na_min,90) AS obrot,COALESCE(n.predkosc_podswietlna_kms,300) AS v" . (floty_uklad_dostepny() ? ',o.uklad_kx,o.uklad_ky' : '')
-            . (floty_przyspieszenie_dostepne() ? ',COALESCE(n.przyspieszenie_g,2500) AS g' : '') . "
+            . (floty_przyspieszenie_dostepne() ? ',COALESCE(n.podswietlna_pc_doba,20) AS g' : '') . "
         FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($marks) AND o.aktywny=1");
     $q->execute($odbiorcy);
     $jednostki = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -533,7 +539,7 @@ function floty_lot(array $odbiorcy, array $w): array
     $teraz = czas_teraz();
     $obrot = min(array_map(fn($j) => (float) $j['obrot'] ?: 90.0, $jednostki));
     $v = max(10.0, min(array_map(fn($j) => (float) $j['v'], $jednostki)));
-    $g = floty_przyspieszenie_dostepne() ? max(1.0, min(array_map(fn($j) => (float) $j['g'], $jednostki))) : null;
+    $g = floty_przyspieszenie_dostepne() ? max(0.01, min(array_map(fn($j) => (float) $j['g'], $jednostki))) : null; // pc na dobę
     $wyliczone = [];
     foreach ($jednostki as $j) {
         if ($j['x'] === null || $j['y'] === null) blad('Jednostka „' . $j['nazwa'] . '” nie ma pozycji mapowej.');
@@ -566,12 +572,12 @@ function floty_lot(array $odbiorcy, array $w): array
             'kurs0' => $kursTeraz, 'kurs' => $kurs, 'manewr' => floty_czas_manewru(floty_kat_roznica($kursTeraz, $kurs), $obrot)];
     }
     $km = max(array_column($wyliczone, 'km'));
-    // Z przyspieszeniem: rozpędzanie do połowy drogi i hamowanie (prędkość szczytowa w połowie).
+    // Rozpęd i hamowanie (2 min) + przelot z prędkością przelotową najwolniejszej jednostki.
     $lotS = $g ? czas_trwania(floty_czas_lotu_s($km, $g) / 60) : czas_trwania(($km / $v + LOT_ROZPED_S) / 60);
-    $vMaks = $g ? $g * G_MS2 * floty_czas_lotu_s($km, $g) / 2 / 1000 : $v;
+    $vMaks = $g ? floty_kms_z_pc_doba($g) : $v;
     $od = $teraz + max(array_column($wyliczone, 'manewr'));
     $do = $od + $lotS;
-    $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => round($vMaks), 'przyspieszenie_g' => $g, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
+    $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => round($vMaks), 'pc_doba' => $g, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
         'cel' => ['x' => $x, 'y' => $y, 'k' => $celK, 'planeta' => $celId ? ruch_planeta((string) $celId)['nazwa'] ?? null : null]];
     if (!empty($w['plan'])) return $wynik + ['plan' => true];
     $db->beginTransaction();
@@ -1100,7 +1106,7 @@ function floty_lista(string $login, bool $mg = false): array
         . (floty_hangar_dostepny() ? 'o.w_hangarze,(SELECT nazwa FROM mapa_obiekty WHERE id=o.okret_macierzysty_id) AS okret_macierzysty,(SELECT nazwa FROM lokalizacje WHERE id=o.ladowanie_cel_id) AS cel_ladowania,' : '')
         . (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny() ? 'o.wlasciciel_login,o.lokalizator_zasieg_pc,o.lokalizator_aktywny,' : '')
         . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '')
-        . (floty_przyspieszenie_dostepne() ? 'COALESCE(n.przyspieszenie_g,2500) AS przyspieszenie_g,' : '')
+        . (floty_przyspieszenie_dostepne() ? 'COALESCE(n.podswietlna_pc_doba,20) AS podswietlna_pc_doba,' : '')
         . (floty_lot_dostepny() ? 'o.lot_cel_x,o.lot_cel_y,o.lot_od_utc,o.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS lot_cel_planeta,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc,r.wariant
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
@@ -1820,9 +1826,9 @@ function obsluz_floty(string $akcja, bool $post): void
             if (!$id || min($params[0],$params[1],$params[2],$params[3],$params[5]) <= 0 || $params[4] < 0 || $params[4] > $params[5] || $params[6] < 0) blad('Sprawdź dodatnie parametry napędu i poziom paliwa.');
             $q = polaczenie_bazy()->prepare('INSERT INTO mapa_naped_jednostki (obiekt_id,moc_reaktora,moc_hipernapedu,klasa_hipernapedu,predkosc_pc_na_godzine,paliwo,paliwo_maks,paliwo_na_parsek,sprawnosc_reaktora,sprawnosc_hipernapedu,szum_bazowy,obrot_deg_na_min,komputer_klasa,komputer_stan) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE obrot_deg_na_min=VALUES(obrot_deg_na_min),komputer_klasa=VALUES(komputer_klasa),komputer_stan=VALUES(komputer_stan), moc_reaktora=VALUES(moc_reaktora),moc_hipernapedu=VALUES(moc_hipernapedu),klasa_hipernapedu=VALUES(klasa_hipernapedu),predkosc_pc_na_godzine=VALUES(predkosc_pc_na_godzine),paliwo=VALUES(paliwo),paliwo_maks=VALUES(paliwo_maks),paliwo_na_parsek=VALUES(paliwo_na_parsek),sprawnosc_reaktora=VALUES(sprawnosc_reaktora),sprawnosc_hipernapedu=VALUES(sprawnosc_hipernapedu),szum_bazowy=VALUES(szum_bazowy)');
             $q->execute([$id,...$params]);
-            if (floty_przyspieszenie_dostepne() && isset($w['przyspieszenie_g'])) {
-                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET przyspieszenie_g=? WHERE obiekt_id=?')
-                    ->execute([max(10, min(100000, (float) $w['przyspieszenie_g'])), $id]);
+            if (floty_przyspieszenie_dostepne() && isset($w['podswietlna_pc_doba'])) {
+                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET podswietlna_pc_doba=? WHERE obiekt_id=?')
+                    ->execute([max(0.1, min(1000, (float) $w['podswietlna_pc_doba'])), $id]);
             }
             if (floty_punkt_dostepny() && isset($w['predkosc_podswietlna_kms'])) {
                 polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET predkosc_podswietlna_kms=? WHERE obiekt_id=?')

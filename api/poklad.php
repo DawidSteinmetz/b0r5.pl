@@ -215,7 +215,132 @@ function wnetrze_info(array $u, int $okretId): ?array
     $p = $st['przejscie'];
     return ['tu' => ['id' => $tu['id'], 'nazwa' => $tu['krotka'], 'grupa' => $tu['grupa'], 'okno' => $tu['okno']],
         'przejscie' => $p ? ['cel' => (int) $p['cel'], 'cel_nazwa' => $w[(int) $p['cel']]['krotka'] ?? '?', 'od' => (int) $p['od'], 'do' => (int) $p['do']] : null,
-        'hangar_promow' => $hangar, 'pomieszczenia' => $lista, 'skroty' => $skroty];
+        'hangar_promow' => $hangar, 'pomieszczenia' => $lista, 'skroty' => $skroty,
+        'inspekcja' => inspekcja_info($u, $okretId, $p ? null : $tu)];
+}
+
+// ---------- inspekcja załogi ----------
+// Oficer (od chorążego; kapitan okrętu i MG zawsze) rozmawia z grupą załogi w pomieszczeniu: ok. 15 min, potem test
+// Przywództwa (pula z karty EotE: Prezencja i ranga Przywództwa; bez karty — średnia). Wynik: 1–3 PD (do „PD zdobytych”
+// karty EotE) i zmiana morale grupy na tym okręcie (sukces w górę, porażka w dół). Ta sama grupa raz na 24 h.
+// Dane: datapad_dane → morale (okręt → grupa → 0–100), karta → inspekcja / inspekcja_wynik / inspekcje_ostatnie.
+const INSPEKCJA_S = 900;
+const INSPEKCJA_PRZERWA_S = 86400;
+const INSPEKCJA_MIN_STOPIEN = 4;
+const GRUPY_ZALOGI = [
+    ['piloci', 'Piloci i obsługa hangaru', ['hangar', 'pilot', 'myśliwc', 'tie', 'promów', 'zatoka']],
+    ['traktor', 'Operatorzy promieni ściągających', ['traktor', 'ściągając']],
+    ['artylerzysci', 'Artylerzyści', ['uzbrojen', 'dział', 'turbolaser', 'torped', 'kierowania ogniem', 'baterii', 'wież']],
+    ['technicy', 'Technicy maszynowni', ['maszynown', 'silnik', 'napęd', 'reaktor', 'energ', 'chłodz', 'rozdzieln', 'generator']],
+    ['mostek', 'Załoga mostka', ['mostek', 'centrum', 'nawigac', 'łączno', 'sala odpraw', 'kontroli']],
+    ['szturmowcy', 'Szturmowcy', ['szturmow', 'koszar', 'zbrojown']],
+    ['medycy', 'Personel medyczny', ['medycz', 'szpital', 'lekarz', 'zabieg', 'operac', 'izba przyjęć']],
+    ['straz', 'Straż więzienna', ['więzien', 'cele', 'zatrzyma', 'przesłuch']],
+    ['marynarze', 'Marynarze i obsługa okrętu', ['mesa', 'stołów', 'kwater', 'sypial', 'magazyn', 'warsztat', 'korytarz']],
+];
+const INSPEKCJA_OPISY = [
+    'sukces' => ['Załoga prostuje się, gdy wchodzisz. Kilka konkretnych pytań, krótka pochwała — widać, że to docenili.',
+        'Wysłuchujesz meldunków, poprawiasz drobiazg w procedurze i zostawiasz ich z poczuciem, że ktoś na górze o nich pamięta.',
+        'Rozmowa idzie gładko; najmłodszy z grupy odważa się zadać pytanie, a ty odpowiadasz bez wahania.'],
+    'porazka' => ['Rozmowa się nie klei. Odpowiedzi są zdawkowe, a po twoim wyjściu słychać szepty.',
+        'Twoje uwagi brzmią jak reprymenda, choć nie miały. Ktoś zaciska szczęki i patrzy w podłogę.',
+        'Nie masz odpowiedzi na proste pytanie o przydziały — grupa zauważa to od razu.'],
+];
+
+function grupa_zalogi(string $nazwa): ?array
+{
+    $n = mb_strtolower($nazwa);
+    foreach (GRUPY_ZALOGI as [$k, $opis, $wzory]) foreach ($wzory as $w) if (str_contains($n, $w)) return ['klucz' => $k, 'nazwa' => $opis];
+    return null;
+}
+
+function morale_grupy(int $okret, string $grupa): int
+{
+    return (int) (wczytaj('morale', [])[(string) $okret][$grupa] ?? 60);
+}
+
+function inspekcja_uprawniona(array $u, int $okret): bool
+{
+    if (($u['rola'] ?? '') === 'mg') return true;
+    if (function_exists('wskazniki_kapitan') && wskazniki_kapitan('okret:' . $okret, $u)) return true;
+    return stopien_rangi((string) ($u['ranga'] ?? '')) >= INSPEKCJA_MIN_STOPIEN;
+}
+
+// Kości EotE (uproszczone ściany): zdolność (zielona), biegłość (żółta), trudność (fioletowa). [sukcesy, przewagi].
+function kosc_rzut(string $rodzaj): array
+{
+    $sciany = [
+        'z' => [[0, 0], [1, 0], [1, 0], [2, 0], [0, 1], [0, 1], [1, 1], [0, 2]],
+        'b' => [[0, 0], [1, 0], [1, 0], [2, 0], [2, 0], [0, 1], [1, 1], [1, 1], [1, 1], [0, 2], [0, 2], [1, 0]],
+        't' => [[0, 0], [-1, 0], [-2, 0], [0, -1], [0, -1], [0, -1], [0, -2], [-1, -1]],
+    ][$rodzaj];
+    return $sciany[random_int(0, count($sciany) - 1)];
+}
+
+function inspekcja_test(array $karta, int $trudnosc): array
+{
+    $e = $karta['eote'] ?? null;
+    $cecha = (int) ($e['cechy']['prezencja'] ?? 2);
+    $ranga = (int) ($e['umiejetnosci']['przywodztwo']['ranga'] ?? ($e ? 0 : 1));
+    $b = min($cecha, $ranga); $z = max($cecha, $ranga) - $b;
+    $s = 0; $p = 0;
+    foreach (array_merge(array_fill(0, $z, 'z'), array_fill(0, $b, 'b'), array_fill(0, $trudnosc, 't')) as $k) {
+        [$ds, $dp] = kosc_rzut($k); $s += $ds; $p += $dp;
+    }
+    return ['sukcesy' => $s, 'przewagi' => $p, 'pula' => "{$z} zdolności, {$b} biegłości, {$trudnosc} trudności"];
+}
+
+// Zakończenie inspekcji, która minęła: wynik, PD i morale (raz).
+function inspekcja_dokoncz(string $uid): void
+{
+    $k = karta($uid);
+    $i = $k['inspekcja'] ?? null;
+    if (!$i || time() < (int) $i['do']) return;
+    $morale = morale_grupy((int) $i['okret'], (string) $i['grupa']);
+    $test = inspekcja_test($k, $morale < 30 ? 3 : 2);
+    $ok = $test['sukcesy'] > 0;
+    $zmiana = $ok ? min(20, 4 + 3 * $test['sukcesy'] + max(0, $test['przewagi'])) : -min(20, 4 + 3 * abs($test['sukcesy']) + max(0, -$test['przewagi']));
+    $pd = $ok ? ($test['sukcesy'] >= 3 ? 3 : 2) : 1;
+    zmien('morale', function (&$m) use ($i, $zmiana) {
+        $o = (string) $i['okret']; $g = (string) $i['grupa'];
+        $m[$o][$g] = max(0, min(100, (int) ($m[$o][$g] ?? 60) + $zmiana));
+    });
+    $opisy = INSPEKCJA_OPISY[$ok ? 'sukces' : 'porazka'];
+    $wynik = ['grupa' => $i['grupa_nazwa'], 'pomieszczenie' => $i['pomieszczenie_nazwa'], 'sukces' => $ok, 'opis' => $opisy[random_int(0, count($opisy) - 1)],
+        'morale_zmiana' => $zmiana, 'morale' => max(0, min(100, $morale + $zmiana)), 'pd' => $pd, 'test' => $test, 'czas' => (int) $i['do']];
+    zmien('karty', function (&$karty) use ($uid, $i, $wynik, $pd) {
+        unset($karty[$uid]['inspekcja']);
+        $karty[$uid]['inspekcja_wynik'] = $wynik;
+        $karty[$uid]['inspekcje_ostatnie'][$i['okret'] . ':' . $i['grupa']] = (int) $i['do'];
+        if (isset($karty[$uid]['eote']) && is_array($karty[$uid]['eote'])) {
+            $karty[$uid]['eote']['pd']['zdobyte'] = (int) ($karty[$uid]['eote']['pd']['zdobyte'] ?? 0) + $pd;
+        } else {
+            $karty[$uid]['pd_bez_karty'] = (int) ($karty[$uid]['pd_bez_karty'] ?? 0) + $pd;
+        }
+    });
+}
+
+// Stan inspekcji do Nawigacji: trwa / wynik ostatniej / czy można w obecnym pomieszczeniu (grupa, morale, przerwa).
+function inspekcja_info(array $u, int $okret, ?array $tu): ?array
+{
+    $uid = (string) $u['id'];
+    inspekcja_dokoncz($uid);
+    $k = karta($uid);
+    $info = ['trwa' => null, 'wynik' => $k['inspekcja_wynik'] ?? null, 'mozna' => false];
+    if (!empty($k['inspekcja'])) {
+        $i = $k['inspekcja'];
+        $info['trwa'] = ['grupa' => $i['grupa_nazwa'], 'od' => (int) $i['od'], 'do' => (int) $i['do']];
+        return $info;
+    }
+    $g = $tu ? grupa_zalogi((string) $tu['krotka']) : null;
+    if (!$g) return $info + ['powod' => $tu ? 'W tym pomieszczeniu nie ma załogi do inspekcji.' : null];
+    $info['grupa'] = $g['nazwa'];
+    if (!inspekcja_uprawniona($u, $okret)) return $info + ['powod' => 'Inspekcję prowadzi oficer (od chorążego).'];
+    $info['morale'] = morale_grupy($okret, $g['klucz']);
+    $ostatnio = (int) ($k['inspekcje_ostatnie'][$okret . ':' . $g['klucz']] ?? 0);
+    if ($ostatnio && time() - $ostatnio < INSPEKCJA_PRZERWA_S) return $info + ['powod' => 'Z tą grupą rozmawiałeś w ciągu ostatniej doby.', 'znowu' => $ostatnio + INSPEKCJA_PRZERWA_S];
+    $info['mozna'] = true;
+    return $info;
 }
 
 // Widok z pomieszczenia (scena na pulpicie): rodzaj okna i nazwa pomieszczenia (w trakcie przejścia — korytarz).
@@ -231,6 +356,8 @@ function wnetrze_widok(string $uid, int $okretId): ?array
 
 function obsluz_poklad(string $akcja, bool $post): void
 {
+    if ($akcja === 'inspekcja_start' || $akcja === 'inspekcja_zamknij') { obsluz_inspekcje($akcja, $post); return; }
+    if ($akcja === 'mg_morale') { wymagaj_mg(); odpowiedz(['morale' => morale_lista()]); }
     if ($akcja !== 'poklad_idz') return;
     // Przejście do innego pomieszczenia okrętu (czas z planu wnętrza; odliczanie w Nawigacji).
     if (!$post) blad('Zła metoda.', 405);
@@ -249,6 +376,53 @@ function obsluz_poklad(string $akcja, bool $post): void
     if ($cel === $od) { wnetrze_zapisz($uid, $okret, $od); odpowiedz(['ok' => true, 'koniec' => time()]); }
     $czas = wnetrze_czas_s($w, $od, $cel);
     $teraz = time();
+    // Wyjście z pomieszczenia przerywa trwającą inspekcję.
+    zmien('karty', function (&$k) use ($uid) { unset($k[$uid]['inspekcja']); });
     wnetrze_zapisz($uid, $okret, $od, ['cel' => $cel, 'od' => $teraz, 'do' => $teraz + $czas]);
     odpowiedz(['ok' => true, 'koniec' => $teraz + $czas, 'cel' => $w[$cel]['krotka'], 'min' => round($czas / 60, 1)]);
+}
+
+// Rozpoczęcie inspekcji w obecnym pomieszczeniu; „zamknij” — schowanie wyniku ostatniej.
+function obsluz_inspekcje(string $akcja, bool $post): void
+{
+    if (!$post) blad('Zła metoda.', 405);
+    $u = wymagaj_logowania();
+    $uid = (string) $u['id'];
+    if ($akcja === 'inspekcja_zamknij') {
+        zmien('karty', function (&$k) use ($uid) { unset($k[$uid]['inspekcja_wynik']); });
+        odpowiedz(['ok' => true]);
+    }
+    $gdzie = ruch_gdzie(karta($uid), ruch_lokacje());
+    $okret = (int) ($gdzie['okret_id'] ?? 0);
+    $st = $okret ? wnetrze_postaci($uid, $okret, $u) : null;
+    if (!$st) blad('Inspekcję prowadzi się na pokładzie okrętu z planem wnętrza.');
+    if ($st['przejscie']) blad('Najpierw dojdź na miejsce.');
+    $w = wnetrze_wezly($st['plan']);
+    $tu = $w[$st['pomieszczenie']];
+    $info = inspekcja_info($u, $okret, $tu);
+    if ($info['trwa']) blad('Inspekcja już trwa.');
+    if (!$info['mozna']) blad($info['powod'] ?? 'Tu nie ma kogo wizytować.');
+    $g = grupa_zalogi((string) $tu['krotka']);
+    $teraz = time();
+    $i = ['okret' => $okret, 'grupa' => $g['klucz'], 'grupa_nazwa' => $g['nazwa'], 'pomieszczenie' => $st['pomieszczenie'],
+        'pomieszczenie_nazwa' => $tu['krotka'], 'od' => $teraz, 'do' => $teraz + INSPEKCJA_S];
+    zmien('karty', function (&$k) use ($uid, $i) { $k[$uid]['inspekcja'] = $i; unset($k[$uid]['inspekcja_wynik']); });
+    odpowiedz(['ok' => true, 'koniec' => $i['do'], 'grupa' => $g['nazwa']]);
+}
+
+// Morale załóg wszystkich okrętów (panel MG).
+function morale_lista(): array
+{
+    $m = wczytaj('morale', []);
+    $nazwy = [];
+    if ($m && tabela_sql_dostepna('mapa_obiekty')) {
+        $ids = array_map('intval', array_keys($m));
+        $q = polaczenie_bazy()->prepare('SELECT id, nazwa FROM mapa_obiekty WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+        $q->execute($ids);
+        $nazwy = $q->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    $grupy = array_column(GRUPY_ZALOGI, 1, 0);
+    $wynik = [];
+    foreach ($m as $okret => $g) foreach ($g as $k => $v) $wynik[] = ['okret' => $nazwy[$okret] ?? "#{$okret}", 'grupa' => $grupy[$k] ?? $k, 'morale' => (int) $v];
+    return $wynik;
 }

@@ -964,6 +964,17 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   dowódcze: Natchniona przemowa, Głos dowodzenia, Autorytet, Oficer pokładowy, Dowódca polowy, Zgrana załoga, Taktyk floty,
   Mistrz retoryki.
 
+## Inspekcja załogi i morale
+
+- W Nawigacji (zakładka **Tutaj**) oficer (od chorążego; kapitan okrętu i MG zawsze) widzi załogę pomieszczenia (grupa
+  z nazwy pomieszczenia: piloci i obsługa hangaru, operatorzy promieni ściągających, artylerzyści, technicy, załoga mostka,
+  szturmowcy, medycy, straż więzienna, marynarze) i jej morale. **Inspekcja** trwa 15 min (wyjście z pomieszczenia
+  przerywa), potem test Przywództwa z karty EotE (Prezencja + ranga Przywództwa, trudność 2; przy morale < 30 — 3;
+  bez karty — pula średnia). Sukces: morale grupy w górę, 2–3 PD; porażka: morale w dół, 1 PD. PD trafiają do „PD zdobytych”
+  karty EotE. Ta sama grupa na okręcie raz na 24 h. Raport z opisem rozmowy widać do zamknięcia.
+- Dane: `datapad_dane` → `morale` (okręt → grupa → 0–100, start 60) i karta postaci (bez migracji). Panel MG → Stan postaci:
+  karta **Morale załóg**. Grupy i wzorce nazw: `GRUPY_ZALOGI` w api/poklad.php.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

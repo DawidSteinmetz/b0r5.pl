@@ -578,6 +578,9 @@ html.z-tlem .szybka { background: rgba(20, 14, 4, 0.7); backdrop-filter: blur(3p
 .nawi-w-drodze { border-color: var(--akcent-2); }
 .nawi-licznik { font-size: 26px; font-weight: normal; color: var(--akcent-2); font-variant-numeric: tabular-nums; }
 .nawi-chipy { display: flex; flex-wrap: wrap; gap: 8px; }
+.nawi-inspekcja.udana { border-color: var(--ok); }
+.nawi-inspekcja.nieudana { border-color: var(--zly); }
+.nawi-inspekcja p { margin: 4px 0 8px; }
 .nawi-szukaj { width: 100%; min-height: 44px; padding: 0 12px; margin-bottom: 10px; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(0, 0, 0, 0.35); }
 .nawi-szukaj:focus { border-color: var(--akcent); outline: none; }
 .nawi-pom { display: grid; gap: 8px; }

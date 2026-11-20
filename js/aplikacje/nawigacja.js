@@ -104,7 +104,7 @@ export default {
       if (d.statki.length || d.moje_statki?.length || d.pojazdy.length) zak.push(['pojazdy', 'Statki i pojazdy']);
       if (!zak.some(([k]) => k === zakladka)) zakladka = 'miejsce';
       const tresci = {
-        miejsce: () => [d.podroz ? podroz() : null, wn ? stanPrzejscia(wn) : null, akcjeWMiejscu(),
+        miejsce: () => [d.podroz ? podroz() : null, wn ? stanPrzejscia(wn) : null, wn ? panelInspekcji(wn.inspekcja) : null, akcjeWMiejscu(),
           !wn && !d.podroz && !d.poklad?.w_locie && d.miejsca.length ? h('div.panel', h('button.przycisk.drugi', { onclick: () => { zakladka = 'idz'; rysuj(); } }, `Dokąd? (${d.miejsca.length} znanych miejsc)`)) : null],
         idz: () => [wn ? listaPomieszczen(wn) : dokad()],
         statek: () => [d.poklad ? poklad(d.poklad) : null, okr ? pokladOkretu(okr) : null],
@@ -347,6 +347,36 @@ export default {
       if (!szybkie.length) return null;
       return h('div.panel', h('h2', 'Szybko'),
         h('div.nawi-chipy', szybkie.map((x) => h('button.przycisk.drugi.maly', { onclick: () => idzPoklad(x.id) }, `${x.nazwa} · ${x.min} min`))));
+    }
+
+    // Inspekcja załogi w obecnym pomieszczeniu: rozmowa ok. 15 min, potem test Przywództwa — PD dla ciebie
+    // i zmiana morale grupy. Wynik ostatniej inspekcji widać do zamknięcia.
+    function panelInspekcji(i) {
+      if (!i) return null;
+      const el = [];
+      if (i.wynik) {
+        const r = i.wynik;
+        el.push(h('div.panel.nawi-inspekcja' + (r.sukces ? '.udana' : '.nieudana'),
+          h('h2', `Inspekcja: ${r.grupa}`),
+          h('p', r.opis),
+          h('div.rzad', { style: 'flex-wrap:wrap;gap:16px' },
+            h('span', `Morale: ${r.morale_zmiana > 0 ? '+' : ''}${r.morale_zmiana} → ${r.morale}`),
+            h('span', `+${r.pd} PD`),
+            h('span.slaby.maly-tekst', `Przywództwo: ${r.test.sukcesy} netto sukcesów, ${r.test.przewagi} przewag (${r.test.pula})`)),
+          h('button.przycisk.drugi.maly', { style: 'margin-top:8px', onclick: () => akcja('inspekcja_zamknij', {}) }, 'Zamknij raport')));
+      }
+      if (i.trwa) {
+        el.push(h('div.panel.nawi-w-drodze', h('div.rzad', h('div.rozpycha', h('div.slaby.maly-tekst', 'Inspekcja w toku'), h('div', 'Rozmawiasz: ', h('b', i.trwa.grupa))),
+          h('b.nawi-licznik', { 'data-koniec': i.trwa.do, 'data-przeladuj': '1' }, odliczanie(i.trwa.do - teraz()))),
+          h('div.pasek-postepu', h('i', { 'data-koniec': i.trwa.do, 'data-start': i.trwa.od, 'data-pasek': '1' })),
+          h('div.slaby.maly-tekst', { style: 'margin-top:6px' }, 'Wyjście z pomieszczenia przerywa inspekcję.')));
+      } else if (i.grupa) {
+        el.push(h('div.panel', h('div.rzad',
+          h('div.rozpycha', h('div', 'Załoga: ', h('b', i.grupa)), i.morale != null ? h('div.slaby.maly-tekst', `Morale: ${i.morale}/100`) : null,
+            i.powod ? h('div.slaby.maly-tekst', i.powod) : null),
+          i.mozna ? h('button.przycisk', { onclick: () => akcja('inspekcja_start', {}, (r) => `Inspekcja: ${r.grupa}. Wynik za ok. 15 minut.`) }, 'Inspekcja') : null)));
+      }
+      return el.length ? h('div', el) : null;
     }
 
     // Zakładka „Idź po okręcie”: wyszukiwarka i pomieszczenia po pokładach (zwijane), dotknięcie = idź.

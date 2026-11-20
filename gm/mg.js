@@ -732,8 +732,16 @@ async function stanPostaci() {
               glowna.prepend(msg('Nadano odpowiedź kontroli lotów.', 'ok'));
             }), '.glowny')) : null) : null);
     })) : null;
-  glowna.append(
-    sekcjaLotow,
+  // Morale załóg okrętów (inspekcje oficerów): grupa → 0–100.
+  let morale = [];
+  try { morale = (await api('mg_morale')).morale || []; } catch { /* bez danych */ }
+  const kartaMorale = morale.length ? h('div.karta', h('h2', 'Morale załóg'),
+    h('p.slaby', 'Zmienia się po inspekcjach oficerów: udana rozmowa podnosi morale grupy, nieudana obniża (start: 60).'),
+    h('table', h('tr', h('th', 'Okręt'), h('th', 'Grupa'), h('th', 'Morale')),
+      morale.map((m) => h('tr', h('td', m.okret), h('td', m.grupa),
+        h('td', h('b', { style: `color:${m.morale >= 60 ? 'var(--akcent)' : m.morale >= 35 ? 'inherit' : 'var(--zly)'}` }, String(m.morale))))))) : null;
+  // natywne append zamieniłoby null na tekst „null”
+  glowna.append(...[sekcjaLotow, kartaMorale].filter(Boolean),
     h('datalist#mg-planety', planetyKatalogu.map((n) => h('option', { value: n }))),
     h('div.karta',
       h('h2', 'Kto?'),

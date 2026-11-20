@@ -36,7 +36,7 @@
  },
  {
   "plik": "assets/wnetrza/isd-reaktor.svg",
-  "nazwa": "Główny reaktor",
+  "nazwa": "Reaktor (okno na rdzeń)",
   "reguly": [
    "komora reaktora",
    "reaktor"
@@ -69,10 +69,11 @@
  },
  {
   "plik": "assets/wnetrza/isd-hangar.svg",
-  "nazwa": "Hangar",
+  "nazwa": "Ściana hangaru",
   "reguly": [
-   "hangar",
-   "zatoka"
+   "stanowisko obsługi",
+   "strefa tankow",
+   "strefa dozbraj"
   ]
  },
  {
@@ -115,7 +116,6 @@
   "reguly": [
    "centrum",
    "kontroli",
-   "stanowisk",
    "sala odpraw"
   ]
  },
@@ -136,5 +136,23 @@
    "ładowni",
    "apteka"
   ]
+ },
+ {
+  "plik": "assets/wnetrza/isd-iluminator-okno.svg",
+  "nazwa": "Iluminatory (okno)",
+  "reguly": [
+   "iluminator"
+  ],
+  "okno": true
+ },
+ {
+  "plik": "assets/wnetrza/isd-panorama-okno.svg",
+  "nazwa": "Okno obserwacyjne (okno)",
+  "reguly": [
+   "obserwac",
+   "widokow",
+   "salon"
+  ],
+  "okno": true
  }
 ]

@@ -903,7 +903,7 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## Mapa: zbliżenie przyciskami, księżyce, tajne planety (2026-11-20)
 
-- **Zbliżenie przyciskami** (prawy dolny róg mapy): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta · 1:1** z płynnym
+- **Zbliżenie przyciskami** (ikonki w doku przy otwartej mapie): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta · 1:1** z płynnym
   przelotem. Próg dotyczy wybranego ciała, a bez wyboru — układu twojego okrętu albo środka ekranu. 1:1 — twój okręt.
 - **Księżyce** na mapie mają stronę dzienną i nocną (od kierunku na słońce), jak planety.
 - Dane mapy w pamięci tabletu są przypisane do konta: po zmianie konta bez przeładowania strony mapa pobiera planety od nowa
@@ -934,9 +934,15 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - Gracz widzi grafikę jako **tło pulpitu**, gdy postać jest w tym miejscu (w przejściu między pomieszczeniami — reguła
   „korytarz”). Dane: `datapad_dane` → `grafiki_lokacji` (bez migracji); API: `mg_grafiki`, `mg_grafiki_zapisz`,
   `mg_grafika_wgraj`; scena dostaje pole `grafika` (api/sceny.php, `grafika_miejsca`).
-- Biblioteka wnętrz ISD (`assets/wnetrza/isd-*.svg`, lista: `lista.json`): turbowinda, stołówka, umywalnia, szatnia,
-  główny reaktor, korytarz, kajuta, koszary, hangar, ambulatorium, cela, maszynownia, centrum kontroli, zbrojownia,
-  magazyn. Schematyczne SVG z generatora `narzedzia/wnetrza_svg.py` (dopisz funkcję i wpis w `GRAFIKI`, uruchom).
+- Biblioteka wnętrz ISD (`assets/wnetrza/isd-*.svg`, lista: `lista.json`): postać stoi przy ścianie i patrzy na nią —
+  każda grafika to **ściana na wprost** (turbowinda, stołówka, umywalnia, szatnia, reaktor z oknem na rdzeń, korytarz,
+  kajuta, koszary, ściana hangaru, ambulatorium, cela, maszynownia, centrum kontroli, zbrojownia, magazyn). Ściany z oknem
+  (`…-okno.svg`: iluminatory, okno obserwacyjne) mają przezroczysty otwór — za nim tablet rysuje prawdziwą scenę.
+  Generator: `narzedzia/wnetrza_svg.py` (dopisz funkcję i wpis w `GRAFIKI`, uruchom).
+- **Hangar** (pomieszczenie z oknem „hangar”): rama i wrota — zamknięte w nadprzestrzeni, otwarte poza nią (ok. 3 s ruchu).
+  W ISD to szyb startowy w brzuchu okrętu: pokład dookoła, ściany szybu z poszycia, na dnie przestrzeń albo planeta.
+- **Zbliżenie mapy**: małe ikonki w doku obok głośnika (+, −, galaktyka, sektor, układ, planeta, 1:1), tylko przy
+  otwartej mapie (`ctx.dok([...])` — aplikacja może dodać własne ikonki doku; znikają przy jej zamknięciu).
 
 ## Dźwięk pokładu
 

@@ -533,11 +533,12 @@ export function utworzScene(canvas) {
     }
     return g.gotowy ? g.img : null;
   }
-  // Wypełnia ekran (jak object-fit: cover), przyciemnia brzegi; światło lekko „oddycha”.
-  function rysujGrafike(img, t) {
+  // Wypełnia ekran (jak object-fit: cover), przyciemnia brzegi; światło lekko „oddycha”. Okno: bez tła pod spodem.
+  function rysujGrafike(img, t, okno = false) {
     const iw = img.naturalWidth || 1600, ih = img.naturalHeight || 900;
-    const s = Math.max(w / iw, h / ih);
-    ctx.fillStyle = '#05080a'; ctx.fillRect(0, 0, w, h);
+    const s = Math.max(ekranW / iw, ekranH / ih);
+    w = ekranW; h = ekranH;
+    if (!okno) { ctx.fillStyle = '#05080a'; ctx.fillRect(0, 0, w, h); }
     ctx.drawImage(img, (w - iw * s) / 2, (h - ih * s) / 2, iw * s, ih * s);
     const v = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
     v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.5)');
@@ -1131,9 +1132,12 @@ export function utworzScene(canvas) {
       const g = ctx.createLinearGradient(L, T, R, B);
       g.addColorStop(0, 'rgba(255,255,255,0.06)'); g.addColorStop(0.4, 'rgba(255,255,255,0)'); g.addColorStop(0.6, 'rgba(255,255,255,0.04)'); g.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = g; ctx.fillRect(L + r, T + r, R - L - 2 * r, B - T - r * 2.6);
+    } else if (stan.kadlub === 'isd') {
+      rysujHangarIsd();
     } else {
       // Wrota hangaru: cały środek to widok; strop z lampami u góry, posadzka z pasami u dołu.
       const gora = h * 0.32, podloga = h * 0.7;
+      rysujWrota(0, gora, w, podloga);
       ctx.fillRect(0, 0, w, gora);
       ctx.fillStyle = '#1a2128'; ctx.fillRect(0, gora - 8, w, 8);
       ctx.fillStyle = '#14191e'; ctx.fillRect(0, podloga, w, h - podloga);
@@ -1149,6 +1153,66 @@ export function utworzScene(canvas) {
       }
     }
     ctx.restore();
+  }
+
+  // Wrota hangaru: zamknięte w nadprzestrzeni (i przy wejściu w skok), poza nią otwarte (pole siłowe trzyma
+  // atmosferę). Ruch płynny: ok. 3 s na pełne otwarcie albo zamknięcie.
+  let otwarcieWrot = null, wrotaCzas = 0;
+  function rysujWrota(x0, y0, x1, y1) {
+    const cel = ['wejscie', 'nadswietlna'].includes(stan.scena) ? 0 : 1;
+    const teraz = performance.now();
+    if (otwarcieWrot === null) otwarcieWrot = cel;
+    otwarcieWrot += Math.sign(cel - otwarcieWrot) * Math.min(Math.abs(cel - otwarcieWrot), (teraz - (wrotaCzas || teraz)) / 3000);
+    wrotaCzas = teraz;
+    const zamk = 1 - otwarcieWrot;
+    if (zamk <= 0.001) {
+      // otwarte: delikatna poświata pola siłowego
+      ctx.fillStyle = 'rgba(120, 180, 255, 0.05)'; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      return;
+    }
+    const polowa = (x1 - x0) / 2 * zamk;
+    for (const [a, b] of [[x0, x0 + polowa], [x1 - polowa, x1]]) {
+      ctx.fillStyle = '#2b3238'; ctx.fillRect(a, y0, b - a, y1 - y0);
+      ctx.strokeStyle = '#3d474f'; ctx.lineWidth = 3;
+      for (let y = y0 + (y1 - y0) / 6; y < y1; y += (y1 - y0) / 6) { ctx.beginPath(); ctx.moveTo(a, y); ctx.lineTo(b, y); ctx.stroke(); }
+      ctx.fillStyle = '#c9a227';
+      for (let y = y0 + 10; y < y1 - 10; y += 46) ctx.fillRect(a === x0 ? b - 12 : a + 4, y, 8, 22);
+    }
+    ctx.fillStyle = '#0a0d10'; ctx.fillRect(x0 + polowa - 2, y0, 4, y1 - y0); ctx.fillRect(x1 - polowa - 2, y0, 4, y1 - y0);
+  }
+
+  // Hangar ISD: otwór w brzuchu okrętu — widok w dół przez szyb startowy; dookoła pokład hangaru, w głębi
+  // ściany szybu (poszycie burty), na dnie przestrzeń albo planeta pod okrętem. Wrota zamykają szyb.
+  function rysujHangarIsd() {
+    const X0 = w * 0.14, X1 = w * 0.86, Y0 = h * 0.28, Y1 = h * 0.8;   // krawędź otworu w pokładzie
+    const d = Math.min(w, h) * 0.07;                                    // głębokość szybu w perspektywie
+    const x0 = X0 + d, x1 = X1 - d, y0 = Y0 + d, y1 = Y1 - d;           // wylot szybu (na zewnątrz)
+    // pokład hangaru dookoła otworu
+    ctx.fillStyle = '#1b2126';
+    ctx.fillRect(0, 0, w, Y0); ctx.fillRect(0, Y1, w, h - Y1); ctx.fillRect(0, Y0, X0, Y1 - Y0); ctx.fillRect(X1, Y0, w - X1, Y1 - Y0);
+    for (let x = 0; x < w; x += 32) { ctx.fillStyle = (x / 32) % 2 < 1 ? '#c9a227' : '#1b2126'; ctx.fillRect(x, Y0 - 10, 16, 6); ctx.fillRect(x, Y1 + 4, 16, 6); }
+    ctx.strokeStyle = '#2c353c'; ctx.lineWidth = 2;
+    for (let y = 30; y < Y0 - 20; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    // ściany szybu: poszycie burty, jaśniejsze od strony światła
+    const sciana = (p, kolor) => { ctx.fillStyle = kolor; ctx.beginPath(); ctx.moveTo(...p[0]); for (const q of p.slice(1)) ctx.lineTo(...q); ctx.closePath(); ctx.fill(); };
+    sciana([[X0, Y0], [X1, Y0], [x1, y0], [x0, y0]], '#3a434a');
+    sciana([[X0, Y1], [X1, Y1], [x1, y1], [x0, y1]], '#262d33');
+    sciana([[X0, Y0], [x0, y0], [x0, y1], [X0, Y1]], '#313940');
+    sciana([[X1, Y0], [x1, y0], [x1, y1], [X1, Y1]], '#2c343a');
+    ctx.strokeStyle = 'rgba(10, 13, 16, 0.7)'; ctx.lineWidth = 2;
+    for (let i = 1; i < 6; i++) {
+      const f = i / 6;
+      ctx.beginPath(); ctx.moveTo(X0 + (X1 - X0) * f, Y0); ctx.lineTo(x0 + (x1 - x0) * f, y0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X0 + (X1 - X0) * f, Y1); ctx.lineTo(x0 + (x1 - x0) * f, y1); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(150, 165, 175, 0.35)'; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    // lampy na krawędzi szybu
+    for (let x = X0 + 30; x < X1 - 20; x += Math.max(60, w * 0.08)) {
+      const g = ctx.createRadialGradient(x, Y0, 0, x, Y0, 50);
+      g.addColorStop(0, 'rgba(255,240,200,0.3)'); g.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - 50, Y0 - 10, 100, 60);
+    }
+    rysujWrota(x0, y0, x1, y1);
   }
 
   // Wznoszenie: chmury pędzą w dół (lecimy w górę), niebo ciemnieje, potem gwiazdy i planeta pod nami.
@@ -1204,15 +1268,28 @@ export function utworzScene(canvas) {
     // Scena z ramą: rysujemy na kwadratowym wzorze o boku dłuższego wymiaru ekranu, wyśrodkowanym —
     // ekran pokazuje jego środek. Bez ramy: cały ekran.
     // Prom w hangarze okrętu: kosmos przez wrota hangaru (wnetrze „hangar” poza powierzchnią).
-    // Grafika miejsca przypisana przez MG (pomieszczenie, lokacja): całe tło, dopasowane do ekranu.
+    // Grafika miejsca przypisana przez MG: postać stoi przy ścianie pomieszczenia i patrzy na nią (albo w okno).
+    // Pełna ściana — tylko grafika; ściana z oknem (plik „…-okno…”, przezroczysty otwór) — za nią prawdziwa scena.
     const obraz = stan.grafika ? obrazGrafiki(stan.grafika) : null;
-    if (obraz) {
+    if (obraz && !/-okno/.test(stan.grafika)) {
       w = ekranW; h = ekranH; kadrX = 0; kadrYTeraz = 0;
       narysowane = zbierane; zbierane = [];
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       rysujGrafike(obraz, t);
       return;
     }
+    if (obraz) {
+      const zapis = [stan.okno, stan.wnetrze];
+      stan.okno = ''; stan.wnetrze = '';
+      try { rysujSwiat(t, dt, ruch); } finally { [stan.okno, stan.wnetrze] = zapis; }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      rysujGrafike(obraz, t, true);
+      return;
+    }
+    rysujSwiat(t, dt, ruch);
+  }
+
+  function rysujSwiat(t, dt, ruch) {
     const zHangaru = !stan.okno && stan.scena !== 'powierzchnia' && stan.scena !== 'start' && HANGARY.includes(stan.wnetrze);
     const zRama = OKNA_Z_RAMA.includes(stan.okno) || zHangaru
       || (stan.scena === 'powierzchnia' && (OKNA_BUDYNKOW.includes(stan.wnetrze) || HANGARY.includes(stan.wnetrze)));
@@ -1318,7 +1395,7 @@ export function utworzScene(canvas) {
       if (!zmiana) {
         // Ten sam stan, nowy widok z mostka (np. trwa manewr) albo światło: bez restartu animacji.
         stan.widok = nowy.widok; stan.swiatlo = nowy.swiatlo; stan.okno = nowy.okno; stan.burta = nowy.burta; stan.opis = nowy.opis;
-        stan.przesuniecie = nowy.przesuniecie; stan.grafika = nowy.grafika;
+        stan.przesuniecie = nowy.przesuniecie; stan.grafika = nowy.grafika; stan.kadlub = nowy.kadlub;
         return;
       }
       const zmienionoLokalnie = (nowy.zmieniono || 0) - (nowy.przesuniecie || 0);

@@ -206,22 +206,22 @@ export default {
       if (!panelFlot.hidden) { if (waski()) wybierz(null); odswiezFloty(); }
     } }, 'Floty / nawigacja');
 
-    // Zbliżenie przyciskami: +/− (×4) i progi — galaktyka, sektor, układ, planeta, 1:1 (płynny przelot).
-    // Działa bez kółka i bez szczypania (tablet), a skok do progu nie przelicza po drodze tysięcy klatek.
-    const zoomPrzycisk = (tekst, tytul, fn) => h('button.przycisk.maly.drugi', { type: 'button', title: tytul, 'aria-label': tytul, onclick: fn }, tekst);
-    const panelZoomu = h('div.mapa-zoom',
-      zoomPrzycisk('+', 'Przybliż', () => zoomOkolo(4)),
-      zoomPrzycisk('−', 'Oddal', () => zoomOkolo(1 / 4)),
-      h('div.mapa-zoom-progi',
-        zoomPrzycisk('Galaktyka', 'Cała galaktyka', () => calaGalaktyka(true)),
-        zoomPrzycisk('Sektor', 'Okolica wybranego miejsca', () => doProgu('sektor')),
-        zoomPrzycisk('Układ', 'Widok układu planetarnego', () => doProgu('uklad')),
-        zoomPrzycisk('Planeta', 'Planeta i jej księżyce', () => doProgu('planeta')),
-        zoomPrzycisk('1:1', 'Największe zbliżenie na twój okręt', () => doProgu('max'))));
+    // Zbliżenie: małe ikonki w doku (obok głośnika), tylko gdy mapa jest otwarta — +/− (×4) i progi:
+    // galaktyka, sektor, układ, planeta, 1:1 (płynny przelot). Działa bez kółka i bez szczypania (tablet).
+    const IKONY_ZOOMU = [
+      ['<path d="M24 12v24M12 24h24"/>', 'Przybliż', () => zoomOkolo(4)],
+      ['<path d="M12 24h24"/>', 'Oddal', () => zoomOkolo(1 / 4)],
+      ['<path d="M25 24c0-3 5-3 5 0s-7 7-11 2-1-12 7-12 14 7 10 16-13 10-18 5"/>', 'Cała galaktyka', () => calaGalaktyka(true)],
+      ['<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>', 'Sektor (okolica wybranego miejsca)', () => doProgu('sektor')],
+      ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ planetarny', () => doProgu('uklad')],
+      ['<circle cx="21" cy="27" r="10"/><circle cx="37" cy="12" r="3.5"/>', 'Planeta i księżyce', () => doProgu('planeta')],
+      ['<path d="M13 17l5-4v23M31 17l5-4v23M24 21v1M24 30v1"/>', 'Zbliżenie 1:1 na twój okręt', () => doProgu('max')],
+    ].map(([ikona, tytul, akcja]) => ({ ikona, tytul, akcja }));
+    if (ctx.dok) ctx.dok(IKONY_ZOOMU);
 
     w.append(plotno,
       h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty), skalaEl),
-      panelFlot, panelRadar, karta, podpowiedz, wsp, panelZoomu, ladowanie);
+      panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');

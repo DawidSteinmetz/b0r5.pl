@@ -547,7 +547,9 @@ function scena_efektywna(string $uid): array
             $okret['opis'] = $wid['nazwa'];
             // Kajuty i pomieszczenia burtowe są zamknięte (pełne ściany, bez widoku na zewnątrz); okna ma tylko mostek.
             if ($wid['okno'] === 'lewa' || $wid['okno'] === 'prawa') $okret = ['okno' => 'brak'] + $okret;
-            elseif ($wid['okno'] === 'hangar') $okret = ['okno' => '', 'wnetrze' => 'hangar'] + $okret;
+            // Hangar: wrota z widokiem; w ISD — szyb startowy w brzuchu okrętu (widok w dół, poszycie dookoła).
+            elseif ($wid['okno'] === 'hangar') $okret = ['okno' => '', 'wnetrze' => 'hangar',
+                'kadlub' => scena_okno(($gdzie['klasa'] ?? '') . ' ' . ($gdzie['nazwa'] ?? '')) === 'isd' ? 'isd' : ''] + $okret;
             elseif ($wid['okno'] === 'brak') $okret = ['okno' => 'brak'] + $okret;
         }
         return $okret['zmieniono'] >= (int) $zapisana['zmieniono'] ? $okret : $zapisana;

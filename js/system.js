@@ -444,6 +444,21 @@ const przyciskPrzewodnika = ikonkaDoku('dok-przewodnik', IKONA_PRZEWODNIKA, 'Prz
 });
 dok.append(przyciskDostosuj, przyciskUstawien, przyciskPrzewodnika);
 
+// Ikonki otwartej aplikacji w doku (np. zbliżenie mapy): obok ikonek w prawym rogu; znikają z aplikacją.
+const dokAplikacji = h('div#dok-aplikacja', { hidden: true });
+dok.append(dokAplikacji);
+function ustawDokAplikacji(przyciski) {
+  wyczysc(dokAplikacji);
+  const lista = (przyciski || []).map(({ ikona: rysunek, tytul, akcja }) => {
+    const b = h('button.dok-ikonka', { type: 'button', title: tytul, 'aria-label': tytul, onclick: akcja });
+    b.append(ikona(rysunek));
+    return b;
+  });
+  dokAplikacji.append(...lista);
+  dokAplikacji.hidden = !lista.length;
+  dok.classList.toggle('z-aplikacja', !!lista.length);
+}
+
 function pokazPowloke(widoczna) {
   pasek.hidden = !widoczna;
   dok.hidden = !widoczna;
@@ -779,6 +794,7 @@ function zamknijAplikacje() {
     try { stan.aplikacja.sprzataj?.(); } catch { /* aplikacja i tak znika */ }
     stan.aplikacja = null;
   }
+  ustawDokAplikacji(null);
 }
 
 function otworz(id, parametr = null) {
@@ -796,6 +812,8 @@ function otworz(id, parametr = null) {
     pulpit: () => ekranPulpitu(),
     jasnosc: (v) => (v === undefined ? pamiec.czytaj('jasnosc', 100) : ustawJasnosc(v)),
     ustawWstecz: (fn) => { if (stan.aplikacja) stan.aplikacja.wstecz = fn; },
+    // Małe ikonki aplikacji w doku: [{ ikona (ścieżki SVG 48×48), tytul, akcja }]; null — usuwa.
+    dok: (przyciski) => ustawDokAplikacji(przyciski),
   };
   stan.aplikacja = { def, sprzataj: null, wstecz: null };
   const wynik = def.uruchom(w, kontekst);

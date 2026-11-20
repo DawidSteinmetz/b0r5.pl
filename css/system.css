@@ -162,6 +162,14 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 #dok #dok-dostosuj { right: 46px; }
 #dok #dok-ustawienia { left: 10px; }
 #dok #dok-przewodnik { left: 46px; }
+/* Ikonki otwartej aplikacji (mapa: zbliżenie) — w prawym rogu, na lewo od „Dostosuj”. Na wąskim ekranie
+   osobny rząd nad przyciskami doku (dok rośnie o ten rząd). */
+#dok-aplikacja { position: absolute; right: 82px; bottom: 10px; display: flex; gap: 6px; }
+#dok-aplikacja .dok-ikonka { position: static; }
+@media (max-width: 900px) {
+  #dok.z-aplikacja { flex-wrap: wrap; row-gap: 6px; }
+  #dok-aplikacja { position: static; order: -1; flex-basis: 100%; justify-content: center; }
+}
 .dok-ikonka svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #dok .dok-ikonka.aktywny { color: var(--akcent); border-color: var(--linia-mocna); }
 /* Wąski ekran: środkowe przyciski doku ciaśniej, żeby nie wchodziły na ikonki w narożnikach. */
@@ -656,12 +664,6 @@ html.z-tlem #ekran::before {
 .mapa-skala > div { display: flex; align-items: center; gap: 6px; color: var(--tekst); }
 .mapa-skala i { display: block; height: 6px; border: 1px solid var(--akcent); border-top: 0; transition: width 0.15s; }
 .mapa-skala small { font-size: 10px; letter-spacing: 0.04em; }
-/* Zbliżenie przyciskami: +/− i progi (prawa krawędź mapy, nad dolnym marginesem). */
-.mapa-zoom { position: absolute; right: 12px; bottom: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
-.mapa-zoom > .przycisk { width: 40px; min-height: 40px; padding: 0; font-size: 20px; background: rgba(5, 8, 10, 0.88); }
-.mapa-zoom-progi { display: flex; flex-direction: column; gap: 4px; }
-.mapa-zoom-progi .przycisk { min-height: 30px; padding: 0 10px; font-size: 12px; background: rgba(5, 8, 10, 0.88); }
-@media (max-width: 760px) { .mapa-zoom-progi { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 240px; } }
 .mapa-wsp { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--tekst-slaby); pointer-events: none; }
 .mapa-ladowanie { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--tlo); color: var(--akcent); letter-spacing: 0.12em; text-align: center; }
 @media (max-width: 760px) {

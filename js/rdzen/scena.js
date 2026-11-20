@@ -297,6 +297,10 @@ export function utworzScene(canvas) {
   let oknoIsd = null; // { w, h, plotno }
   let panorama = null; // { ziarno, gwiazdy: [{ k, y, r, a, m, f }] } — niebo 360° widziane z mostka
   const spokojnie = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Gwiazdy narysowane w tej klatce (do zaznaczania): { x, y (px ekranu), klucz, g (układ z serwera) albo i (tło) }.
+  let narysowane = [], zbierane = [];
+  let zaznaczona = null; // klucz zaznaczonej gwiazdy
+  let kadrYTeraz = 0;
 
   function rozmiar() {
     dpr = Math.min(window.devicePixelRatio || 1, 1.5);
@@ -534,11 +538,13 @@ export function utworzScene(canvas) {
     }
     if (zTlem) tlo();
     const migot = spokojnie ? 0 : 0.18;
-    for (const g of panorama.gwiazdy) {
-      if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 1) continue;
+    panorama.gwiazdy.forEach((g, i) => {
+      if (Math.abs(norm180(g.k - k.kurs)) > POLE_WIDZENIA / 2 + 1) return;
       ctx.fillStyle = `rgba(220, 232, 255, ${g.a * (1 - migot + migot * Math.sin(t * 0.0015 * g.m + g.f))})`;
-      ctx.fillRect(xKierunku(k.kurs, g.k), g.y * h, g.r, g.r);
-    }
+      const x = xKierunku(k.kurs, g.k), y = g.y * h;
+      ctx.fillRect(x, y, g.r, g.r);
+      zbierz(x + g.r / 2, y + g.r / 2, `b:${panorama.ziarno}:${i}`, { i, ziarno: panorama.ziarno, jasnosc: g.a });
+    });
     return true;
   }
 
@@ -565,7 +571,18 @@ export function utworzScene(canvas) {
       }
       ctx.fillStyle = `rgba(${r}, ${gr}, ${b}, ${alfa})`;
       ctx.beginPath(); ctx.arc(x, y, promien, 0, Math.PI * 2); ctx.fill();
+      zbierz(x, y, `r:${g.n || g.t || g.k}`, { g });
     }
+  }
+
+  // Zapamiętanie gwiazdy do zaznaczania; zaznaczona dostaje celownik.
+  function zbierz(x, y, klucz, dane) {
+    zbierane.push({ x: x + kadrX, y: y + kadrYTeraz, klucz, ...dane });
+    if (klucz !== zaznaczona) return;
+    ctx.save(); ctx.strokeStyle = 'rgba(77, 226, 201, 0.95)'; ctx.lineWidth = 1.2; ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(x + dx * 12, y + dy * 12); ctx.lineTo(x + dx * 17, y + dy * 17); }
+    ctx.stroke(); ctx.restore();
   }
 
   // Słońca układu (`cykl.gwiazdy`): kolor, wielkość tarczy i łuna według typu gwiazdy;
@@ -1098,6 +1115,8 @@ export function utworzScene(canvas) {
     w = zRama ? bok : ekranW; h = zRama ? bok : ekranH;
     kadrX = zRama ? (ekranW - bok) / 2 : 0;
     const kadrY = zRama ? (ekranH - bok) / 2 : 0;
+    kadrYTeraz = kadrY;
+    narysowane = zbierane; zbierane = [];
     ctx.setTransform(dpr, 0, 0, dpr, kadrX * dpr, kadrY * dpr);
 
     // Pomieszczenie okrętu bez okien: tylko wnętrze (przestrzeń i skok niewidoczne).
@@ -1207,6 +1226,24 @@ export function utworzScene(canvas) {
       start = performance.now();
     },
     slonceWidoczne,
+    // Gwiazda najbliżej punktu ekranu (px względem płótna), niezasłonięta ramą okna; albo null.
+    // Gwiazdy układów łapią się z 16 px, drobne gwiazdy tła z 7 px (inaczej każdy klik trafiałby w tło).
+    gwiazdaPod(px, py) {
+      let naj = null, min = 1;
+      for (const s of narysowane) {
+        const d = Math.hypot(s.x - px, s.y - py) / (s.g ? 16 : 7);
+        if (d < min) { min = d; naj = s; }
+      }
+      if (naj && oknoIsd && OKNA_Z_RAMA.includes(stan.okno)) {
+        // Rama okna: nieprzezroczysty piksel poszycia w tym miejscu → gwiazda zasłonięta.
+        try {
+          const a = oknoIsd.plotno.getContext('2d').getImageData(Math.round((naj.x - kadrX) * dpr), Math.round((naj.y - kadrYTeraz) * dpr), 1, 1).data[3];
+          if (a > 128) return null;
+        } catch { /* bez sprawdzenia */ }
+      }
+      return naj;
+    },
+    zaznacz(klucz) { zaznaczona = klucz; },
     // Miniatura bieżącego widoku (z oknem mostka) jako JPEG, najwyżej 480 px szerokości.
     zdjecie() {
       const szer = Math.min(480, canvas.width);

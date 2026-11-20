@@ -53,6 +53,44 @@ function sylwetkaKomrk(g, x, y, kurs, r = 10) {
   g.closePath();
 }
 
+// Sylwetki okrętów z góry przy dużym zbliżeniu (dziób = +x, współrzędne w połówkach długości).
+const SYLWETKI = {
+  isd: [[1, 0], [-0.9, 0.6], [-1, 0.52], [-1, 0.16], [-0.86, 0.12], [-0.86, -0.12], [-1, -0.16], [-1, -0.52], [-0.9, -0.6]],
+  arquitens: [[1, 0], [0.5, 0.17], [-0.15, 0.2], [-0.3, 0.46], [-0.58, 0.46], [-0.68, 0.22], [-1, 0.17], [-1, -0.17], [-0.68, -0.22],
+    [-0.58, -0.46], [-0.3, -0.46], [-0.15, -0.2], [0.5, -0.17]],
+  lambda: [[1, 0.1], [0.25, 0.14], [-0.25, 0.95], [-0.5, 0.95], [-0.42, 0.14], [-1, 0.1], [-1, -0.1], [-0.42, -0.14], [-0.5, -0.95],
+    [-0.25, -0.95], [0.25, -0.14], [1, -0.1]],
+  gozanti: [[1, 0.12], [0.7, 0.3], [0.3, 0.34], [0.2, 0.5], [-0.5, 0.5], [-0.6, 0.32], [-1, 0.24], [-1, -0.24], [-0.6, -0.32],
+    [-0.5, -0.5], [0.2, -0.5], [0.3, -0.34], [0.7, -0.3], [1, -0.12]],
+  // YT-1300: okrągły kadłub, dwa kły z przodu, kokpit po prawej burcie
+  sokol: [[1, 0.24], [0.62, 0.24], [0.5, 0.62], [0.1, 0.78], [-0.3, 0.8], [-0.7, 0.62], [-0.95, 0.3], [-1, 0], [-0.95, -0.3],
+    [-0.7, -0.62], [-0.3, -0.8], [0.05, -0.8], [0.3, -0.98], [0.5, -0.98], [0.5, -0.82], [0.62, -0.24], [1, -0.24], [1, -0.04],
+    [0.5, -0.04], [0.5, 0.04], [1, 0.04]],
+  komrk: KOMRK,
+  prom: [[1, 0], [0.4, 0.3], [-1, 0.35], [-1, -0.35], [0.4, -0.3]],
+};
+// Długość okrętu (m), gdy baza jej nie podaje.
+const DLUGOSCI_KLAS = { isd: 1600, arquitens: 325, lambda: 20, gozanti: 64, sokol: 35, komrk: 63, prom: 40 };
+function rodzajSylwetki(o) {
+  const t = `${o.klasa || ''} ${o.nazwa || ''}`.toLowerCase();
+  if (/isd|imperial|star destroyer|niszczyciel/.test(t)) return 'isd';
+  if (/arquitens/.test(t)) return 'arquitens';
+  if (/lambda/.test(t)) return 'lambda';
+  if (/gozanti/.test(t)) return 'gozanti';
+  if (/yt-1300|sok[oó]ł|millennium|falcon/.test(t)) return 'sokol';
+  if (/kom.?rk/.test(t) || o.znacznik === 'komrk') return 'komrk';
+  return 'prom';
+}
+const dlugoscOkretu = (o) => o?.dlugosc_m || DLUGOSCI_KLAS[rodzajSylwetki(o)] || 100;
+function sylwetkaOkretu(g, o, x, y, kurs, r) {
+  const a = -kurs * RAD, c = Math.cos(a), s = Math.sin(a);
+  SYLWETKI[rodzajSylwetki(o)].forEach(([px, py], i) => {
+    const X = x + (px * c - py * s) * r, Y = y + (px * s + py * c) * r;
+    if (i) g.lineTo(X, Y); else g.moveTo(X, Y);
+  });
+  g.closePath();
+}
+
 // Strzałka (dziób w kierunku kursu); ekran ma oś y w dół, stąd minus przy kącie.
 function strzalka(g, x, y, kurs, r = 8) {
   const a = -kurs * RAD;
@@ -120,6 +158,26 @@ export default {
     const karta = h('div.mapa-karta', { hidden: true });
     const podpowiedz = h('div.mapa-hover', { hidden: true });
     const wsp = h('div.mapa-wsp');
+    // Skala mapy w rogu: pasek „okrągłej” długości (m, km, j.a., pc, lata świetlne) i zbliżenie.
+    const skalaPasek = h('i'), skalaNapis = h('span'), skalaZoom = h('small');
+    const skalaEl = h('div.mapa-skala', h('div', skalaPasek, skalaNapis), skalaZoom);
+    let skalaPokazana = 0;
+    function odswiezSkale() {
+      if (skala === skalaPokazana || !szer) return;
+      skalaPokazana = skala;
+      const kmNaPx = KM_NA_PC / skala;
+      const cel = kmNaPx * 90; // ok. 90 px
+      // Jednostka według długości paska, potem „okrągła” wartość (1, 2, 5 × 10ⁿ) w tej jednostce.
+      const [jedn, kmJedn] = cel < 1 ? ['m', 0.001] : cel < 0.05 * KM_NA_AU ? ['km', 1] : cel < 0.05 * KM_NA_PC ? ['j.a.', KM_NA_AU] : ['pc', KM_NA_PC];
+      const ile = cel / kmJedn, rzad = 10 ** Math.floor(Math.log10(ile));
+      const wart = [1, 2, 5, 10].map((m) => m * rzad).filter((v) => v <= ile * 1.4).pop() || rzad;
+      skalaPasek.style.width = `${Math.round(wart * kmJedn / kmNaPx)}px`;
+      const tekst = (v) => liczba(v, v < 1 ? Math.ceil(-Math.log10(v)) : 0);
+      skalaNapis.textContent = `${tekst(wart)} ${jedn}` + (jedn === 'pc' ? ` · ${liczba(wart * 3.2616, wart < 1 ? 2 : 0)} lś` : '');
+      const naPx = (km) => (km < 1 ? `${liczba(km * 1000, km < 0.01 ? 1 : 0)} m` : km < 0.05 * KM_NA_AU ? `${liczba(km, km < 10 ? 1 : 0)} km`
+        : km < 0.05 * KM_NA_PC ? `${liczba(km / KM_NA_AU, 3)} j.a.` : `${liczba(km / KM_NA_PC, 3)} pc`);
+      skalaZoom.textContent = skala >= ZOOM_MAKS * 0.98 ? 'zbliżenie maks. · 1:1' : `1 px = ${naPx(kmNaPx)}`;
+    }
     const ladowanie = h('div.mapa-ladowanie', 'Pobieranie danych astronawigacyjnych...');
     const panelFlot = h('section.mapa-floty-panel', { hidden: true });
     const panelRadar = h('section.mapa-radar', { hidden: true });
@@ -139,7 +197,7 @@ export default {
     } }, 'Floty / nawigacja');
 
     w.append(plotno,
-      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty)),
+      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty), skalaEl),
       panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
@@ -360,8 +418,8 @@ export default {
     }
     // Połowa długości okrętu na ekranie (px), gdy przerasta znacznik; inaczej null.
     function rozmiarNaEkranie(o) {
-      if (!o?.dlugosc_m || o.typ === 'postac') return null;
-      const r = (o.dlugosc_m / 2000) * (skala / KM_NA_PC);
+      if (!o || o.typ === 'postac' || !['statek', 'jednostka'].includes(o.typ) && !o.dlugosc_m) return null;
+      const r = (dlugoscOkretu(o) / 2000) * (skala / KM_NA_PC);
       return r > 8 ? r : null;
     }
 
@@ -391,8 +449,12 @@ export default {
         const l = o.podswietlny;
         return naEkran(l.x0, l.y0, l.k0[0] + (l.k1[0] - l.k0[0]) * pl, l.k0[1] + (l.k1[1] - l.k0[1]) * pl);
       }
-      // Punkt w układzie (np. między planetą a słońcem, brzeg układu): km od słońca.
-      if (o.uklad_k && !planetaObiektu(o) && !wNadprzestrzeni(o) && pl == null) return naEkran(o.x, o.y, o.uklad_k[0], o.uklad_k[1]);
+      // Punkt w układzie (np. między planetą a słońcem, brzeg układu): km od słońca. Kilka jednostek
+      // w tym samym punkcie stoi w szyku (rozstaw w km — widać go dopiero przy dużym zbliżeniu).
+      if (o.uklad_k && !planetaObiektu(o) && !wNadprzestrzeni(o) && pl == null) {
+        const [dx, dy] = szykKm(o);
+        return naEkran(o.x, o.y, o.uklad_k[0] + dx, o.uklad_k[1] + dy);
+      }
       if (pl != null) {
         // Między układami: po linii lotu na mapie; w układzie: między planetą a celem (np. księżycem).
         const l = o.podswietlny;
@@ -404,6 +466,7 @@ export default {
         }
       }
       const p = planetaObiektu(o);
+      if (!p && !wNadprzestrzeni(o) && o.typ !== 'postac') { const [dx, dy] = szykKm(o); return naEkran(o.x, o.y, dx, dy); }
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || wNadprzestrzeni(o)) return pozycjaDomyslna;
       const orbita = !!o.flota || !!o.orbita;
@@ -427,7 +490,7 @@ export default {
         const km = { bliska: Rpl + 300, srednia: Rpl * 4, daleka: Rpl * 15 }[o.podejscie || 'daleka'] || Rpl * 15;
         const minimum = uklad.rp + 8 + numerOrbity * 7;
         promien = Math.max(minimum, km * uklad.skm);
-        rozrzutReal = { f: promien > minimum ? 1 : 0, st: ((3 * Math.max(0.05, (o.dlugosc_m || 100) / 1000)) / km) / RAD };
+        rozrzutReal = { f: promien > minimum ? 1 : 0, st: ((3 * Math.max(0.05, dlugoscOkretu(o) / 1000)) / km) / RAD };
       }
       const [px, py] = pozycjaPlanety(p);
       if (orbita && (o.orbita != null || o.kurs != null)) {
@@ -439,6 +502,23 @@ export default {
       }
       const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
       return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
+    }
+
+    // Szyk jednostek stojących w tym samym punkcie przestrzeni: klin za prowadzącą (km, osie mapy),
+    // odstęp 2,5 długości największej jednostki; obrócony według kursu prowadzącej.
+    function szykKm(o) {
+      if (o.typ === 'postac') return [0, 0];
+      const tuSamo = (x) => x.typ !== 'postac' && !naPokladzie(x) && !wNadprzestrzeni(x) && x.x === o.x && x.y === o.y
+        && !planetaObiektu(x) && String(x.uklad_k || '') === String(o.uklad_k || '') && postepLotu(x) == null;
+      const grupa = obiektyMapy.filter(tuSamo);
+      if (grupa.length < 2) return [0, 0];
+      const i = grupa.findIndex((x) => x.id === o.id);
+      if (i <= 0) return [0, 0];
+      const odstep = 2.5 * Math.max(...grupa.map(dlugoscOkretu)) / 1000;
+      const rzad = Math.ceil(i / 2), bok = i % 2 ? 1 : -1;
+      const tyl = -rzad * odstep, w = bok * rzad * odstep;
+      const a = kursTeraz(grupa[0]) * RAD;
+      return [tyl * Math.cos(a) - w * Math.sin(a), tyl * Math.sin(a) + w * Math.cos(a)];
     }
 
     function listaObecnych(p) {
@@ -688,6 +768,22 @@ export default {
       }
     }
 
+    // Odcinek przycięty do ekranu (z zapasem). Przy dużym zbliżeniu końce leżą miliardy pikseli poza
+    // ekranem — canvas takich linii nie rysuje — a znacznik jednostki poza ekranem był pomijany razem
+    // z linią kursu. Stąd znikająca trajektoria przy części przybliżeń.
+    function liniaNaEkranie(g, ax, ay, bx, by) {
+      const m = 50, x0 = -m, y0 = -m, x1 = szer + m, y1 = wys + m;
+      let t0 = 0, t1 = 1;
+      const dx = bx - ax, dy = by - ay;
+      for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]]) {
+        if (p === 0) { if (q < 0) return false; continue; }
+        const r = q / p;
+        if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; } else { if (r < t0) return false; if (r < t1) t1 = r; }
+      }
+      g.moveTo(ax + dx * t0, ay + dy * t0); g.lineTo(ax + dx * t1, ay + dy * t1);
+      return true;
+    }
+
     function klatka(t) {
       ramka = requestAnimationFrame(klatka);
       if (animacja) animacja(t);
@@ -702,7 +798,7 @@ export default {
           scalKamere(); odswiez();
         }
       }
-      if (brudna) { rysujWarstwe(); brudna = false; }
+      if (brudna) { rysujWarstwe(); brudna = false; odswiezSkale(); }
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.drawImage(warstwa, 0, 0);
       c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -725,7 +821,7 @@ export default {
         c.lineWidth = 1.5;
         c.setLineDash([6, 6]);
         c.lineDashOffset = -t / 60;
-        c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+        c.beginPath(); liniaNaEkranie(c, ax, ay, bx, by); c.stroke();
         c.setLineDash([]);
         znacznik(celPlaneta, kolory.zph, 'Cel skoku');
       }
@@ -740,18 +836,14 @@ export default {
         const zw = grupaZwinieta(o);
         if (zw && !zw.glowny) continue;
         const [sx, sy] = punktObiektu(o);
-        if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
-        if (zw && zw.ile > 1) {
-          c.save(); c.font = `bold 10px ${kroj}`; c.fillStyle = kolory.tekst;
-          napis(c, `${o.flota.grupa || o.flota.nazwa} ×${zw.ile}`, sx + 9, sy + 12);
-          c.restore();
-        }
         const kolor = kolorObiektu(o);
         let kursRys = kursTeraz(o);
+        // Linie kursu najpierw: widać je także wtedy, gdy sama jednostka jest poza ekranem.
         if (o.lot) {
           // Skok do punktu układu: linia kończy się w tym punkcie (km od słońca), nie w słońcu.
-          const [cx, cy] = o.lot_k ? naEkran(o.lot.x, o.lot.y, o.lot_k[0], o.lot_k[1]) : naEkran(o.lot.x, o.lot.y);
-          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+          const plCel = !o.lot_k && o.lot.planeta ? wgKlucza.get(norm(o.lot.planeta)) : null;
+          const [cx, cy] = o.lot_k ? naEkran(o.lot.x, o.lot.y, o.lot_k[0], o.lot_k[1]) : plCel ? pozycjaPlanety(plCel) : naEkran(o.lot.x, o.lot.y);
+          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
           if (wNadprzestrzeni(o)) kursRys = Math.atan2(-(cy - sy), cx - sx) / RAD;
         }
         if (o.podswietlny && teraz() < o.podswietlny.do) {
@@ -759,14 +851,25 @@ export default {
           const l = o.podswietlny, b = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
           const [cx, cy] = l.k1 && !b ? naEkran(l.x1, l.y1, l.k1[0], l.k1[1])
             : b && Math.hypot(l.x1 - l.x0, l.y1 - l.y0) < 0.05 ? pozycjaPlanety(b) : naEkran(l.x1, l.y1);
-          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); c.moveTo(sx, sy); c.lineTo(cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+        }
+        if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
+        if (zw && zw.ile > 1) {
+          c.save(); c.font = `bold 10px ${kroj}`; c.fillStyle = kolory.tekst;
+          napis(c, `${o.flota.grupa || o.flota.nazwa} ×${zw.ile}`, sx + 9, sy + 12);
+          c.restore();
         }
         c.save(); c.fillStyle = kolor; c.strokeStyle = kolor; c.lineWidth = 1.7;
         if (o.bitwa) { c.globalAlpha = 0.28 + (Math.sin(t / 180) + 1) * 0.16; c.beginPath(); c.arc(sx, sy, 12 + (t % 900) / 120, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1; }
         c.beginPath();
         // Rzeczywista długość, gdy okręt na ekranie jest większy od znacznika; inaczej znacznik.
         const rz = rozmiarNaEkranie(o);
-        if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys, rz ?? 8);
+        if (rz && rz >= 12) {
+          // Prawdziwa wielkość: kształt okrętu (kadłub ciemniejszy, obrys w kolorze strony).
+          sylwetkaOkretu(c, o, sx, sy, kursRys, rz);
+          c.globalAlpha = 0.35; c.fill(); c.globalAlpha = 1; c.lineWidth = Math.min(2, Math.max(1, rz / 120)); c.stroke();
+          c.beginPath();
+        } else if (o.znacznik === 'trojkat') strzalka(c, sx, sy, kursRys, rz ?? 8);
         else if (o.znacznik === 'komrk') sylwetkaKomrk(c, sx, sy, kursRys, rz ?? 10);
         else if (o.znacznik === 'kwadrat') { const r = rz ?? 5; c.rect(sx - r, sy - r, r * 2, r * 2); }
         else if (o.znacznik === 'romb') { const r = rz ?? 7; c.moveTo(sx, sy - r); c.lineTo(sx + r, sy); c.lineTo(sx, sy + r); c.lineTo(sx - r, sy); c.closePath(); }
@@ -791,7 +894,7 @@ export default {
         const [bx, by] = naEkran(w.x, w.y);
         const r = Math.max(4, w.margines * skala);
         c.save(); c.strokeStyle = KOLOR_WYKRYCIA; c.fillStyle = KOLOR_WYKRYCIA; c.lineWidth = 1.2;
-        c.globalAlpha = 0.8; c.setLineDash([2, 6]); c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+        c.globalAlpha = 0.8; c.setLineDash([2, 6]); c.beginPath(); liniaNaEkranie(c, ax, ay, bx, by); c.stroke();
         c.setLineDash([]); c.globalAlpha = 0.18; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill();
         c.globalAlpha = 0.7; c.stroke(); c.restore();
         c.font = '11px monospace'; c.fillStyle = KOLOR_WYKRYCIA;
@@ -833,7 +936,6 @@ export default {
         const d = Math.hypot(px - sx, py - sy) - (rozmiarNaEkranie(obiekt) ?? 0);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
       }
-      if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       let najblizsza = null, odl = 16;
       for (const p of P) {
         const rp = skala >= PROG_UKLADU && Math.hypot(...naMape(sx, sy).map((v, i) => v - (i ? p.y : p.x))) < 3e-3 ? ukladNaEkranie(p)?.rp || 0 : 0;
@@ -842,7 +944,10 @@ export default {
           if (d < odl) { odl = d; najblizsza = p; }
         }
       }
-      if (najblizsza) return { planeta: najblizsza };
+      // Klik w samą tarczę planety (albo tuż przy kropce) wybiera planetę — cel podróży — nawet gdy
+      // na jej orbicie stoi flota; jednostkę wybiera się klikiem w jej znacznik.
+      if (najblizsza && (!najblizszyObiekt || (odl <= 3 && odlObiektu > 2))) return { planeta: najblizsza };
+      if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       if (!szlakiWidoczne) return null;
       const [mx, my] = naMape(sx, sy);
       const tol = 10 / skala;
@@ -1098,6 +1203,10 @@ export default {
           const tutaj = wUkladzie.filter((j) => !j.ladowisko_id);
           const mogaLadowac = tutaj.filter((j) => Number(j.moze_ladowac) === 1 && (j.podejscie_teraz || 'bliska') === 'bliska');
           const pozaUkladem = jednostki.filter((j) => !j.rozkaz_id && Math.hypot(Number(j.x) - p.x, Number(j.y) - p.y) >= STREFA_UKLADU_PC);
+          // W tym samym układzie, ale nie na orbicie tej planety: mikroskok na jej orbitę (automat).
+          const obokWUkladzie = jednostki.filter((j) => !j.rozkaz_id && !j.ladowisko_id && norm(j.planeta || '') !== p.klucz
+            && Math.hypot(Number(j.x) - p.x, Number(j.y) - p.y) < STREFA_UKLADU_PC);
+          const doSkoku = [...pozaUkladem, ...obokWUkladzie];
           const wDrodze = jednostki.find((j) => j.rozkaz_id && j.cel_x != null && Math.hypot(j.cel_x - p.x, j.cel_y - p.y) < STREFA_UKLADU_PC);
           const automat = jednostki[0]?.automat !== false;
           const info = h('p.maly-tekst');
@@ -1142,14 +1251,15 @@ export default {
                 }))));
             }));
           }
-          if (pozaUkladem.length && !wDrodze) {
-            const glowna = jednostki[0] || {};
+          if (doSkoku.length && !wDrodze && (pozaUkladem.length || automat)) {
+            const glowna = doSkoku[0] || {};
             const kierunek = Math.atan2(p.y - Number(glowna.y || 0), p.x - Number(glowna.x || 0)) / RAD;
-            const odbiorcy = pozaUkladem.map((j) => j.obiekt_id);
+            const odbiorcy = doSkoku.map((j) => j.obiekt_id);
+            const wariantySkoku = Object.entries(NAZWY_WARIANTOW).filter(([x]) => !(obokWUkladzie.length && x === 'krawedz'));
             const plan = (wariant, zmiany = {}) => { planSkoku = { planeta: p.nazwa, kierunek, wariant, reczny: !automat, policzony: false, ...zmiany }; odswiezUkladKarty?.(); };
-            opcje.push(opcja('Skok do układu', automat ? 'wybór orbity wyjścia' : 'obliczenia mostka', () => {
+            opcje.push(opcja(pozaUkladem.length ? 'Skok do układu' : 'Skok na orbitę', automat ? (pozaUkladem.length ? 'wybór orbity wyjścia' : 'mikroskok w układzie, wybór orbity') : 'obliczenia mostka', () => {
               if (automat) {
-                k.dalej('Skok: orbita wyjścia', h('div.mapa-krok-lista', ...Object.entries(NAZWY_WARIANTOW).map(([x, n]) => opcja(n, null, () => {
+                k.dalej('Skok: orbita wyjścia', h('div.mapa-krok-lista', ...wariantySkoku.map(([x, n]) => opcja(n, null, () => {
                   plan(x);
                   krokSkoku(k, { flota_id: f.id, jednostki: odbiorcy, cel_planeta: p.nazwa, wariant: x }, () => plan(x, { policzony: true, aktywny: true }));
                 }))));

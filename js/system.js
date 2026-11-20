@@ -148,6 +148,98 @@ document.addEventListener('visibilitychange', () => {
   else if (html.classList.contains('z-tlem')) scena.start();
 });
 
+// ================================================================
+// Gwiazdy za oknem: najechanie albo dotknięcie zaznacza gwiazdę. Układ znany graczowi — nazwa;
+// nieznany (albo zwykła gwiazda tła) — klasa, odległość i skan liczby planet. Prawdziwe układy
+// wyglądają tak samo jak tysiące gwiazd tła, więc gracz nie wie, na którą warto patrzeć.
+// ================================================================
+
+const KLASY_GWIAZD = { O: 'błękitny olbrzym', B: 'błękitna', A: 'biała', F: 'żółtobiała', G: 'żółta', K: 'pomarańczowa', M: 'czerwony karzeł', WD: 'biały karzeł', RG: 'czerwony olbrzym' };
+const WAGI_KLAS = [['O', 1], ['B', 3], ['A', 5], ['F', 8], ['G', 15], ['K', 25], ['M', 40], ['WD', 2], ['RG', 1]];
+const skrot = (t) => { let x = 2166136261; for (const c of t) x = Math.imul(x ^ c.charCodeAt(0), 16777619); return x >>> 0; };
+const losZ = (ziarno) => { let s = ziarno || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
+
+function opisGwiazdy(s) {
+  if (s.g) return { klucz: s.klucz, nazwa: s.g.n || null, klasa: s.g.typ || 'G5', d: s.g.d, znacznik: s.g.t || null };
+  // Gwiazda tła: klasa, odległość i liczba planet stałe dla tej gwiazdy (z jej miejsca na niebie).
+  const los = losZ(skrot(s.klucz));
+  let r = los() * 100, typ = 'M';
+  for (const [t, w] of WAGI_KLAS) { if (r < w) { typ = t; break; } r -= w; }
+  const d = Math.round(150 + 2600 * los() ** 1.6 * (1.2 - (s.jasnosc || 0.5)));
+  const p = los();
+  return { klucz: s.klucz, nazwa: null, klasa: typ + Math.floor(los() * 10), d, tlo: p < 0.35 ? 0 : Math.floor(1 + los() * 8) };
+}
+
+const gwiazdaInfo = h('div.gwiazda-info', { hidden: true });
+let gwiazdaPrzypieta = null;
+const skany = () => pamiec.czytaj('skany', {});
+const odmianaPlanet = (n) => (n === 1 ? 'planeta' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'planety' : 'planet');
+
+function pokazGwiazde(s, przypnij) {
+  if (!s) {
+    gwiazdaInfo.hidden = true; gwiazdaPrzypieta = null; scena.zaznacz(null); return;
+  }
+  const o = opisGwiazdy(s);
+  scena.zaznacz(o.klucz);
+  if (!przypnij && gwiazdaPrzypieta) return;
+  gwiazdaPrzypieta = przypnij ? o.klucz : null;
+  const klasa = o.klasa.replace(/\d$/, '');
+  const wynik = h('div.gwiazda-skan');
+  const pokazWynik = (n) => wyczysc(wynik).append(h('div', n ? `Skan: ${n} ${odmianaPlanet(n)} w układzie` : 'Skan: brak planet'));
+  const znany = skany()[o.klucz];
+  if (o.nazwa) wynik.append(h('div.slaby', 'Układ w bazie nawigacyjnej'));
+  else if (znany != null) pokazWynik(znany);
+  else if (przypnij) {
+    wynik.append(h('button.przycisk.maly', { onclick: async (e) => {
+      e.stopPropagation();
+      wyczysc(wynik).append(h('div.gwiazda-skanuje', 'Skanowanie…'));
+      let n = o.tlo ?? 0;
+      try {
+        const [odp] = await Promise.all([o.znacznik ? api('gwiazda_skan', { t: o.znacznik }) : null, czekaj(2200 + Math.random() * 1200)]);
+        if (odp) n = odp.planety;
+      } catch (blad) { wyczysc(wynik).append(h('div.slaby', blad.message)); return; }
+      const zapis = skany(); zapis[o.klucz] = n;
+      const klucze = Object.keys(zapis); if (klucze.length > 400) delete zapis[klucze[0]];
+      pamiec.zapisz('skany', zapis);
+      if (gwiazdaPrzypieta === o.klucz) pokazWynik(n);
+    } }, 'Przeskanuj'));
+  }
+  wyczysc(gwiazdaInfo).append(
+    h('b', o.nazwa || 'Nieznana gwiazda'),
+    h('div', `klasa ${o.klasa} · ${KLASY_GWIAZD[klasa] || 'gwiazda'}`),
+    h('div.slaby', `ok. ${o.d.toLocaleString('pl-PL', { maximumFractionDigits: o.d < 10 ? 1 : 0 })} pc`),
+    wynik);
+  if (!gwiazdaInfo.isConnected) pulpit.append(gwiazdaInfo);
+  gwiazdaInfo.hidden = false;
+  const pr = pulpit.getBoundingClientRect(), cr = plotno.getBoundingClientRect();
+  const x = s.x + cr.left - pr.left, y = s.y + cr.top - pr.top;
+  gwiazdaInfo.style.left = `${Math.max(8, Math.min(x + 18, pr.width - 230))}px`;
+  gwiazdaInfo.style.top = `${Math.max(8, Math.min(y - 12, pr.height - 140))}px`;
+}
+
+function gwiazdaZdarzenia(e) {
+  return stan.uzytkownik && !stan.aplikacja && html.classList.contains('z-tlem')
+    && !e.target.closest('button, a, input, select, textarea, label, .ikona-aplikacji, .gwiazda-info, .pulpit-glowa > *, .szybkie-akcje > *');
+}
+function gwiazdaWPunkcie(e) {
+  const r = plotno.getBoundingClientRect();
+  return scena.gwiazdaPod(e.clientX - r.left, e.clientY - r.top);
+}
+pulpit.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse' || gwiazdaPrzypieta) return;
+  const s = gwiazdaZdarzenia(e) ? gwiazdaWPunkcie(e) : null;
+  pulpit.style.cursor = s ? 'pointer' : '';
+  pokazGwiazde(s, false);
+});
+pulpit.addEventListener('click', (e) => {
+  if (e.target.closest('.gwiazda-info')) return;
+  if (!gwiazdaZdarzenia(e)) return;
+  const s = gwiazdaWPunkcie(e);
+  if (!s && !gwiazdaPrzypieta) return;
+  gwiazdaPrzypieta = null;
+  pokazGwiazde(s, true);
+});
+
 function opisMiejsca() {
   if (!stanSceny) return '';
   const typ = TYPY_PLANET[stanSceny.planeta]?.nazwa;
@@ -359,6 +451,7 @@ function ekranBlokady(komunikat = '') {
   zamknijAplikacje();
   pokazPowloke(false);
   stan.uzytkownik = null;
+  ukryte = null;
   ustawDzwiek(null);
   const bladEl = h('div');
   const login = h('input', { autocomplete: 'username', autocapitalize: 'off', spellcheck: false, required: true });
@@ -375,6 +468,7 @@ function ekranBlokady(komunikat = '') {
         try {
           const odp = await api('zaloguj', { login: login.value, klucz: klucz.value });
           stan.uzytkownik = odp.uzytkownik;
+          ukryte = null;
           zaklocenia();
           ekranPulpitu();
         } catch (err) {
@@ -444,6 +538,42 @@ async function rysujSzybkieAkcje() {
   }, 1000);
 }
 
+// Ikony pulpitu: gracz zdejmuje i dodaje aplikacje (zapis w ustawieniach konta, kopia na urządzeniu).
+const STALE = ['ustawienia']; // tych nie da się zdjąć
+let ukryte = null;           // id zdjętych aplikacji
+let edycjaPulpitu = false;
+function kluczPulpitu() { return 'pulpit.' + (stan.uzytkownik?.login || stan.uzytkownik?.postac || ''); }
+async function wczytajPulpit() {
+  ukryte = pamiec.czytaj(kluczPulpitu(), []);
+  try {
+    const d = await api('ustawienie', undefined, { klucz: 'pulpit' });
+    if (Array.isArray(d.wartosc?.ukryte)) { ukryte = d.wartosc.ukryte; pamiec.zapisz(kluczPulpitu(), ukryte); }
+  } catch { /* zostaje kopia z urządzenia */ }
+}
+function zapiszPulpit() {
+  pamiec.zapisz(kluczPulpitu(), ukryte);
+  api('ustawienie_zapisz', { klucz: 'pulpit', wartosc: { ukryte } }).catch(() => {});
+}
+function rysujIkony(siatka) {
+  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id));
+  const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id));
+  siatka.classList.toggle('edycja', edycjaPulpitu);
+  siatka.querySelectorAll('.ikona-app, .kafel-dodaj').forEach((e) => e.remove());
+  const ikony = widoczne.map((a) => h('button.ikona-aplikacji.ikona-app', { onclick: () => (edycjaPulpitu ? null : otworz(a.id)) },
+    ikona(a.ikona), h('span', a.nazwa),
+    edycjaPulpitu && !STALE.includes(a.id) ? h('span.ikona-usun', { title: 'Zdejmij z pulpitu', onclick: (e) => {
+      e.stopPropagation(); ukryte = [...(ukryte || []), a.id]; zapiszPulpit(); rysujIkony(siatka);
+    } }, '×') : null));
+  siatka.prepend(...ikony);
+  if (edycjaPulpitu && zdjete.length) {
+    const lista = h('div.dodaj-lista', { hidden: true }, zdjete.map((a) => h('button.przycisk.maly.drugi', { onclick: () => {
+      ukryte = ukryte.filter((x) => x !== a.id); zapiszPulpit(); rysujIkony(siatka);
+    } }, ikona(a.ikona), a.nazwa)));
+    siatka.append(h('div.ikona-aplikacji.kafel-dodaj',
+      h('button.dodaj-plus', { onclick: () => { lista.hidden = !lista.hidden; } }, h('b', '+'), h('span', 'Dodaj')), lista));
+  }
+}
+
 // 4. Pulpit z ikonami aplikacji.
 function ekranPulpitu() {
   zamknijAplikacje();
@@ -452,6 +582,13 @@ function ekranPulpitu() {
   sprawdzScene();
   tytulPaska.textContent = '';
   const u = stan.uzytkownik;
+  edycjaPulpitu = false;
+  let siatka;
+  const dostosuj = h('button.przycisk.maly.drugi', { onclick: () => {
+    edycjaPulpitu = !edycjaPulpitu;
+    dostosuj.textContent = edycjaPulpitu ? 'Gotowe' : 'Dostosuj pulpit';
+    rysujIkony(siatka);
+  } }, 'Dostosuj pulpit');
   widok(
     h('div.pulpit-glowa',
       h('div',
@@ -464,13 +601,15 @@ function ekranPulpitu() {
         u.ranga ? h('div', u.ranga) : null)),
     szybkieAkcje,
     // Liczniki pokładowe i aparat to kafelki w tej samej siatce co aplikacje (nie nachodzą na ikony).
-    h('div.siatka-aplikacji',
-      APLIKACJE.map((a) => h('button.ikona-aplikacji', { onclick: () => otworz(a.id) },
-        ikona(a.ikona), h('span', a.nazwa))),
+    siatka = h('div.siatka-aplikacji',
       h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', hidden: !liczniki?.odliczanie }),
       h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
       h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
+    h('div.pulpit-dostosuj', dostosuj),
   );
+  const pierwszy = ukryte === null;
+  rysujIkony(siatka);
+  if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));
   odswiezZegar();
   rysujSzybkieAkcje();
   rysujLiczniki();
@@ -482,6 +621,7 @@ function ekranPulpitu() {
 
 function zamknijAplikacje() {
   clearInterval(licznikAkcji);
+  pokazGwiazde(null);
   if (stan.aplikacja) {
     try { stan.aplikacja.sprzataj?.(); } catch { /* aplikacja i tak znika */ }
     stan.aplikacja = null;

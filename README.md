@@ -830,6 +830,25 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   okien. Przydział z migracji: Pokład 01 — przód, hangary — wrota, kwatery i sale oficerskie, mesy,
   kantyny, rekreacja, oddział szpitalny — burty na przemian, reszta bez okien.
 
+## Pulpit, gwiazdy za oknem i skala mapy
+
+- **Dostosuj pulpit** (przycisk pod ikonami): × zdejmuje aplikację z pulpitu, „+ Dodaj” przywraca zdjęte. Układ
+  zapisuje się w `ustawienia_kont` (klucz `pulpit`, `{ ukryte: [...] }`) i w kopii na urządzeniu. Ustawień nie da się zdjąć.
+- **Gwiazdy za oknem**: najechanie (mysz) albo dotknięcie zaznacza gwiazdę celownikiem. Układ znany graczowi
+  (`mapa_planeta_widoczna`) pokazuje nazwę, klasę i odległość. Układ nieznany (zastrzeżony) i każda gwiazda tła
+  pokazuje „Nieznana gwiazda”, klasę, odległość i przycisk **Przeskanuj**, który podaje tylko liczbę planet. Prawdziwe
+  układy wyglądają jak gwiazdy tła. Skan prawdziwego układu: `?a=gwiazda_skan` ze znacznikiem podpisanym kluczem
+  sesji (`id.hmac`). Skan gwiazdy tła liczy się na tablecie i zawsze daje ten sam wynik. Wyniki zapamiętuje urządzenie.
+  Gwiazdy zasłonięte ramą okna albo ikonami nie dają się zaznaczyć.
+- **Mapa**: pasek skali w prawym górnym rogu (m, km, j.a., pc i lata świetlne). Przy największym zbliżeniu jest napis
+  „zbliżenie maks. · 1:1”. Okręty większe od znacznika mają kształt swojej klasy (ISD, Arquitens, Lambda, Gozanti,
+  YT-1300, Kom'rk, prom) w prawdziwej długości. Jednostki stojące w jednym punkcie ustawiają się w klin za prowadzącą,
+  z odstępem 2,5 długości.
+- Klik w tarczę planety wybiera planetę, nawet gdy na jej orbicie stoi flota. Na karcie planety jest
+  **Skok na orbitę**, czyli mikroskok automatu z innego miejsca tego samego układu (bez wariantu „krawędź”).
+- Linie kursu są przycinane do ekranu i rysowane także wtedy, gdy jednostka jest poza ekranem. Wcześniej przy części
+  przybliżeń znikały.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

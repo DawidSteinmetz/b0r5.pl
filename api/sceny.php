@@ -66,16 +66,47 @@ function scena_gwiazdy(float $x, float $y): array
         $dx = (float) $p['x'] - $x; $dy = (float) $p['y'] - $y;
         $d = hypot($dx, $dy);
         if ($d < 2 || $d > $z) continue; // własny układ (słońce rysuje się osobno) i poza zasięgiem
-        if (!mapa_planeta_widoczna((int) $p['id'])) continue;
         $h = crc32(mb_strtolower((string) $p['nazwa']));
         // Typ gwiazdy: kolor i jasność; „de” = odległość pozorna (jasny olbrzym wygląda na bliższy).
-        $g = astro_gwiazda(astro_typ_gwiazdy((string) $p['nazwa']));
-        $wynik[] = ['k' => round(fmod(rad2deg(atan2($dy, $dx)) + 360, 360), 2), 'd' => round($d, 1),
+        $typ = astro_typ_gwiazdy((string) $p['nazwa']);
+        $g = astro_gwiazda($typ);
+        $gw = ['k' => round(fmod(rad2deg(atan2($dy, $dx)) + 360, 360), 2), 'd' => round($d, 1),
             'de' => round($d / sqrt($g['L']), 1), 'rgb' => $g['rgb'],
-            'w' => round(($h % 2000) / 1000 - 1, 3), 'o' => ($h >> 11) % 3];
+            'w' => round(($h % 2000) / 1000 - 1, 3), 'o' => ($h >> 11) % 3,
+            'typ' => $typ . (astro_hash((string) $p['nazwa'], 77) % 10)];
+        // Układ znany graczowi: nazwa. Nieznany (zastrzeżony): sama gwiazda i znacznik do skanu —
+        // dla gracza to jedna z milionów gwiazd.
+        if (mapa_planeta_widoczna((int) $p['id'])) $gw['n'] = (string) $p['nazwa'];
+        else $gw['t'] = scena_znacznik_gwiazdy((int) $p['id']);
+        $wynik[] = $gw;
         if (count($wynik) >= GWIAZDY_MAKS) break;
     }
     return $wynik;
+}
+
+// Znacznik nieznanej gwiazdy (do skanu): id układu podpisane kluczem sesji — gracz nie zgadnie innych.
+function scena_znacznik_gwiazdy(int $id): string
+{
+    if (empty($_SESSION['gwiazdy_sol'])) $_SESSION['gwiazdy_sol'] = bin2hex(random_bytes(16));
+    return $id . '.' . substr(hash_hmac('sha256', (string) $id, (string) $_SESSION['gwiazdy_sol']), 0, 12);
+}
+
+// Skan gwiazdy z okna: ile planet ma układ (bez nazw i bez śladów cywilizacji).
+function scena_skan_gwiazdy(string $znacznik): array
+{
+    [$id] = explode('.', $znacznik . '.');
+    $id = (int) $id;
+    if ($id <= 0 || !hash_equals(scena_znacznik_gwiazdy($id), $znacznik)) blad('Skaner nie namierza tej gwiazdy.');
+    $q = polaczenie_bazy()->prepare('SELECT nazwa, x, y FROM mapa_planety WHERE id=?');
+    $q->execute([$id]);
+    $p = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$p) blad('Skaner nie namierza tej gwiazdy.');
+    $s = defined('STREFA_UKLADU_PC') ? STREFA_UKLADU_PC : 0.05;
+    $q = polaczenie_bazy()->prepare('SELECT COUNT(*) FROM mapa_planety WHERE ABS(x-?) < ? AND ABS(y-?) < ?');
+    $q->execute([(float) $p['x'], $s, (float) $p['y'], $s]);
+    // Ciała z mapy (planeta i księżyce) plus planety, których mapa nie notuje (stałe dla układu).
+    $planety = (int) $q->fetchColumn() + astro_hash((string) $p['nazwa'], 78) % 6;
+    return ['planety' => $planety];
 }
 
 // Okręt to ISD (okno mostka), jeśli klasa albo nazwa na to wskazuje.
@@ -464,6 +495,11 @@ function obsluz_sceny(string $akcja, bool $post): void
             $liczniki = null;
             try { $liczniki = liczniki_postaci($u['id']); } catch (Throwable $e) {}
             odpowiedz(['scena' => scena_efektywna($u['id']), 'teraz' => teraz_ms(), 'liczniki' => $liczniki]);
+
+        case 'gwiazda_skan':
+            if (!$post) blad('Zła metoda.', 405);
+            wymagaj_logowania();
+            odpowiedz(scena_skan_gwiazdy((string) (wejscie()['t'] ?? '')));
 
         case 'wskazniki_poklad':
             $u = wymagaj_logowania();

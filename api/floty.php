@@ -1238,8 +1238,12 @@ function floty_rozkaz(string $login, array $w): array
         if ($dystans < STREFA_UKLADU_PC) {
             // Skok w obrębie układu: tylko do punktu układu, z miejsca poza studniami (długość w km).
             $k0 = floty_uklad_dostepny() ? floty_poz_km($j, $teraz) : null;
-            if (!$celK || !$k0) blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Do planet i księżyców układu leć podświetlnie, orbitę zmień dolotem.');
-            $dx = $celK[0] - $k0[0]; $dy = $celK[1] - $k0[1];
+            // Mikroskok do planety tego układu (automat): wyjście na jej orbicie w wybranym wariancie.
+            if ($celPlanetaId && !$celK && (int) ($j['planeta_id'] ?? 0) === $celPlanetaId) blad('Jednostka „' . $j['nazwa'] . '” jest już na orbicie tej planety. Orbitę zmień dolotem.');
+            if ($celPlanetaId && !$celK && $wariant === 'krawedz') blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Na jego brzeg leć dolotem albo wskaż punkt brzegu na mapie.');
+            $kCel = $celK ?? ($celPlanetaId && $k0 ? floty_planeta_km($celPlanetaId, $teraz) : null);
+            if (!$kCel || !$k0) blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Do planet i księżyców układu leć podświetlnie, orbitę zmień dolotem.');
+            $dx = $kCel[0] - $k0[0]; $dy = $kCel[1] - $k0[1];
             $dystans = hypot($dx, $dy) / KM_NA_PC;
         }
         // Krawędź układu: wyjście na brzegu, przed ciałami układu — sprawdza się tylko układ startu.

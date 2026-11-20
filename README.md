@@ -911,6 +911,20 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - **Lot podświetlny** może kończyć się w studni grawitacyjnej; odrzucany jest tylko punkt wewnątrz ciała i trasa przez ciało.
 - Przyciski obrotu floty: +15° +45° −15° −45° w jednym rzędzie.
 
+## Stocznia naprawcza (Kuat), celownik ciał za oknem, lot w studni (2026-11-20)
+
+- **Oddaj do naprawy** (migracja **041**, `stocznia_naprawy`): okręt na orbicie Kuat (planety w `STOCZNIE`, api/floty.php)
+  — Nawigacja na pokładzie (kapitan) albo karta planety na mapie (dowódca floty). Każdy uszkodzony podzespół (reaktor,
+  hipernapęd, osłony, kadłub) dostaje prognozę (losowanie 1) i niezależny czas rzeczywisty (losowanie 2), oba z wielkości
+  okrętu i skali uszkodzeń. Stocznia ma 2 stanowiska równolegle, kolejka FIFO; przy pustej kolejce praca rusza od razu.
+  Na pulpicie osobny kafelek na każdą pracę w toku (podzespół, prognoza; po jej przekroczeniu „opóźnienie”) i kafelek
+  z prognozą całości. Po faktycznym końcu podzespół wraca do 100%. W doku okręt nie skacze, nie leci i nie ląduje;
+  „Odbierz z doku” przerywa pozostałe prace (naprawione zostają naprawione).
+- **Celownik za oknem** łapie także słońce tego układu, planetę i jej księżyce (cała tarcza): nazwa, rodzaj, odległość.
+- **Faza planety** za oknem liczona z kierunku planeta → słońce (z daleka planeta nie wychodzi już cała czarna).
+- **Lot podświetlny w studni**: start z orbity po stronie zwróconej ku celowi; księżyce mają na serwerze prawdziwą pozycję
+  na orbicie planety macierzystej (wcześniej leżały w jej środku).
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

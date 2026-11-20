@@ -104,6 +104,9 @@ function strzalka(g, x, y, kurs, r = 8) {
   g.closePath();
 }
 
+// Planety ze stocznią naprawczą (klucz jak w norm(); serwer: STOCZNIE w api/floty.php).
+const STOCZNIE_MAPY = ['kuat'];
+
 const REGIONY = ['Głębokie Jądro', 'Światy Jądra', 'Kolonie', 'Wewnętrzne Rubieże', 'Obszar Ekspansji',
   'Środkowe Rubieże', 'Zewnętrzne Rubieże', 'Przestrzeń Huttów', 'Nieznane Regiony', 'Dzika Przestrzeń'];
 
@@ -1436,6 +1439,18 @@ export default {
                 })));
                 if (!(d.ladowiska || []).length) lista.append(h('p.slaby.maly-tekst', 'Nie znasz tu żadnego lądowiska.'));
               }).catch((e) => wyczysc(lista).append(blad(e)));
+            }));
+          }
+          if (tutaj.length && STOCZNIE_MAPY.includes(p.klucz)) {
+            // Stocznia naprawcza: jedno kliknięcie oddaje uszkodzone okręty floty z tej orbity do doku.
+            opcje.push(opcja('Oddaj do naprawy', 'stocznia: prognoza dla każdego podzespołu', async () => {
+              try {
+                const w = await api('mapa_naprawa_zglos', { flota_id: f.id, jednostki: tutaj.map((j) => j.obiekt_id) });
+                const n = w.naprawa;
+                k.zamien('Naprawa', h('div', tabelaPlanu([['Stocznia', n?.stocznia || '—'], n ? ['Prognoza całości', czasGry(n.koniec)] : null]),
+                  n ? h('ul.lista', n.naprawy.map((x) => h('li', `${x.nazwa}: ${x.stan === 'w_toku' ? 'w toku' : 'w kolejce'} · do ${czasGry(x.koniec)}`))) : null));
+                await pobierzPozycje(); await odswiezFloty();
+              } catch (e) { info.textContent = e.message; }
             }));
           }
           if (tutaj.length) {

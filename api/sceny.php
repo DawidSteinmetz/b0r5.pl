@@ -361,6 +361,8 @@ function liczniki_okretu(int $id): ?array
         'reaktor' => $reaktor,
         'oslony' => $l ? (int) $o['oslony'] : null,
         'kadlub' => $l ? (int) $o['kadlub'] : null,
+        // Naprawy w stoczni: osobny kafelek na każdą pracę w toku (prognoza) i łączna prognoza okrętu.
+        'naprawa' => function_exists('floty_naprawy_okretu') ? floty_naprawy_okretu($id) : null,
     ], fn($v) => $v !== null);
 }
 

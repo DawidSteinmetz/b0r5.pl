@@ -66,6 +66,19 @@ function astro_gwiazda(string $typ, int $i = 0, string $uklad = ''): array
 // Położenie planety w jej układzie (km od słońca, osie mapy) w chwili $t.
 function astro_pozycja_km(array $cykl, int $t): array
 {
+    if (!empty($cykl['macierz']['nazwa'])) {
+        // Księżyc: planeta macierzysta + miejsce na jej orbicie — tak samo jak na mapie (lista księżyców planety
+        // macierzystej po nazwie; bez wpisu — parametry z planety_cykle księżyca).
+        $rodzic = astro_cykl((string) $cykl['macierz']['nazwa']);
+        $p = astro_pozycja_km($rodzic, $t);
+        $k = null;
+        foreach ($rodzic['ksiezyce'] ?? [] as $x) if (mb_strtolower((string) $x['nazwa']) === mb_strtolower((string) $cykl['nazwa'])) { $k = $x; break; }
+        $k ??= $cykl['macierz'];
+        $d = ($t - (int) $rodzic['epoka']) / 86400;
+        $a = deg2rad((float) ($k['faza'] ?? 0) + 360 * $d / max(0.01, (float) ($k['okres_dni'] ?? 20)));
+        $rk = (float) ($k['promien_km'] ?? 400000);
+        return [$p[0] + $rk * cos($a), $p[1] + $rk * sin($a)];
+    }
     $kat = deg2rad(astro_kat_slonca($cykl, $t) + 180);
     $r = (float) $cykl['promien_orbity_au'] * ASTRO_KM_NA_AU;
     return [$r * cos($kat), $r * sin($kat)];

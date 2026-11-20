@@ -623,11 +623,14 @@ function floty_lot(array $odbiorcy, array $w): array
         $k1 = null;
         if ($wUkladzie) {
             $k1 = $celK ?? floty_planeta_km($celId, $teraz);
-            // Start z orbity: z miejsca okrętu na orbicie planety (nie z jej środka).
+            // Start z orbity: okręt przechodzi po orbicie na stronę zwróconą ku celowi i stamtąd leci (nie ze środka
+            // planety i nie przez nią) — lot w obrębie własnej studni grawitacyjnej zawsze da się wyznaczyć.
             if (!$poz && $odPl) {
                 $sr = (float) (astro_cykl((string) (ruch_planeta((string) $odPl)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
                 $ro = floty_promien_orbity_km($sr / 2, ($j['podejscie'] ?? null) ?: 'daleka') ?? $sr / 2 * 15;
-                $kat = deg2rad(isset($j['orbita_deg']) && $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kurs_teraz($j, $teraz) + 180);
+                $dl0 = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
+                $kat = $dl0 > 1 ? atan2($k1[1] - $k0[1], $k1[0] - $k0[0])
+                    : deg2rad(isset($j['orbita_deg']) && $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kurs_teraz($j, $teraz) + 180);
                 $k0 = [$k0[0] + cos($kat) * $ro, $k0[1] + sin($kat) * $ro];
             }
             // Cel — planeta: koniec lotu na jej dalekiej orbicie od strony nadlotu (nie w środku planety).
@@ -919,6 +922,7 @@ function floty_ladowanie(array $odbiorcy, int $lokacjaId): array
 
 function floty_blokada_skoku(array $odbiorcy): void
 {
+    floty_blokada_naprawy($odbiorcy);
     $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = polaczenie_bazy()->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki WHERE obiekt_id IN ($marks) AND status='w_nadprzestrzeni' LIMIT 1");
     $q->execute($odbiorcy);
@@ -1444,6 +1448,189 @@ function floty_rozkaz(string $login, array $w): array
         'jednostki' => array_map(static fn($j) => ['id' => $j['id'],'nazwa' => $j['nazwa'],'szum_stopnie' => $j['kat'],'eta' => $j['eta']], $wyliczone)];
 }
 
+// ---------- stocznia naprawcza (Kuat, migracja 041) ----------
+// Oddanie okrętu do naprawy: każdy uszkodzony podzespół to osobny wpis z prognozą (losowanie 1) i niezależnym
+// czasem rzeczywistym (losowanie 2). Stanowiska stoczni pracują równolegle; kolejka FIFO. Gracz widzi prognozę.
+const STOCZNIE = ['kuat' => ['nazwa' => 'Stocznie Napędowe Kuat', 'stanowiska' => 2]];
+// Podzespół => [nazwa, godziny pracy przy 100% uszkodzeń dla okrętu ok. 100 m].
+const NAPRAWY_PODZESPOLY = ['sprawnosc_reaktora' => ['Reaktor', 3.0], 'sprawnosc_hipernapedu' => ['Hipernapęd', 4.0],
+    'oslony' => ['Osłony', 2.0], 'kadlub' => ['Kadłub', 5.0]];
+
+function floty_naprawy_dostepne(): bool
+{
+    return tabela_sql_dostepna('stocznia_naprawy');
+}
+
+// Stocznia, przy której stoi jednostka (na orbicie planety ze stocznią, nie w locie ani w skoku), albo null.
+function floty_stocznia_jednostki(int $id): ?string
+{
+    $q = polaczenie_bazy()->prepare('SELECT p.nazwa FROM mapa_obiekty o JOIN mapa_planety p ON p.id = o.planeta_id WHERE o.id = ?'
+        . (floty_lot_dostepny() ? ' AND o.lot_do_utc IS NULL' : ''));
+    $q->execute([$id]);
+    $n = mb_strtolower(trim((string) $q->fetchColumn()));
+    return isset(STOCZNIE[$n]) ? $n : null;
+}
+
+// Podzespoły i kolumny dostępne w bazie (osłony i kadłub — z migracją liczników).
+function floty_naprawy_kolumny(): array
+{
+    $k = ['sprawnosc_reaktora', 'sprawnosc_hipernapedu'];
+    if (function_exists('liczniki_dostepne') && liczniki_dostepne()) array_push($k, 'oslony', 'kadlub');
+    return $k;
+}
+
+// Kolejka: kończy prace, których czas rzeczywisty minął (podzespół → 100%), i od razu (w chwili zwolnienia
+// stanowiska) zaczyna następne wpisy. Zdarzenia przetwarzane chronologicznie, także te z przeszłości.
+function floty_naprawy_aktualizuj(): void
+{
+    if (!floty_naprawy_dostepne()) return;
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    $kolumny = floty_naprawy_kolumny();
+    for ($krok = 0; $krok < 500; $krok++) {
+        $w = $db->query("SELECT id, stocznia, obiekt_id, podzespol, start_utc, faktyczny_s FROM stocznia_naprawy WHERE stan = 'w_toku'")->fetchAll(PDO::FETCH_ASSOC);
+        $zajete = [];
+        $najblizszy = null;
+        foreach ($w as $r) {
+            $zajete[$r['stocznia']] = ($zajete[$r['stocznia']] ?? 0) + 1;
+            $koniec = czas_z_utc((string) $r['start_utc']) + (int) $r['faktyczny_s'];
+            if ($koniec <= $teraz && (!$najblizszy || $koniec < $najblizszy[1])) $najblizszy = [$r, $koniec];
+        }
+        if (!$najblizszy) {
+            // Bez zaległych zakończeń: wolne stanowiska biorą następne wpisy z kolejki od teraz.
+            foreach (STOCZNIE as $s => $cfg) {
+                $wolne = $cfg['stanowiska'] - ($zajete[$s] ?? 0);
+                if ($wolne <= 0) continue;
+                $q = $db->prepare("SELECT id FROM stocznia_naprawy WHERE stocznia = ? AND stan = 'kolejka' ORDER BY zgloszono_utc, id LIMIT " . (int) $wolne);
+                $q->execute([$s]);
+                foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $k) {
+                    $db->prepare("UPDATE stocznia_naprawy SET stan = 'w_toku', start_utc = ? WHERE id = ?")->execute([czas_utc($teraz), $k]);
+                }
+            }
+            break;
+        }
+        [$r, $koniec] = $najblizszy;
+        $db->prepare("UPDATE stocznia_naprawy SET stan = 'gotowa', koniec_utc = ? WHERE id = ?")->execute([czas_utc($koniec), $r['id']]);
+        if (in_array($r['podzespol'], $kolumny, true)) {
+            $db->prepare('UPDATE mapa_naped_jednostki SET ' . $r['podzespol'] . ' = 100 WHERE obiekt_id = ?')->execute([$r['obiekt_id']]);
+        }
+        // Zwolnione stanowisko: następny wpis zaczyna się w chwili zakończenia tej pracy.
+        $q = $db->prepare("SELECT id FROM stocznia_naprawy WHERE stocznia = ? AND stan = 'kolejka' ORDER BY zgloszono_utc, id LIMIT 1");
+        $q->execute([$r['stocznia']]);
+        if ($nast = $q->fetchColumn()) $db->prepare("UPDATE stocznia_naprawy SET stan = 'w_toku', start_utc = ? WHERE id = ?")->execute([czas_utc($koniec), $nast]);
+    }
+}
+
+// Stan napraw okrętu dla gracza: wpisy w kolejce i w toku z prognozą końca (plan stanowisk według prognoz:
+// prace w toku do swojej prognozy, potem kolejka FIFO na pierwsze wolne stanowisko) i prognoza całości.
+function floty_naprawy_okretu(int $id): ?array
+{
+    if (!floty_naprawy_dostepne()) return null;
+    floty_naprawy_aktualizuj();
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    $q = $db->prepare("SELECT DISTINCT stocznia FROM stocznia_naprawy WHERE obiekt_id = ? AND stan IN ('kolejka','w_toku')");
+    $q->execute([$id]);
+    $stocznia = $q->fetchColumn();
+    if (!$stocznia) return null;
+    $wszystkie = $db->prepare("SELECT id, obiekt_id, podzespol, od_wartosci, stan, start_utc, prognoza_s FROM stocznia_naprawy
+        WHERE stocznia = ? AND stan IN ('kolejka','w_toku') ORDER BY stan = 'kolejka', zgloszono_utc, id");
+    $wszystkie->execute([$stocznia]);
+    $stanowiska = [];
+    $plan = [];
+    foreach ($wszystkie->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        if ($r['stan'] === 'w_toku') {
+            $start = czas_z_utc((string) $r['start_utc']);
+            $koniec = $start + (int) $r['prognoza_s'];
+            $stanowiska[] = max($teraz, $koniec);
+            $plan[] = $r + ['od' => $start, 'koniec' => $koniec, 'opoznienie' => $koniec < $teraz];
+        } else {
+            while (count($stanowiska) < STOCZNIE[$stocznia]['stanowiska']) $stanowiska[] = $teraz;
+            sort($stanowiska);
+            $start = array_shift($stanowiska);
+            $koniec = $start + (int) $r['prognoza_s'];
+            $stanowiska[] = $koniec;
+            $plan[] = $r + ['od' => $start, 'koniec' => $koniec, 'opoznienie' => false];
+        }
+    }
+    $moje = array_values(array_filter($plan, fn($r) => (int) $r['obiekt_id'] === $id));
+    return ['stocznia' => STOCZNIE[$stocznia]['nazwa'], 'stanowiska' => STOCZNIE[$stocznia]['stanowiska'],
+        'koniec' => max(array_map(fn($r) => $r['opoznienie'] ? $teraz : $r['koniec'], $moje)),
+        'naprawy' => array_map(fn($r) => ['id' => (int) $r['id'], 'podzespol' => $r['podzespol'], 'nazwa' => NAPRAWY_PODZESPOLY[$r['podzespol']][0] ?? $r['podzespol'],
+            'stan' => $r['stan'], 'od_wartosci' => (int) $r['od_wartosci'], 'od' => $r['od'], 'koniec' => $r['koniec'], 'opoznienie' => $r['opoznienie']], $moje)];
+}
+
+// Czy okręt można oddać do naprawy (przy stoczni, ma uszkodzenia, nie stoi już w doku): [stocznia, uszkodzenia] albo powód.
+function floty_naprawy_mozliwosc(int $id): array
+{
+    if (!floty_naprawy_dostepne()) return ['powod' => 'Zaimportuj api/migracje/041_stocznia_naprawy.sql.'];
+    $s = floty_stocznia_jednostki($id);
+    if (!$s) return ['powod' => 'Okręt nie stoi na orbicie planety ze stocznią naprawczą.'];
+    $q = polaczenie_bazy()->prepare("SELECT 1 FROM stocznia_naprawy WHERE obiekt_id = ? AND stan IN ('kolejka','w_toku') LIMIT 1");
+    $q->execute([$id]);
+    if ($q->fetchColumn()) return ['powod' => 'Okręt już jest w doku naprawczym.'];
+    $kol = floty_naprawy_kolumny();
+    $q = polaczenie_bazy()->prepare('SELECT ' . implode(',', $kol) . ' FROM mapa_naped_jednostki WHERE obiekt_id = ?');
+    $q->execute([$id]);
+    $n = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+    $usz = [];
+    foreach ($kol as $k) if (isset($n[$k]) && (int) $n[$k] < 100) $usz[$k] = (int) $n[$k];
+    if (!$usz) return ['powod' => 'Okręt nie wymaga naprawy.'];
+    return ['stocznia' => $s, 'uszkodzenia' => $usz];
+}
+
+function floty_naprawy_zglos(string $login, array $odbiorcy): array
+{
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    $ile = 0;
+    $powody = [];
+    foreach ($odbiorcy as $id) {
+        $m = floty_naprawy_mozliwosc((int) $id);
+        if (isset($m['powod'])) { $powody[] = $m['powod']; continue; }
+        $q = $db->prepare('SELECT COALESCE(dlugosc_m, 100) FROM mapa_obiekty WHERE id = ?');
+        try { $q->execute([$id]); $dl = (float) $q->fetchColumn(); } catch (Throwable $e) { $dl = 100.0; }
+        $rozmiar = max(0.5, min(4.0, sqrt(max(1.0, $dl) / 100)));
+        foreach ($m['uszkodzenia'] as $kol => $v) {
+            $baza = NAPRAWY_PODZESPOLY[$kol][1] * 3600 * $rozmiar * (100 - $v) / 100;
+            // Dwa niezależne losowania: prognoza stoczni i faktyczny czas pracy.
+            $prognoza = (int) max(300, round($baza * random_int(80, 120) / 100));
+            $faktyczny = (int) max(300, round($baza * random_int(60, 160) / 100));
+            $db->prepare("INSERT INTO stocznia_naprawy (stocznia, obiekt_id, podzespol, od_wartosci, stan, zgloszono_utc, prognoza_s, faktyczny_s, zglaszajacy_login)
+                VALUES (?, ?, ?, ?, 'kolejka', ?, ?, ?, ?)")->execute([$m['stocznia'], $id, $kol, $v, czas_utc($teraz), $prognoza, $faktyczny, $login]);
+        }
+        $ile++;
+    }
+    if (!$ile) blad($powody[0] ?? 'Nie ma czego naprawiać.');
+    floty_naprawy_aktualizuj();
+    return ['ok' => true, 'naprawa' => floty_naprawy_okretu((int) $odbiorcy[0])];
+}
+
+// Odbiór z doku przed końcem: prace w toku i w kolejce przerwane; naprawione już podzespoły zostają naprawione.
+function floty_naprawy_przerwij(array $odbiorcy): array
+{
+    if (!floty_naprawy_dostepne()) blad('Zaimportuj api/migracje/041_stocznia_naprawy.sql.');
+    floty_naprawy_aktualizuj();
+    $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
+    $q = polaczenie_bazy()->prepare("UPDATE stocznia_naprawy SET stan = 'przerwana', koniec_utc = ? WHERE obiekt_id IN ($marks) AND stan IN ('kolejka','w_toku')");
+    $q->execute([czas_utc(czas_teraz()), ...$odbiorcy]);
+    if (!$q->rowCount()) blad('Okręt nie jest w doku naprawczym.');
+    floty_naprawy_aktualizuj();
+    return ['ok' => true];
+}
+
+// W doku okręt nie skacze, nie leci i nie ląduje.
+function floty_blokada_naprawy(array $odbiorcy): void
+{
+    if (!$odbiorcy || !floty_naprawy_dostepne()) return;
+    floty_naprawy_aktualizuj();
+    $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
+    $q = polaczenie_bazy()->prepare("SELECT o.nazwa FROM stocznia_naprawy s JOIN mapa_obiekty o ON o.id = s.obiekt_id
+        WHERE s.obiekt_id IN ($marks) AND s.stan IN ('kolejka','w_toku') LIMIT 1");
+    $q->execute($odbiorcy);
+    if ($n = $q->fetchColumn()) blad('„' . $n . '” stoi w doku naprawczym. Odbierz go z doku albo poczekaj na koniec napraw.');
+}
+
 // ---------- przerwanie skoku ----------
 // Przed wejściem w nadprzestrzeń (obliczenia, obrót, lot do punktu skoku): bez skutków. W nadprzestrzeni:
 // gwałtowne wyjście tam, dokąd jednostka doleciała (w studni układu — na jego krawędzi), część paliwa
@@ -1707,7 +1894,7 @@ function obsluz_floty(string $akcja, bool $post): void
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj','mapa_flota_kurs','mapa_flota_dolot',
         'mapa_flota_start','mapa_flota_ladowanie','mapa_ladowiska','mapa_flota_lot','mapa_lot_przerwij','mapa_poklad','mg_poklad_rola',
         'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport','mg_flota_kurs',
-        'prom_wylot','prom_powrot'];
+        'prom_wylot','prom_powrot','mapa_naprawa','mapa_naprawa_zglos','mapa_naprawa_przerwij'];
     if (!in_array($akcja, $akcje, true)) return;
     floty_gotowe();
     switch ($akcja) {
@@ -1779,6 +1966,27 @@ function obsluz_floty(string $akcja, bool $post): void
             $u = wymagaj_logowania(); $w = wejscie();
             [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
             odpowiedz(floty_dolot($odbiorcy, (string) ($w['cel'] ?? '')));
+
+        case 'mapa_naprawa':
+            // Stan napraw okrętu i czy można go oddać do stoczni (?obiekt=).
+            $u = wymagaj_logowania();
+            $id = (int) ($_GET['obiekt'] ?? 0);
+            $m = floty_naprawy_dostepne() ? floty_naprawy_mozliwosc($id) : ['powod' => 'Brak stoczni (migracja 041).'];
+            odpowiedz(['naprawa' => floty_naprawy_okretu($id), 'mozna' => !isset($m['powod']), 'powod' => $m['powod'] ?? null,
+                'uszkodzenia' => array_map(fn($k, $v) => ['nazwa' => NAPRAWY_PODZESPOLY[$k][0] ?? $k, 'wartosc' => $v], array_keys($m['uszkodzenia'] ?? []), array_values($m['uszkodzenia'] ?? []))]);
+
+        case 'mapa_naprawa_zglos':
+            // „Oddaj do naprawy”: jedno kliknięcie, przy pustej kolejce naprawa rusza od razu.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
+            odpowiedz(floty_naprawy_zglos((string) $u['login'], $odbiorcy));
+
+        case 'mapa_naprawa_przerwij':
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            [, $odbiorcy] = floty_odbiorcy((string) $u['login'], $w);
+            odpowiedz(floty_naprawy_przerwij($odbiorcy));
 
         case 'mapa_flota_lot':
             // Lot podświetlny do planety/księżyca albo punktu mapy (z `plan`: tylko wyliczenie).

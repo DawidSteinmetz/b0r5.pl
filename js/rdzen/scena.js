@@ -370,8 +370,9 @@ export function utworzScene(canvas) {
       ctx.save();
       // tarcza nocna, potem oświetlona część (faza jak u planety: księżyc „widziany z kierunku” kier)
       ctx.fillStyle = '#15191e'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#a7b0ba'; ctx.fill(sciezkaSwiatla(x, y, r, { slonce: k.slonce, orbita: kier + 180, doPlanety: kier }));
+      ctx.fillStyle = '#a7b0ba'; ctx.fill(sciezkaSwiatla(x, y, r, { slonce: k.slonce, swiatloPlanety: k.swiatloPlanety, orbita: kier + 180, doPlanety: kier }));
       if (r > 3) { ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(180, 200, 215, 0.55)'; ctx.fillText(m.nazwa || '', x + r + 4, y - r - 2); }
+      zbierz(x, y, `k:${m.nazwa || ''}`, { cialo: { rodzaj: 'ksiezyc', nazwa: m.nazwa || '', opis: `księżyc planety ${stan.miejsce || ''}`, km: dist, r: Math.max(r, 6) } });
       ctx.restore();
     }
   }
@@ -571,7 +572,10 @@ export function utworzScene(canvas) {
     const doPlanety = orbita + 180;                           // kierunek z okrętu na planetę
     // Kierunek na słońce: z punktu układu podaje serwer (widok.slonce), przy planecie — z jej orbity.
     const slonce = v.slonce?.kat ?? (v.cykl ? stanUkladu(v.cykl, t).katSlonca : null);
-    return { kurs, orbita, doPlanety, slonce };
+    // Oświetlenie planety zależy od kierunku planeta → słońce (nie okręt → słońce): z daleka, np. z brzegu układu,
+    // te kierunki bardzo się różnią i planeta wychodziła cała czarna zamiast w połowie oświetlona.
+    const swiatloPlanety = v.cykl ? stanUkladu(v.cykl, t).katSlonca : slonce;
+    return { kurs, orbita, doPlanety, slonce, swiatloPlanety };
   }
   // Pozioma pozycja na ekranie obiektu w danym kierunku (cel na lewo od dziobu → na lewo w oknie).
   const xKierunku = (kurs, kierunek) => w / 2 - norm180(kierunek - kurs) * (w / POLE_WIDZENIA);
@@ -634,9 +638,11 @@ export function utworzScene(canvas) {
   function zbierz(x, y, klucz, dane) {
     zbierane.push({ x: x + kadrX, y: y + kadrYTeraz, klucz, ...dane });
     if (klucz !== zaznaczona) return;
+    // Celownik: wokół tarczy ciała (słońce, planeta, księżyc) albo małej gwiazdy.
+    const r = Math.max(9, (dane?.cialo?.r || 0) + 4);
     ctx.save(); ctx.strokeStyle = 'rgba(77, 226, 201, 0.95)'; ctx.lineWidth = 1.2; ctx.beginPath();
-    ctx.arc(x, y, 9, 0, Math.PI * 2);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(x + dx * 12, y + dy * 12); ctx.lineTo(x + dx * 17, y + dy * 17); }
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { ctx.moveTo(x + dx * (r + 3), y + dy * (r + 3)); ctx.lineTo(x + dx * (r + 8), y + dy * (r + 8)); }
     ctx.stroke(); ctx.restore();
   }
 
@@ -665,6 +671,9 @@ export function utworzScene(canvas) {
       ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2);
       ctx.fillStyle = `rgb(${Math.min(255, cr + 30)}, ${Math.min(255, cg + 30)}, ${Math.min(255, cb + 30)})`;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      // Celownik: słońce tego układu (nazwa układu z miejsca, klasa, odległość).
+      zbierz(x, y, `s:${stan.miejsce || ''}:${gw.typ || ''}:${gw.przesuniecie || 0}`,
+        { cialo: { rodzaj: 'gwiazda', nazwa: stan.miejsce || '', typ: gw.typ || 'G', opis: gw.nazwa || '', km: dKm, r: Math.max(r, 6) } });
     }
   }
 
@@ -684,8 +693,9 @@ export function utworzScene(canvas) {
   // Oświetlona część tarczy: od strony słońca, z terminatorem jako półelipsą (faza jak u Księżyca).
   function sciezkaSwiatla(cx, cy, R, k) {
     const RAD = Math.PI / 180;
-    const faza = Math.cos((k.slonce - k.orbita) * RAD);             // 1 = pełnia (słońce za okrętem)
-    const strona = Math.cos((k.slonce - (k.doPlanety - 90)) * RAD) >= 0 ? 1 : -1; // 1: światło z prawej
+    const sl = k.swiatloPlanety ?? k.slonce;                        // kierunek z planety na słońce
+    const faza = Math.cos((sl - k.orbita) * RAD);                   // 1 = pełnia (słońce za okrętem)
+    const strona = Math.cos((sl - (k.doPlanety - 90)) * RAD) >= 0 ? 1 : -1; // 1: światło z prawej
     const p = new Path2D();
     p.arc(cx, cy, R, -Math.PI / 2, Math.PI / 2, strona < 0);
     for (let i = 0; i <= 24; i++) {
@@ -714,6 +724,12 @@ export function utworzScene(canvas) {
     const skala = 0.85 + 0.15 * pojawienie;
     const R = r * skala;
     if (cx + R * 1.3 < 0 || cx - R * 1.3 > w) return;
+    // Celownik: planeta (albo księżyc, przy którym stoi okręt) — nazwa, typ i odległość od środka.
+    {
+      const sr = Number(stan.widok?.cykl?.srednica_km) || SREDNICA_DOMYSLNA_KM;
+      zbierz(cx, cy, `p:${stan.miejsce || ''}`, { cialo: { rodzaj: stan.widok?.cykl?.macierz ? 'ksiezyc' : 'planeta', nazwa: stan.miejsce || '',
+        opis: TYPY_PLANET[typ]?.nazwa || '', km: sr / 2 + wysokoscOrbity(sr), r: Math.max(R, 6) } });
+    }
     const info = TYPY_PLANET[typ];
     ctx.save();
     ctx.globalAlpha = pojawienie;
@@ -1288,7 +1304,8 @@ export function utworzScene(canvas) {
     gwiazdaPod(px, py) {
       let naj = null, min = 1;
       for (const s of narysowane) {
-        const d = Math.hypot(s.x - px, s.y - py) / (s.g ? 16 : 7);
+        // Ciała (słońce, planeta, księżyc) łapią się w całej tarczy (+6 px), gwiazdy układów z 16 px, tła z 7 px.
+        const d = Math.hypot(s.x - px, s.y - py) / (s.cialo ? s.cialo.r + 6 : s.g ? 16 : 7);
         if (d < min) { min = d; naj = s; }
       }
       if (naj && oknoIsd && OKNA_Z_RAMA.includes(stan.okno)) {

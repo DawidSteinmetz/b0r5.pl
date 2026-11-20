@@ -76,7 +76,7 @@ export default {
           const zostalo = Number(el.dataset.koniec) - teraz();
           const start = Number(el.dataset.start || 0);
           if (el.dataset.pasek) el.style.width = `${Math.min(100, ((teraz() - start) / (Number(el.dataset.koniec) - start)) * 100)}%`;
-          else el.textContent = zostalo > 0 ? odliczanie(zostalo) : 'teraz';
+          else el.textContent = zostalo > 0 ? odliczanie(zostalo) : el.dataset.opoznienie ? 'opóźnienie' : 'teraz';
           if (zostalo <= 0 && el.dataset.przeladuj) koniec = true;
         });
         // Jedno przeładowanie naraz i nie częściej niż co 3 s (zegar tabletu może o sekundę wyprzedzać serwer).
@@ -358,7 +358,31 @@ export default {
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
         panelWnetrza(p.wnetrze),
-        panelPromow(p));
+        panelPromow(p),
+        panelStoczni(p));
+    }
+
+    // Stocznia naprawcza (np. Kuat): „Oddaj do naprawy” jednym kliknięciem, potem prace podzespołów z prognozą.
+    function panelStoczni(p) {
+      const el = h('div');
+      api('mapa_naprawa', undefined, { obiekt: p.id }).then((r) => {
+        if (r.naprawa) {
+          const n = r.naprawa;
+          el.append(h('div', { style: 'margin-top:12px' }, h('h3', n.stocznia),
+            h('ul.lista', n.naprawy.map((x) => h('li', h('div.rzad',
+              h('span.rozpycha', `${x.nazwa} (od ${x.od_wartosci}%)`),
+              h('span.slaby.maly-tekst', x.stan === 'w_toku' ? 'w toku' : 'w kolejce'),
+              h('b', { 'data-koniec': x.koniec, 'data-opoznienie': '1' }, x.opoznienie ? 'opóźnienie' : odliczanie(x.koniec - teraz())))))),
+            h('div.slaby.maly-tekst', `Prognoza całości: ${czasGry(n.koniec)} · stanowisk: ${n.stanowiska}. Prognoza stoczni nie jest gwarancją.`),
+            p.kapitan ? h('button.przycisk.drugi', { style: 'margin-top:8px', onclick: () => { if (confirm('Odebrać okręt z doku przed końcem napraw? Prace w toku przepadną.')) akcja('mapa_naprawa_przerwij', { obiekt_id: p.id }, 'Okręt odebrany z doku.'); } }, 'Odbierz z doku') : null));
+        } else if (r.mozna) {
+          el.append(h('div', { style: 'margin-top:12px' }, h('h3', 'Stocznia naprawcza'),
+            h('div.slaby.maly-tekst', `Uszkodzenia: ${r.uszkodzenia.map((x) => `${x.nazwa} ${x.wartosc}%`).join(', ')}`),
+            p.kapitan ? h('button.przycisk', { style: 'margin-top:8px', onclick: () => akcja('mapa_naprawa_zglos', { obiekt_id: p.id }, 'Okręt w doku naprawczym — naprawy ruszyły.') }, 'Oddaj do naprawy')
+              : h('div.slaby.maly-tekst', 'Do naprawy oddaje kapitan albo dowódca floty.')));
+        }
+      }).catch(() => {});
+      return el;
     }
 
     function statki() {

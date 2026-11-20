@@ -160,6 +160,7 @@ const skrot = (t) => { let x = 2166136261; for (const c of t) x = Math.imul(x ^ 
 const losZ = (ziarno) => { let s = ziarno || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 
 function opisGwiazdy(s) {
+  if (s.cialo) return { klucz: s.klucz, cialo: s.cialo };
   if (s.g) return { klucz: s.klucz, nazwa: s.g.n || null, klasa: s.g.typ || 'G5', d: s.g.d, znacznik: s.g.t || null };
   // Gwiazda tła: klasa, odległość i liczba planet stałe dla tej gwiazdy (z jej miejsca na niebie).
   const los = losZ(skrot(s.klucz));
@@ -175,6 +176,23 @@ let gwiazdaPrzypieta = null;
 const skany = () => pamiec.czytaj('skany', {});
 const odmianaPlanet = (n) => (n === 1 ? 'planeta' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'planety' : 'planet');
 
+// Ciało tego układu za oknem (słońce, planeta, księżyc): nazwa, rodzaj i odległość.
+const AU_KM = 149597870.7;
+const odlCiala = (km) => (km >= AU_KM * 0.05 ? `${(km / AU_KM).toLocaleString('pl-PL', { maximumFractionDigits: 2 })} j.a.`
+  : `${Math.round(km).toLocaleString('pl-PL')} km`);
+function pokazCialo(s, c) {
+  const naglowek = c.rodzaj === 'gwiazda' ? `Gwiazda układu ${c.nazwa}` : c.rodzaj === 'ksiezyc' ? `Księżyc ${c.nazwa}` : `Planeta ${c.nazwa}`;
+  const klasa = c.rodzaj === 'gwiazda' ? `klasa ${c.typ} · ${KLASY_GWIAZD[String(c.typ).replace(/\d$/, '')] || c.opis || 'gwiazda'}` : c.opis;
+  wyczysc(gwiazdaInfo).append(h('b', naglowek), klasa ? h('div', klasa) : null,
+    c.km ? h('div.slaby', `odległość ${odlCiala(c.km)}`) : null, h('div.slaby', 'W bazie nawigacyjnej'));
+  if (!gwiazdaInfo.isConnected) pulpit.append(gwiazdaInfo);
+  gwiazdaInfo.hidden = false;
+  const pr = pulpit.getBoundingClientRect(), cr = plotno.getBoundingClientRect();
+  const x = s.x + cr.left - pr.left, y = s.y + cr.top - pr.top;
+  gwiazdaInfo.style.left = `${Math.max(8, Math.min(x + 18 + (c.r || 0), pr.width - 230))}px`;
+  gwiazdaInfo.style.top = `${Math.max(8, Math.min(y - 12, pr.height - 140))}px`;
+}
+
 function pokazGwiazde(s, przypnij) {
   if (!s) {
     gwiazdaInfo.hidden = true; gwiazdaPrzypieta = null; scena.zaznacz(null); return;
@@ -183,6 +201,7 @@ function pokazGwiazde(s, przypnij) {
   scena.zaznacz(o.klucz);
   if (!przypnij && gwiazdaPrzypieta) return;
   gwiazdaPrzypieta = przypnij ? o.klucz : null;
+  if (o.cialo) return pokazCialo(s, o.cialo);
   const klasa = o.klasa.replace(/\d$/, '');
   const wynik = h('div.gwiazda-skan');
   const pokazWynik = (n) => wyczysc(wynik).append(h('div', n ? `Skan: ${n} ${odmianaPlanet(n)} w układzie` : 'Skan: brak planet'));
@@ -284,6 +303,24 @@ function rysujLiczniki() {
     el.append(h('span.kafel-etykieta', o.etykieta), h('b.kafel-czas', { 'data-koniec': String(o.koniec) }, pozostalo(o.koniec)),
       o.od ? h('i.kafel-postep', h('i', { 'data-od': String(o.od), 'data-do': String(o.koniec) })) : null);
   });
+  // Naprawy w stoczni: kafelek na każdą pracę w toku (nazwa podzespołu, prognoza do końca) i kafelek całości.
+  document.querySelectorAll('[data-naprawy]').forEach((el) => {
+    wyczysc(el);
+    const n = liczniki?.naprawa;
+    if (!n?.naprawy?.length) return;
+    const KLUCZ = '<path d="M30 8a9 9 0 0 0-8 12L9 33a3 3 0 0 0 4 4l13-13a9 9 0 0 0 12-8l-5 5-5-1-1-5z"/>';
+    for (const x of n.naprawy.filter((r) => r.stan === 'w_toku')) {
+      el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: `Naprawa: ${x.nazwa} (od ${x.od_wartosci}%)` },
+        ikona(KLUCZ), h('span.kafel-etykieta', `Naprawa: ${x.nazwa}`),
+        h('b.kafel-czas', { 'data-koniec': String(x.koniec), 'data-opoznienie': '1' }, x.opoznienie ? 'opóźnienie' : pozostalo(x.koniec)),
+        h('i.kafel-postep', h('i', { 'data-od': String(x.od), 'data-do': String(x.koniec) }))));
+    }
+    const czeka = n.naprawy.filter((r) => r.stan === 'kolejka').length;
+    el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: n.stocznia },
+      h('span.kafel-etykieta', `Okręt w doku${czeka ? ` · w kolejce: ${czeka}` : ''}`),
+      h('b.kafel-czas', { 'data-koniec': String(n.koniec), 'data-opoznienie': '1' }, pozostalo(n.koniec)),
+      h('span.kafel-etykieta', 'prognoza całości')));
+  });
   // Kafelek stanu: zawsze cztery paski (statek firmy: paliwo).
   document.querySelectorAll('[data-liczniki]').forEach((el) => {
     wyczysc(el);
@@ -301,7 +338,8 @@ setInterval(() => {
   const teraz = (Date.now() + przesuniecieZegara) / 1000;
   document.querySelectorAll('.kafel-czas[data-koniec]').forEach((el) => {
     const koniec = Number(el.dataset.koniec);
-    el.textContent = pozostalo(koniec);
+    // Naprawa dłuższa niż prognoza stoczni: „opóźnienie” zamiast zera (gracz nie zna faktycznego czasu).
+    el.textContent = el.dataset.opoznienie && koniec <= teraz ? 'opóźnienie' : pozostalo(koniec);
     el.classList.toggle('ostrz', koniec - teraz < 60);
   });
   document.querySelectorAll('[data-od]').forEach((el) => {
@@ -716,6 +754,7 @@ function ekranPulpitu() {
     // Liczniki pokładowe i aparat to kafelki w tej samej siatce co aplikacje (nie nachodzą na ikony).
     siatka = h('div.siatka-aplikacji',
       h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', hidden: !liczniki?.odliczanie }),
+      h('div.kafle-napraw', { 'data-naprawy': '' }),
       h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
       h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
   );

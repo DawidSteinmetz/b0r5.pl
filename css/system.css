@@ -197,6 +197,10 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 /* Aparat (zdjęcie słońca) i komunikat na pulpicie */
 .kafel-aparat[hidden], .kafel-liczniki[hidden], .kafel-odliczanie[hidden] { display: none; }
 .kafel-odliczanie { justify-content: center; gap: 8px; cursor: default; }
+/* Naprawy w stoczni: kafelki w tej samej siatce co aplikacje (opakowanie nie tworzy własnego pola siatki). */
+.kafle-napraw { display: contents; }
+.kafel-naprawa svg { width: 26px; height: 26px; fill: none; stroke: var(--akcent-2); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.kafel-naprawa .kafel-czas { font-size: 17px; }
 .kafel-etykieta { font-size: 11px; letter-spacing: 0.06em; color: var(--tekst-slaby); }
 .kafel-czas { font-size: 20px; font-weight: normal; color: var(--akcent); font-variant-numeric: tabular-nums; }
 .kafel-czas.ostrz { color: #ffb347; }

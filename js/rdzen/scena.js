@@ -321,12 +321,48 @@ export function utworzScene(canvas) {
     gwiazdyBok = Array.from({ length: 320 }, () => ({ x: Math.random(), y: Math.random(), z: 0.08 + Math.random() * 0.92, j: Math.random() }));
   }
 
+  // Wysokość nad planetą (km): z serwera (lot, punkt układu) albo z wariantu orbity — tak samo jak na mapie
+  // (bliska 300 km nad powierzchnią, średnia 4 R, daleka 15 R od środka).
+  function wysokoscOrbity(srednica) {
+    if (stan.widok?.wysokosc_km != null) return Number(stan.widok.wysokosc_km);
+    const R = srednica / 2;
+    return { blisko: 300, srednio: 3 * R, daleko: 14 * R }[stan.odleglosc] ?? WYSOKOSCI_KM[stan.odleglosc] ?? 3 * R;
+  }
+
+  // Księżyce planety za oknem: kierunek i wielkość z położenia okrętu (strona orbity, wysokość) i księżyca
+  // (ten sam cykl co mapa), oświetlona połowa od strony słońca.
+  function rysujKsiezyce() {
+    const v = stan.widok, k = kierunki();
+    if (!v?.cykl?.ksiezyce?.length || !k || v.bez_planety) return;
+    const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+    const RAD = Math.PI / 180;
+    const srednica = Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM;
+    const dOkretu = srednica / 2 + wysokoscOrbity(srednica);
+    const ox = Math.cos(k.orbita * RAD) * dOkretu, oy = Math.sin(k.orbita * RAD) * dOkretu;
+    for (const m of stanUkladu(v.cykl, t).ksiezyce) {
+      const rk = Number(m.promien_km) || 400000;
+      const mx = Math.cos(m.kat * RAD) * rk - ox, my = Math.sin(m.kat * RAD) * rk - oy;
+      const dist = Math.hypot(mx, my);
+      const kier = Math.atan2(my, mx) / RAD;
+      if (Math.abs(norm180(kier - k.kurs)) > POLE_WIDZENIA / 2 + 10) continue;
+      const sm = Number(m.srednica_km) || 3000;
+      const r = Math.max(1.5, rozmiarKatowy(sm, Math.max(sm, dist)) * w / POLE_WIDZENIA / 2);
+      const x = xKierunku(k.kurs, kier), y = yWidoku(0.46 - Math.min(0.12, (hash(m.nazwa || '') % 100) / 1000));
+      ctx.save();
+      // tarcza nocna, potem oświetlona część (faza jak u planety: księżyc „widziany z kierunku” kier)
+      ctx.fillStyle = '#15191e'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#a7b0ba'; ctx.fill(sciezkaSwiatla(x, y, r, { slonce: k.slonce, orbita: kier + 180, doPlanety: kier }));
+      if (r > 3) { ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(180, 200, 215, 0.55)'; ctx.fillText(m.nazwa || '', x + r + 4, y - r - 2); }
+      ctx.restore();
+    }
+  }
+
   function przygotujPlanete() {
     const typ = TYPY_PLANET[stan.planeta] ? stan.planeta : 'skalista';
     // Średnica na ekranie z rozmiaru kątowego: prawdziwa średnica planety i wysokość orbity,
     // przeliczone przez pole widzenia (POLE_WIDZENIA stopni na szerokość wzoru).
     const srednica = Number(stan.widok?.cykl?.srednica_km) || SREDNICA_DOMYSLNA_KM;
-    const wysokosc = Number(stan.widok?.wysokosc_km ?? WYSOKOSCI_KM[stan.odleglosc] ?? WYSOKOSCI_KM.srednio);
+    const wysokosc = wysokoscOrbity(srednica);
     // Z krawędzi układu (miliony km) prawdziwa tarcza to 2–3 px — gubiła się w czerni okna, więc
     // trzyma co najmniej 14 px (patrz też szersza poświata w rysujPlanete).
     const minimum = stan.odleglosc === 'krawedz' ? 14 : 3;
@@ -1178,6 +1214,7 @@ export function utworzScene(canvas) {
         if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05); }
         rysujSasiednieGwiazdy();
         rysujSlonce();
+        rysujKsiezyce();
         rysujPlanete(t, 1);
         break;
       case 'powierzchnia':

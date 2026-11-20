@@ -64,6 +64,8 @@ export default {
 
     // Liczniki odświeżane co sekundę bez przeładowania całego widoku.
     let odswiezanie = null;
+    let przeladowanie = false;
+    let ostatniePrzeladowanie = 0;
     function tykaj() {
       clearInterval(odswiezanie);
       if (d.poklad?.w_locie) odswiezanie = setInterval(() => { if (!w.contains(document.activeElement) || document.activeElement.tagName !== 'INPUT') wczytaj(); }, 8000);
@@ -77,7 +79,12 @@ export default {
           else el.textContent = zostalo > 0 ? odliczanie(zostalo) : 'teraz';
           if (zostalo <= 0 && el.dataset.przeladuj) koniec = true;
         });
-        if (koniec) wczytaj();
+        // Jedno przeładowanie naraz i nie częściej niż co 3 s (zegar tabletu może o sekundę wyprzedzać serwer).
+        if (koniec && !przeladowanie && Date.now() - ostatniePrzeladowanie > 3000) {
+          przeladowanie = true;
+          ostatniePrzeladowanie = Date.now();
+          wczytaj().finally(() => { przeladowanie = false; });
+        }
       }, 1000);
     }
 
@@ -173,7 +180,7 @@ export default {
 
     // Lądowanie: autopilot (znane lądowiska / przydział kontroli) albo ręcznie po współrzędnych.
     function ladowanie(p) {
-      const wybor = h('select', { style: 'min-height:44px;background:rgba(0,0,0,.35);border:1px solid var(--linia);border-radius:6px;padding:0 10px;width:100%' },
+      const wybor = h('select', { style: 'min-height:44px;border:1px solid var(--linia);border-radius:6px;padding:0 10px;width:100%' },
         p.ladowiska.map((l) => h('option', { value: l.klucz }, `${l.przydzial ? '★ PRZYDZIAŁ: ' : ''}${l.nazwa} (${(TYPY[l.typ] || TYPY.inne)[0].toLowerCase()})`)));
       const reczne = h('input', { placeholder: 'x / y   np. 12.40 / -3.15', spellcheck: false, autocomplete: 'off', inputmode: 'decimal' });
       return h('div.panel',
@@ -263,7 +270,7 @@ export default {
       const wn = p.wnetrze;
       const wHangarze = !wn || (!wn.przejscie && wn.tu.id === wn.hangar_promow);
       return h('div', { style: 'margin-top:12px' }, h('h3', 'Hangar'),
-        wHangarze ? null : h('div.slaby.maly-tekst', 'Promy stoją w hangarze promów — żeby wsiąść, najpierw tam dojdź.'),
+        wHangarze ? null : doPromu(wn),
         h('ul.lista', p.promy.map((prom) => h('li',
           h('div.rzad', h('div.rozpycha', h('div', prom.nazwa, h('span.slaby.maly-tekst', prom.klasa ? ` · ${prom.klasa}` : '')),
             h('div.slaby.maly-tekst', stanPromu(prom))),
@@ -273,23 +280,72 @@ export default {
 
     const OKNA = { przod: 'okna mostka', lewa: 'iluminatory lewej burty', prawa: 'iluminatory prawej burty', hangar: 'wrota hangaru', brak: 'bez okien' };
 
-    // Wnętrze okrętu: gdzie jestem, przejście w toku, skróty i „Idź do…” (pomieszczenia pogrupowane po pokładach).
+    // Jeden sposób chodzenia po okręcie: każdy cel (lista, ulubione, skrót „Idź do promu”) to ten sam rozkaz poklad_idz.
+    // Nowy cel w trakcie przejścia zastępuje poprzedni (serwer liczy od pomieszczenia, z którego się wyszło).
+    const idzPoklad = (id) => akcja('poklad_idz', { cel: id }, (r) => (r.cel ? `Idziesz: ${r.cel} (${r.min} min).` : 'Zostajesz na miejscu.'));
+
+    // Ulubione pomieszczenia: ustawienie konta na serwerze, kopia na urządzeniu.
+    const kluczUlubionych = `hololink.ulubione.${ctx.uzytkownik.id ?? ctx.uzytkownik.postac}`;
+    let ulubione = null;
+    let ostatniWybor = null;
+    async function wczytajUlubione() {
+      try { ulubione = JSON.parse(localStorage.getItem(kluczUlubionych) || '[]').map(Number); } catch { ulubione = []; }
+      try {
+        const r = await api('ustawienie', undefined, { klucz: 'ulubione_poklad' });
+        if (Array.isArray(r.wartosc)) ulubione = r.wartosc.map(Number);
+      } catch { /* zostaje kopia z urządzenia */ }
+    }
+    function przelaczUlubione(id) {
+      ulubione = ulubione.includes(id) ? ulubione.filter((x) => x !== id) : [...ulubione, id].slice(-40);
+      try { localStorage.setItem(kluczUlubionych, JSON.stringify(ulubione)); } catch { /* bez pamięci */ }
+      api('ustawienie_zapisz', { klucz: 'ulubione_poklad', wartosc: ulubione }).catch(() => {});
+      rysuj();
+    }
+
+    // Skrót do hangaru promów: zwykły rozkaz przejścia z gotowym celem.
+    function doPromu(wn) {
+      const cel = wn?.hangar_promow;
+      if (!cel) return h('div.slaby.maly-tekst', 'Promy stoją w hangarze promów — żeby wsiąść, najpierw tam dojdź.');
+      if (wn.przejscie?.cel === cel) return h('div.slaby.maly-tekst', 'Idziesz do hangaru promów — tam wsiądziesz do promu.');
+      const s = wn.skroty.find((x) => x.id === cel);
+      return h('div.rzad', { style: 'margin-top:6px' }, h('span.slaby.maly-tekst.rozpycha', 'Promy stoją w hangarze promów.'),
+        h('button.przycisk.drugi', { onclick: () => idzPoklad(cel) }, `Idź do promu${s ? ` (${s.min} min)` : ''}`));
+    }
+
+    // Wnętrze okrętu: gdzie jestem, przejście w toku, skróty, ulubione i pełna lista pomieszczeń (po pokładach).
     function panelWnetrza(wn) {
       if (!wn) return null;
-      const idz = (id) => akcja('poklad_idz', { cel: id }, (r) => (r.cel ? `Idziesz: ${r.cel} (${r.min} min).` : 'Jesteś na miejscu.'));
+      if (ulubione === null) { ulubione = []; wczytajUlubione().then(() => { if (w.isConnected && d) rysuj(); }); }
       const grupy = new Map();
       for (const x of wn.pomieszczenia) { if (!grupy.has(x.grupa)) grupy.set(x.grupa, []); grupy.get(x.grupa).push(x); }
-      const wybor = h('select', [...grupy].map(([g, lista]) => h('optgroup', { label: g || 'Okręt' },
-        lista.map((x) => h('option', { value: x.id }, `${x.nazwa} · ${x.min} min`)))));
+      const ulub = wn.pomieszczenia.filter((x) => ulubione.includes(x.id));
+      const opcja = (x) => h('option', { value: x.id }, `${ulubione.includes(x.id) ? '★ ' : ''}${x.nazwa} · ${x.min} min`);
+      const wybor = h('select', { 'aria-label': 'Pomieszczenie docelowe' },
+        ...[ulub.length ? h('optgroup', { label: '★ Ulubione' }, ulub.map(opcja)) : null,
+          ...[...grupy].map(([g, lista]) => h('optgroup', { label: g || 'Okręt' }, lista.map(opcja)))].filter(Boolean));
+      if (ostatniWybor && wn.pomieszczenia.some((x) => x.id === ostatniWybor)) wybor.value = String(ostatniWybor);
+      const gwiazdka = h('button.przycisk.drugi', { type: 'button', style: 'min-width:44px;padding:0 10px' });
+      const ustawGwiazdke = () => {
+        const jest = ulubione.includes(Number(wybor.value));
+        gwiazdka.textContent = jest ? '★' : '☆';
+        gwiazdka.title = jest ? 'Usuń z ulubionych' : 'Dodaj do ulubionych';
+      };
+      wybor.addEventListener('change', () => { ostatniWybor = Number(wybor.value); ustawGwiazdke(); });
+      gwiazdka.onclick = () => { ostatniWybor = Number(wybor.value); przelaczUlubione(Number(wybor.value)); };
+      ustawGwiazdke();
       const p = wn.przejscie;
+      // Skróty: hangar promów i mostek (z serwera) oraz ulubione, bez powtórzeń.
+      const skroty = [...wn.skroty, ...ulub.filter((x) => !wn.skroty.some((s) => s.id === x.id)).map((x) => ({ ...x, nazwa: `★ ${x.nazwa}` }))];
       return h('div', { style: 'margin-top:10px' },
-        h('div', h('span.slaby.maly-tekst', 'Jesteś: '), h('b', wn.tu.nazwa), h('span.slaby.maly-tekst', ` · ${wn.tu.grupa} · ${OKNA[wn.tu.okno] || ''}`)),
-        p ? h('div', { style: 'margin-top:6px' }, `Idziesz: ${p.cel_nazwa} — na miejscu za `,
-          h('b', { 'data-koniec': p.do, 'data-przeladuj': '1' }, odliczanie(p.do - teraz()))) : null,
-        wn.skroty.length ? h('div.rzad', { style: 'margin-top:8px' }, wn.skroty.map((x) =>
-          h('button.przycisk.drugi', { onclick: () => idz(x.id) }, `→ ${x.nazwa} (${x.min} min)`))) : null,
-        h('div.rzad', { style: 'margin-top:8px' }, h('div.pole.rozpycha', { style: 'margin:0' }, wybor),
-          h('button.przycisk', { onclick: () => idz(Number(wybor.value)) }, 'Idź')));
+        h('div', h('span.slaby.maly-tekst', p ? 'Wyszedłeś z: ' : 'Jesteś: '), h('b', wn.tu.nazwa),
+          h('span.slaby.maly-tekst', ` · ${wn.tu.grupa}${p ? '' : ` · ${OKNA[wn.tu.okno] || ''}`}`)),
+        p ? h('div.rzad', { style: 'margin-top:6px' },
+          h('span.rozpycha', `Idziesz: ${p.cel_nazwa} — na miejscu za `, h('b', { 'data-koniec': p.do, 'data-przeladuj': '1' }, odliczanie(p.do - teraz()))),
+          h('button.przycisk.drugi.maly', { onclick: () => idzPoklad(wn.tu.id) }, 'Zawróć')) : null,
+        skroty.length ? h('div.rzad', { style: 'margin-top:8px;flex-wrap:wrap' }, skroty.map((x) =>
+          h('button.przycisk.drugi', { disabled: p?.cel === x.id, onclick: () => idzPoklad(x.id) }, `→ ${x.nazwa} (${x.min} min)`))) : null,
+        h('div.rzad', { style: 'margin-top:8px' }, h('div.pole.rozpycha', { style: 'margin:0' }, wybor), gwiazdka,
+          h('button.przycisk', { onclick: () => idzPoklad(Number(wybor.value)) }, p ? 'Zmień cel' : 'Idź')));
     }
 
     // Na pokładzie okrętu z SQL (np. prywatnego statku): zejście na lądowisko i start; hangar z promami.
@@ -367,7 +423,7 @@ export default {
         rysuj();
         return;
       }
-      const platnosc = h('select', { style: 'min-height:36px;background:transparent;border:1px solid var(--linia);border-radius:4px;padding:0 6px' },
+      const platnosc = h('select', { style: 'min-height:36px;border:1px solid var(--linia);border-radius:4px;padding:0 6px' },
         h('option', { value: 'karta' }, 'płacę kartą'), h('option', { value: 'gotowka' }, 'płacę gotówką'));
       wyczysc(tresc).append(h('div.panel',
         h('h2', `Trasa → ${nazwa}`),

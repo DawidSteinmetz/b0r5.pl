@@ -832,8 +832,9 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## Pulpit, gwiazdy za oknem i skala mapy
 
-- **Dostosuj pulpit** (przycisk pod ikonami): × zdejmuje aplikację z pulpitu, „+ Dodaj” przywraca zdjęte. Układ
-  zapisuje się w `ustawienia_kont` (klucz `pulpit`, `{ ukryte: [...] }`) i w kopii na urządzeniu. Ustawień nie da się zdjąć.
+- **Dostosuj pulpit** (mała ikonka w prawym dolnym rogu, tuż obok głośnika): × zdejmuje aplikację z pulpitu, „+ Dodaj”
+  przywraca zdjęte. Układ zapisuje się w `ustawienia_kont` (klucz `pulpit`, `{ ukryte: [...] }`) i w kopii na urządzeniu.
+  **Ustawienia** i **Przewodnik** to małe ikonki w lewym dolnym rogu doku, nie kafelki na pulpicie.
 - **Gwiazdy za oknem**: najechanie (mysz) albo dotknięcie zaznacza gwiazdę celownikiem. Układ znany graczowi
   (`mapa_planeta_widoczna`) pokazuje nazwę, klasę i odległość. Układ nieznany (zastrzeżony) i każda gwiazda tła
   pokazuje „Nieznana gwiazda”, klasę, odległość i przycisk **Przeskanuj**, który podaje tylko liczbę planet. Prawdziwe
@@ -848,6 +849,30 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   **Skok na orbitę**, czyli mikroskok automatu z innego miejsca tego samego układu (bez wariantu „krawędź”).
 - Linie kursu są przycinane do ekranu i rysowane także wtedy, gdy jednostka jest poza ekranem. Wcześniej przy części
   przybliżeń znikały.
+
+## Pakiet poprawek z testów (2026-11-20)
+
+- **Nawigacja na pokładzie**: jeden sposób chodzenia — lista pomieszczeń, skróty, ulubione i „Idź do promu” wysyłają ten
+  sam rozkaz `poklad_idz`. Nowy cel w trakcie przejścia zastępuje poprzedni („Zmień cel”, „Zawróć”). Licznik nie jest już
+  nadpisywany przez zegar kafelków pulpitu (`.kafel-czas[data-koniec]`). **Ulubione** pomieszczenia (★) są na górze listy
+  i w skrótach, pełna lista zostaje; zapis w `ustawienia_kont` (klucz `ulubione_poklad`). Listy wyboru mają pełne, ciemne tło.
+- **Pomieszczenia burtowe** (kajuty itp.) są zamknięte, bez widoku na zewnątrz. Okna ma tylko mostek, wrota — hangar.
+- **Mapa**: flota w jednym miejscu to albo jeden znacznik floty, albo jej jednostki (bez zdublowanych trójkątów).
+  W widoku układu gwiazda, planeta i księżyc to osobne cele (karta gwiazdy z celem w bezpiecznej odległości od niej);
+  zaznaczenie rysuje się na wybranym ciele. Zoom i kadr mapy pamięta bieżące logowanie (sessionStorage, osobno dla konta;
+  wylogowanie czyści). Odległości na kartach i „do celu” w locie liczą się na żywo z pozycji na linii lotu.
+- **Mini-mapa układu**: kierunek planu skoku jak na serwerze (w układzie — w km od słońca); „Krawędź układu” pokazuje
+  wyjście na brzegu układu, nie przy dalekiej orbicie. Bez zapisanego miejsca na orbicie okręt stoi po stronie
+  przeciwnej do dziobu (jak w oknie). Po mikroskoku w układzie miejsce na orbicie wynika z kursu skoku (wcześniej zawsze 180°).
+- **Okno**: księżyce planety za oknem w kierunkach z tego samego cyklu co mapa; wysokości orbit jak na mapie.
+- **Lot podświetlny w układzie**: dozwolony także w studni grawitacyjnej; zaczyna się z miejsca na orbicie i kończy na
+  orbicie celu od strony nadlotu. Trasa przez planetę, księżyc albo gwiazdę (3 promienie) jest odrzucana z komunikatem.
+- **Panel MG → Stan postaci**: pozycja wybierana etapami: obszar (sektor z katalogu albo region) → planeta, flota albo
+  okręt → lokacja / statek floty → pomieszczenie (`?a=mg_wnetrze`), z podsumowaniem ścieżki przed zapisem.
+- **Nowi gracze**: „Dodaj gracza” z miejscem startowym i **zaproszeniem** — jednorazowy kod (`XXXX-XXXX`, 7 dni, w danych
+  tylko hash). Gracz na ekranie logowania wybiera „Mam kod zaproszenia” i sam ustawia hasło (`?a=zaproszenie_aktywuj`).
+  MG może wydać nowy kod (`mg_zaproszenie_nowe`). Lista kont pokazuje gotowość: konto, pozycja, przewodnik. Hasło w formularzu
+  MG jest ukryte. **Przewodnik** pierwszego wejścia (4 kroki, pomiń / wznów) — stan w `ustawienia_kont` (klucz `przewodnik`).
 
 ## Dźwięk pokładu
 

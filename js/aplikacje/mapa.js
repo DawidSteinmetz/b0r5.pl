@@ -38,6 +38,9 @@ export function kursTeraz(o, t = teraz()) {
   return o?.kurs ?? 90;
 }
 
+// Miejsce na orbicie (°): zapisane albo — bez zapisu — po stronie przeciwnej do dziobu (dziób ku planecie).
+const miejsceNaOrbicie = (o, t = teraz()) => o?.orbita ?? (kursTeraz(o, t) + 180) % 360;
+
 // Jednostka jest w nadprzestrzeni dopiero po manewrze (wejście w skok).
 const wNadprzestrzeni = (o, t = teraz()) => !!o?.lot && t >= (o.lot.wejscie || 0);
 
@@ -283,6 +286,34 @@ export default {
       return (t - l.od) / Math.max(1, l.do - l.od);
     }
 
+    // Pozycja jednostki teraz: mapa (pc) i — w układzie — km od słońca; w locie podświetlnym po linii lotu.
+    function pozycjaTeraz(o) {
+      if (!o) return null;
+      const pl = postepLotu(o);
+      if (pl != null) {
+        const l = o.podswietlny;
+        const k = l.k0 && l.k1 ? [l.k0[0] + (l.k1[0] - l.k0[0]) * pl, l.k0[1] + (l.k1[1] - l.k0[1]) * pl] : null;
+        return { x: l.x0 + (l.x1 - l.x0) * pl, y: l.y0 + (l.y1 - l.y0) * pl, k };
+      }
+      if (o.uklad_k) return { x: Number(o.x), y: Number(o.y), k: o.uklad_k };
+      const p = planetaObiektu(o);
+      if (p) return { x: p.x, y: p.y, k: kmWUkladzie(p) };
+      return { x: Number(o.x), y: Number(o.y), k: null };
+    }
+    // Odległość między pozycjami: w tym samym układzie w km / j.a., poza nim w parsekach.
+    function opisOdleglosci(a, b) {
+      if (!a || !b) return null;
+      const pc = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pc < STREFA_UKLADU_PC && a.k && b.k) {
+        const km = Math.hypot(a.k[0] - b.k[0], a.k[1] - b.k[1]);
+        return km >= KM_NA_AU * 0.1 ? `${liczba(km / KM_NA_AU, 2)} j.a.` : `${liczba(km)} km`;
+      }
+      return `${liczba(pc, pc < 10 ? 2 : 1)} pc`;
+    }
+    // Komórka karty liczona na nowo co sekundę (np. odległość w trakcie lotu).
+    const zywa = (licz) => { const el = h('td.mapa-zywe'); el._licz = licz; el.textContent = licz() ?? '—'; return el; };
+    const zegarZywych = setInterval(() => w.querySelectorAll('.mapa-zywe').forEach((el) => { const v = el._licz?.(); if (v != null && el.textContent !== v) el.textContent = v; }), 1000);
+
     function nazwaPostaci(o) {
       if (o.typ !== 'postac') return o.nazwa;
       const stopien = String(o.status || '').trim().split(/\s+/).filter(Boolean).at(-1) || '';
@@ -423,13 +454,53 @@ export default {
       return r > 8 ? r : null;
     }
 
+    // Flota w jednym miejscu: albo jeden znacznik floty (glowny + liczba), albo osobne jednostki — nigdy oba.
+    // Przy planecie rozwija się od progu zbliżenia; w przestrzeni, gdy szyk na ekranie przekracza kilka pikseli.
     function grupaZwinieta(o) {
-      if (skala >= PROG_ROZWINIECIA || !o?.flota || o.typ === 'postac') return null;
+      if (!o?.flota || o.typ === 'postac' || wNadprzestrzeni(o) || postepLotu(o) != null) return null;
       const p = planetaObiektu(o);
-      if (!p || wNadprzestrzeni(o) || postepLotu(o) != null) return null;
-      const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac'
-        && planetaObiektu(x) === p && !wNadprzestrzeni(x) && postepLotu(x) == null);
-      return { glowny: czlonkowie[0]?.id === o.id, ile: czlonkowie.length };
+      if (p) {
+        if (skala >= PROG_ROZWINIECIA) return null;
+        const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac'
+          && planetaObiektu(x) === p && !wNadprzestrzeni(x) && postepLotu(x) == null);
+        return { glowny: czlonkowie[0]?.id === o.id, ile: czlonkowie.length };
+      }
+      const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac' && !naPokladzie(x)
+        && !planetaObiektu(x) && !wNadprzestrzeni(x) && postepLotu(x) == null
+        && x.x === o.x && x.y === o.y && String(x.uklad_k || '') === String(o.uklad_k || ''));
+      if (czlonkowie.length < 2) return null;
+      const odstepKm = 2.5 * Math.max(...czlonkowie.map(dlugoscOkretu)) / 1000;
+      const rozpietoscPx = odstepKm * Math.ceil((czlonkowie.length - 1) / 2) * (skala / KM_NA_PC);
+      if (rozpietoscPx >= 10) return null;
+      return { glowny: czlonkowie[0].id === o.id, ile: czlonkowie.length };
+    }
+
+    // Pozycja ciała w jego układzie: km od słońca (osie mapy); księżyc — od słońca przez planetę macierzystą.
+    function kmWUkladzie(pl) {
+      const c = pl && cyklPlanety(pl);
+      if (!c) return null;
+      if (c.macierz) {
+        const r = wgKlucza.get(norm(c.macierz.nazwa));
+        const m = r && r !== pl ? kmWUkladzie(r) : null;
+        if (!m) return null;
+        const k = stanUkladu(cyklPlanety(r)).ksiezyce.find((x) => norm(x.nazwa) === pl.klucz);
+        if (!k) return m;
+        const rk = k.promien_km || c.macierz.promien_km || 400000;
+        return [m[0] + Math.cos(k.kat * RAD) * rk, m[1] + Math.sin(k.kat * RAD) * rk];
+      }
+      const u = stanUkladu(c), R = (c.promien_orbity_au || 1) * KM_NA_AU;
+      return [R * Math.cos(u.katPlanety * RAD), R * Math.sin(u.katPlanety * RAD)];
+    }
+    // Kierunek przylotu jednostki do planety (°, 0 = wschód, 90 = północ) — tak, jak liczy go serwer:
+    // spoza układu po mapie galaktyki, w układzie po km od słońca (skąd → planeta).
+    function kierunekPrzylotu(j, p) {
+      const dx = p.x - Number(j.x || 0), dy = p.y - Number(j.y || 0);
+      if (Math.hypot(dx, dy) >= STREFA_UKLADU_PC) return Math.atan2(dy, dx) / RAD;
+      const cel = kmWUkladzie(p);
+      const skad = j.uklad_kx != null ? [Number(j.uklad_kx), Number(j.uklad_ky)]
+        : j.planeta ? kmWUkladzie(wgKlucza.get(norm(j.planeta))) : null;
+      if (cel && skad && Math.hypot(cel[0] - skad[0], cel[1] - skad[1]) > 1) return Math.atan2(cel[1] - skad[1], cel[0] - skad[0]) / RAD;
+      return Math.atan2(dy, dx) / RAD;
     }
 
     function punktObiektu(o) {
@@ -497,7 +568,7 @@ export default {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
         const rozrzutS = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
         const rozrzut = rozrzutReal ? rozrzutS * (1 - rozrzutReal.f) + rozrzutReal.st * rozrzutReal.f : rozrzutS;
-        const kat = -((o.orbita ?? kursTeraz(o)) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
+        const kat = -(miejsceNaOrbicie(o) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
         return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
       }
       const kat = -Math.PI / 2 + (2 * Math.PI * indeks / Math.max(rodzina.length, 1));
@@ -541,8 +612,12 @@ export default {
     function pokazPodpowiedz(cel, sx, sy) {
       if (!cel || cel.szlak) { podpowiedz.hidden = true; return; }
       wyczysc(podpowiedz);
-      if (cel.planeta) {
-        podpowiedz.append(h('strong.mapa-hover-tytul', cel.planeta.nazwa), listaObecnych(cel.planeta));
+      if (cel.gwiazda) {
+        const gw = cyklPlanety(cel.gwiazda)?.gwiazdy?.[0];
+        podpowiedz.append(h('strong.mapa-hover-tytul', `Gwiazda układu ${cel.gwiazda.nazwa}`), h('small', gw ? `${gw.typ} · ${gw.nazwa}` : 'gwiazda'));
+      } else if (cel.planeta) {
+        const ks = skala >= PROG_UKLADU && ukladNaEkranie(cel.planeta)?.ksiezyc;
+        podpowiedz.append(h('strong.mapa-hover-tytul', `${ks ? 'Księżyc ' : ''}${cel.planeta.nazwa}`), listaObecnych(cel.planeta));
       } else if (cel.obiekt) {
         const o = cel.obiekt;
         podpowiedz.append(h('strong.mapa-hover-tytul', o.nazwa),
@@ -910,16 +985,29 @@ export default {
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { c.moveTo(sx + dx * 3, sy + dy * 3); c.lineTo(sx + dx * 11, sy + dy * 11); }
         c.stroke(); c.restore();
       }
-      for (const [p, alfa] of [[najechane?.planeta, 0.7], [wybrane?.planeta, 1]]) {
+      for (const [x, alfa] of [[najechane, 0.7], [wybrane, 1]]) {
+        const p = x?.planeta || x?.gwiazda;
         if (!p) continue;
-        const [sx, sy] = naEkran(p.x, p.y);
+        const u = skala >= PROG_UKLADU ? ukladNaEkranie(p) : null;
+        let sx, sy, r = 9, opis = p.nazwa;
+        if (x.gwiazda && u) {
+          const gw = u.cykl.gwiazdy?.[0];
+          [sx, sy] = [u.sx, u.sy];
+          r = Math.max(9, Math.max(SLONCE_MIN_PX * Math.sqrt(gw?.rozmiar || 1), (gw?.promien_km || 696000) * u.skm) + 4);
+          opis = `Gwiazda ${p.nazwa}${gw ? ` · ${gw.typ}` : ''}`;
+        } else if (u) {
+          [sx, sy] = [u.px, u.py];
+          r = Math.max(9, u.rp + 4);
+          opis = `${u.ksiezyc ? 'Księżyc' : 'Planeta'} ${p.nazwa}`;
+        } else [sx, sy] = naEkran(p.x, p.y);
+        if (r > Math.max(szer, wys) * 2) continue;
         c.globalAlpha = alfa;
         c.strokeStyle = kolory.akcent2;
         c.lineWidth = 1.5;
-        c.strokeRect(sx - 9, sy - 9, 18, 18);
+        c.strokeRect(sx - r, sy - r, r * 2, r * 2);
         c.font = `13px ${kroj}`;
         c.fillStyle = kolory.akcent2;
-        napis(c, p.nazwa, sx + 13, sy + 18);
+        napis(c, opis, sx + r + 4, sy + r + 9);
         c.globalAlpha = 1;
       }
     }
@@ -936,17 +1024,30 @@ export default {
         const d = Math.hypot(px - sx, py - sy) - (rozmiarNaEkranie(obiekt) ?? 0);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
       }
-      let najblizsza = null, odl = 16;
+      // Ciała: w widoku układu słońce, planeta i księżyc to osobne cele (każde w swoim miejscu na ekranie);
+      // przy małym zbliżeniu układ to jedna kropka — wtedy wybiera się planetę.
+      let najblizsza = null, odl = 16, slonce = null;
       for (const p of P) {
-        const rp = skala >= PROG_UKLADU && Math.hypot(...naMape(sx, sy).map((v, i) => v - (i ? p.y : p.x))) < 3e-3 ? ukladNaEkranie(p)?.rp || 0 : 0;
+        const u = skala >= PROG_UKLADU && Math.hypot(...naMape(sx, sy).map((v, i) => v - (i ? p.y : p.x))) < 3e-3 ? ukladNaEkranie(p) : null;
+        if (u) {
+          const dp = Math.hypot(u.px - sx, u.py - sy) - u.rp;
+          if (dp < odl) { odl = dp; najblizsza = p; slonce = null; }
+          if (!u.ksiezyc) {
+            const gw = u.cykl.gwiazdy?.[0];
+            const rs = Math.max(SLONCE_MIN_PX * Math.sqrt(gw?.rozmiar || 1), (gw?.promien_km || 696000) * u.skm);
+            const ds = Math.hypot(u.sx - sx, u.sy - sy) - rs;
+            if (ds < odl) { odl = ds; najblizsza = p; slonce = u; }
+          }
+          continue;
+        }
         for (const [px, py] of [naEkran(p.x, p.y), pozycjaPlanety(p)]) {
-          const d = Math.hypot(px - sx, py - sy) - rp;
-          if (d < odl) { odl = d; najblizsza = p; }
+          const d = Math.hypot(px - sx, py - sy);
+          if (d < odl) { odl = d; najblizsza = p; slonce = null; }
         }
       }
-      // Klik w samą tarczę planety (albo tuż przy kropce) wybiera planetę — cel podróży — nawet gdy
-      // na jej orbicie stoi flota; jednostkę wybiera się klikiem w jej znacznik.
-      if (najblizsza && (!najblizszyObiekt || (odl <= 3 && odlObiektu > 2))) return { planeta: najblizsza };
+      // Klik w samą tarczę ciała (albo tuż przy kropce) wybiera ciało — cel podróży — nawet gdy
+      // na jego orbicie stoi flota; jednostkę wybiera się klikiem w jej znacznik.
+      if (najblizsza && (!najblizszyObiekt || (odl <= 3 && odlObiektu > 2))) return slonce ? { gwiazda: najblizsza } : { planeta: najblizsza };
       if (najblizszyObiekt) return { obiekt: najblizszyObiekt };
       if (!szlakiWidoczne) return null;
       const [mx, my] = naMape(sx, sy);
@@ -1031,19 +1132,20 @@ export default {
         const linie = [];
         [...grupy.values()].forEach((lista, nr) => {
           lista.forEach((o, i) => {
-            const miejsce = (o.orbita ?? kursTeraz(o, t)) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
+            const miejsce = miejsceNaOrbicie(o, t) + (i - (lista.length - 1) / 2) * Math.min(10, 80 / lista.length);
             const r = rp + 9 + nr * 6, a = ekr(miejsce);
             const kolor = kolorObiektu(o);
             g.fillStyle = kolor; g.beginPath(); strzalka(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r, kursTeraz(o, t), 6); g.fill();
           });
           const o = lista[0];
-          const st = stronaOrbity(cykl, o.orbita ?? kursTeraz(o, t), t);
-          linie.push(`${o.flota?.nazwa || o.nazwa}${o.rozbity ? ' (wrak na powierzchni)' : ''}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · orbita ${Math.round(o.orbita ?? kursTeraz(o, t))}° · kurs ${Math.round(kursTeraz(o, t))}°`);
+          const st = stronaOrbity(cykl, miejsceNaOrbicie(o, t), t);
+          linie.push(`${o.flota?.nazwa || o.nazwa}${o.rozbity ? ' (wrak na powierzchni)' : ''}: strona ${st.dzien ? 'dzienna' : 'nocna'}${st.ksiezyc ? `, między planetą a: ${st.ksiezyc}` : ''} · orbita ${Math.round(miejsceNaOrbicie(o, t))}° · kurs ${Math.round(kursTeraz(o, t))}°`);
         });
         // plan przylotu: przerywany okrąg wybranej orbity, linia przylotu z kierunku floty, punkt wyjścia
-        if (planSkoku?.planeta === p.nazwa) {
-          const pl = planSkoku;
-          const odl = { bliska: rp + 14, srednia: rp + 32, daleka: rp + 52, krawedz: Math.min(W, H) / 2 - 10 }[pl.wariant] ?? rp + 14;
+        const planKarty = planSkoku?.planeta === p.nazwa ? planSkoku : null;
+        if (planKarty && planKarty.wariant !== 'krawedz') {
+          const pl = planKarty;
+          const odl = { bliska: rp + 14, srednia: rp + 32, daleka: rp + 52 }[pl.wariant] ?? rp + 14;
           const a = ekr(pl.kierunek + 180); // przylot od strony, z której nadlatuje flota
           const kolor = pl.policzony ? 'rgba(255, 214, 120, 0.95)' : 'rgba(255, 214, 120, 0.45)';
           g.save(); g.strokeStyle = kolor; g.fillStyle = kolor; g.lineWidth = 1.2; g.setLineDash([4, 4]);
@@ -1053,6 +1155,21 @@ export default {
           g.beginPath(); g.moveTo(cx + Math.cos(a) * daleko, cy + Math.sin(a) * daleko); g.lineTo(cx + Math.cos(a) * koniec, cy + Math.sin(a) * koniec); g.stroke();
           g.setLineDash([]); g.beginPath(); strzalka(g, cx + Math.cos(a) * koniec, cy + Math.sin(a) * koniec, pl.kierunek, 6); g.fill();
           g.restore();
+        } else if (planKarty) {
+          // Krawędź układu: wyjście na brzegu całego układu, daleko poza kadrem planety — strzałka zatrzymuje
+          // się na brzegu kadru (od strony nadlotu) z opisem; dokładny punkt pokazuje ramka z obiegiem planety.
+          const pl = planKarty;
+          const a = ekr(pl.kierunek + 180);
+          const kolor = pl.policzony ? 'rgba(255, 214, 120, 0.95)' : 'rgba(255, 214, 120, 0.45)';
+          const dx = Math.cos(a), dy = Math.sin(a);
+          const t0 = Math.min(dx ? ((dx > 0 ? W - 8 : 8) - cx) / dx : Infinity, dy ? ((dy > 0 ? H - 8 : 8) - cy) / dy : Infinity);
+          const ex = cx + dx * t0, ey = cy + dy * t0;
+          g.save(); g.strokeStyle = kolor; g.fillStyle = kolor; g.lineWidth = 1.2; g.setLineDash([4, 4]);
+          g.beginPath(); g.moveTo(ex + dx * 40, ey + dy * 40); g.lineTo(ex, ey); g.stroke();
+          g.setLineDash([]); g.beginPath(); strzalka(g, ex, ey, pl.kierunek, 6); g.fill();
+          g.font = '9px monospace'; g.textAlign = ex > W / 2 ? 'right' : 'left';
+          g.fillText('wyjście: krawędź układu', Math.max(10, Math.min(W - 10, ex - dx * 12)), Math.max(12, Math.min(H - 6, ey - dy * 14)));
+          g.restore();
         }
         // ramka: obieg planety wokół słońca
         g.strokeStyle = 'rgba(255,255,255,0.15)'; g.strokeRect(4, 4, 62, 62);
@@ -1060,6 +1177,12 @@ export default {
         g.strokeStyle = 'rgba(255,255,255,0.2)'; g.beginPath(); g.arc(35, 35, 24, 0, Math.PI * 2); g.stroke();
         const ap = ekr(u.katPlanety);
         g.fillStyle = '#6fa8d8'; g.beginPath(); g.arc(35 + Math.cos(ap) * 24, 35 + Math.sin(ap) * 24, 3, 0, Math.PI * 2); g.fill();
+        if (planKarty?.wariant === 'krawedz') {
+          // punkt wyjścia na brzegu układu (od strony nadlotu, względem słońca) i strzałka kursu
+          const a = ekr(planKarty.kierunek + 180), bx = 35 + Math.cos(a) * 29, by = 35 + Math.sin(a) * 29;
+          g.save(); g.strokeStyle = 'rgba(160,200,220,0.35)'; g.setLineDash([2, 3]); g.beginPath(); g.arc(35, 35, 29, 0, Math.PI * 2); g.stroke();
+          g.setLineDash([]); g.fillStyle = 'rgba(255, 214, 120, 0.95)'; g.beginPath(); strzalka(g, bx, by, planKarty.kierunek, 5); g.fill(); g.restore();
+        }
         const gwiazdy = (cykl.gwiazdy || []).map((x) => `${x.nazwa} (${x.typ})`).join(' + ');
         wyczysc(opis).append(...[gwiazdy ? `Gwiazda: ${gwiazdy}` : null, `Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie].filter(Boolean)
           .map((l) => h('div', l)));
@@ -1185,6 +1308,13 @@ export default {
       return h('div.mapa-nawigacja-blok',
         skoki.length ? h('div', h('b', 'Skok w toku'), h('div.mapa-krok-przyciski', ...skoki.map((id) => przyciskPrzerwij(id, info)))) : null,
         wLocie.length ? h('div', h('b', `W locie → ${wLocie[0].lot.planeta || 'punkt'}`), h('div.slaby.maly-tekst', `ETA ${czasGry(wLocie[0].lot.do)}`),
+          h('table.tabela', h('tr', h('th', 'Do celu'), zywa(() => {
+            const o = obiektyMapy.find((x) => x.id === wLocie[0].obiekt_id);
+            const l = o?.podswietlny;
+            if (!l) return null;
+            const cel = { x: l.x1, y: l.y1, k: l.k1 || (l.planeta ? kmWUkladzie(wgKlucza.get(norm(l.planeta))) : null) };
+            return opisOdleglosci(pozycjaTeraz(o), cel);
+          }))),
           h('div.mapa-krok-przyciski', przyciskPrzerwijLot(f, wLocie.map((j) => j.obiekt_id), info))) : null,
         info);
     }
@@ -1253,7 +1383,7 @@ export default {
           }
           if (doSkoku.length && !wDrodze && (pozaUkladem.length || automat)) {
             const glowna = doSkoku[0] || {};
-            const kierunek = Math.atan2(p.y - Number(glowna.y || 0), p.x - Number(glowna.x || 0)) / RAD;
+            const kierunek = kierunekPrzylotu(glowna, p);
             const odbiorcy = doSkoku.map((j) => j.obiekt_id);
             const wariantySkoku = Object.entries(NAZWY_WARIANTOW).filter(([x]) => !(obokWUkladzie.length && x === 'krawedz'));
             const plan = (wariant, zmiany = {}) => { planSkoku = { planeta: p.nazwa, kierunek, wariant, reczny: !automat, policzony: false, ...zmiany }; odswiezUkladKarty?.(); };
@@ -1413,7 +1543,8 @@ export default {
             wiersz('Region', p.region || 'nieznany'),
             p.kwadrat ? wiersz('Kwadrat', p.kwadrat) : null,
             wiersz('Współrzędne', `${liczba(p.x, 1)} · ${liczba(p.y, 1)}`),
-            odleglosc !== null ? wiersz('Odległość od ciebie', `${liczba(odleglosc)} pc`) : null,
+            odleglosc !== null || (mojZnacznik() && p !== tuPlaneta) ? h('tr', h('th', 'Odległość od ciebie'),
+              zywa(() => opisOdleglosci(pozycjaTeraz(mojZnacznik()), { x: p.x, y: p.y, k: kmWUkladzie(p) }) ?? (odleglosc !== null ? `${liczba(odleglosc)} pc` : null))) : null,
             wiersz('Grawitacja', nieznane(p.g, `${liczba(p.g, 2)} G`)),
             wiersz('Słońca · księżyce', nieznane(p.doba, `${p.slonca} · ${p.ksiezyce}`)),
             wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
@@ -1424,6 +1555,28 @@ export default {
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
               s.w_locie ? h('span.slaby', s.cel ? ` · w nadprzestrzeni → ${s.cel}` : ' · na orbicie') : null)))) : null);
+      } else if (obiekt.gwiazda) {
+        const p = obiekt.gwiazda;
+        const cykl = cyklPlanety(p);
+        const gw = cykl?.gwiazdy || [];
+        // Punkt docelowy: 30 promieni gwiazdy od niej (najmniej 0,05 j.a.), od strony kamery/planety.
+        const u = ukladNaEkranie(p);
+        const promien = gw[0]?.promien_km || 696000;
+        const odlKm = Math.max(promien * 30, KM_NA_AU * 0.05);
+        const a = u ? Math.atan2(-(u.py - u.sy), u.px - u.sx) : 0;
+        const kCel = [Math.round(Math.cos(a) * odlKm), Math.round(Math.sin(a) * odlKm)];
+        karta.append(zamknij,
+          h('h2', gw.length > 1 ? `Gwiazdy układu ${p.nazwa}` : `Gwiazda układu ${p.nazwa}`),
+          h('div.mapa-znaczki', h('span.znaczek-cel', 'Gwiazda')),
+          h('table.tabela',
+            ...(gw.length ? gw.map((g0, i) => wiersz(gw.length > 1 ? `Gwiazda ${i + 1}` : 'Klasa', `${g0.typ} · ${g0.nazwa}`)) : [wiersz('Klasa', 'brak danych')]),
+            gw[0]?.temperatura ? wiersz('Temperatura', `${liczba(gw[0].temperatura)} K`) : null,
+            gw[0]?.promien_km ? wiersz('Promień', `${liczba(gw[0].promien_km)} km`) : null,
+            wiersz('Współrzędne', `${liczba(p.x, 1)} · ${liczba(p.y, 1)}`)),
+          h('p.slaby.maly-tekst', `Cel przy gwieździe: punkt ${liczba(odlKm / KM_NA_AU, 2)} j.a. od niej (bliżej nie pozwala osłona termiczna).`),
+          h('div.rzad', { style: 'margin-top:8px;flex-wrap:wrap' },
+            h('button.przycisk.maly', { onclick: () => wybierz({ punkt: { x: p.x, y: p.y, k: kCel, uklad: p } }) }, 'Wyznacz cel przy gwieździe'),
+            h('button.przycisk.maly.drugi', { onclick: () => wybierz({ planeta: p }) }, `Planeta ${p.nazwa}`)));
       } else if (obiekt.punkt) {
         const { x, y, k, uklad } = obiekt.punkt;
         const moj = mojZnacznik();
@@ -1441,7 +1594,7 @@ export default {
             wiersz('Współrzędne', `${liczba(x, 1)} · ${liczba(y, 1)}`),
             k ? wiersz('Od słońca', odlKm(Math.hypot(k[0], k[1]))) : null,
             odPlanety != null ? wiersz(`Od planety ${uklad.nazwa}`, odlKm(odPlanety)) : null,
-            odl !== null ? wiersz('Odległość od ciebie', `${liczba(odl, 1)} pc`) : null),
+            moj ? h('tr', h('th', 'Odległość od ciebie'), zywa(() => opisOdleglosci(pozycjaTeraz(mojZnacznik()), { x, y, k: k || null }) ?? (odl !== null ? `${liczba(odl, 1)} pc` : null))) : null),
           sekcjaPunktu(obiekt.punkt));
       } else {
         const s = obiekt.szlak;
@@ -1518,7 +1671,8 @@ export default {
       if (!poprzedni) {
         if (e.pointerType === 'mouse' && D) {
           const n = trafienie(e.offsetX, e.offsetY);
-          const zmienilSieCel = (n?.obiekt || n?.planeta || n?.szlak) !== (najechane?.obiekt || najechane?.planeta || najechane?.szlak);
+          const klucz = (x) => x?.obiekt || x?.szlak || (x?.gwiazda ? `g:${x.gwiazda.nazwa}` : x?.planeta);
+          const zmienilSieCel = klucz(n) !== klucz(najechane);
           if (zmienilSieCel) { najechane = n; pokazPodpowiedz(n, e.offsetX, e.offsetY); odswiez(); }
           else if (n) { podpowiedz.style.left = `${Math.min(Math.max(8, e.offsetX + 16), Math.max(8, szer - 340))}px`; podpowiedz.style.top = `${Math.min(Math.max(68, e.offsetY + 14), Math.max(68, wys - 210))}px`; }
           plotno.style.cursor = n ? 'pointer' : 'grab';
@@ -1553,7 +1707,7 @@ export default {
         // Klik w słońce (z zapasem) — karta planety układu; pusty punkt w widoku układu — punkt w km od słońca.
         const wSlonce = uk && Math.hypot(e.offsetX - uk.sx, e.offsetY - uk.sy) < SLONCE_MIN_PX + 6;
         const punkt = wUkladzie?.wBrzegu && !wSlonce ? { punkt: { x: uklad.x, y: uklad.y, k: wUkladzie.k, uklad } }
-          : uklad ? { planeta: uklad } : { punkt: { x: Math.round(mx * 10) / 10, y: Math.round(my * 10) / 10 } };
+          : uklad ? (wSlonce ? { gwiazda: uklad } : { planeta: uklad }) : { punkt: { x: Math.round(mx * 10) / 10, y: Math.round(my * 10) / 10 } };
         wybierz(trafienie(e.offsetX, e.offsetY) || (wybrane ? null : punkt));
       }
     };
@@ -1836,6 +1990,20 @@ export default {
     document.fonts?.addEventListener('loadingdone', krojGotowy);
     ramka = requestAnimationFrame(klatka);
     const odpytywanie = setInterval(pobierzPozycje, 15000);
+    // Pamięć widoku na czas logowania (sessionStorage, klucz konta; wylogowanie czyści — js/system.js).
+    const kluczWidoku = `hololink.mapa.widok.${ctx.uzytkownik?.id ?? ctx.uzytkownik?.postac ?? ''}`;
+    let widokGotowy = false;
+    function czytajWidok() {
+      try {
+        const v = JSON.parse(sessionStorage.getItem(kluczWidoku) || 'null');
+        return v && [v.skala, v.camX, v.camY].every(Number.isFinite) && v.skala > 0 ? v : null;
+      } catch { return null; }
+    }
+    function zapiszWidok() {
+      if (!widokGotowy) return;
+      try { sessionStorage.setItem(kluczWidoku, JSON.stringify({ skala, camX, camY, camKx, camKy })); } catch { /* bez pamięci */ }
+    }
+    const zapisWidoku = setInterval(zapiszWidok, 1500);
     przyciskTu.disabled = true;
 
     wczytajDane().then(async (d) => {
@@ -1843,11 +2011,17 @@ export default {
       ustawDodatkowe([]);
       rozmiar();
       await pobierzPozycje();
-      if (tuPlaneta) {
+      // Zoom i kadr z bieżącego logowania (osobno dla każdego konta); bez zapisu — moja pozycja albo galaktyka.
+      const zapisany = czytajWidok();
+      if (zapisany) {
+        skala = Math.max(0.005, Math.min(ZOOM_MAKS, zapisany.skala));
+        camX = zapisany.camX; camY = zapisany.camY; camKx = zapisany.camKx || 0; camKy = zapisany.camKy || 0;
+      } else if (tuPlaneta) {
         skala = 0.25; ustawSrodek(tuPlaneta.x, tuPlaneta.y);
       } else {
         calaGalaktyka();
       }
+      widokGotowy = true;
       ladowanie.remove();
       odswiez();
     }).catch(() => {
@@ -1863,6 +2037,9 @@ export default {
     return () => {
       cancelAnimationFrame(ramka);
       clearInterval(odpytywanie);
+      zapiszWidok();
+      clearInterval(zapisWidoku);
+      clearInterval(zegarZywych);
       sledzRozmiar.disconnect();
       window.removeEventListener('datapad:alfabet', zmianaAlfabetu);
       document.fonts?.removeEventListener('loadingdone', krojGotowy);

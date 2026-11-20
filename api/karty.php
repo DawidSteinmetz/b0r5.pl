@@ -290,7 +290,36 @@ function obsluz_karty(string $akcja, bool $post): void
             }
             $lokacje = [];
             foreach (ruch_lokacje() as $klucz => $l) {
-                $lokacje[] = ['klucz' => $klucz, 'nazwa' => $l['nazwa'], 'planeta' => $nazwyPlanet[$l['planeta']] ?? ($l['planeta_nazwa'] ?? '?'), 'typ' => $l['typ']];
+                $lokacje[] = ['klucz' => $klucz, 'nazwa' => $l['nazwa'], 'planeta' => $nazwyPlanet[$l['planeta']] ?? ($l['planeta_nazwa'] ?? '?'), 'typ' => $l['typ'],
+                    'okret_id' => $l['okret_id'] ?? null];
+            }
+            // Hierarchia pozycji (panel MG): obszar (sektor z katalogu albo region z mapy) → planeta / flota / okręt.
+            $sektory = [];
+            foreach (katalog()['planety'] as $p) {
+                $s = trim((string) ($p['sektor'] ?? ''));
+                if ($s !== '') $sektory[mb_strtolower($p['nazwa'])] = $s;
+            }
+            $planetyMg = [];
+            if (tabela_sql_dostepna('mapa_planety')) {
+                foreach (polaczenie_bazy()->query('SELECT id, nazwa, region FROM mapa_planety ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                    $planetyMg[] = ['id' => (string) $p['id'], 'nazwa' => $p['nazwa'], 'region' => (int) $p['region'], 'sektor' => $sektory[mb_strtolower($p['nazwa'])] ?? ''];
+                }
+            }
+            foreach (katalog()['planety'] as $p) {
+                if (!in_array($p['nazwa'], array_column($planetyMg, 'nazwa'), true)) {
+                    $planetyMg[] = ['id' => (string) ($p['id'] ?? $p['nazwa']), 'nazwa' => $p['nazwa'], 'region' => null, 'region_nazwa' => (string) ($p['mapa']['region'] ?? ''), 'sektor' => trim((string) ($p['sektor'] ?? ''))];
+                }
+            }
+            $flotyMg = [];
+            if (tabela_sql_dostepna('mapa_floty') && tabela_sql_dostepna('mapa_floty_jednostki')) {
+                $rows = polaczenie_bazy()->query("SELECT f.id, f.nazwa, m.id AS okret_id, m.nazwa AS okret, m.klasa, p.nazwa AS planeta
+                    FROM mapa_floty f JOIN mapa_floty_jednostki j ON j.flota_id = f.id JOIN mapa_obiekty m ON m.id = j.obiekt_id
+                    LEFT JOIN mapa_planety p ON p.id = m.planeta_id
+                    WHERE f.status <> 'nieaktywna' AND m.aktywny = 1 AND m.typ = 'statek' ORDER BY f.nazwa, j.kolejnosc")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($rows as $r) {
+                    $flotyMg[(int) $r['id']] ??= ['id' => (int) $r['id'], 'nazwa' => $r['nazwa'], 'okrety' => []];
+                    $flotyMg[(int) $r['id']]['okrety'][] = ['id' => (int) $r['okret_id'], 'nazwa' => $r['okret'], 'klasa' => $r['klasa'] ?? '', 'planeta' => $r['planeta'] ?? ''];
+                }
             }
             $nazwyLok = array_column($lokacje, 'nazwa', 'klucz');
             foreach ($lista as &$x) {
@@ -304,7 +333,20 @@ function obsluz_karty(string $akcja, bool $post): void
                     FROM osoby o JOIN podmioty p ON p.id=o.podmiot_id LEFT JOIN podmioty f ON f.id=o.frakcja_id
                     WHERE o.postac_id IS NULL AND p.status='aktywny' ORDER BY p.nazwa")->fetchAll(PDO::FETCH_ASSOC);
             }
-            odpowiedz(['postacie' => $lista, 'npc' => $npc, 'budynki' => $budynki, 'lokacje' => $lokacje]);
+            odpowiedz(['postacie' => $lista, 'npc' => $npc, 'budynki' => $budynki, 'lokacje' => $lokacje, 'planety' => $planetyMg, 'floty' => array_values($flotyMg)]);
+
+        case 'mg_wnetrze':
+            // Pomieszczenia okrętu (plan wnętrza) do hierarchicznego wyboru pozycji w panelu MG.
+            wymagaj_mg();
+            $okret = (int) ($_GET['okret'] ?? 0);
+            $plan = function_exists('wnetrze_plan_okretu') && $okret ? wnetrze_plan_okretu($okret) : null;
+            if (!$plan) odpowiedz(['pomieszczenia' => []]);
+            $lista = [];
+            foreach (wnetrze_wezly($plan) as $id => $x) {
+                if ($x['glebokosc'] < 2) continue;
+                $lista[] = ['id' => (int) $id, 'nazwa' => $x['krotka'], 'grupa' => $x['grupa']];
+            }
+            odpowiedz(['pomieszczenia' => $lista]);
 
         case 'mg_mapa_obiekty':
             wymagaj_mg();
@@ -570,6 +612,15 @@ function obsluz_karty(string $akcja, bool $post): void
                 }
             });
             foreach ($uids as $uid) pozycja_sql_zapisz($uid, $poz);
+            // Pomieszczenie na okręcie (plan wnętrza): sprawdzane względem planu wybranego okrętu.
+            $pom = (int) ($w['pomieszczenie'] ?? 0);
+            if ($pom && str_starts_with($lokacja, 'okret:') && function_exists('wnetrze_plan_okretu')) {
+                $okretId = (int) substr($lokacja, 6);
+                $plan = wnetrze_plan_okretu($okretId);
+                $wezly = $plan ? wnetrze_wezly($plan) : [];
+                if (!isset($wezly[$pom]) || $wezly[$pom]['glebokosc'] < 2) blad('Tego pomieszczenia nie ma na wybranym okręcie.');
+                foreach ($uids as $uid) wnetrze_zapisz((string) $uid, $okretId, $pom);
+            }
             foreach ($npcIds as $npcId) mapa_obiekt_npc_pozycja_zapisz($npcId, $lokacja, $planeta, $poz['miejsce']);
             odpowiedz(['ok' => true]);
     }

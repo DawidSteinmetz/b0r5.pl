@@ -299,7 +299,7 @@ function rysujLiczniki() {
 }
 setInterval(() => {
   const teraz = (Date.now() + przesuniecieZegara) / 1000;
-  document.querySelectorAll('[data-koniec]').forEach((el) => {
+  document.querySelectorAll('.kafel-czas[data-koniec]').forEach((el) => {
     const koniec = Number(el.dataset.koniec);
     el.textContent = pozostalo(koniec);
     el.classList.toggle('ostrz', koniec - teraz < 60);
@@ -370,6 +370,41 @@ function rysujPrzyciskDzwieku() {
 przyciskDzwieku.addEventListener('click', () => { przelaczWyciszenie(); rysujPrzyciskDzwieku(); });
 rysujPrzyciskDzwieku();
 dok.append(przyciskDzwieku);
+
+// Małe ikonki w narożnikach doku (ta sama wielkość co głośnik): po prawej „Dostosuj pulpit” tuż obok
+// głośnika, po lewej Ustawienia i Przewodnik. Ustawienia nie są kafelkiem na pulpicie.
+const IKONA_DOSTOSUJ = '<rect x="8" y="8" width="13" height="13" rx="2"/><rect x="27" y="8" width="13" height="13" rx="2"/><rect x="8" y="27" width="13" height="13" rx="2"/><path d="M33.5 27v13M27 33.5h13"/>';
+const IKONA_GOTOWE = '<path d="M10 25l9 9 19-20"/>';
+const IKONA_USTAWIEN = '<circle cx="24" cy="24" r="6"/><path d="M24 6v6M24 36v6M6 24h6M36 24h6M11 11l4 4M33 33l4 4M11 37l4-4M33 15l4-4"/>';
+const IKONA_PRZEWODNIKA = '<circle cx="24" cy="24" r="17"/><path d="M19 19c0-3 2.5-5 5-5s5 2 5 5c0 4-5 4-5 8"/><path d="M24 33v1"/>';
+const ikonkaDoku = (id, rysunek, tytul, fn) => {
+  const b = h(`button#${id}.dok-ikonka`, { type: 'button', title: tytul, 'aria-label': tytul, onclick: fn });
+  b.append(ikona(rysunek));
+  return b;
+};
+const przyciskDostosuj = ikonkaDoku('dok-dostosuj', IKONA_DOSTOSUJ, 'Dostosuj pulpit', () => {
+  if (!stan.uzytkownik) return;
+  if (!document.querySelector('.siatka-aplikacji')) { ekranPulpitu(); edycjaPulpitu = true; }
+  else edycjaPulpitu = !edycjaPulpitu;
+  rysujPrzyciskDostosuj();
+  const siatka = document.querySelector('.siatka-aplikacji');
+  if (siatka) rysujIkony(siatka);
+});
+function rysujPrzyciskDostosuj() {
+  wyczysc(przyciskDostosuj).append(ikona(edycjaPulpitu ? IKONA_GOTOWE : IKONA_DOSTOSUJ));
+  const t = edycjaPulpitu ? 'Gotowe (koniec dostosowania)' : 'Dostosuj pulpit';
+  przyciskDostosuj.title = t; przyciskDostosuj.setAttribute('aria-label', t);
+  przyciskDostosuj.classList.toggle('aktywny', edycjaPulpitu);
+}
+const przyciskUstawien = ikonkaDoku('dok-ustawienia', IKONA_USTAWIEN, 'Ustawienia', () => stan.uzytkownik && otworz('ustawienia'));
+const przyciskPrzewodnika = ikonkaDoku('dok-przewodnik', IKONA_PRZEWODNIKA, 'Przewodnik', async () => {
+  if (!stan.uzytkownik) return;
+  if (!document.querySelector('.siatka-aplikacji')) ekranPulpitu();
+  if (!przewodnik) await wczytajPrzewodnik();
+  if (przewodnik.ukonczony || przewodnik.pominiety) przewodnik = { krok: 0 };
+  pokazPrzewodnik(true);
+});
+dok.append(przyciskDostosuj, przyciskUstawien, przyciskPrzewodnika);
 
 function pokazPowloke(widoczna) {
   pasek.hidden = !widoczna;
@@ -452,6 +487,9 @@ function ekranBlokady(komunikat = '') {
   pokazPowloke(false);
   stan.uzytkownik = null;
   ukryte = null;
+  przewodnik = null;
+  // Pamięć sesji (np. zoom mapy) kończy się z logowaniem.
+  try { Object.keys(sessionStorage).filter((k) => k.startsWith('hololink.mapa.')).forEach((k) => sessionStorage.removeItem(k)); } catch { /* bez pamięci */ }
   ustawDzwiek(null);
   const bladEl = h('div');
   const login = h('input', { autocomplete: 'username', autocapitalize: 'off', spellcheck: false, required: true });
@@ -492,6 +530,84 @@ function ekranBlokady(komunikat = '') {
   formularz.append(h('div', { style: 'text-align:center;margin-top:18px' },
     h('button.przelacznik', { type: 'button', onclick: () => alfabet.przelacz() },
       h('span.lat', 'Aa'), h('span.aur', 'Aa'))));
+  // Nowy gracz: kod zaproszenia od MG i własne hasło (pierwsze wejście).
+  const aktywacja = formularzZaproszenia(() => { aktywacja.hidden = true; formularz.hidden = false; });
+  aktywacja.hidden = true;
+  formularz.querySelector('.panel').append(h('button.przycisk.drugi', { type: 'button', style: 'width:100%;margin-top:10px',
+    onclick: () => { formularz.hidden = true; aktywacja.hidden = false; } }, 'Mam kod zaproszenia'));
+  pulpit.querySelector('.blokada').append(aktywacja);
+}
+
+function formularzZaproszenia(wroc) {
+  const bladEl = h('div');
+  const login = h('input', { autocomplete: 'username', autocapitalize: 'off', spellcheck: false, required: true });
+  const kod = h('input', { autocomplete: 'one-time-code', autocapitalize: 'characters', spellcheck: false, required: true, placeholder: 'XXXX-XXXX' });
+  const klucz = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 6 });
+  const klucz2 = h('input', { type: 'password', autocomplete: 'new-password', required: true, minlength: 6 });
+  const przycisk = h('button.przycisk', { type: 'submit', style: 'width:100%' }, 'Aktywuj i wejdź');
+  return h('form.blokada-karta', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      przycisk.disabled = true;
+      try {
+        const odp = await api('zaproszenie_aktywuj', { login: login.value, kod: kod.value, klucz: klucz.value, klucz2: klucz2.value });
+        stan.uzytkownik = odp.uzytkownik;
+        ukryte = null;
+        zaklocenia();
+        ekranPulpitu();
+      } catch (err) {
+        wyczysc(bladEl).append(h('div.komunikat.blad', err.message));
+        przycisk.disabled = false;
+      }
+    },
+  },
+  h('div.panel',
+    h('h2', { style: 'margin-top:0' }, 'Pierwsze wejście'),
+    h('p.slaby.maly-tekst', 'Wpisz identyfikator i kod zaproszenia od MG, potem wybierz własny klucz dostępu (co najmniej 6 znaków).'),
+    h('div.pole', h('label', 'Identyfikator'), login),
+    h('div.pole', h('label', 'Kod zaproszenia'), kod),
+    h('div.pole', h('label', 'Nowy klucz dostępu'), klucz),
+    h('div.pole', h('label', 'Powtórz klucz'), klucz2),
+    bladEl, przycisk,
+    h('button.przycisk.drugi', { type: 'button', style: 'width:100%;margin-top:10px', onclick: wroc }, 'Wróć do logowania')));
+}
+
+// Przewodnik pierwszego wejścia: cztery kroki, które można pominąć i wznowić („Przewodnik” na pulpicie).
+// Stan w ustawieniach konta (MG widzi, czy gracz go przejrzał).
+const KROKI_PRZEWODNIKA = [
+  ['Twoja postać', 'Karta postaci pokazuje, kim jesteś: frakcję, rangę, umiejętności i ekwipunek. Większość ustawia MG.', 'karta'],
+  ['Gdzie jesteś', 'Nawigacja mówi, gdzie stoisz i dokąd możesz pójść albo pojechać. Na okręcie — po pokładach.', 'nawigacja'],
+  ['Holonet i wiadomość od MG', 'W Holonecie są wiadomości i rozkazy. Zajrzyj tam — MG mógł zostawić ci pierwsze zadanie.', 'holonet'],
+  ['Mapa i następny krok', 'Mapa galaktyki pokazuje twoją pozycję, układy i floty. Gdy nie wiesz, co dalej — zacznij od wiadomości MG.', 'mapa'],
+];
+let przewodnik = null; // { krok, ukonczony, pominiety }
+async function wczytajPrzewodnik() {
+  try { const r = await api('ustawienie', undefined, { klucz: 'przewodnik' }); przewodnik = r.wartosc || { krok: 0 }; }
+  catch { przewodnik = { krok: 0 }; }
+}
+function zapiszPrzewodnik() { api('ustawienie_zapisz', { klucz: 'przewodnik', wartosc: przewodnik }).catch(() => {}); }
+function pokazPrzewodnik(wymus = false) {
+  document.querySelector('.przewodnik')?.remove();
+  if (!przewodnik || !stan.uzytkownik || stan.uzytkownik.rola === 'mg') return;
+  if (!wymus && (przewodnik.ukonczony || przewodnik.pominiety)) return;
+  const i = Math.max(0, Math.min(KROKI_PRZEWODNIKA.length - 1, przewodnik.krok || 0));
+  const [tytul, opis, app] = KROKI_PRZEWODNIKA[i];
+  const zamknij = (zmiany) => { Object.assign(przewodnik, zmiany); zapiszPrzewodnik(); el.remove(); };
+  const el = h('div.przewodnik', { role: 'dialog', 'aria-label': 'Przewodnik' },
+    h('div.slaby.maly-tekst', `Przewodnik · ${i + 1} z ${KROKI_PRZEWODNIKA.length}`),
+    h('h2', tytul), h('p', opis),
+    h('div.rzad', { style: 'flex-wrap:wrap;gap:8px' },
+      h('button.przycisk', { onclick: () => {
+        // Otwarcie aplikacji przesuwa przewodnik dalej; po powrocie na pulpit pokaże następny krok.
+        zamknij(i + 1 >= KROKI_PRZEWODNIKA.length ? { krok: i, ukonczony: true } : { krok: i + 1 });
+        otworz(app);
+      } }, `Otwórz: ${APLIKACJE.find((a) => a.id === app)?.nazwa || app}`),
+      i + 1 < KROKI_PRZEWODNIKA.length
+        ? h('button.przycisk.drugi', { onclick: () => { przewodnik.krok = i + 1; zapiszPrzewodnik(); pokazPrzewodnik(true); } }, 'Dalej')
+        : h('button.przycisk.drugi', { onclick: () => zamknij({ ukonczony: true }) }, 'Zakończ'),
+      i > 0 ? h('button.przycisk.drugi', { onclick: () => { przewodnik.krok = i - 1; zapiszPrzewodnik(); pokazPrzewodnik(true); } }, 'Wstecz') : null,
+      h('button.przycisk.drugi', { onclick: () => zamknij({ pominiety: true }) }, 'Pomiń')));
+  document.getElementById('pulpit')?.append(el);
 }
 
 // Szybkie akcje na pulpicie: podróż w toku, przygotowanie statku, najbliższy bankomat, taksówka.
@@ -539,7 +655,7 @@ async function rysujSzybkieAkcje() {
 }
 
 // Ikony pulpitu: gracz zdejmuje i dodaje aplikacje (zapis w ustawieniach konta, kopia na urządzeniu).
-const STALE = ['ustawienia']; // tych nie da się zdjąć
+const POZA_PULPITEM = ['ustawienia']; // ikonka w narożniku doku, nie kafelek na pulpicie
 let ukryte = null;           // id zdjętych aplikacji
 let edycjaPulpitu = false;
 function kluczPulpitu() { return 'pulpit.' + (stan.uzytkownik?.login || stan.uzytkownik?.postac || ''); }
@@ -555,13 +671,13 @@ function zapiszPulpit() {
   api('ustawienie_zapisz', { klucz: 'pulpit', wartosc: { ukryte } }).catch(() => {});
 }
 function rysujIkony(siatka) {
-  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id));
-  const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id));
+  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id));
+  const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id));
   siatka.classList.toggle('edycja', edycjaPulpitu);
   siatka.querySelectorAll('.ikona-app, .kafel-dodaj').forEach((e) => e.remove());
   const ikony = widoczne.map((a) => h('button.ikona-aplikacji.ikona-app', { onclick: () => (edycjaPulpitu ? null : otworz(a.id)) },
     ikona(a.ikona), h('span', a.nazwa),
-    edycjaPulpitu && !STALE.includes(a.id) ? h('span.ikona-usun', { title: 'Zdejmij z pulpitu', onclick: (e) => {
+    edycjaPulpitu ? h('span.ikona-usun', { title: 'Zdejmij z pulpitu', onclick: (e) => {
       e.stopPropagation(); ukryte = [...(ukryte || []), a.id]; zapiszPulpit(); rysujIkony(siatka);
     } }, '×') : null));
   siatka.prepend(...ikony);
@@ -583,12 +699,9 @@ function ekranPulpitu() {
   tytulPaska.textContent = '';
   const u = stan.uzytkownik;
   edycjaPulpitu = false;
+  rysujPrzyciskDostosuj();
+  przyciskPrzewodnika.hidden = u.rola === 'mg';
   let siatka;
-  const dostosuj = h('button.przycisk.maly.drugi', { onclick: () => {
-    edycjaPulpitu = !edycjaPulpitu;
-    dostosuj.textContent = edycjaPulpitu ? 'Gotowe' : 'Dostosuj pulpit';
-    rysujIkony(siatka);
-  } }, 'Dostosuj pulpit');
   widok(
     h('div.pulpit-glowa',
       h('div',
@@ -605,8 +718,9 @@ function ekranPulpitu() {
       h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', hidden: !liczniki?.odliczanie }),
       h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
       h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
-    h('div.pulpit-dostosuj', dostosuj),
   );
+  if (przewodnik) pokazPrzewodnik();
+  else wczytajPrzewodnik().then(() => { if (document.querySelector('.siatka-aplikacji')) pokazPrzewodnik(); });
   const pierwszy = ukryte === null;
   rysujIkony(siatka);
   if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));

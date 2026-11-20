@@ -235,8 +235,41 @@ function uzytkownicy(): array
 
 function bez_hasla(array $u): array
 {
-    unset($u['hash']);
+    unset($u['hash'], $u['zaproszenie']);
     return $u;
+}
+
+// Zaproszenie nowego gracza: jednorazowy kod (w danych tylko jego hash), ważny ZAPROSZENIE_DNI dni.
+// Gracz podaje login, kod i sam ustawia hasło; do tego czasu konto ma losowe hasło, którego nikt nie zna.
+const ZAPROSZENIE_DNI = 7;
+function zaproszenie_kod(): string
+{
+    $znaki = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $k = '';
+    for ($i = 0; $i < 8; $i++) $k .= $znaki[random_int(0, strlen($znaki) - 1)];
+    return substr($k, 0, 4) . '-' . substr($k, 4);
+}
+function zaproszenie_nowe(): array
+{
+    $kod = zaproszenie_kod();
+    return [$kod, ['hash' => password_hash($kod, PASSWORD_DEFAULT), 'wazne_do' => time() + ZAPROSZENIE_DNI * 86400, 'wydano' => time()]];
+}
+// Gotowość gracza do gry (panel MG): konto aktywowane, pozycja ustawiona, przewodnik przejrzany.
+function gotowosc_gracza(array $u): array
+{
+    $z = $u['zaproszenie'] ?? null;
+    $konto = $z ? (time() > (int) $z['wazne_do'] ? 'wygaslo' : 'zaproszenie') : 'aktywne';
+    $poz = karta((string) $u['id'])['pozycja'] ?? [];
+    $przewodnik = null;
+    if (function_exists('tabela_sql_dostepna') && tabela_sql_dostepna('ustawienia_kont')) {
+        $q = polaczenie_bazy()->prepare('SELECT wartosc FROM ustawienia_kont WHERE konto_login=? AND klucz=?');
+        $q->execute([(string) $u['login'], 'przewodnik']);
+        $v = $q->fetchColumn();
+        $przewodnik = $v === false ? null : json_decode((string) $v, true);
+    }
+    return ['konto' => $konto, 'zaproszenie_do' => $z ? (int) $z['wazne_do'] : null,
+        'pozycja' => ($poz['planeta'] ?? '') !== '' || ($poz['lokacja'] ?? '') !== '',
+        'przewodnik' => !empty($przewodnik['ukonczony']) ? 'ukonczony' : (!empty($przewodnik['pominiety']) ? 'pominiety' : 'nie')];
 }
 
 function ja(): ?array
@@ -411,6 +444,40 @@ switch ($akcja) {
         $_SESSION['proby'] = $proby + 1;
         usleep(400000);
         blad('Odmowa dostępu. Nieprawidłowy identyfikator lub klucz.', 401);
+
+    case 'zaproszenie_aktywuj':
+        // Pierwsze wejście z zaproszenia: login + jednorazowy kod + własne hasło (dwa razy).
+        if (!$post) blad('Zła metoda.', 405);
+        $proby = $_SESSION['proby'] ?? 0;
+        if ($proby >= 5) sleep(2);
+        $w = wejscie();
+        $login = mb_strtolower(pole('login', 64));
+        $kod = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) ($w['kod'] ?? '')));
+        $kod = strlen($kod) === 8 ? substr($kod, 0, 4) . '-' . substr($kod, 4) : $kod;
+        $klucz = (string) ($w['klucz'] ?? '');
+        if (mb_strlen($klucz) < 6) blad('Hasło musi mieć co najmniej 6 znaków.');
+        if ($klucz !== (string) ($w['klucz2'] ?? '')) blad('Hasła się różnią.');
+        $wynik = zmien('uzytkownicy', function (&$us) use ($login, $kod, $klucz) {
+            foreach ($us as &$x) {
+                if (mb_strtolower($x['login']) !== $login || empty($x['zaproszenie'])) continue;
+                if (time() > (int) $x['zaproszenie']['wazne_do']) return 'wygaslo';
+                if (!password_verify($kod, $x['zaproszenie']['hash'])) return null;
+                $x['hash'] = password_hash($klucz, PASSWORD_DEFAULT);
+                unset($x['zaproszenie']);
+                return $x;
+            }
+            return null;
+        });
+        if ($wynik === 'wygaslo') blad('Zaproszenie wygasło. Poproś MG o nowy kod.');
+        if (!is_array($wynik)) {
+            $_SESSION['proby'] = $proby + 1;
+            usleep(400000);
+            blad('Nieprawidłowy identyfikator albo kod zaproszenia.', 401);
+        }
+        session_regenerate_id(true);
+        $_SESSION['uid'] = $wynik['id'];
+        $_SESSION['proby'] = 0;
+        odpowiedz(['uzytkownik' => bez_hasla($wynik), 'nowe_konto' => true]);
 
     case 'wyloguj':
         if (!$post) blad('Zła metoda.', 405);
@@ -600,7 +667,20 @@ switch ($akcja) {
 
     case 'mg_uzytkownicy':
         wymagaj_mg();
-        odpowiedz(['uzytkownicy' => array_map('bez_hasla', uzytkownicy())]);
+        odpowiedz(['uzytkownicy' => array_map(fn($u) => bez_hasla($u) + (($u['rola'] ?? '') === 'mg' ? [] : ['gotowosc' => gotowosc_gracza($u)]), uzytkownicy())]);
+
+    case 'mg_zaproszenie_nowe':
+        // Nowy kod zaproszenia dla istniejącego konta (zgubiony albo wygasły kod; reset hasła gracza).
+        if (!$post) blad('Zła metoda.', 405);
+        wymagaj_mg();
+        $uid = (string) (wejscie()['id'] ?? '');
+        [$kod, $zapr] = zaproszenie_nowe();
+        $ok = zmien('uzytkownicy', function (&$us) use ($uid, $zapr) {
+            foreach ($us as &$x) if ($x['id'] === $uid && ($x['rola'] ?? '') !== 'mg') { $x['zaproszenie'] = $zapr; $x['hash'] = password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT); return true; }
+            return false;
+        });
+        if (!$ok) blad('Nie ma takiego konta gracza.', 404);
+        odpowiedz(['ok' => true, 'kod' => $kod, 'wazne_do' => $zapr['wazne_do']]);
 
     case 'mg_uzytkownik_zapisz':
         if (!$post) blad('Zła metoda.', 405);
@@ -620,13 +700,20 @@ switch ($akcja) {
         if ($dane['login'] === '' || $dane['postac'] === '') blad('Login i postać są wymagane.');
         $klucz = (string) ($w['klucz'] ?? '');
         $uid = (string) ($w['id'] ?? '');
-        $wynik = zmien('uzytkownicy', function (&$us) use ($dane, $klucz, $uid) {
+        // Nowe konto gracza z zaproszeniem: bez hasła od MG — gracz ustawi je sam kodem jednorazowym.
+        $zaproszenie = $uid === '' && !empty($w['zaproszenie']) && $dane['rola'] === 'gracz' ? zaproszenie_nowe() : null;
+        $noweId = id();
+        $wynik = zmien('uzytkownicy', function (&$us) use ($dane, $klucz, $uid, $zaproszenie, $noweId) {
             foreach ($us as $x) {
                 if (mb_strtolower($x['login']) === mb_strtolower($dane['login']) && $x['id'] !== $uid) return 'zajety';
             }
             if ($uid === '') {
+                if ($zaproszenie) {
+                    $us[] = ['id' => $noweId, 'hash' => password_hash(bin2hex(random_bytes(16)), PASSWORD_DEFAULT), 'zaproszenie' => $zaproszenie[1]] + $dane;
+                    return 'ok';
+                }
                 if ($klucz === '') return 'brak_klucza';
-                $us[] = ['id' => id(), 'hash' => password_hash($klucz, PASSWORD_DEFAULT)] + $dane;
+                $us[] = ['id' => $noweId, 'hash' => password_hash($klucz, PASSWORD_DEFAULT)] + $dane;
                 return 'ok';
             }
             foreach ($us as &$x) {
@@ -641,7 +728,7 @@ switch ($akcja) {
         if ($wynik === 'zajety') blad('Taki login już istnieje.');
         if ($wynik === 'brak_klucza') blad('Nowe konto potrzebuje hasła.');
         if ($wynik === 'brak') blad('Nie ma takiego konta.', 404);
-        odpowiedz(['ok' => true]);
+        odpowiedz(['ok' => true, 'id' => $uid ?: $noweId] + ($zaproszenie ? ['kod' => $zaproszenie[0], 'wazne_do' => $zaproszenie[1]['wazne_do']] : []));
 
     case 'mg_uzytkownik_usun':
         if (!$post) blad('Zła metoda.', 405);

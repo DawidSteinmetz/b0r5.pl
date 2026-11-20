@@ -361,10 +361,17 @@ async function bitwyRadar() {
 
 async function konta(edytowany = null) {
   const { uzytkownicy } = await api('mg_uzytkownicy');
+  let lokacjeStartu = [];
+  try { lokacjeStartu = (await api('mg_karty')).lokacje || []; } catch { /* bez listy miejsc */ }
   const e = edytowany || {};
+  const nowe = !e.id;
+  // Nowy gracz: domyślnie zaproszenie (gracz sam ustawia hasło kodem jednorazowym); hasło od MG — opcjonalnie.
+  const zaproszenie = h('input', { type: 'checkbox', checked: nowe, style: 'width:auto' });
+  const start = h('select', h('option', { value: '' }, '— ustawię później (Stan postaci) —'),
+    lokacjeStartu.map((l) => h('option', { value: l.klucz }, `${l.planeta} · ${l.nazwa}`)));
   const f = {
-    login: h('input', { value: e.login || '' }),
-    klucz: h('input', { type: 'text', placeholder: e.id ? 'zostaw puste = bez zmian' : 'wymagane' }),
+    login: h('input', { value: e.login || '', autocomplete: 'off' }),
+    klucz: h('input', { type: 'password', autocomplete: 'new-password', placeholder: e.id ? 'zostaw puste = bez zmian' : 'wymagane bez zaproszenia' }),
     postac: h('input', { value: e.postac || '' }),
     frakcja: h('select', FRAKCJE.map((x) => h('option', { selected: e.frakcja === x }, x))),
     oddzial: h('input', { value: e.oddzial || '' }),
@@ -374,30 +381,66 @@ async function konta(edytowany = null) {
   };
   const zapisz = bezpiecznie(async () => {
     const dane = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]));
-    await api('mg_uzytkownik_zapisz', { ...dane, id: e.id || '', poziom: Number(dane.poziom) });
+    const zZaproszeniem = nowe && zaproszenie.checked && dane.rola === 'gracz';
+    const r = await api('mg_uzytkownik_zapisz', { ...dane, klucz: zZaproszeniem ? '' : dane.klucz, zaproszenie: zZaproszeniem, id: e.id || '', poziom: Number(dane.poziom) });
+    // Szablon startowy: miejsce startu od razu w karcie postaci.
+    if (nowe && start.value && r.id) await api('mg_pozycja_ustaw', { lokacja: start.value, uids: [r.id], planeta: '', wspolrzedne: '', miejsce: '', budynek: '' });
     wyczysc(glowna);
     await konta();
-    glowna.prepend(msg('Zapisano konto. Hasło przekaż graczowi osobno — w panelu nie da się go już odczytać.', 'ok'));
+    glowna.prepend(r.kod ? kartaZaproszenia(dane.login, r.kod, r.wazne_do)
+      : msg('Zapisano konto. Hasło przekaż graczowi osobno — w panelu nie da się go już odczytać.', 'ok'));
   });
+  const GOTOWOSC = { aktywne: 'aktywne', zaproszenie: 'czeka na aktywację', wygaslo: 'zaproszenie wygasło' };
+  const gotowosc = (x) => {
+    const g = x.gotowosc;
+    if (!g) return h('td.slaby', '—');
+    const kroki = [[g.konto === 'aktywne', `konto ${GOTOWOSC[g.konto]}${g.zaproszenie_do && g.konto === 'zaproszenie' ? ` (do ${dataKrotka(new Date(g.zaproszenie_do * 1000))})` : ''}`],
+      [g.pozycja, g.pozycja ? 'pozycja ustawiona' : 'brak pozycji'],
+      [g.przewodnik !== 'nie', { ukonczony: 'przewodnik przejrzany', pominiety: 'przewodnik pominięty', nie: 'przewodnik nieotwarty' }[g.przewodnik]]];
+    const gotowy = kroki[0][0] && kroki[1][0];
+    return h('td', h('b', { style: `color:${gotowy ? 'var(--ok, #6fe07a)' : 'var(--niepewny, #f2b84b)'}` }, gotowy ? 'Gotowy do gry' : 'Przygotowanie w toku'),
+      h('div.slaby', kroki.map(([ok, t]) => `${ok ? '✓' : '○'} ${t}`).join(' · ')));
+  };
 
   glowna.append(
     h('div.karta', h('h2', e.id ? `Edycja: ${e.login}` : 'Nowe konto gracza'),
-      h('div.siatka', pole('Login', f.login), pole('Hasło', f.klucz), pole('Postać', f.postac), pole('Frakcja', f.frakcja),
-        pole('Oddział', f.oddzial), pole('Ranga', f.ranga), pole('Poziom uprawnień (1–9)', f.poziom), pole('Rola', f.rola)),
+      nowe ? h('p.slaby', 'Dodaj gracza: login, postać i frakcja wystarczą. Z zaproszeniem dostaniesz jednorazowy kod — gracz wpisze go przy pierwszym wejściu i sam ustawi hasło.') : null,
+      h('div.siatka', pole('Login', f.login), pole('Postać', f.postac), pole('Frakcja', f.frakcja),
+        pole('Oddział', f.oddzial), pole('Ranga', f.ranga), pole('Poziom uprawnień (1–9)', f.poziom), pole('Rola', f.rola),
+        nowe ? pole('Miejsce startowe (szablon)', start) : null,
+        nowe ? h('label', h('span', zaproszenie, ' Zaproszenie (gracz sam ustawi hasło)')) : null,
+        pole(nowe ? 'Hasło (tylko bez zaproszenia)' : 'Nowe hasło', f.klucz)),
       h('div.rzad', btn('Zapisz', zapisz, '.glowny'), e.id ? btn('Anuluj', () => { wyczysc(glowna); konta(); }) : null)),
     h('div.karta.przewijana', h('h2', `Konta (${uzytkownicy.length})`),
-      h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', '')),
+      h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', 'Gotowość'), h('th', '')),
         uzytkownicy.map((x) => h('tr',
           h('td', x.login, x.rola === 'mg' ? h('span.slaby', ' (MG)') : null),
           h('td', x.postac), h('td', x.frakcja), h('td', [x.oddzial, x.ranga].filter(Boolean).join(' / ')), h('td', x.poziom),
+          gotowosc(x),
           h('td.rzad',
             btn('Edytuj', () => { wyczysc(glowna); konta(x); }),
+            x.rola !== 'mg' ? btn(x.gotowosc?.konto === 'aktywne' ? 'Nowy kod (reset hasła)' : 'Nowy kod', bezpiecznie(async () => {
+              if (x.gotowosc?.konto === 'aktywne' && !confirm(`Wydać nowy kod dla ${x.login}? Obecne hasło gracza przestanie działać.`)) return;
+              const r = await api('mg_zaproszenie_nowe', { id: x.id });
+              wyczysc(glowna); await konta();
+              glowna.prepend(kartaZaproszenia(x.login, r.kod, r.wazne_do));
+            })) : null,
             btn('Usuń', bezpiecznie(async () => {
               if (!confirm(`Usunąć konto ${x.login}?`)) return;
               await api('mg_uzytkownik_usun', { id: x.id });
               wyczysc(glowna); await konta();
             }), '.zly')))))),
   );
+}
+
+// Kod zaproszenia pokazany raz (nie da się go potem odczytać): co przekazać graczowi.
+function kartaZaproszenia(login, kod, wazneDo) {
+  return h('div.karta', { style: 'border-color:var(--ok, #6fe07a)' },
+    h('h2', `Zaproszenie dla: ${login}`),
+    h('p', 'Przekaż graczowi: adres datapada, identyfikator ', h('b', login), ' i kod zaproszenia:'),
+    h('div', { style: 'font-size:28px;letter-spacing:0.2em;margin:8px 0' }, kod),
+    h('p.slaby', `Kod jest jednorazowy, ważny do ${dataKrotka(new Date(wazneDo * 1000), { rok: true })}. Na ekranie logowania gracz wybiera „Mam kod zaproszenia” i ustawia własne hasło. `
+      + 'Kodu nie da się później odczytać — w razie zgubienia wydaj nowy na liście kont.'));
 }
 
 // ---------- bank ----------
@@ -609,7 +652,7 @@ const ODLEGLOSCI = { blisko: 'blisko (planeta wypełnia dół ekranu)', srednio:
 
 async function stanPostaci() {
   const { postacie } = await api('mg_sceny');
-  const { postacie: karty, npc = [], budynki, lokacje } = await api('mg_karty');
+  const { postacie: karty, npc = [], budynki, lokacje, planety: planetyMg = [], floty: flotyMg = [] } = await api('mg_karty');
   const pozycje = Object.fromEntries(karty.map((k) => [k.uid, k.karta.pozycja]));
   let planetyKatalogu = [];
   try { planetyKatalogu = (await api('mg_katalog')).katalog.planety.map((p) => p.nazwa); } catch { /* katalog pusty */ }
@@ -642,20 +685,16 @@ async function stanPostaci() {
   const nazwaLokacji = Object.fromEntries(lokacje.map((l) => [l.klucz, l.nazwa]));
   const opisPozycji = (p) => (p ? [nazwaLokacji[p.lokacja], p.wspolrzedne, p.miejsce !== nazwaLokacji[p.lokacja] ? p.miejsce : '', nazwaBudynku[p.budynek]].filter(Boolean).join(' · ') : '');
 
-  // Pozycja (karta postaci): planeta, współrzędne, miejsce, budynek.
-  const poz = {
-    planeta: h('input', { list: 'mg-planety', placeholder: 'np. Kessel' }),
-    wspolrzedne: h('input', { placeholder: 'np. K-17 · 34.12 / -77.80' }),
-    miejsce: h('input', { placeholder: 'np. pokój 14, hotel Pod Bantą' }),
-    budynek: h('select', h('option', { value: '' }, '— żaden —'), budynki.map((b) => h('option', { value: b.klucz }, `${b.nazwa} (${b.firma})`))),
-    lokacja: h('select', h('option', { value: '' }, '— bez lokacji (nie może się przemieszczać) —'),
-      lokacje.map((l) => h('option', { value: l.klucz }, `${l.planeta} · ${l.nazwa} (${l.typ})`))),
-  };
+  // Pozycja (karta postaci) etapami: obszar → planeta / flota / okręt → lokacja albo statek → pomieszczenie.
+  // Każdy wybór zawęża następną listę; zmiana wyższego poziomu czyści niższe. Przed zapisem pełna ścieżka.
+  const hier = pozycjaHierarchia({ planety: planetyMg, floty: flotyMg, lokacje, budynki });
   const wyborNpc = h('select', { multiple:true, size:Math.min(6,Math.max(2,npc.length)), style:'min-width:260px;min-height:100px' },
     npc.map((n) => h('option', { value:n.id }, `${n.nazwa}${n.rola ? ` · ${n.rola}` : ''}`)));
   const ustawPozycje = async () => {
     try {
-      await api('mg_pozycja_ustaw', { ...Object.fromEntries(Object.entries(poz).map(([k, el]) => [k, el.value])), uids: [...wybrane], npc_ids:[...wyborNpc.selectedOptions].map((x)=>Number(x.value)) });
+      const dane = hier.dane();
+      if (!dane) throw new Error('Wybierz co najmniej obszar i miejsce główne (planetę, flotę albo okręt).');
+      await api('mg_pozycja_ustaw', { ...dane, uids: [...wybrane], npc_ids:[...wyborNpc.selectedOptions].map((x)=>Number(x.value)) });
       wyczysc(glowna);
       await stanPostaci();
       glowna.prepend(msg('Ustawiono pozycję.', 'ok'));
@@ -724,11 +763,129 @@ async function stanPostaci() {
       btn('Ustaw dla zaznaczonych', () => ustaw(), '.glowny')),
     h('div.karta',
       h('h2', 'Pozycja (karta postaci)'),
-      h('p.slaby', 'Wybierz lokację, okręt albo flotę. Wybór floty umieszcza postać na jej okręcie flagowym. Możesz zaznaczyć też NPC z listy poniżej.'),
-      h('div.siatka', pole('Lokacja (ustala planetę i umożliwia przemieszczanie)', poz.lokacja), pole('Planeta (gdy bez lokacji)', poz.planeta), pole('Współrzędne', poz.wspolrzedne), pole('Miejsce (opis)', poz.miejsce), pole('Budynek', poz.budynek)),
+      h('p.slaby', 'Wybieraj od góry: obszar, potem planeta, flota albo okręt, potem miejsce. Flota bez wskazanego statku = okręt flagowy (możesz wybrać inny). '
+        + 'Pozycja może kończyć się na dowolnym poziomie. Współrzędne i opis to opcjonalne szczegóły dla miejsc spoza katalogu. Możesz zaznaczyć też NPC z listy poniżej.'),
+      hier.el,
       pole('Ustaw tę samą pozycję także NPC (Ctrl/⌘ + klik)', wyborNpc),
       btn('Ustaw pozycję dla zaznaczonych', ustawPozycje, '.glowny')),
   );
+}
+
+// ---------- pozycja: wybór hierarchiczny ----------
+
+const REGIONY_MG = ['Głębokie Jądro', 'Światy Jądra', 'Kolonie', 'Wewnętrzne Rubieże', 'Obszar Ekspansji',
+  'Środkowe Rubieże', 'Zewnętrzne Rubieże', 'Przestrzeń Huttów', 'Nieznane Regiony', 'Dzika Przestrzeń'];
+const PRZESTRZEN = '#przestrzen';
+
+function pozycjaHierarchia({ planety, floty, lokacje, budynki }) {
+  const obszarPlanety = (p) => (p.sektor ? `Sektor: ${p.sektor}` : p.region != null ? `Region: ${REGIONY_MG[p.region] || p.region}` : p.region_nazwa ? `Region: ${p.region_nazwa}` : 'Bez obszaru');
+  const obszarNazwy = new Map(planety.map((p) => [p.nazwa, obszarPlanety(p)]));
+  const obszarMiejsca = (nazwaPlanety) => (!nazwaPlanety || ['przestrzeń', '?'].includes(nazwaPlanety) ? PRZESTRZEN : obszarNazwy.get(nazwaPlanety) || 'Bez obszaru');
+  const okrety = lokacje.filter((l) => l.klucz.startsWith('okret:'));
+  const miejscaPlanet = lokacje.filter((l) => !l.klucz.startsWith('okret:') && !l.klucz.startsWith('flota:'));
+  // Obszary: sektory, potem regiony; „przestrzeń” — floty i okręty poza układami.
+  const obszary = [...new Set(planety.map(obszarPlanety))].sort((a, b) => (a.startsWith('Sektor') === b.startsWith('Sektor') ? a.localeCompare(b, 'pl') : a.startsWith('Sektor') ? -1 : 1));
+  const opcja = (v, t) => h('option', { value: v }, t);
+  const s = {
+    obszar: h('select', opcja('', '— wybierz obszar —'), opcja(PRZESTRZEN, 'Przestrzeń (poza układami)'), obszary.map((o) => opcja(o, o))),
+    rodzaj: h('select', opcja('planeta', 'Planeta / księżyc'), opcja('flota', 'Flota'), opcja('okret', 'Statek / okręt')),
+    szukaj: h('input', { placeholder: 'zawęź listę (nazwa)…' }),
+    obiekt: h('select'),
+    konkret: h('select'),
+    pomieszczenie: h('select'),
+    wspolrzedne: h('input', { placeholder: 'np. K-17 · 34.12 / -77.80' }),
+    miejsce: h('input', { placeholder: 'np. pokój 14, hotel Pod Bantą' }),
+    budynek: h('select', opcja('', '— żaden —'), budynki.map((b) => opcja(b.klucz, `${b.nazwa} (${b.firma})`))),
+  };
+  const sciezka = h('div', { style: 'margin:8px 0;color:var(--akcent, #4de2c9)' });
+  const etykiety = { obiekt: h('span'), konkret: h('span') };
+  const poleKonkret = pole(etykiety.konkret, s.konkret);
+  const polePom = pole('Pomieszczenie (plan wnętrza okrętu)', s.pomieszczenie);
+  const wypelnij = (el, lista, pusta) => { wyczysc(el).append(...(pusta ? [opcja('', pusta)] : []), ...lista); };
+  const tekst = (el) => el.selectedOptions[0]?.textContent || '';
+  let wnetrzeOkretu = 0;
+
+  function obiekty() {
+    const ob = s.obszar.value, r = s.rodzaj.value, q = s.szukaj.value.trim().toLowerCase();
+    const pasuje = (n) => !q || n.toLowerCase().includes(q);
+    etykiety.obiekt.textContent = { planeta: 'Planeta / księżyc', flota: 'Flota', okret: 'Statek / okręt' }[r];
+    if (!ob) return wypelnij(s.obiekt, [], '— najpierw obszar —');
+    if (r === 'planeta') {
+      const lista = ob === PRZESTRZEN ? [] : planety.filter((p) => obszarPlanety(p) === ob && pasuje(p.nazwa));
+      return wypelnij(s.obiekt, lista.slice(0, 600).map((p) => opcja(p.nazwa, p.nazwa)), lista.length ? '— wybierz planetę —' : '— brak planet w tym obszarze —');
+    }
+    if (r === 'flota') {
+      const lista = floty.filter((f) => f.okrety.some((o) => obszarMiejsca(o.planeta) === ob) && pasuje(f.nazwa));
+      return wypelnij(s.obiekt, lista.map((f) => opcja(String(f.id), `${f.nazwa} (${f.okrety.length})`)), lista.length ? '— wybierz flotę —' : '— brak flot w tym obszarze —');
+    }
+    const lista = okrety.filter((l) => obszarMiejsca(l.planeta) === ob && pasuje(l.nazwa));
+    return wypelnij(s.obiekt, lista.map((l) => opcja(l.klucz, `${l.nazwa.replace(/^Pokład: /, '')}${l.planeta && l.planeta !== 'przestrzeń' ? ` · ${l.planeta}` : ''}`)),
+      lista.length ? '— wybierz okręt —' : '— brak okrętów w tym obszarze —');
+  }
+  function konkrety() {
+    const r = s.rodzaj.value, v = s.obiekt.value;
+    poleKonkret.hidden = !v || r === 'okret';
+    if (r === 'planeta') {
+      etykiety.konkret.textContent = 'Lokacja / budynek';
+      wypelnij(s.konkret, miejscaPlanet.filter((l) => l.planeta === v).map((l) => opcja(l.klucz, `${l.nazwa} (${l.typ})`)), '— bez lokacji (powierzchnia, orbita, ogólnie) —');
+    } else if (r === 'flota') {
+      etykiety.konkret.textContent = 'Statek we flocie';
+      const f = floty.find((x) => String(x.id) === v);
+      wypelnij(s.konkret, (f?.okrety || []).map((o, i) => opcja(String(o.id), `${i ? '' : '★ flagowy: '}${o.nazwa}${o.klasa ? ` · ${o.klasa}` : ''}`)));
+    }
+  }
+  async function pomieszczenia() {
+    const id = okretWybrany();
+    polePom.hidden = !id;
+    if (id === wnetrzeOkretu) return;
+    wnetrzeOkretu = id;
+    wypelnij(s.pomieszczenie, [], id ? 'wczytywanie…' : '');
+    if (!id) return;
+    try {
+      const { pomieszczenia: lista } = await api('mg_wnetrze', undefined, { okret: id });
+      if (id !== wnetrzeOkretu) return;
+      const grupy = new Map();
+      for (const x of lista) { if (!grupy.has(x.grupa)) grupy.set(x.grupa, []); grupy.get(x.grupa).push(x); }
+      wypelnij(s.pomieszczenie, [...grupy].map(([g, l]) => h('optgroup', { label: g || 'Okręt' }, l.map((x) => opcja(String(x.id), x.nazwa)))),
+        lista.length ? '— bez przypisania do pomieszczenia —' : '— okręt bez planu wnętrza —');
+    } catch { wypelnij(s.pomieszczenie, [], '— bez przypisania do pomieszczenia —'); }
+    podsumuj();
+  }
+  const okretWybrany = () => (s.rodzaj.value === 'okret' && s.obiekt.value ? Number(s.obiekt.value.slice(6))
+    : s.rodzaj.value === 'flota' && s.konkret.value ? Number(s.konkret.value) : 0);
+  function podsumuj() {
+    const czesci = [s.obszar.value === PRZESTRZEN ? 'Przestrzeń' : s.obszar.value];
+    if (s.obiekt.value) czesci.push(`${{ planeta: '', flota: 'flota ', okret: 'okręt ' }[s.rodzaj.value]}${tekst(s.obiekt).replace(/ \(\d+\)$/, '')}`);
+    if (!poleKonkret.hidden && s.konkret.value) czesci.push(tekst(s.konkret).replace(/^★ flagowy: /, 'statek '));
+    if (!polePom.hidden && s.pomieszczenie.value) czesci.push(tekst(s.pomieszczenie));
+    if (s.miejsce.value.trim()) czesci.push(`„${s.miejsce.value.trim()}”`);
+    sciezka.textContent = s.obszar.value ? `Pozycja: ${czesci.filter(Boolean).join(' → ')}` : 'Pozycja: — wybierz obszar —';
+  }
+  s.obszar.addEventListener('change', () => { s.szukaj.value = ''; obiekty(); konkrety(); pomieszczenia(); podsumuj(); });
+  s.rodzaj.addEventListener('change', () => { obiekty(); konkrety(); pomieszczenia(); podsumuj(); });
+  s.szukaj.addEventListener('input', () => { obiekty(); konkrety(); pomieszczenia(); podsumuj(); });
+  s.obiekt.addEventListener('change', () => { konkrety(); pomieszczenia(); podsumuj(); });
+  s.konkret.addEventListener('change', () => { pomieszczenia(); podsumuj(); });
+  for (const el of [s.pomieszczenie, s.miejsce]) el.addEventListener('input', podsumuj);
+  s.pomieszczenie.addEventListener('change', podsumuj);
+  obiekty(); konkrety(); pomieszczenia(); podsumuj();
+
+  return {
+    el: h('div',
+      h('div.siatka', pole('1. Obszar (sektor / region)', s.obszar), pole('2. Miejsce główne', s.rodzaj), pole('Szukaj', s.szukaj), pole(etykiety.obiekt, s.obiekt), poleKonkret, polePom),
+      h('details', h('summary.slaby', 'Szczegóły (opcjonalnie): współrzędne, opis miejsca, budynek firmy'),
+        h('div.siatka', pole('Współrzędne', s.wspolrzedne), pole('Miejsce (opis)', s.miejsce), pole('Budynek firmy (gdy bez lokacji)', s.budynek))),
+      sciezka),
+    // Dane do mg_pozycja_ustaw albo null (za mało wybrane).
+    dane() {
+      const r = s.rodzaj.value, v = s.obiekt.value;
+      if (!s.obszar.value || !v) return null;
+      const wsp = { wspolrzedne: s.wspolrzedne.value, miejsce: s.miejsce.value, budynek: s.budynek.value };
+      if (r === 'planeta') return { ...wsp, lokacja: s.konkret.value, planeta: s.konkret.value ? '' : v };
+      const okret = okretWybrany();
+      return { ...wsp, budynek: '', planeta: '', lokacja: `okret:${okret}`, pomieszczenie: Number(s.pomieszczenie.value) || 0 };
+    },
+  };
 }
 
 // ---------- karty postaci ----------

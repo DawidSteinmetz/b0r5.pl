@@ -393,6 +393,41 @@ function floty_odcinek_studnia(array $studnie, array $a, array $b, array $pomin 
     return null;
 }
 
+// Ciała układu jako przeszkody lotu podświetlnego: [kx, ky, r, opis] — planety i księżyce (promień + 50 km),
+// gwiazda (3 promienie: osłona termiczna). Studnia grawitacyjna nie blokuje lotu podświetlnego, samo ciało — tak.
+function floty_ciala(float $x, float $y, int $t): array
+{
+    $planety = floty_planety_ukladu($x, $y);
+    if (!$planety) return [];
+    $glowny = astro_cykl((string) $planety[0]['nazwa']);
+    $rs = max(array_map(fn($g) => (float) ($g['promien_km'] ?? ASTRO_PROMIEN_SLONCA_KM), $glowny['gwiazdy'] ?? [[]]));
+    $ciala = [[0.0, 0.0, $rs * 3, 'gwiazdę układu']];
+    foreach ($planety as $p) {
+        $c = astro_cykl((string) $p['nazwa']);
+        [$kx, $ky] = astro_pozycja_km($c, $t);
+        $ciala[] = [$kx, $ky, (float) $c['srednica_km'] / 2 + 50, (empty($c['macierz']) ? 'planetę „' : 'księżyc „') . $p['nazwa'] . '”'];
+    }
+    return $ciala;
+}
+
+// Pierwsze ciało przecięte przez odcinek a → b (km od słońca) albo null.
+function floty_odcinek_cialo(array $ciala, array $a, array $b): ?string
+{
+    $dx = $b[0] - $a[0]; $dy = $b[1] - $a[1]; $l2 = $dx * $dx + $dy * $dy;
+    foreach ($ciala as [$sx, $sy, $r, $opis]) {
+        $t = $l2 > 0 ? max(0.0, min(1.0, (($sx - $a[0]) * $dx + ($sy - $a[1]) * $dy) / $l2)) : 0.0;
+        if (hypot($sx - ($a[0] + $dx * $t), $sy - ($a[1] + $dy * $t)) < $r) return $opis;
+    }
+    return null;
+}
+
+// Promień orbity (km od środka planety) dla wariantu podejścia — tak samo jak na mapie.
+function floty_promien_orbity_km(float $srednica, ?string $podejscie): float
+{
+    $r = $srednica / 2;
+    return ['bliska' => $r + 300, 'srednia' => $r * 4][$podejscie ?? ''] ?? $r * 15;
+}
+
 // Punkt w studni (opis) albo null.
 function floty_punkt_w_studni(float $x, float $y, array $k, int $t): ?string
 {
@@ -539,6 +574,7 @@ function floty_lot(array $odbiorcy, array $w): array
     $marks = implode(',', array_fill(0, count($odbiorcy), '?'));
     $q = $db->prepare("SELECT o.id,o.nazwa,o.x,o.y,o.planeta_id,o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
             o.lot_do_utc,COALESCE(n.obrot_deg_na_min,90) AS obrot,COALESCE(n.predkosc_podswietlna_kms,300) AS v" . (floty_uklad_dostepny() ? ',o.uklad_kx,o.uklad_ky' : '')
+            . (floty_orbita_dostepna() ? ',o.orbita_deg' : '') . (floty_nawigacja_dostepna() ? ',o.podejscie' : '')
             . (floty_przyspieszenie_dostepne() ? ',COALESCE(n.podswietlna_pc_doba,20) AS g' : '') . "
         FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id=o.id WHERE o.id IN ($marks) AND o.aktywny=1");
     $q->execute($odbiorcy);
@@ -562,9 +598,28 @@ function floty_lot(array $odbiorcy, array $w): array
         $k1 = null;
         if ($wUkladzie) {
             $k1 = $celK ?? floty_planeta_km($celId, $teraz);
+            // Start z orbity: z miejsca okrętu na orbicie planety (nie z jej środka).
+            if (!$poz && $odPl) {
+                $sr = (float) (astro_cykl((string) (ruch_planeta((string) $odPl)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
+                $ro = floty_promien_orbity_km($sr, $j['podejscie'] ?? null);
+                $kat = deg2rad(isset($j['orbita_deg']) && $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kurs_teraz($j, $teraz) + 180);
+                $k0 = [$k0[0] + cos($kat) * $ro, $k0[1] + sin($kat) * $ro];
+            }
+            // Cel — planeta: koniec lotu na jej dalekiej orbicie od strony nadlotu (nie w środku planety).
+            if (!$celK && $celId) {
+                $sr = (float) (astro_cykl((string) (ruch_planeta((string) $celId)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
+                $dl = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
+                $ro = min(floty_promien_orbity_km($sr, 'daleka'), max(0.0, $dl - 1));
+                if ($dl > 0) $k1 = [$k1[0] - ($k1[0] - $k0[0]) / $dl * $ro, $k1[1] - ($k1[1] - $k0[1]) / $dl * $ro];
+            }
             $km = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
-            if ($s = floty_odcinek_studnia(floty_studnie($x, $y, $teraz), $k0, $k1, [floty_grupa_planety($odPl), floty_grupa_planety($celId)])) {
-                blad('Komputer nawigacyjny odrzuca trasę: lot jednostki „' . $j['nazwa'] . '” przecina studnię grawitacyjną ' . $s . '.');
+            // Lot podświetlny w studni grawitacyjnej jest dozwolony; nie wolno przelecieć przez samo ciało.
+            $ciala = floty_ciala($x, $y, $teraz);
+            if ($celK && ($s = floty_odcinek_cialo($ciala, $k1, $k1))) {
+                blad('Komputer nawigacyjny odrzuca cel: punkt leży wewnątrz ciała — ' . $s . '. Wskaż punkt obok.');
+            }
+            if ($s = floty_odcinek_cialo($ciala, $k0, $k1)) {
+                blad('Komputer nawigacyjny odrzuca trasę: lot jednostki „' . $j['nazwa'] . '” prowadzi przez ' . $s . '. Leć etapami: najpierw do punktu obok, potem do celu.');
             }
         } else {
             $km = floty_lot_km($odPl, $x0, $y0, $celId, $x, $y);
@@ -1067,7 +1122,13 @@ function floty_aktualizuj_ruch(): void
                 // jednostka staje na orbicie po stronie, z której przyleciała (rufa ku planecie).
                 // Skok w obrębie układu (te same współrzędne mapy): kurs ustawiony przed skokiem zostaje.
                 $daleki = hypot($koniecX - $sx0, $koniecY - $sy0) > 1e-6;
-                $kierunek = $daleki ? floty_kat(rad2deg(atan2($koniecY - $sy0, $koniecX - $sx0))) : 0.0;
+                if ($daleki) $kierunek = floty_kat(rad2deg(atan2($koniecY - $sy0, $koniecX - $sx0)));
+                else {
+                    // Mikroskok w układzie: kierunek przylotu = kurs skoku ustawiony przed wejściem (km od słońca).
+                    $qk = $db->prepare('SELECT COALESCE(kurs_cel_deg, kurs_deg, 0) FROM mapa_obiekty WHERE id=?');
+                    $qk->execute([$r['obiekt_id']]);
+                    $kierunek = floty_kat((float) $qk->fetchColumn());
+                }
                 if ($daleki) $db->prepare('UPDATE mapa_obiekty SET kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
                     ->execute([round($kierunek, 2), $r['obiekt_id']]);
                 if (floty_orbita_dostepna()) {

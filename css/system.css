@@ -156,6 +156,16 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 #dok #dok-dzwiek { position: absolute; right: 10px; bottom: 10px; width: 30px; height: 30px; padding: 5px; border-radius: 50%; }
 #dok-dzwiek svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #dok-dzwiek.wyciszony { opacity: 0.55; }
+/* Małe ikonki w narożnikach doku, tej samej wielkości co głośnik: po prawej „Dostosuj pulpit” obok głośnika,
+   po lewej Ustawienia i Przewodnik. */
+#dok .dok-ikonka { position: absolute; bottom: 10px; width: 30px; height: 30px; padding: 5px; border-radius: 50%; }
+#dok #dok-dostosuj { right: 46px; }
+#dok #dok-ustawienia { left: 10px; }
+#dok #dok-przewodnik { left: 46px; }
+.dok-ikonka svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+#dok .dok-ikonka.aktywny { color: var(--akcent); border-color: var(--linia-mocna); }
+/* Wąski ekran: środkowe przyciski doku ciaśniej, żeby nie wchodziły na ikonki w narożnikach. */
+@media (max-width: 480px) { #dok { gap: 18px; } #dok > button:not(.dok-ikonka):not(#dok-dzwiek) { width: 52px; } }
 
 /* ---------- pulpit / aplikacje ---------- */
 
@@ -249,7 +259,11 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 .dodaj-lista { display: grid; gap: 6px; width: 100%; }
 .dodaj-lista .przycisk { display: flex; align-items: center; gap: 6px; width: 100%; margin: 0; }
 .dodaj-lista svg { width: 18px; height: 18px; stroke: var(--akcent); fill: none; stroke-width: 1.6; }
-.pulpit-dostosuj { display: flex; justify-content: flex-end; margin-top: 18px; }
+/* Przewodnik pierwszego wejścia: karta na dole pulpitu (nad przyciskami), nie zasłania całego ekranu. */
+.przewodnik { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); z-index: 8;
+  padding: 16px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: var(--panel-mocny); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+.przewodnik h2 { margin: 4px 0 6px; color: var(--akcent); font-weight: normal; letter-spacing: 0.08em; }
+.przewodnik p { margin: 0 0 12px; }
 .ikona-aplikacji .plakietka { font-size: 11px; color: var(--akcent-2); min-height: 1em; }
 
 .app-glowa { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
@@ -300,6 +314,14 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 }
 .pole input:focus, .pole select:focus, .pole textarea:focus { border-color: var(--akcent); }
 .pole textarea { min-height: 90px; resize: vertical; }
+/* Listy wyboru: pełne tło i jawne kolory (jasne wnętrza, np. ISD, nie mogą prześwitywać; rozwinięta lista też ciemna). */
+select { background-color: var(--panel-mocny); color: var(--tekst); color-scheme: dark; }
+.pole select { background-color: var(--panel-mocny); }
+select:focus-visible { outline: 2px solid var(--akcent); outline-offset: 1px; }
+select option, select optgroup { background-color: var(--panel-mocny); color: var(--tekst); }
+select optgroup { color: var(--akcent-2); font-style: normal; }
+select option:checked { background-color: #1f4a47; color: #ffffff; }
+select option:disabled { color: var(--tekst-slaby); }
 
 .rzad { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .rozpycha { flex: 1; }

@@ -456,7 +456,8 @@ function scena_efektywna(string $uid): array
         // Pomieszczenie na okręcie z planem wnętrza: okna mostka, boczne iluminatory, wrota hangaru albo brak okien.
         if (function_exists('wnetrze_widok') && ($wid = wnetrze_widok($uid, (int) $gdzie['okret_id']))) {
             $okret['opis'] = $wid['nazwa'];
-            if ($wid['okno'] === 'lewa' || $wid['okno'] === 'prawa') $okret = ['okno' => 'iluminator', 'burta' => $wid['okno']] + $okret;
+            // Kajuty i pomieszczenia burtowe są zamknięte (pełne ściany, bez widoku na zewnątrz); okna ma tylko mostek.
+            if ($wid['okno'] === 'lewa' || $wid['okno'] === 'prawa') $okret = ['okno' => 'brak'] + $okret;
             elseif ($wid['okno'] === 'hangar') $okret = ['okno' => '', 'wnetrze' => 'hangar'] + $okret;
             elseif ($wid['okno'] === 'brak') $okret = ['okno' => 'brak'] + $okret;
         }

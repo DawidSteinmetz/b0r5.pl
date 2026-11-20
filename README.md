@@ -944,6 +944,15 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - **Zbliżenie mapy**: małe ikonki w doku obok głośnika (+, −, galaktyka, sektor, układ, planeta, 1:1), tylko przy
   otwartej mapie (`ctx.dok([...])` — aplikacja może dodać własne ikonki doku; znikają przy jej zamknięciu).
 
+## Dostęp do pomieszczeń według stopnia; zoom wokół gracza
+
+- Na okręcie wolno wejść wszędzie poza **prywatnymi kwaterami wyższych stopni** (kwatera kapitana, adiutanta,
+  oficerów sztabowych, starszych oficerów, admirała). Stopień z rangi konta (`STOPNIE` w api/poklad.php: np. starszy
+  porucznik 7, komandor porucznik 8, kapitan 10), kwatery z nazwy pomieszczenia (`KWATERY_STOPNI`). Kapitan okrętu
+  i MG — bez ograniczeń. W Nawigacji zamknięte kwatery mają 🔒 i nie da się ich wybrać; serwer też odmawia.
+- **Zoom**: punkt zbliżenia to zaznaczony obiekt, a bez zaznaczenia — moja postać / okręt (dosuwa się do środka).
+  Zbliżanie zatrzymuje się, gdy gwiazda zajmuje ok. 40% ekranu (bez wjeżdżania w słońce); maks. zbliżenie ISD ~500 px.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

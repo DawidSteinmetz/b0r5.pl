@@ -319,7 +319,7 @@ export default {
       const grupy = new Map();
       for (const x of wn.pomieszczenia) { if (!grupy.has(x.grupa)) grupy.set(x.grupa, []); grupy.get(x.grupa).push(x); }
       const ulub = wn.pomieszczenia.filter((x) => ulubione.includes(x.id));
-      const opcja = (x) => h('option', { value: x.id }, `${ulubione.includes(x.id) ? '★ ' : ''}${x.nazwa} · ${x.min} min`);
+      const opcja = (x) => h('option', { value: x.id, disabled: !!x.zamkniete, title: x.zamkniete || '' }, `${x.zamkniete ? '🔒 ' : ulubione.includes(x.id) ? '★ ' : ''}${x.nazwa} · ${x.min} min`);
       const wybor = h('select', { 'aria-label': 'Pomieszczenie docelowe' },
         ...[ulub.length ? h('optgroup', { label: '★ Ulubione' }, ulub.map(opcja)) : null,
           ...[...grupy].map(([g, lista]) => h('optgroup', { label: g || 'Okręt' }, lista.map(opcja)))].filter(Boolean));

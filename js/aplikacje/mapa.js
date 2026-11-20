@@ -22,7 +22,7 @@ const teraz = () => Date.now() / 1000;
 const KM_NA_PC = 30856775814913.7;
 const KM_NA_AU = 149597870.7;
 const PROMIEN_GWIAZDY_KM = { O: 6960000, B: 3480000, A: 1250000, F: 905000, G: 696000, K: 557000, M: 278000, WD: 8400, RG: 69600000 };
-const ZOOM_MAKS = 2e16;
+const ZOOM_MAKS = 1e16; // ISD (1,6 km) ok. 500 px
 // Mieszanie logarytmiczne: schemat (f = 0) → rzeczywista wielkość (f = 1), bez przeskoków.
 const mieszajLog = (a, b, f) => (f <= 0 ? a : f >= 1 ? b : Math.exp(Math.log(Math.max(a, 1e-6)) * (1 - f) + Math.log(Math.max(b, 1e-6)) * f));
 
@@ -693,14 +693,53 @@ export default {
       };
     }
 
-    // +/−: zbliżenie wokół środka ekranu (płynnie).
+    // Punkt zbliżenia: zaznaczony obiekt (jednostka, planeta, gwiazda, punkt), a bez zaznaczenia — moja postać
+    // albo okręt, na którym jestem. Funkcja zwraca jego miejsce na ekranie albo null (środek ekranu).
+    function kotwicaZoomu() {
+      const w0 = wybrane;
+      if (w0?.obiekt) return () => punktObiektu(w0.obiekt);
+      if (w0?.planeta) return () => pozycjaPlanety(w0.planeta);
+      if (w0?.gwiazda) return () => { const u = ukladNaEkranie(w0.gwiazda); return u ? [u.sx, u.sy] : naEkran(w0.gwiazda.x, w0.gwiazda.y); };
+      if (w0?.punkt) { const pk = w0.punkt; return () => (pk.k ? naEkran(pk.x, pk.y, pk.k[0], pk.k[1]) : naEkran(pk.x, pk.y)); }
+      const moj = mojZnacznik();
+      return moj ? () => punktObiektu(moj) : null;
+    }
+
+    // Najwyższa skala, przy której gwiazda pod punktem (sx, sy) nie wypełnia ekranu (tarcza do ok. 40% ekranu);
+    // poza gwiazdą — bez ograniczenia. Chroni przed „wjechaniem” w słońce.
+    function limitGwiazdy(sx, sy) {
+      if (skala < PROG_UKLADU) return Infinity;
+      const [mx, my] = naMape(sx, sy);
+      const p = ukladWPunkcie(mx, my);
+      const u = p && ukladNaEkranie(p);
+      if (!u || u.ksiezyc) return Infinity;
+      const gw = u.cykl.gwiazdy?.[0];
+      const R = gw?.promien_km || PROMIEN_GWIAZDY_KM[gw?.typ] || 696000;
+      const d = Math.hypot(sx - u.sx, sy - u.sy) / u.skm; // km od środka gwiazdy
+      if (d > R * 3) return Infinity;
+      return (0.4 * Math.min(szer, wys) / R) * KM_NA_PC;
+    }
+
+    // +/−: płynne zbliżenie wokół punktu zbliżenia, który przy okazji dosuwa się do środka ekranu.
     function zoomOkolo(mnoznik) {
-      const docelowa = Math.max(0.005, Math.min(ZOOM_MAKS, skala * mnoznik));
+      const kotwica = kotwicaZoomu();
       const s0 = skala, t0 = performance.now();
+      const a0 = kotwica?.() || [szer / 2, wys / 2];
+      let docelowa = Math.max(0.005, Math.min(ZOOM_MAKS, skala * mnoznik));
       animacja = (t) => {
-        const p = Math.min(1, (t - t0) / 250);
-        przybliz(Math.exp(Math.log(s0) + (Math.log(docelowa) - Math.log(s0)) * p) / skala, szer / 2, wys / 2);
-        if (p >= 1) animacja = null;
+        const p = Math.min(1, (t - t0) / 300);
+        const e = 1 - (1 - p) ** 3;
+        // punkt zbliżenia sunie z miejsca startu na środek ekranu
+        const cel = [a0[0] + (szer / 2 - a0[0]) * e, a0[1] + (wys / 2 - a0[1]) * e];
+        const a = kotwica?.() || cel;
+        camKx += (a[0] - cel[0]) / pxNaKm(); camKy -= (a[1] - cel[1]) / pxNaKm();
+        scalKamere();
+        if (mnoznik > 1) docelowa = Math.min(docelowa, Math.max(skala, limitGwiazdy(cel[0], cel[1])));
+        przybliz(Math.exp(Math.log(s0) + (Math.log(docelowa) - Math.log(s0)) * e) / skala, cel[0], cel[1]);
+        if (p >= 1) {
+          animacja = null;
+          if (kotwica) sledz = { poz: kotwica, ekran: [szer / 2, wys / 2] };
+        }
       };
     }
 
@@ -730,8 +769,8 @@ export default {
         const R = Math.max((cykl?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
         return przelec(p.x, p.y, Math.min(ZOOM_MAKS, kr / (R / KM_NA_PC)), () => wybierz({ planeta: p }), kP);
       }
-      // 1:1 — mój okręt (na orbicie: w jego miejscu na orbicie), inaczej planeta.
-      const moj = mojZnacznik();
+      // 1:1 — zaznaczona jednostka albo mój okręt (na orbicie: w jego miejscu na orbicie), inaczej planeta.
+      const moj = wybrane?.obiekt || mojZnacznik();
       let k = kP;
       if (moj?.uklad_k) k = moj.uklad_k;
       else if (moj && planetaObiektu(moj) === p) {
@@ -1815,7 +1854,8 @@ export default {
       const kotwica = kotwicaPod(sx, sy);
       const przed = kotwica?.();
       const k0 = pxNaKm();
-      skala = Math.max(0.005, Math.min(ZOOM_MAKS, skala * mnoznik));
+      const limit = mnoznik > 1 ? Math.max(skala, limitGwiazdy(sx, sy)) : Infinity;
+      skala = Math.max(0.005, Math.min(ZOOM_MAKS, limit, skala * mnoznik));
       const d = 1 / k0 - 1 / pxNaKm();
       camKx += (sx - szer / 2) * d;
       camKy -= (sy - wys / 2) * d;

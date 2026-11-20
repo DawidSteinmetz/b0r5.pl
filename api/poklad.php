@@ -152,6 +152,46 @@ function wnetrze_przy_promie(string $uid, int $okretId): bool
     return !$st['przejscie'] && $st['pomieszczenie'] === wnetrze_hangar_promow($st['plan']);
 }
 
+// ---------- dostęp według stopnia ----------
+// Na okręcie wolno wejść wszędzie poza prywatnymi kwaterami wyższych stopni. Stopień z rangi konta (tekst),
+// kwatery rozpoznawane po nazwie pomieszczenia. Kapitan okrętu i MG — bez ograniczeń.
+const STOPNIE = [
+    ['wielki admirał', 15], ['admirał floty', 14], ['wiceadmirał', 13], ['kontradmirał', 12], ['admirał', 13], ['moff', 14], ['komodor', 11],
+    ['kapitan-porucznik', 7], ['komandor porucznik', 8], ['komandor podporucznik', 7], ['komandor', 9], ['kapitan', 10],
+    ['starszy porucznik', 7], ['podporucznik', 5], ['porucznik', 6], ['chorąży', 4], ['starszy sierżant', 3], ['sierżant', 3], ['bosman', 3],
+    ['kapral', 2], ['starszy marynarz', 1], ['marynarz', 1], ['szeregowy', 1], ['szturmowiec', 1],
+];
+const KWATERY_STOPNI = [
+    ['kwatera kapitana', 10, 'kapitana'], ['kwatera dowódcy', 10, 'kapitana'], ['kwatera admirała', 12, 'admirała'], ['apartament admirała', 12, 'admirała'],
+    ['kwatera adiutanta', 9, 'komandora'], ['kwatery oficerów sztabowych', 8, 'komandora porucznika'], ['kwatery starszych oficerów', 8, 'komandora porucznika'],
+];
+
+function stopien_rangi(string $ranga): int
+{
+    $r = mb_strtolower(trim($ranga));
+    if ($r === '') return 0;
+    foreach (STOPNIE as [$nazwa, $s]) if (str_contains($r, $nazwa)) return $s;
+    return 0;
+}
+
+// [wymagany stopień, opis] dla pomieszczenia albo null (wstęp wolny).
+function wnetrze_wymagany_stopien(string $nazwa): ?array
+{
+    $n = mb_strtolower($nazwa);
+    foreach (KWATERY_STOPNI as [$wzor, $s, $kto]) if (str_contains($n, $wzor)) return [$s, $kto];
+    return null;
+}
+
+// Czy postać może wejść do pomieszczenia (null — tak; tekst — powód odmowy).
+function wnetrze_odmowa(array $u, int $okretId, array $wezel): ?string
+{
+    $wym = wnetrze_wymagany_stopien((string) $wezel['krotka']);
+    if (!$wym || ($u['rola'] ?? '') === 'mg') return null;
+    if (function_exists('wskazniki_kapitan') && wskazniki_kapitan('okret:' . $okretId, $u)) return null;
+    if (stopien_rangi((string) ($u['ranga'] ?? '')) >= $wym[0]) return null;
+    return $wezel['krotka'] . ' — prywatna kwatera, wstęp od stopnia ' . $wym[1] . '.';
+}
+
 // Dane do Nawigacji: gdzie jestem, trwające przejście, lista pomieszczeń (z czasem dojścia) i skróty.
 function wnetrze_info(array $u, int $okretId): ?array
 {
@@ -163,8 +203,9 @@ function wnetrze_info(array $u, int $okretId): ?array
     $lista = [];
     foreach ($w as $id => $x) {
         if ($x['glebokosc'] < 2 || $id === $st['pomieszczenie']) continue;
+        $odm = wnetrze_odmowa($u, $okretId, $x);
         $lista[] = ['id' => $id, 'nazwa' => $x['krotka'], 'grupa' => $x['grupa'], 'okno' => $x['okno'],
-            'min' => round(wnetrze_czas_s($w, $st['pomieszczenie'], $id) / 60, 1)];
+            'min' => round(wnetrze_czas_s($w, $st['pomieszczenie'], $id) / 60, 1)] + ($odm ? ['zamkniete' => $odm] : []);
     }
     $skroty = [];
     $hangar = wnetrze_hangar_promow($st['plan']);
@@ -202,6 +243,7 @@ function obsluz_poklad(string $akcja, bool $post): void
     $w = wnetrze_wezly($st['plan']);
     $cel = (int) (wejscie()['cel'] ?? 0);
     if (!isset($w[$cel]) || $w[$cel]['glebokosc'] < 2) blad('Nie ma takiego pomieszczenia.');
+    if ($cel !== $st['pomieszczenie'] && ($odm = wnetrze_odmowa($u, $okret, $w[$cel]))) blad($odm, 403);
     // W trakcie przejścia zmiana celu liczy się od miejsca, z którego się wyszło.
     $od = $st['pomieszczenie'];
     if ($cel === $od) { wnetrze_zapisz($uid, $okret, $od); odpowiedz(['ok' => true, 'koniec' => time()]); }

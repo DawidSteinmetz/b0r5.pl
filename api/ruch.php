@@ -306,11 +306,12 @@ function mapa_obiekty_widoczne(array $u): array
     if ($obiekty && tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) {
         $ids = array_column($obiekty, 'id');
         $marks = implode(',', array_fill(0, count($ids), '?'));
-        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.wyjscie_x,j.wyjscie_y,j.eta_utc,j.kat_bledu,COALESCE(" . (mapa_kurs_sql() ? 'r.wejscie_utc,' : '') . "r.wydano_utc) AS wejscie_utc FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' AND j.obiekt_id IN ($marks)");
+        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.wyjscie_x,j.wyjscie_y," . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? 'j.wyjscie_kx,j.wyjscie_ky,' : '') . "j.eta_utc,j.kat_bledu,COALESCE(" . (mapa_kurs_sql() ? 'r.wejscie_utc,' : '') . "r.wydano_utc) AS wejscie_utc FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' AND j.obiekt_id IN ($marks)");
         $q->execute($ids);
         $indeks = array_column($obiekty, null, 'id');
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $lot) {
             $id = (int) $lot['obiekt_id'];
+            if (isset($indeks[$id]) && ($lot['wyjscie_kx'] ?? null) !== null) $indeks[$id]['lot_k'] = [(float) $lot['wyjscie_kx'], (float) $lot['wyjscie_ky']];
             if (isset($indeks[$id])) $indeks[$id]['lot'] = ['x' => (float) $lot['wyjscie_x'], 'y' => (float) $lot['wyjscie_y'], 'eta' => strtotime($lot['eta_utc'] . ' UTC'),
                 'wejscie' => strtotime($lot['wejscie_utc'] . ' UTC'), 'szum_stopnie' => (float) $lot['kat_bledu']];
         }

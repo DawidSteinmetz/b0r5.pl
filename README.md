@@ -796,6 +796,13 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   (2 min), potem stała prędkość przelotowa; flota leci tempem najwolniejszej jednostki. Skala: Sokół Millennium
   z Hoth na Bespin (132,9 pc) w ok. 3 dni = 45 pc/doba. Kom'rk 35, Arquitens 28, ISD 22, Gozanti 20, Lambda 15
   (MG: profil napędu). Lot w układzie ok. 2 min. Migracja 038 (przyspieszenie w G) jest zastąpiona.
+- **Lot w obrębie układu** ma ograniczoną prędkość (ISD 1 j.a. w ok. 40 min, Sokół ok. 20 min); między układami
+  — pełna prędkość przelotowa.
+- **Okienka na mapie** (karta szczegółów i panel floty) mają proporcje telefonu w pionie: karta przy prawej,
+  panel floty jej lustrzanym odbiciem przy lewej (na telefonie oba na całą szerokość, otwarty jeden naraz).
+  Nawigacja w krokach: punkt/planeta → co zrobić (skok, lot, orbita, lądowanie, start) → szczegóły
+  z komputera i rozkaz; „‹” wraca. Panel floty: sekcje zwinięte (jednostki, kurs, skok na współrzędne,
+  hangar, grupy, wskaźniki).
 - **Pozycja w układzie:** `mapa_obiekty.uklad_kx/ky` — km od słońca, gdy jednostka nie stoi przy planecie.
 - **Studnie grawitacyjne** wokół ciał: słońce 20 promieni, planeta 100 promieni. Skok i lot nie mogą
   przez nie przejść ani w nich się kończyć — poza skokiem automatem na orbitę planety (wariant B) i odlotem.

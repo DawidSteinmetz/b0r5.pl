@@ -277,6 +277,14 @@ function floty_czas_lotu_s(float $km, float $pcDoba): float
     return LOT_ROZPED_S + max(0.0, $km) / floty_kms_z_pc_doba($pcDoba);
 }
 
+// Wewnątrz układu (lot od punktu do punktu tego samego układu) silniki pracują ostrożnie: prędkość
+// proporcjonalna do przelotowej, ISD (22 pc/doba) — 1 j.a. w ok. 40 min, Sokół (45) — w ok. 20 min.
+const LOT_UKLAD_KMS_NA_PC_DOBA = 2833.0;
+function floty_czas_lotu_w_ukladzie_s(float $km, float $pcDoba): float
+{
+    return LOT_ROZPED_S + max(0.0, $km) / (max(0.01, $pcDoba) * LOT_UKLAD_KMS_NA_PC_DOBA);
+}
+
 // Ułamek drogi po ułamku czasu u (rozpęd i hamowanie są krótkie — równe tempo).
 function floty_lot_ulamek(float $u): float
 {
@@ -573,11 +581,13 @@ function floty_lot(array $odbiorcy, array $w): array
     }
     $km = max(array_column($wyliczone, 'km'));
     // Rozpęd i hamowanie (2 min) + przelot z prędkością przelotową najwolniejszej jednostki.
-    $lotS = $g ? czas_trwania(floty_czas_lotu_s($km, $g) / 60) : czas_trwania(($km / $v + LOT_ROZPED_S) / 60);
-    $vMaks = $g ? floty_kms_z_pc_doba($g) : $v;
+    $wewnatrz = $wyliczone[0]['k0'] !== null; // lot w obrębie jednego układu: ograniczona prędkość
+    $lotS = $g ? czas_trwania(($wewnatrz ? floty_czas_lotu_w_ukladzie_s($km, $g) : floty_czas_lotu_s($km, $g)) / 60)
+        : czas_trwania(($km / $v + LOT_ROZPED_S) / 60);
+    $vMaks = $g ? ($wewnatrz ? $g * LOT_UKLAD_KMS_NA_PC_DOBA : floty_kms_z_pc_doba($g)) : $v;
     $od = $teraz + max(array_column($wyliczone, 'manewr'));
     $do = $od + $lotS;
-    $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => round($vMaks), 'pc_doba' => $g, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
+    $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => round($vMaks), 'pc_doba' => $wewnatrz ? null : $g, 'w_ukladzie' => $wewnatrz, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
         'cel' => ['x' => $x, 'y' => $y, 'k' => $celK, 'planeta' => $celId ? ruch_planeta((string) $celId)['nazwa'] ?? null : null]];
     if (!empty($w['plan'])) return $wynik + ['plan' => true];
     $db->beginTransaction();

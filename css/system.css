@@ -578,7 +578,8 @@ html.z-tlem #ekran::before {
 .mapa-osoba { color: var(--tekst); }
 .mapa-obiekt-flota { display: grid; gap: 4px; margin-top: 10px; padding: 9px; border-left: 2px solid var(--akcent); background: rgba(77,226,201,.06); }
 .mapa-obiekt-flota strong { color: var(--akcent); }
-.mapa-floty-panel { position: absolute; z-index: 4; top: 64px; left: 12px; width: min(470px, calc(100% - 24px)); max-height: calc(100% - 110px); overflow-y: auto; padding: 14px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.97); }
+/* Panel floty: lustrzane odbicie karty szczegółów (ta sama ramka, przy lewej krawędzi). */
+.mapa-floty-panel { position: absolute; z-index: 4; left: 12px; bottom: 12px; width: min(340px, calc(100% - 24px)); max-height: calc(100% - 90px); overflow-y: auto; padding: 14px 16px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.94); }
 .mapa-radar { position: absolute; z-index: 3; left: 50%; top: 64px; transform: translateX(-50%); display: grid; gap: 5px; max-width: min(360px, calc(100% - 24px)); padding: 10px 14px; border: 1px solid #ff6b55; border-radius: var(--promien); background: rgba(35, 10, 12, .92); color: #ff8b78; box-shadow: 0 0 18px rgba(255, 74, 55, .2); }
 .mapa-radar[hidden] { display: none; }
 .mapa-radar small { color: var(--tekst); }
@@ -609,10 +610,31 @@ html.z-tlem #ekran::before {
 .mapa-ladowanie { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--tlo); color: var(--akcent); letter-spacing: 0.12em; text-align: center; }
 @media (max-width: 760px) {
   .mapa-przyciski { margin-left: 0; }
-  .mapa-floty-panel { max-height: 44%; }
-  .mapa-karta { max-height: 48%; }
+  .mapa-floty-panel, .mapa-karta { left: 8px; right: 8px; width: auto; max-height: 62%; }
   .mapa-radar { top: auto; bottom: 34px; }
 }
+/* Panel floty: wąskie sekcje rozwijane dotknięciem */
+.mapa-flota-karta h3 { margin: 0 36px 2px 0; color: var(--akcent-2); font-weight: normal; letter-spacing: 0.06em; }
+.mapa-flota-sekcja { margin: 8px 0; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(77, 226, 201, 0.03); }
+.mapa-flota-sekcja > summary { padding: 9px 10px; cursor: pointer; color: var(--akcent); letter-spacing: 0.05em; font-size: 13px; }
+.mapa-flota-sekcja[open] > summary { border-bottom: 1px solid var(--linia); }
+.mapa-flota-sekcja > :not(summary) { margin: 8px 10px; }
+/* Okienka krokowe nawigacji: krok 1 — co zrobić, krok 2 — wybór, krok 3 — szczegóły i rozkaz */
+.mapa-kroki { display: grid; gap: 8px; }
+.mapa-krok-glowa { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.mapa-krok-glowa b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
+.mapa-wstecz { width: 32px; height: 32px; border: 1px solid var(--linia-mocna); border-radius: 6px; background: none; color: var(--akcent); font-size: 20px; line-height: 1; cursor: pointer; }
+.mapa-krok-lista { display: grid; gap: 6px; }
+.mapa-krok-opcja { display: grid; gap: 2px; width: 100%; margin: 0; padding: 10px 12px; text-align: left; white-space: normal; }
+.mapa-krok-opcja small { color: var(--tekst-slaby); font-size: 11px; letter-spacing: 0.02em; }
+.mapa-krok-akcja { width: 100%; margin-top: 8px; }
+.mapa-krok-przyciski { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.mapa-krok-flota { width: 100%; margin-bottom: 6px; }
+.mapa-plan th { font-weight: normal; color: var(--tekst-slaby); text-align: left; }
+.mapa-plan td { text-align: right; }
+.mapa-blad { color: var(--zly); }
+.mapa-liczy { animation: mapa-liczy 1.2s ease-in-out infinite; }
+@keyframes mapa-liczy { 50% { opacity: 0.4; } }
 /* Karta planety: nawigacja floty (skok z automatu / ręcznie, dolot na inną orbitę) */
 .mapa-nawigacja:empty { display: none; }
 .mapa-nawigacja { display: grid; gap: 8px; margin: 12px 0; padding-top: 10px; border-top: 1px solid var(--linia); }

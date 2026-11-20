@@ -782,6 +782,25 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - Wrota są zamknięte, gdy ISD jest w nadprzestrzeni albo w locie podświetlnym.
 - Do zrobienia po imporcie listy lokacji ISD I: „Wejdź do promu” tylko z lokacji hangaru.
 
+## Układy planetarne w prawdziwej skali (migracja 037)
+
+- **Gwiazdy** (`api/astro.php`, `ASTRO_FIZYKA`): typ ma temperaturę i promień, konkretna gwiazda — rozrzut
+  z nazwy układu (promień ±15%, temperatura ±5%). Jasność L = R² · (T / 5772)⁴.
+- **Ekosfera:** planeta krąży w odległości √L j.a. (suma jasności słońc); ręczny `promien_orbity_au`
+  w `planety_cykle` dalej wygrywa. **Brzeg układu:** 50 · √L j.a.
+- **Mapa:** układ zawsze w prawdziwej skali (bez schematu): słońce, orbita, planeta, księżyce i przerywany
+  brzeg układu; ciała mniejsze niż kilka pikseli to kropki. Pusty punkt w widoku układu otwiera kartę
+  punktu (odległość od słońca i planety) ze skokiem i lotem podświetlnym tam. Zoom przyciąga się do ciała
+  tylko, gdy kursor jest na nim. Bez napisu „Jesteś tutaj” — sam pierścień radaru.
+- **Pozycja w układzie:** `mapa_obiekty.uklad_kx/ky` — km od słońca, gdy jednostka nie stoi przy planecie.
+- **Studnie grawitacyjne** wokół ciał: słońce 20 promieni, planeta 100 promieni. Skok i lot nie mogą
+  przez nie przejść ani w nich się kończyć — poza skokiem automatem na orbitę planety (wariant B) i odlotem.
+- **Krawędź układu:** skok z wariantem „krawędź układu” kończy się na brzegu całego układu od strony
+  nadlotu; „dolot” na krawędź z orbity planety to lot podświetlny na brzeg. Przerwany skok w układzie
+  i rozrzut w obcym układzie też kończą się na jego brzegu.
+- **Scena** z punktu układu: planeta i słońce w kierunku i wielkości kątowej z odległości; słońce
+  na mostku zawsze w prawdziwej wielkości (łuna słabnie z odległością).
+
 ## Wnętrza okrętów i okna (migracja 036)
 
 - **Plan wnętrza** to drzewo w `lokalizacje` (szablon klasy: sekcja → pokład → pomieszczenie), wskazane

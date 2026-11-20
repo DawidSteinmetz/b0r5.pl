@@ -121,7 +121,7 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     $o = $q->fetch(PDO::FETCH_ASSOC);
     if (!$o) return null;
     // Okręt bez przypisanej planety, ale stojący w jej układzie (te same współrzędne): to ta planeta.
-    if (empty($o['planeta']) && empty($o['planeta_id'])) {
+    if (empty($o['planeta']) && empty($o['planeta_id']) && ($o['uklad_kx'] ?? null) === null) {
         $pl = scena_planeta_przy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
         if ($pl) { $o['planeta'] = $pl['nazwa']; $o['typ_planety'] = $pl['typ']; }
     }
@@ -169,6 +169,24 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         }
         return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń',
             'zmieniono' => max($lotOd * 1000, $zmianaPozycjiMs), 'widok' => $widok];
+    }
+    if ($planeta === '' && ($o['uklad_kx'] ?? null) !== null && ($pl = scena_planeta_przy((float) $o['x'], (float) $o['y']))) {
+        // Punkt w układzie (np. między planetą a słońcem, krawędź układu): planeta i słońce widziane
+        // z tego miejsca — kierunek i rozmiar z odległości (km od słońca i od planety).
+        $cykl = astro_cykl($pl['nazwa']);
+        [$px, $py] = astro_pozycja_km($cykl, $teraz);
+        $kx = (float) $o['uklad_kx']; $ky = (float) $o['uklad_ky'];
+        $d = max(1.0, hypot($kx - $px, $ky - $py));
+        $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy, 'cykl' => $cykl,
+            'orbita' => round(floty_kat(rad2deg(atan2($ky - $py, $kx - $px))), 2),
+            'wysokosc_km' => max(NISKA_ORBITA_KM, $d - (float) $cykl['srednica_km'] / 2),
+            'slonce' => ['kat' => round(floty_kat(rad2deg(atan2(-$ky, -$kx))), 2), 'km' => round(max(1.0, hypot($kx, $ky)))]];
+        $kraw = (float) ($cykl['krawedz_au'] ?? 50) * ASTRO_KM_NA_AU;
+        // Świeże wyjście ze skoku w tym punkcie: animacja wyjścia z nadprzestrzeni.
+        $swieze = $przylot && $teraz - $przylot < 120;
+        return $baza + ['scena' => $swieze ? 'wyjscie' : 'orbita', 'planeta' => $pl['typ'],
+            'odleglosc' => hypot($kx, $ky) > $kraw * 0.8 ? 'krawedz' : 'daleko', 'miejsce' => $pl['nazwa'],
+            'zmieniono' => $zmieniono, 'widok' => $widok];
     }
     if ($planeta === '') {
         return $baza + ['scena' => 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,

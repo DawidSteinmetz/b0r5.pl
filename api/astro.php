@@ -26,6 +26,17 @@ const ASTRO_GWIAZDY = [
     'RG' => ['czerwony olbrzym',  1, [255, 140, 90], 3.0, 1.4, 6.0],
 ];
 
+// Fizyka gwiazd: temperatura powierzchni (K) i promień (promienie Słońca) dla typu. Konkretna gwiazda
+// ma rozrzut z nazwy układu (promień ±15%, temperatura ±5%). Jasność L = R² · (T / 5772)⁴ (w Słońcach).
+// Planeta krąży w środku ekosfery („pasa życia”): √L j.a.; krawędź układu: 50 · √L j.a.
+const ASTRO_FIZYKA = [
+    'O' => [35000, 10.0], 'B' => [15000, 4.0], 'A' => [8500, 1.7], 'F' => [6500, 1.25], 'G' => [5772, 1.0],
+    'K' => [4500, 0.75], 'M' => [3200, 0.35], 'WD' => [12000, 0.012], 'RG' => [3800, 60.0],
+];
+const ASTRO_PROMIEN_SLONCA_KM = 695700;
+const ASTRO_KM_NA_AU = 149597870.7;
+const ASTRO_KRAWEDZ_AU = 50;
+
 // Typ gwiazdy wylosowany z nazwy (powtarzalnie), według udziałów.
 function astro_typ_gwiazdy(string $nazwa, int $sol = 7): string
 {
@@ -37,13 +48,27 @@ function astro_typ_gwiazdy(string $nazwa, int $sol = 7): string
     return 'G';
 }
 
-function astro_gwiazda(string $typ, int $i = 0): array
+function astro_gwiazda(string $typ, int $i = 0, string $uklad = ''): array
 {
     $g = ASTRO_GWIAZDY[$typ] ?? ASTRO_GWIAZDY['G'];
+    [$t, $r] = ASTRO_FIZYKA[$typ] ?? ASTRO_FIZYKA['G'];
+    if ($uklad !== '') {
+        $r *= 0.85 + (astro_hash($uklad, 50 + $i) % 301) / 1000;
+        $t *= 0.95 + (astro_hash($uklad, 60 + $i) % 101) / 1000;
+    }
     // Towarzysze w układach wielokrotnych: lekko obok głównej gwiazdy (kąt i wysokość w oknie).
     $obok = [[0, 0], [2.6, -0.05], [-3.4, 0.06]][$i] ?? [0, 0];
     return ['typ' => $typ, 'nazwa' => $g[0], 'rgb' => $g[2], 'rozmiar' => $g[3], 'jasnosc' => $g[4], 'L' => $g[5],
-        'przesuniecie' => $obok[0], 'wysokosc' => $obok[1]];
+        'temperatura' => (int) round($t), 'promien_km' => round($r * ASTRO_PROMIEN_SLONCA_KM),
+        'moc' => round($r * $r * pow($t / 5772, 4), 4), 'przesuniecie' => $obok[0], 'wysokosc' => $obok[1]];
+}
+
+// Położenie planety w jej układzie (km od słońca, osie mapy) w chwili $t.
+function astro_pozycja_km(array $cykl, int $t): array
+{
+    $kat = deg2rad(astro_kat_slonca($cykl, $t) + 180);
+    $r = (float) $cykl['promien_orbity_au'] * ASTRO_KM_NA_AU;
+    return [$r * cos($kat), $r * sin($kat)];
 }
 
 // Kierunek od planety do słońca (stopnie, układ mapy) w chwili $t.
@@ -114,7 +139,7 @@ function astro_cykl(string $nazwa): array
         'faza_obrotu' => (float) ($nadpisy['faza_obrotu_deg'] ?? $h(3, 360)),
         'faza_roku' => (float) ($nadpisy['faza_roku_deg'] ?? $h(4, 360)),
         'faza_orbity' => (float) ($nadpisy['faza_orbity_deg'] ?? $h(5, 360)),
-        'promien_orbity_au' => (float) ($nadpisy['promien_orbity_au'] ?? (0.5 + $h(6, 150) / 100)),
+        'promien_orbity_au' => isset($nadpisy['promien_orbity_au']) ? (float) $nadpisy['promien_orbity_au'] : null,
         'srednica_km' => $srednica,
         'epoka' => ASTRO_EPOKA,
     ];
@@ -134,8 +159,12 @@ function astro_cykl(string $nazwa): array
     // Słońca układu: główna gwiazda (nadpis MG albo losowanie z nazwy) i towarzysze (do 3 słońc).
     $ile = max(1, min(3, (int) ($mapa['slonca'] ?? 1)));
     $glowna = $nadpisy['gwiazda_typ'] ?? astro_typ_gwiazdy($nazwa);
-    $cykl['gwiazdy'] = [astro_gwiazda($glowna, 0)];
-    for ($i = 1; $i < $ile; $i++) $cykl['gwiazdy'][] = astro_gwiazda(astro_typ_gwiazdy($nazwa, 30 + $i), $i);
+    $cykl['gwiazdy'] = [astro_gwiazda($glowna, 0, $nazwa)];
+    for ($i = 1; $i < $ile; $i++) $cykl['gwiazdy'][] = astro_gwiazda(astro_typ_gwiazdy($nazwa, 30 + $i), $i, $nazwa);
+    // Orbita w środku ekosfery (suma jasności słońc), chyba że MG ustawił ją ręcznie; krawędź układu.
+    $moc = array_sum(array_column($cykl['gwiazdy'], 'moc'));
+    $cykl['promien_orbity_au'] ??= round(sqrt(max(0.0001, $moc)), 4);
+    $cykl['krawedz_au'] = round(ASTRO_KRAWEDZ_AU * sqrt(max(0.0001, $moc)), 2);
     $cykl['mapa_id'] = (int) ($mapa['id'] ?? 0);
     // Księżyc z planetą macierzystą (np. Nar Shaddaa → Nal Hutta): słońce, rok i pory roku z orbity
     // planety macierzystej; na niebie księżyca widać planetę macierzystą (`macierz`).
@@ -146,7 +175,7 @@ function astro_cykl(string $nazwa): array
         if ($m = $q->fetch(PDO::FETCH_ASSOC)) {
             $cache[$klucz] = $cykl; // ochrona przed zapętleniem
             $rodzic = astro_cykl((string) $m['nazwa']);
-            foreach (['faza_orbity', 'rok_dni', 'promien_orbity_au', 'gwiazdy'] as $pole) $cykl[$pole] = $rodzic[$pole];
+            foreach (['faza_orbity', 'rok_dni', 'promien_orbity_au', 'gwiazdy', 'krawedz_au'] as $pole) $cykl[$pole] = $rodzic[$pole];
             $cykl['macierz'] = ['nazwa' => $m['nazwa'], 'typ' => ($m['typ_planety'] ?? '') ?: 'skalista',
                 'srednica_km' => $rodzic['srednica_km'], 'promien_km' => (float) ($nadpisy['promien_wokol_km'] ?? 400000),
                 'okres_dni' => (float) ($nadpisy['okres_wokol_dni'] ?? 20), 'faza' => (float) ($nadpisy['faza_wokol_deg'] ?? 0)];

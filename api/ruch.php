@@ -224,7 +224,8 @@ function mapa_kurs_sql(): string
         . (floty_nawigacja_dostepna() ? ',m.podejscie' : '')
         . (mapa_dlugosc_dostepna() ? ',m.dlugosc_m' : '')
         . (function_exists('floty_lot_dostepny') && floty_lot_dostepny()
-            ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '');
+            ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '')
+        . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -242,7 +243,13 @@ function mapa_kurs_pola(array $r): array
         $w['podswietlny'] = ['od' => czas_z_utc((string) $r['lot_od_utc']), 'do' => czas_z_utc((string) $r['lot_do_utc']),
             'x0' => (float) $r['lot_start_x'], 'y0' => (float) $r['lot_start_y'], 'x1' => (float) $r['lot_cel_x'], 'y1' => (float) $r['lot_cel_y'],
             'planeta' => $r['lot_cel_planeta'] ?? null, 'km' => (float) $r['lot_km']];
+        // Lot w obrębie układu: początek i cel w km od słońca.
+        if (($r['lot_start_kx'] ?? null) !== null && ($r['lot_cel_kx'] ?? null) !== null) {
+            $w['podswietlny'] += ['k0' => [(float) $r['lot_start_kx'], (float) $r['lot_start_ky']], 'k1' => [(float) $r['lot_cel_kx'], (float) $r['lot_cel_ky']]];
+        }
     }
+    // Punkt w układzie (km od słońca), gdy jednostka nie stoi przy planecie.
+    if (($r['uklad_kx'] ?? null) !== null) $w['uklad_k'] = [(float) $r['uklad_kx'], (float) $r['uklad_ky']];
     if (!empty($r['manewr_do_utc']) && $r['kurs_cel_deg'] !== null) {
         $w['manewr'] = ['od' => czas_z_utc((string) $r['manewr_od_utc']), 'do' => czas_z_utc((string) $r['manewr_do_utc']),
             'start' => (float) $r['kurs_start_deg'], 'cel' => (float) $r['kurs_cel_deg']];

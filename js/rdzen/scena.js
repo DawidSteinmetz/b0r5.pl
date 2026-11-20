@@ -147,7 +147,8 @@ function teksturaSwiatel(d, ziarno) {
   return c;
 }
 
-const POLE_WIDZENIA = 100; // stopnie w poziomie na całą szerokość ekranu
+const POLE_WIDZENIA = 100;
+const KM_NA_AU_SCENA = 149597870.7; // stopnie w poziomie na całą szerokość ekranu
 const norm180 = (k) => ((((k + 180) % 360) + 360) % 360) - 180;
 
 // Kurs dziobu teraz (z trwającym manewrem). Kąty w układzie mapy: 0° = wschód, 90° = północ.
@@ -509,7 +510,8 @@ export function utworzScene(canvas) {
     const kurs = dziob + (stan.okno === 'iluminator' ? (stan.burta === 'prawa' ? -90 : 90) : 0);
     const orbita = v.orbita ?? norm180(dziob + 180);           // strona planety, przy której stoi okręt
     const doPlanety = orbita + 180;                           // kierunek z okrętu na planetę
-    const slonce = v.cykl ? stanUkladu(v.cykl, t).katSlonca : null; // kierunek planeta → słońce
+    // Kierunek na słońce: z punktu układu podaje serwer (widok.slonce), przy planecie — z jej orbity.
+    const slonce = v.slonce?.kat ?? (v.cykl ? stanUkladu(v.cykl, t).katSlonca : null);
     return { kurs, orbita, doPlanety, slonce };
   }
   // Pozioma pozycja na ekranie obiektu w danym kierunku (cel na lewo od dziobu → na lewo w oknie).
@@ -576,8 +578,14 @@ export function utworzScene(canvas) {
       const kier = k.slonce + (gw.przesuniecie || 0);
       if (Math.abs(norm180(kier - k.kurs)) > POLE_WIDZENIA / 2 + 15) continue;
       const [cr, cg, cb] = gw.rgb;
-      const x = xKierunku(k.kurs, kier), y = yWidoku(0.3 + (gw.wysokosc || 0)), r = skalaWidoku() * 0.022 * gw.rozmiar;
-      const R = skalaWidoku() * 0.022 * 14 * gw.jasnosc;
+      // Tarcza w prawdziwej wielkości kątowej (promień gwiazdy i odległość: z punktu układu albo orbita
+      // planety); łuna słabnie z odległością (jasność pozorna ∝ √L / d, przy planecie w ekosferze = 1).
+      const dKm = stan.widok?.slonce?.km ?? (stan.widok?.cykl?.promien_orbity_au || 1) * KM_NA_AU_SCENA;
+      const rKm = gw.promien_km || 695700 * gw.rozmiar;
+      const r = Math.max(1.2, rozmiarKatowy(2 * rKm, dKm) * w / POLE_WIDZENIA / 2);
+      const blask = Math.max(0.12, Math.min(1.6, Math.sqrt(gw.moc || 1) / (dKm / KM_NA_AU_SCENA)));
+      const x = xKierunku(k.kurs, kier), y = yWidoku(0.3 + (gw.wysokosc || 0));
+      const R = Math.max(r * 3, skalaWidoku() * 0.022 * 14 * gw.jasnosc * blask);
       const g = ctx.createRadialGradient(x, y, 0, x, y, R);
       g.addColorStop(0, 'rgba(255, 253, 248, 1)'); g.addColorStop(0.07, `rgba(${cr}, ${cg}, ${cb}, 0.9)`);
       g.addColorStop(0.25, `rgba(${cr}, ${cg}, ${cb}, 0.18)`); g.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);

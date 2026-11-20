@@ -904,7 +904,7 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 ## Mapa: zbliżenie przyciskami, księżyce, tajne planety (2026-11-20)
 
 - **Zbliżenie przyciskami** (ikonki w doku przy otwartej mapie): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta** z płynnym
-  przelotem. Próg dotyczy wybranego ciała, a bez wyboru — układu twojego okrętu albo środka ekranu. 1:1 — twój okręt.
+  przelotem. Próg dotyczy zaznaczonego obiektu, a bez zaznaczenia — twojej pozycji (okręt na orbicie, punkt układu, lot).
 - **Księżyce** na mapie mają stronę dzienną i nocną (od kierunku na słońce), jak planety.
 - Dane mapy w pamięci tabletu są przypisane do konta: po zmianie konta bez przeładowania strony mapa pobiera planety od nowa
   (wcześniej nowe konto widziało planety zastrzeżone poprzedniego, np. MG).
@@ -946,33 +946,33 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## Dostęp do pomieszczeń według stopnia; zoom wokół gracza
 
-- Na okręcie wolno wejść wszędzie poza **prywatnymi kwaterami wyższych stopni** (kwatera kapitana, adiutanta,
-  oficerów sztabowych, starszych oficerów, admirała). Stopień z rangi konta (`STOPNIE` w api/poklad.php: np. starszy
-  porucznik 7, komandor porucznik 8, kapitan 10), kwatery z nazwy pomieszczenia (`KWATERY_STOPNI`). Kapitan okrętu
+- Na okręcie wolno wejść wszędzie poza **prywatnymi kwaterami wyższych stopni** (kwatera kapitana, adiutanta,
+  oficerów sztabowych, starszych oficerów, admirała). Stopień z rangi konta (`STOPNIE` w api/poklad.php: np. starszy
+  porucznik 7, komandor porucznik 8, kapitan 10), kwatery z nazwy pomieszczenia (`KWATERY_STOPNI`). Kapitan okrętu
   i MG — bez ograniczeń. W Nawigacji zamknięte kwatery mają 🔒 i nie da się ich wybrać; serwer też odmawia.
 - **Zoom**: punkt zbliżenia to zaznaczony obiekt, a bez zaznaczenia — moja postać / okręt (dosuwa się do środka).
   Zbliżanie zatrzymuje się, gdy gwiazda zajmuje ok. 40% ekranu (bez wjeżdżania w słońce); maks. zbliżenie ISD ~500 px.
 
 ## Nawigacja (nowy układ) i kariera Kadet
 
-- **Nawigacja**: nagłówek „gdzie jestem” (na okręcie: pomieszczenie, pokład, okno) i zakładki: **Tutaj** (przejście w toku
-  z licznikiem, Zmień cel / Zawróć, szybkie cele, bankomat, sklep), **Idź po okręcie** (wyszukiwarka, ulubione, pomieszczenia
-  po pokładach — zwijane, dotknięcie = idź, 🔒 kwatery wyższych stopni) albo **Dokąd?** na planecie, **Statek** (start,
+- **Nawigacja**: nagłówek „gdzie jestem” (na okręcie: pomieszczenie, pokład, okno) i zakładki: **Tutaj** (przejście w toku
+  z licznikiem, Zmień cel / Zawróć, szybkie cele, bankomat, sklep), **Idź po okręcie** (wyszukiwarka, ulubione, pomieszczenia
+  po pokładach — zwijane, dotknięcie = idź, 🔒 kwatery wyższych stopni) albo **Dokąd?** na planecie, **Statek** (start,
   lądowanie, skok, łączność, promy, stocznia) i **Statki i pojazdy**.
-- **Karta EotE**: kariera **Kadet** (akademia floty: Przywództwo, Dyscyplina, Opanowanie, Negocjacje, Wiedza: Światy Jądra
-  i Edukacja, Astronawigacja, Czujność) ze specjalizacją **Mówca** (Urok, Zastraszanie, Percepcja, Komputery) i talenty
-  dowódcze: Natchniona przemowa, Głos dowodzenia, Autorytet, Oficer pokładowy, Dowódca polowy, Zgrana załoga, Taktyk floty,
+- **Karta EotE**: kariera **Kadet** (akademia floty: Przywództwo, Dyscyplina, Opanowanie, Negocjacje, Wiedza: Światy Jądra
+  i Edukacja, Astronawigacja, Czujność) ze specjalizacją **Mówca** (Urok, Zastraszanie, Percepcja, Komputery) i talenty
+  dowódcze: Natchniona przemowa, Głos dowodzenia, Autorytet, Oficer pokładowy, Dowódca polowy, Zgrana załoga, Taktyk floty,
   Mistrz retoryki.
 
 ## Inspekcja załogi i morale
 
-- W Nawigacji (zakładka **Tutaj**) oficer (od chorążego; kapitan okrętu i MG zawsze) widzi załogę pomieszczenia (grupa
-  z nazwy pomieszczenia: piloci i obsługa hangaru, operatorzy promieni ściągających, artylerzyści, technicy, załoga mostka,
-  szturmowcy, medycy, straż więzienna, marynarze) i jej morale. **Inspekcja** trwa 15 min (wyjście z pomieszczenia
-  przerywa), potem test Przywództwa z karty EotE (Prezencja + ranga Przywództwa, trudność 2; przy morale < 30 — 3;
-  bez karty — pula średnia). Sukces: morale grupy w górę, 2–3 PD; porażka: morale w dół, 1 PD. PD trafiają do „PD zdobytych”
+- W Nawigacji (zakładka **Tutaj**) oficer (od chorążego; kapitan okrętu i MG zawsze) widzi załogę pomieszczenia (grupa
+  z nazwy pomieszczenia: piloci i obsługa hangaru, operatorzy promieni ściągających, artylerzyści, technicy, załoga mostka,
+  szturmowcy, medycy, straż więzienna, marynarze) i jej morale. **Inspekcja** trwa 15 min (wyjście z pomieszczenia
+  przerywa), potem test Przywództwa z karty EotE (Prezencja + ranga Przywództwa, trudność 2; przy morale < 30 — 3;
+  bez karty — pula średnia). Sukces: morale grupy w górę, 2–3 PD; porażka: morale w dół, 1 PD. PD trafiają do „PD zdobytych”
   karty EotE. Ta sama grupa na okręcie raz na 24 h. Raport z opisem rozmowy widać do zamknięcia.
-- Dane: `datapad_dane` → `morale` (okręt → grupa → 0–100, start 60) i karta postaci (bez migracji). Panel MG → Stan postaci:
+- Dane: `datapad_dane` → `morale` (okręt → grupa → 0–100, start 60) i karta postaci (bez migracji). Panel MG → Stan postaci:
   karta **Morale załóg**. Grupy i wzorce nazw: `GRUPY_ZALOGI` w api/poklad.php.
 
 ## Dźwięk pokładu

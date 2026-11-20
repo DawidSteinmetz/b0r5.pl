@@ -115,9 +115,12 @@ const liczba = (n, miejsca = 0) => Number(n).toLocaleString('pl-PL', { maximumFr
 
 // ---------- dane (wczytane raz na uruchomienie systemu) ----------
 
-let dane = null;
-async function wczytajDane() {
-  if (dane) return dane;
+// Dane mapy zależą od uprawnień konta (planety zastrzeżone) — pamięć modułu tylko dla tego samego konta.
+// Wcześniej po zmianie konta na tym samym tablecie (bez przeładowania) mapa pokazywała planety poprzedniego.
+let dane = null, daneKonta = null;
+async function wczytajDane(konto = '') {
+  if (dane && daneKonta === konto) return dane;
+  dane = null;
   const { planety: surowePlanety, szlaki: suroweSzlaki } = await api('mapa_dane');
   // [nazwa, region, x, y, grawitacja, słońca, księżyce, doba, rok, średnica]. Kolumny DECIMAL przychodzą
   // z bazy jako tekst — zamiana na liczby (inaczej „+” skleja tekst i kamera dostaje NaN).
@@ -142,6 +145,7 @@ async function wczytajDane() {
   }).filter((r) => r.ile);
   const wgKlucza = new Map(planety.map((p) => [p.klucz, p]));
   dane = { planety, szlaki, regiony, wgKlucza };
+  daneKonta = konto;
   return dane;
 }
 
@@ -199,9 +203,22 @@ export default {
       if (!panelFlot.hidden) { if (waski()) wybierz(null); odswiezFloty(); }
     } }, 'Floty / nawigacja');
 
+    // Zbliżenie przyciskami: +/− (×4) i progi — galaktyka, sektor, układ, planeta, 1:1 (płynny przelot).
+    // Działa bez kółka i bez szczypania (tablet), a skok do progu nie przelicza po drodze tysięcy klatek.
+    const zoomPrzycisk = (tekst, tytul, fn) => h('button.przycisk.maly.drugi', { type: 'button', title: tytul, 'aria-label': tytul, onclick: fn }, tekst);
+    const panelZoomu = h('div.mapa-zoom',
+      zoomPrzycisk('+', 'Przybliż', () => zoomOkolo(4)),
+      zoomPrzycisk('−', 'Oddal', () => zoomOkolo(1 / 4)),
+      h('div.mapa-zoom-progi',
+        zoomPrzycisk('Galaktyka', 'Cała galaktyka', () => calaGalaktyka(true)),
+        zoomPrzycisk('Sektor', 'Okolica wybranego miejsca', () => doProgu('sektor')),
+        zoomPrzycisk('Układ', 'Widok układu planetarnego', () => doProgu('uklad')),
+        zoomPrzycisk('Planeta', 'Planeta i jej księżyce', () => doProgu('planeta')),
+        zoomPrzycisk('1:1', 'Największe zbliżenie na twój okręt', () => doProgu('max'))));
+
     w.append(plotno,
       h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty), skalaEl),
-      panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
+      panelFlot, panelRadar, karta, podpowiedz, wsp, panelZoomu, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');
@@ -435,7 +452,11 @@ export default {
           const mx = px + Math.cos(a) * rk, my = py + Math.sin(a) * rk;
           if (rk < OKRAG_MAKS) { c.strokeStyle = 'rgba(160, 190, 220, 0.14)'; c.beginPath(); c.arc(px, py, rk, 0, Math.PI * 2); c.stroke(); }
           if (!widac(mx, my, mr)) return;
-          c.fillStyle = '#9fb2c4'; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.fill();
+          // Dzień i noc: oświetlona połowa od strony słońca (kierunek z księżyca na słońce na ekranie), reszta w cieniu.
+          const ak = Math.atan2(u.sy - my, u.sx - mx);
+          c.fillStyle = '#1b2230'; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.fill();
+          c.fillStyle = '#b3c2d1'; c.beginPath(); c.arc(mx, my, mr, ak - Math.PI / 2, ak + Math.PI / 2); c.closePath(); c.fill();
+          if (mr >= 6) { c.strokeStyle = 'rgba(179, 194, 209, 0.35)'; c.lineWidth = 1; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.stroke(); }
           if (rk > 30) { c.font = `11px ${kroj}`; c.fillStyle = kolory.slaby; napis(c, k.nazwa, mx + mr + 4, my - mr - 2); }
         });
         // planeta: oświetlona połowa od strony słońca
@@ -651,8 +672,8 @@ export default {
       odswiez();
     }
 
-    // Płynny przelot do punktu mapy.
-    function przelec(x, y, docelowa, potem) {
+    // Płynny przelot do punktu mapy (k — opcjonalnie km od słońca w układzie punktu).
+    function przelec(x, y, docelowa, potem, k = null) {
       sledz = null;
       const [x0, y0] = naMape(szer / 2, wys / 2);
       const s0 = skala;
@@ -662,11 +683,61 @@ export default {
         const e = 1 - (1 - p) ** 3;
         // Skala w logarytmie, żeby przybliżanie wyglądało równo; środek widoku sunie do celu.
         skala = Math.exp(Math.log(s0) + (Math.log(docelowa) - Math.log(s0)) * e);
-        if (p >= 1) ustawSrodek(x, y);
-        else ustawSrodek(x0 + (x - x0) * e, y0 + (y - y0) * e);
+        if (p >= 1) { ustawSrodek(x, y); if (k) { camKx = k[0]; camKy = k[1]; } }
+        else { ustawSrodek(x0 + (x - x0) * e, y0 + (y - y0) * e); if (k) { camKx = k[0] * e; camKy = k[1] * e; } }
         odswiez();
         if (p >= 1) { animacja = null; potem?.(); }
       };
+    }
+
+    // +/−: zbliżenie wokół środka ekranu (płynnie).
+    function zoomOkolo(mnoznik) {
+      const docelowa = Math.max(0.005, Math.min(ZOOM_MAKS, skala * mnoznik));
+      const s0 = skala, t0 = performance.now();
+      animacja = (t) => {
+        const p = Math.min(1, (t - t0) / 250);
+        przybliz(Math.exp(Math.log(s0) + (Math.log(docelowa) - Math.log(s0)) * p) / skala, szer / 2, wys / 2);
+        if (p >= 1) animacja = null;
+      };
+    }
+
+    // Układ, wokół którego ustawiamy próg: wybrany (planeta/gwiazda/punkt), mój okręt, środek ekranu, moja planeta.
+    function fokus() {
+      const moj = mojZnacznik();
+      return wybrane?.planeta || wybrane?.gwiazda || wybrane?.punkt?.uklad
+        || (wybrane?.obiekt && planetaObiektu(wybrane.obiekt)) || (moj && planetaObiektu(moj))
+        || (moj && ukladWPunkcie(Number(moj.x), Number(moj.y))) || ukladWPunkcie(...naMape(szer / 2, wys / 2)) || tuPlaneta;
+    }
+    function doProgu(prog) {
+      const p = fokus();
+      const kr = Math.min(szer, wys) * 0.42; // promień widoku w px
+      if (prog === 'sektor') {
+        const c = p || { x: naMape(szer / 2, wys / 2)[0], y: naMape(szer / 2, wys / 2)[1] };
+        return przelec(c.x, c.y, 4);
+      }
+      if (!p) return;
+      const cykl = cyklPlanety(p);
+      if (prog === 'uklad') {
+        const Rbrzeg = (cykl?.krawedz_au || 50) * KM_NA_AU;
+        return przelec(p.x, p.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), () => wybierz({ planeta: p }));
+      }
+      const kP = kmWUkladzie(p) || [0, 0];
+      if (prog === 'planeta') {
+        const ks = cykl?.ksiezyce || [];
+        const R = Math.max((cykl?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
+        return przelec(p.x, p.y, Math.min(ZOOM_MAKS, kr / (R / KM_NA_PC)), () => wybierz({ planeta: p }), kP);
+      }
+      // 1:1 — mój okręt (na orbicie: w jego miejscu na orbicie), inaczej planeta.
+      const moj = mojZnacznik();
+      let k = kP;
+      if (moj?.uklad_k) k = moj.uklad_k;
+      else if (moj && planetaObiektu(moj) === p) {
+        const Rpl = (cykl?.srednica_km || 12000) / 2;
+        const ro = { bliska: Rpl + 300, srednia: Rpl * 4 }[moj.podejscie] ?? Rpl * 15;
+        const a = miejsceNaOrbicie(moj) * RAD;
+        k = [kP[0] + Math.cos(a) * ro, kP[1] + Math.sin(a) * ro];
+      }
+      przelec(p.x, p.y, ZOOM_MAKS / 4, null, k);
     }
 
     // ---------- rysowanie ----------
@@ -1870,7 +1941,7 @@ export default {
       } }, 'Wykonaj obrót');
       rysuj();
       return h('div.mapa-tarcza-blok', plotnoT, h('div.mapa-tarcza-sterowanie',
-        h('div.mapa-nawigacja-przyciski', przesun(45), przesun(15), przesun(-15), przesun(-45)),
+        h('div.mapa-nawigacja-przyciski.mapa-obrot', przesun(15), przesun(45), przesun(-15), przesun(-45)),
         naPlanete ? h('div.mapa-nawigacja-przyciski',
           h('button.przycisk.maly.drugi', { onclick: () => { cel = Math.round((Number(glowna.orbita_deg) + 180) % 360); rysuj(); } }, 'Dziobem na planetę'),
           h('button.przycisk.maly.drugi', { onclick: () => { cel = Math.round(Number(glowna.orbita_deg) % 360); rysuj(); } }, 'Rufą do planety')) : null,
@@ -2008,7 +2079,7 @@ export default {
     const zapisWidoku = setInterval(zapiszWidok, 1500);
     przyciskTu.disabled = true;
 
-    wczytajDane().then(async (d) => {
+    wczytajDane(String(ctx.uzytkownik?.login ?? ctx.uzytkownik?.id ?? '')).then(async (d) => {
       D = d;
       ustawDodatkowe([]);
       rozmiar();

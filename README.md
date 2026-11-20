@@ -901,6 +901,16 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   bez notatek MG. NPC — tabela `osoby_karta_eote` (**migracja 040**); „Zapisz jako nowy NPC” zakłada też podmiot i osobę.
   Dotychczasowe statystyki karty i cechy NPC (firmy, rekrutacja) zostają bez zmian.
 
+## Mapa: zbliżenie przyciskami, księżyce, tajne planety (2026-11-20)
+
+- **Zbliżenie przyciskami** (prawy dolny róg mapy): +/− (×4) i progi **Galaktyka · Sektor · Układ · Planeta · 1:1** z płynnym
+  przelotem. Próg dotyczy wybranego ciała, a bez wyboru — układu twojego okrętu albo środka ekranu. 1:1 — twój okręt.
+- **Księżyce** na mapie mają stronę dzienną i nocną (od kierunku na słońce), jak planety.
+- Dane mapy w pamięci tabletu są przypisane do konta: po zmianie konta bez przeładowania strony mapa pobiera planety od nowa
+  (wcześniej nowe konto widziało planety zastrzeżone poprzedniego, np. MG).
+- **Lot podświetlny** może kończyć się w studni grawitacyjnej; odrzucany jest tylko punkt wewnątrz ciała i trasa przez ciało.
+- Przyciski obrotu floty: +15° +45° −15° −45° w jednym rzędzie.
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

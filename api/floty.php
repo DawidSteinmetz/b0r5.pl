@@ -589,8 +589,9 @@ function floty_lot(array $odbiorcy, array $w): array
         if ($celId && !mapa_planeta_widoczna($celId, ja())) blad('Nie masz dostępu do wskazanego obszaru.', 403);
         if ($celId) [$x, $y] = floty_wsp_planety($celId);
         if ($celId && floty_uklad_dostepny() && is_numeric($w['kx'] ?? null) && is_numeric($w['ky'] ?? null)) {
+            // Lot podświetlny może kończyć się w studni grawitacyjnej; odrzucany jest tylko punkt wewnątrz ciała
+            // i trasa przez ciało (sprawdzane niżej, dla każdej jednostki).
             $celK = [(float) $w['kx'], (float) $w['ky']];
-            if ($s = floty_punkt_w_studni($x, $y, $celK, czas_teraz())) blad('Ten punkt leży w studni grawitacyjnej ' . $s . '.');
             $celId = null;
         }
     }

@@ -652,6 +652,12 @@ html.z-tlem #ekran::before {
 .mapa-skala > div { display: flex; align-items: center; gap: 6px; color: var(--tekst); }
 .mapa-skala i { display: block; height: 6px; border: 1px solid var(--akcent); border-top: 0; transition: width 0.15s; }
 .mapa-skala small { font-size: 10px; letter-spacing: 0.04em; }
+/* Zbliżenie przyciskami: +/− i progi (prawa krawędź mapy, nad dolnym marginesem). */
+.mapa-zoom { position: absolute; right: 12px; bottom: 14px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 3; }
+.mapa-zoom > .przycisk { width: 40px; min-height: 40px; padding: 0; font-size: 20px; background: rgba(5, 8, 10, 0.88); }
+.mapa-zoom-progi { display: flex; flex-direction: column; gap: 4px; }
+.mapa-zoom-progi .przycisk { min-height: 30px; padding: 0 10px; font-size: 12px; background: rgba(5, 8, 10, 0.88); }
+@media (max-width: 760px) { .mapa-zoom-progi { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; max-width: 240px; } }
 .mapa-wsp { position: absolute; left: 12px; bottom: 10px; font-size: 11px; color: var(--tekst-slaby); pointer-events: none; }
 .mapa-ladowanie { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: var(--tlo); color: var(--akcent); letter-spacing: 0.12em; text-align: center; }
 @media (max-width: 760px) {
@@ -688,6 +694,11 @@ html.z-tlem #ekran::before {
 .mapa-nawigacja-blok { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(77, 226, 201, 0.04); }
 .mapa-nawigacja-blok b { color: var(--akcent); font-weight: normal; letter-spacing: 0.05em; }
 .mapa-nawigacja-przyciski { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Obrót floty: +15 +45 −15 −45 w jednym równym rzędzie; na wąskim panelu dwa rzędy po dwa (bez samotnego przycisku). */
+.mapa-obrot { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mapa-obrot .przycisk { margin: 0; width: 100%; }
+@container (max-width: 260px) { .mapa-obrot { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 380px) { .mapa-obrot { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .mapa-nawigacja .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
 /* Skok z karty planety: wybór orbity i „Oblicz” w jednym rzędzie, równej wielkości */
 .mapa-nawigacja-wiersz { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: stretch; }

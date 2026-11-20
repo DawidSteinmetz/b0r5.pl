@@ -216,7 +216,9 @@ export default {
     function postepLotu(o, t = teraz()) {
       const l = o?.podswietlny;
       if (!l || t < l.od || t >= l.do) return null;
-      return (t - l.od) / Math.max(1, l.do - l.od);
+      // Rozpędzanie do połowy drogi, potem hamowanie (jak floty_lot_ulamek na serwerze).
+      const u = (t - l.od) / Math.max(1, l.do - l.od);
+      return u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) ** 2;
     }
 
     function nazwaPostaci(o) {
@@ -1137,7 +1139,7 @@ export default {
       const oblicz = h('button.przycisk', { onclick: async () => {
         try {
           const w = await api('mapa_flota_lot', { ...dane, plan: true });
-          wynik.textContent = `Trasa ${liczba(w.km)} km · ${liczba(w.predkosc_kms)} km/s · obrót ${czasTrwania(w.manewr_s)}`
+          wynik.textContent = `Trasa ${liczba(w.km)} km · ${w.przyspieszenie_g ? `${liczba(w.przyspieszenie_g)} G, szczyt ` : ''}${liczba(w.predkosc_kms)} km/s · obrót ${czasTrwania(w.manewr_s)}`
             + ` · lot ${czasDlugi(w.lot_s)} · ETA ${czasGry(w.eta)}`;
           lec.hidden = false;
         } catch (e) { wynik.textContent = e.message; lec.hidden = true; }

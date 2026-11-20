@@ -160,7 +160,7 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy];
         if (!empty($cel['nazwa'])) {
             $cykl = astro_cykl((string) $cel['nazwa']);
-            $zostalo = (float) ($o['lot_km'] ?? 0) * ($lotDo - $teraz) / max(1, $lotDo - $lotOd);
+            $zostalo = (float) ($o['lot_km'] ?? 0) * (1 - floty_lot_ulamek(($teraz - $lotOd) / max(1, $lotDo - $lotOd)));
             $widok['orbita'] = floty_kat((float) ($widok['kurs'] ?? 0) + 180);
             $widok['cykl'] = $cykl;
             $widok['wysokosc_km'] = max(NISKA_ORBITA_KM, $zostalo + (float) $cykl['srednica_km'] * 15 / 2);

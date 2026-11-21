@@ -124,6 +124,13 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   z podejścia). Dokowanie do pierścienia i powrót promu do hangaru to ten sam przelot łukiem po orbicie krótszą
   stroną planety (`przelot_*`), z końcówką: wejście w dok (5 min) albo do hangaru (2 min). Wachlarzem rozstawia się
   tylko flota; pojedyncza jednostka nie przesuwa się, gdy przy planecie pojawi się ktoś inny.
+- **Gospodarka** (migracja 048, `api/gospodarka.php`, dane generowane skryptem): towary, producenci na planetach
+  (z Wookieepedii: lommit — Dorvalla, Elom, Ord Thoden; meleenium — Wadi Raffa; zersium — Nag Ubdur; tibanna —
+  Bespin; reszta wygenerowana), obiekty tła Kuat (90: huty durastali i fabryki podzespołów na pierścieniu, porty,
+  zakłady pojazdów i inne na powierzchni) z zużyciem na dobę i linie dostaw (432, ok. 290 dostaw na dobę).
+  Odstęp transportów = ładowność / zużycie. Statki linii liczone z czasu: załadunek u producenta, start, skok,
+  lądowanie przy obiekcie albo przelot do jego doku na pierścieniu, rozładunek, powrót. Planety z gospodarką
+  nie używają starych tras NPC. Obiekty tła widać na tarczy planety i pierścieniu przy dużym zbliżeniu.
 - **Okno promu Lambda:** klasa albo nazwa z „Lambda” daje widok przez kokpit promu (`okno: 'lambda'`).
 - **Wejście na pokład:** na lądowisku Nawigacja pokazuje stojące tam statki z prawem wejścia (właściciel,
   kapitan, dowódca floty okrętu macierzystego promu, dostęp) oraz awaryjny powrót na ostatni statek.

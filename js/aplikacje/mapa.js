@@ -516,6 +516,32 @@ export default {
       }
     }
 
+    // Obiekty tła (huty, fabryki, porty, składy): na powierzchni — w swoich współrzędnych na tarczy planety (obracają
+    // się z nią), na pierścieniu — w swoim miejscu. Widać je przy dużym zbliżeniu; napis przy jeszcze większym.
+    function rysujObiektyTla() {
+      if (skala < PROG_UKLADU) return;
+      const t = teraz();
+      const KOLORY_TLA = { huta: '#ff9a5a', fabryka: '#ffd27a', terminal: '#8fd0ff', sklad_paliwa: '#ff6b55', port: '#8fd0ff', zaklad: '#c9b6ff' };
+      for (const ob of pozycja?.obiekty_tla || []) {
+        const p = wgKlucza.get(norm(ob.planeta));
+        const u = p && ukladNaEkranie(p);
+        if (!u || u.ksiezyc || u.rp < 40) continue;
+        let x, y;
+        if (ob.miejsce === 'pierscien') {
+          const r = (pozycja?.orbitalne || []).find((x2) => norm(x2.planeta) === p.klucz);
+          if (!r) continue;
+          const [px, py] = pozycjaPlanety(p);
+          const R = promienPierscienia(r, u) * u.skm;
+          x = px + Math.cos(-ob.kat * RAD) * R; y = py + Math.sin(-ob.kat * RAD) * R;
+        } else [x, y] = geoNaEkran(p, u, ob.szer, ob.dl, t);
+        if (x < -10 || y < -10 || x > szer + 10 || y > wys + 10) continue;
+        c.save(); c.fillStyle = KOLORY_TLA[ob.rodzaj] || '#cccccc'; c.globalAlpha = 0.85;
+        c.fillRect(x - 2.5, y - 2.5, 5, 5);
+        if (u.rp > 260) { c.font = `10px ${kroj}`; napis(c, ob.nazwa, x + 6, y + 3); }
+        c.restore();
+      }
+    }
+
     function rysujUklady() {
       if (skala < PROG_UKLADU) return;
       const [cxp, cyp] = naMape(szer / 2, wys / 2);
@@ -1193,6 +1219,7 @@ export default {
       }
       rysujUklady();
       rysujPierscienie();
+      rysujObiektyTla();
       const moj = mojZnacznik();
       for (const o of obiektyMapy) {
         if (naPokladzie(o)) continue;

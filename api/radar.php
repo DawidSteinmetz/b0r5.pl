@@ -269,9 +269,13 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
     $teraz = czas_teraz();
     $wynik = [];
     $miejsca = radar_npc_miejsca($nazwy);
+    // Planety z gospodarką (obiekty tła i linie dostaw, migracja 048): ich ruch liczy gospodarka, nie stare trasy.
+    $gosp = function_exists('gosp_planety') ? gosp_planety() : [];
+    if ($gosp) $wynik = gosp_statki($wZasiegu, $ident, $trwa, $analityk, RADAR_TLO_MAKS);
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $t) {
         if (count($wynik) >= RADAR_TLO_MAKS) break;
         if (isset($puste[mb_strtolower($t['port_a'])]) || isset($puste[mb_strtolower($t['port_b'])])) continue;
+        if (isset($gosp[mb_strtolower($t['port_a'])]) || isset($gosp[mb_strtolower($t['port_b'])])) continue;
         $f = radar_npc_faza($t, $teraz, $miejsca);
         if (!$f || !isset($wZasiegu[$f['port']])) continue; // w nadprzestrzeni albo poza zasięgiem
         $id = -(int) $t['id'];

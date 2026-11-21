@@ -65,6 +65,7 @@ require __DIR__ . '/czas.php';
 require __DIR__ . '/radar.php';
 require __DIR__ . '/doki.php';
 require __DIR__ . '/atmosfera.php';
+require __DIR__ . '/gospodarka.php';
 require __DIR__ . '/astro.php';
 require __DIR__ . '/gwiazdy.php';
 
@@ -99,7 +100,7 @@ function tabela_sql_dostepna(string $nazwa): bool
         'mapa_floty', 'mapa_floty_jednostki', 'mapa_naped_jednostki', 'mapa_rozkazy_skokow', 'mapa_rozkazy_skokow_jednostki', 'mapa_teleporty_mg',
         'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje', 'mapa_wykrycia_skokow', 'planety_cykle', 'planety_ksiezyce', 'wskazniki_zgody', 'zdjecia_gwiazd', 'wyczyny_progi', 'ustawienia_kont',
         'osoby_karta_eote', 'eote_cv_karty', 'eote_cv_wartosci', 'stocznia_naprawy',
-        'mapa_udostepnienia', 'radar_baza_sygnatur', 'radar_analizy', 'radar_identyfikacje', 'npc_trasy', 'stocznia_stanowiska',
+        'mapa_udostepnienia', 'radar_baza_sygnatur', 'radar_analizy', 'radar_identyfikacje', 'npc_trasy', 'stocznia_stanowiska', 'gosp_towary', 'gosp_produkcja', 'gosp_obiekty', 'gosp_zuzycie', 'gosp_linie',
         'mapa_bitwy', 'mapa_bitwy_uczestnicy', 'osoby', 'podmioty', 'znane_lokacje'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {

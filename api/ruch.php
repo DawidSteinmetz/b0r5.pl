@@ -908,6 +908,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             $wynik['obiekty'] = mapa_strony($wynik['obiekty'], $u);
             // Lokacje orbitalne ze stanowiskami doków (pierścień stoczniowy Kuat) — rysowane przy dużym zbliżeniu.
             if (function_exists('doki_dla_mapy')) $wynik['orbitalne'] = doki_dla_mapy();
+            // Obiekty tła gospodarki (huty, fabryki, porty, składy) — na tarczy planety albo na pierścieniu.
+            if (function_exists('gosp_obiekty_mapy')) $wynik['obiekty_tla'] = gosp_obiekty_mapy();
             // Kontakty radaru: jednostki w zasięgu moich okrętów (kolor z transpondera) i ruch w tle.
             if (function_exists('radar_kontakty')) $wynik['obiekty'] = array_merge($wynik['obiekty'], radar_kontakty($u, $wynik['obiekty']));
             // Znacznik własnej postaci: mapa pokazuje przy nim pulsujące „Jesteś tutaj”.

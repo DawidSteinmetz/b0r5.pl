@@ -441,10 +441,48 @@ export default {
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
         panelPromow(p),
+        panelDoku(p),
         panelStoczni(p),
         panelMaszynowni(),
         panelLadowni(),
         panelRadaru(p));
+    }
+
+    // Dok orbitalny (pierścień stoczniowy przy planecie): stan, „Dokuj” — automat albo sektor i stanowisko —
+    // i „Oddokuj”. Trasę łukiem po orbicie liczy serwer.
+    function panelDoku(p) {
+      const el = h('div');
+      api('doki', undefined, { obiekt: p.id }).then((r) => {
+        if (!r.pierscien) return;
+        const wolne = r.sektory.reduce((s, x) => s + x.wolne, 0);
+        const naglowek = h('h3', { style: 'margin-top:12px' }, r.pierscien.nazwa);
+        if (r.dok) {
+          const leci = r.dok.do && r.dok.do > teraz();
+          el.append(h('div', naglowek,
+            h('div.slaby.maly-tekst', leci ? h('span', `Lot łukiem do stanowiska ${r.dok.oznaczenie} · w doku za `, h('b', { 'data-koniec': r.dok.do, 'data-przeladuj': '1' }, odliczanie(r.dok.do - teraz())))
+              : `W doku: stanowisko ${r.dok.oznaczenie}.`),
+            r.moze ? h('button.przycisk.drugi', { style: 'margin-top:8px', onclick: () => akcja('oddokuj', { obiekt_id: p.id }, 'Okręt opuścił dok — bliska orbita.') }, 'Oddokuj') : null));
+          return;
+        }
+        if (!r.moze) { el.append(h('div', naglowek, h('div.slaby.maly-tekst', `Wolnych stanowisk: ${wolne}. Dokuje dowódca albo kapitan.`))); return; }
+        const sektor = h('select', r.sektory.map((s) => h('option', { value: String(s.sektor) }, `Sektor ${s.litera} · wolne ${s.wolne}`)));
+        const stanowisko = h('select');
+        const wypelnij = () => {
+          const s = r.sektory.find((x) => String(x.sektor) === sektor.value);
+          wyczysc(stanowisko).append(...(s?.stanowiska || []).filter((x) => x.stan === 'wolne').map((x) => h('option', { value: String(x.id) }, x.oznaczenie)));
+          if (!stanowisko.options.length) stanowisko.append(h('option', { value: '' }, 'brak wolnych'));
+        };
+        sektor.addEventListener('change', wypelnij);
+        wypelnij();
+        const wynik = (w) => `Kurs na stanowisko ${w.stanowisko}: łukiem ${Math.abs(w.luk_deg)}°, ok. ${Math.round(w.km).toLocaleString('pl-PL')} km. W doku ${czasGry(w.koniec)}.`;
+        el.append(h('div', naglowek,
+          h('div.slaby.maly-tekst', `Doki ISD: wolnych ${wolne} z ${r.sektory.reduce((s, x) => s + x.stanowiska.length, 0)}. Trasa łukiem po orbicie, krótszą stroną planety.`),
+          h('div.rzad', { style: 'margin-top:8px' },
+            h('button.przycisk', { onclick: () => akcja('dokuj', { obiekt_id: p.id, stanowisko_id: 0 }, wynik) }, 'Dokuj (automat)'),
+            sektor, stanowisko,
+            h('button.przycisk.drugi', { onclick: () => { if (stanowisko.value) akcja('dokuj', { obiekt_id: p.id, stanowisko_id: Number(stanowisko.value) }, wynik); } }, 'Dokuj tutaj'))));
+      }).catch(() => {});
+      return el;
     }
 
     // Maszynownia: odczyt podzespołów i naprawa polowa (test Mechaniki, najwyżej do 80%, raz na 12 h).

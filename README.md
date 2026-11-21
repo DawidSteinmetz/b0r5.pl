@@ -104,6 +104,15 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   współrzędne z hierarchii (regiony setki km od środka, miasta dziesiątki, dzielnice kilometry), więc da się
   chodzić i jeździć taksówką. Gałąź orbity zostaje bez współrzędnych.
 - **Statki na lądowisku** mapa rysuje na tarczy planety (nie na orbicie), karta pokazuje lądowisko.
+- **Lokacje orbitalne i doki** (migracja 045, `api/doki.php`): lokacja może leżeć na orbicie
+  (`orbita_wysokosc_km`, `orbita_kat_deg`) albo w przestrzeni układu (`uklad_kx/ky`). Pierścień stoczniowy Kuat:
+  1000 km nad powierzchnią (promień 6000 km, obwód ok. 37 700 km — cały obwód zmieściłby ok. 18 850 ISD), doki
+  ciężkie w 24 sektorach A–X po 25 stanowisk = 600: 360 budowanych ISD, 180 naprawianych, 60 wolnych.
+  Mapa rysuje pierścień od zbliżenia na planetę, przy największym zbliżeniu stanowiska (szkielet ISD w budowie,
+  sylwetka w naprawie, zielony obrys — wolne). „Dokuj” (karta planety → nawigacja floty, albo Nawigacja na
+  pokładzie): automat (najbliższe wolne) albo sektor i stanowisko; trasa łukiem po orbicie krótszą stroną planety
+  (kąt i promień zmieniają się płynnie), plus 5 min podejścia. W stoczni z pierścieniem naprawa tylko w doku.
+  „Oddokuj” zwalnia stanowisko (przerywa naprawy w toku).
 - **Okno promu Lambda:** klasa albo nazwa z „Lambda” daje widok przez kokpit promu (`okno: 'lambda'`).
 - **Wejście na pokład:** na lądowisku Nawigacja pokazuje stojące tam statki z prawem wejścia (właściciel,
   kapitan, dowódca floty okrętu macierzystego promu, dostęp) oraz awaryjny powrót na ostatni statek.

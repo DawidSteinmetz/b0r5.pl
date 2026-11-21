@@ -227,7 +227,10 @@ function mapa_kurs_sql(): string
             ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '')
         . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '')
         // Lądowisko: statek stoi na powierzchni (mapa rysuje go na planecie, nie na orbicie).
-        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',m.ladowisko_id,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko_nazwa' : '');
+        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',m.ladowisko_id,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko_nazwa' : '')
+        // Dok orbitalny: stanowisko, jego kąt i wysokość pierścienia, lot łukiem do doku (start: kąt i promień).
+        . (function_exists('doki_dostepne') && doki_dostepne() ? ',m.dok_stanowisko_id,m.dok_od_utc,m.dok_do_utc,m.dok_kat_start,m.dok_r_start_km,'
+            . '(SELECT CONCAT(s.oznaczenie,\'|\',s.kat_deg,\'|\',l.orbita_wysokosc_km) FROM stocznia_stanowiska s JOIN lokalizacje l ON l.id=s.lokalizacja_id WHERE s.id=m.dok_stanowisko_id) AS dok_dane' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -238,6 +241,12 @@ function mapa_kurs_pola(array $r): array
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
     if (!empty($r['ladowisko_id'])) $w['na_ladowisku'] = (string) ($r['ladowisko_nazwa'] ?? '') ?: 'lądowisko';
+    if (!empty($r['dok_stanowisko_id']) && !empty($r['dok_dane'])) {
+        [$ozn, $kat, $wys] = explode('|', (string) $r['dok_dane']) + ['', 0, 0];
+        $w['dok'] = ['oznaczenie' => $ozn, 'kat' => (float) $kat, 'wysokosc_km' => (float) $wys,
+            'od' => $r['dok_od_utc'] ? czas_z_utc((string) $r['dok_od_utc']) : null, 'do' => $r['dok_do_utc'] ? czas_z_utc((string) $r['dok_do_utc']) : null,
+            'kat0' => $r['dok_kat_start'] !== null ? (float) $r['dok_kat_start'] : null, 'r0' => $r['dok_r_start_km'] !== null ? (float) $r['dok_r_start_km'] : null];
+    }
     if (!empty($r['frakcja'])) $w['frakcja'] = $r['frakcja'];
     if (!empty($r['podejscie'])) $w['podejscie'] = $r['podejscie'];
     if (!empty($r['dlugosc_m'])) $w['dlugosc_m'] = (float) $r['dlugosc_m'];
@@ -883,6 +892,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             $wynik['obiekty'] = $radar['obiekty'];
             $wynik['bitwy_radar'] = $radar['bitwy'];
             $wynik['obiekty'] = mapa_strony($wynik['obiekty'], $u);
+            // Lokacje orbitalne ze stanowiskami doków (pierścień stoczniowy Kuat) — rysowane przy dużym zbliżeniu.
+            if (function_exists('doki_dla_mapy')) $wynik['orbitalne'] = doki_dla_mapy();
             // Kontakty radaru: jednostki w zasięgu moich okrętów (kolor z transpondera) i ruch w tle.
             if (function_exists('radar_kontakty')) $wynik['obiekty'] = array_merge($wynik['obiekty'], radar_kontakty($u, $wynik['obiekty']));
             // Znacznik własnej postaci: mapa pokazuje przy nim pulsujące „Jesteś tutaj”.

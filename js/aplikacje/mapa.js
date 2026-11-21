@@ -415,6 +415,84 @@ export default {
     }
     const pozycjaPlanety = (p) => { const u = ukladNaEkranie(p); return u ? [u.px, u.py] : naEkran(p.x, p.y); };
 
+    // Najkrótszy łuk (stopnie, ze znakiem) — jak doki_luk na serwerze.
+    const lukDeg = (od, d) => ((((d - od) % 360) + 540) % 360) - 180;
+    // Promień pierścienia (km od środka planety) i planeta lokacji orbitalnej.
+    const promienPierscienia = (r, u) => (u ? (u.srednicaKm || 12000) / 2 : 5000) + r.wysokosc_km;
+
+    // Pozycja okrętu w doku orbitalnym albo w locie łukiem do doku: [kąt°, promień km od środka planety].
+    function miejsceWDoku(o, t = teraz()) {
+      const d = o.dok;
+      const p = planetaObiektu(o);
+      const u = p && ukladNaEkranie(p);
+      const R = (u ? (u.srednicaKm || 12000) / 2 : 5000) + d.wysokosc_km;
+      if (d.do && t < d.do && d.kat0 != null && d.r0 != null) {
+        const f = Math.max(0, Math.min(1, (t - d.od) / Math.max(1, d.do - d.od)));
+        return [d.kat0 + lukDeg(d.kat0, d.kat) * f, d.r0 + (R - d.r0) * f];
+      }
+      return [d.kat, R];
+    }
+
+    // Lokacje orbitalne: pierścień stoczniowy (okrąg w prawdziwej skali), przy dużym zbliżeniu sektory i stanowiska
+    // doków — w budowie szkielet ISD, w naprawie sylwetka ISD, wolne zielony nawias.
+    function rysujPierscienie() {
+      if (skala < PROG_UKLADU) return;
+      for (const r of pozycja?.orbitalne || []) {
+        const p = wgKlucza.get(norm(r.planeta));
+        const u = p && ukladNaEkranie(p);
+        if (!u || u.ksiezyc) continue;
+        const [px, py] = pozycjaPlanety(p);
+        const R = promienPierscienia(r, u) * u.skm;
+        if (R < u.rp + 2 || R > 4e6) continue;
+        if (px + R < -20 || px - R > szer + 20 || py + R < -20 || py - R > wys + 20) continue;
+        c.save();
+        c.strokeStyle = 'rgba(190, 205, 220, 0.42)';
+        c.lineWidth = Math.max(1, Math.min(8, 30 * u.skm));
+        c.beginPath(); c.arc(px, py, R, 0, Math.PI * 2); c.stroke();
+        const stDok = 2 * u.skm; // odstęp stanowisk (2 km) w px
+        if (R > 120 && stDok < 6) {
+          // Sektory doków ciężkich: litera przy środku sektora.
+          c.font = `10px ${kroj}`; c.fillStyle = 'rgba(190, 205, 220, 0.7)';
+          const sektory = new Map();
+          for (const s of r.stanowiska) { const lit = String(s[3]).split('-')[0]; if (!sektory.has(lit)) sektory.set(lit, s[1]); }
+          for (const [lit, kat] of sektory) {
+            const a = -kat * RAD;
+            c.fillRect(px + Math.cos(a) * R - 1.5, py + Math.sin(a) * R - 1.5, 3, 3);
+            if (R > 260) napis(c, `Doki ${lit}`, px + Math.cos(a) * (R + 10) - 12, py + Math.sin(a) * (R + 10) + 4);
+          }
+        }
+        if (stDok >= 6) {
+          const dl = 0.8 * u.skm; // pół długości ISD (1,6 km) w px
+          for (const [id, kat, stan, ozn, postep] of r.stanowiska) {
+            const a = -kat * RAD;
+            const x = px + Math.cos(a) * R, y = py + Math.sin(a) * R;
+            if (x < -dl - 20 || x > szer + dl + 20 || y < -dl - 20 || y > wys + dl + 20) continue;
+            const kursS = kat + 90; // ISD równolegle do pierścienia
+            c.lineWidth = 1;
+            if (stan === 0) { // budowa: szkielet
+              c.strokeStyle = 'rgba(255, 200, 120, 0.55)'; c.setLineDash([2, 2]);
+              c.beginPath(); sylwetkaOkretu(c, { klasa: 'isd' }, x, y, kursS, dl); c.stroke(); c.setLineDash([]);
+            } else if (stan === 1) { // naprawa / zajęte
+              c.fillStyle = 'rgba(150, 160, 170, 0.45)'; c.strokeStyle = 'rgba(200, 210, 220, 0.6)';
+              c.beginPath(); sylwetkaOkretu(c, { klasa: 'isd' }, x, y, kursS, dl); c.fill(); c.stroke();
+            } else { // wolne
+              c.strokeStyle = 'rgba(61, 220, 132, 0.75)';
+              c.beginPath(); sylwetkaOkretu(c, { klasa: 'isd' }, x, y, kursS, dl * 0.98); c.stroke();
+            }
+            if (stDok > 40) {
+              c.font = `10px ${kroj}`; c.fillStyle = stan === 2 ? 'rgba(61, 220, 132, 0.9)' : 'rgba(200, 210, 220, 0.75)';
+              napis(c, `${ozn}${stan === 0 ? ` · budowa ${postep}%` : stan === 1 ? ' · zajęte' : ' · wolne'}`, x + Math.cos(a) * dl * 1.4, y + Math.sin(a) * dl * 1.4);
+            }
+          }
+        }
+        if (R > 60 && R < Math.max(szer, wys) * 3) {
+          c.font = `10px ${kroj}`; c.fillStyle = 'rgba(190, 205, 220, 0.75)';
+          napis(c, r.nazwa, px + R * 0.71 + 6, py + R * 0.71 + 12);
+        }
+        c.restore();
+      }
+    }
+
     function rysujUklady() {
       if (skala < PROG_UKLADU) return;
       const [cxp, cyp] = naMape(szer / 2, wys / 2);
@@ -569,6 +647,14 @@ export default {
       if (!p && !wNadprzestrzeni(o) && o.typ !== 'postac') { const [dx, dy] = szykKm(o); return naEkran(o.x, o.y, dx, dy); }
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || wNadprzestrzeni(o)) return pozycjaDomyslna;
+      if (o.dok) {
+        // Dok orbitalny (albo lot łukiem do doku): kąt i promień od środka planety.
+        const [kat, rKm] = miejsceWDoku(o);
+        const [px, py] = pozycjaPlanety(p);
+        const u = ukladNaEkranie(p);
+        const R = u ? Math.max(u.rp + 4, rKm * u.skm) : 14;
+        return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
+      }
       if (o.na_ladowisku || o.rozbity) {
         // Na powierzchni (lądowisko albo wrak): na tarczy planety, nie na orbicie; kilka statków obok siebie.
         const [px, py] = pozycjaPlanety(p);
@@ -776,6 +862,7 @@ export default {
             const Rpl = (c?.srednica_km || 12000) / 2;
             const ro = { bliska: Rpl + 300, srednia: Rpl * 4 }[o.podejscie] ?? Rpl * 15;
             const a = miejsceNaOrbicie(o) * RAD;
+            if (o.dok) { const [kd, rd] = miejsceWDoku(o); k = [kP[0] + Math.cos(kd * RAD) * rd, kP[1] + Math.sin(kd * RAD) * rd]; return { x: poz.x, y: poz.y, k, p: pl }; }
             k = [kP[0] + Math.cos(a) * ro, kP[1] + Math.sin(a) * ro];
           }
         }
@@ -1045,6 +1132,7 @@ export default {
         znacznik(planeta, kolory.akcent2, statki.length === 1 ? statki[0].nazwa : `Statki: ${statki.length}`);
       }
       rysujUklady();
+      rysujPierscienie();
       const moj = mojZnacznik();
       for (const o of obiektyMapy) {
         if (naPokladzie(o)) continue;
@@ -1525,6 +1613,51 @@ export default {
               } catch (e) { info.textContent = e.message; }
             }));
           }
+          // Dok orbitalny (pierścień stoczniowy): wybór okrętu, potem automat albo sektor i stanowisko.
+          const pierscien = (pozycja?.orbitalne || []).find((r) => norm(r.planeta) === p.klucz);
+          const dokOkretu = (j) => obiektyMapy.find((x) => x.id === j.obiekt_id)?.dok || null;
+          if (pierscien && tutaj.length) {
+            const wDoku = tutaj.filter((j) => dokOkretu(j));
+            const bezDoku = tutaj.filter((j) => !dokOkretu(j));
+            const dokuj = (j) => {
+              const lista = h('div.mapa-krok-lista', liczy());
+              k.dalej(`Dokuj: ${j.obiekt_nazwa || 'okręt'}`, lista);
+              api('doki', undefined, { obiekt: j.obiekt_id }).then((d) => {
+                const wykonaj = async (stanowiskoId) => {
+                  try {
+                    const w = await api('dokuj', { obiekt_id: j.obiekt_id, stanowisko_id: stanowiskoId || 0 });
+                    k.zamien('Dokowanie', tabelaPlanu([['Stanowisko', w.stanowisko], ['Trasa', `łukiem ${Math.abs(w.luk_deg)}° (${w.kierunek}), ok. ${liczba(w.km)} km`], ['W doku', czasGry(w.koniec)]]));
+                    await pobierzPozycje(); await odswiezFloty();
+                  } catch (e) { info.textContent = e.message; k.doPoczatku(); }
+                };
+                const wolneRazem = d.sektory.reduce((s, x) => s + x.wolne, 0);
+                wyczysc(lista).append(
+                  h('p.slaby.maly-tekst', `${d.pierscien.nazwa}: ${d.sektory.length} sektorów, wolnych stanowisk: ${wolneRazem}. Trasa łukiem po orbicie, krótszą stroną planety.`),
+                  opcja('Automat', 'najbliższe wolne stanowisko naprawcze', () => wykonaj(0)),
+                  ...d.sektory.map((s) => opcja(`Sektor ${s.litera}`, `wolne ${s.wolne} · budowa ${s.budowa} · zajęte ${s.naprawa} · ${Math.round(Math.abs(lukDeg(d.kat_okretu, s.kat)))}° łuku`, () => {
+                    const wolne = s.stanowiska.filter((x) => x.stan === 'wolne');
+                    k.dalej(`Sektor ${s.litera}`, h('div.mapa-krok-lista',
+                      ...s.stanowiska.map((x) => x.stan === 'wolne'
+                        ? opcja(`${x.oznaczenie} · wolne`, 'dokuj tutaj', () => wykonaj(x.id))
+                        : h('div.slaby.maly-tekst', `${x.oznaczenie} · ${x.opis}${x.stan === 'budowa' ? ` (${x.postep}%)` : ''}`)),
+                      wolne.length ? null : h('p.slaby.maly-tekst', 'W tym sektorze nie ma wolnych stanowisk.')));
+                  })));
+              }).catch((e) => wyczysc(lista).append(blad(e)));
+            };
+            if (bezDoku.length) {
+              opcje.push(opcja('Dokuj', `${pierscien.nazwa} · wybór stanowiska albo automat`, () => {
+                if (bezDoku.length === 1) return dokuj(bezDoku[0]);
+                k.dalej('Dokuj: który okręt?', h('div.mapa-krok-lista', ...bezDoku.map((j) => opcja(j.obiekt_nazwa || 'okręt', null, () => dokuj(j)))));
+              }));
+            }
+            for (const j of wDoku) {
+              const d = dokOkretu(j);
+              opcje.push(opcja(`Oddokuj ${j.obiekt_nazwa || ''}`.trim(), d.do && d.do > teraz() ? `w drodze do ${d.oznaczenie} · ${czasGry(d.do)}` : `stanowisko ${d.oznaczenie}`, async () => {
+                try { await api('oddokuj', { obiekt_id: j.obiekt_id }); info.textContent = 'Okręt opuścił dok — bliska orbita.'; await pobierzPozycje(); await odswiezFloty(); }
+                catch (e) { info.textContent = e.message; }
+              }));
+            }
+          }
           if (tutaj.length) {
             const obecna = tutaj[0].podejscie_teraz || 'bliska';
             opcje.push(opcja('Zmiana orbity', `teraz: ${(NAZWY_WARIANTOW[obecna] || obecna).toLowerCase()}`
@@ -1714,6 +1847,7 @@ export default {
             o.status ? wiersz('Status', o.status) : null,
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku) : null,
+            o.dok ? wiersz('Dok', o.dok.do && o.dok.do > teraz() ? `lot łukiem do stanowiska ${o.dok.oznaczenie} · do ${czasGry(o.dok.do)}` : `stanowisko ${o.dok.oznaczenie}`) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
             o.opis ? wiersz('Opis', o.opis) : null),
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
@@ -1743,6 +1877,15 @@ export default {
             wiersz('Słońca · księżyce', nieznane(p.doba, `${p.slonca} · ${p.ksiezyce}`)),
             wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
             p.srednica > 0 ? wiersz('Średnica', `${liczba(p.srednica)} km`) : null),
+          (() => {
+            // Lokacje orbitalne planety: pierścień stoczniowy i obłożenie doków.
+            const r = (pozycja?.orbitalne || []).find((x) => norm(x.planeta) === p.klucz);
+            if (!r) return null;
+            const n = [0, 0, 0];
+            for (const s of r.stanowiska) n[s[2]]++;
+            return h('div.mapa-statki', h('div.slaby.maly-tekst', 'Orbita'), h('div', h('b', r.nazwa)),
+              h('div.slaby.maly-tekst', `${liczba(r.wysokosc_km)} km nad powierzchnią · doki ISD: ${r.stanowiska.length} — budowa ${n[0]}, zajęte ${n[1]}, wolne ${n[2]}`));
+          })(),
           listaObecnych(p),
           sekcjaNawigacji(p),
           widokUkladu(p),

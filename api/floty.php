@@ -836,6 +836,12 @@ function floty_blokada_ladowiska(array $odbiorcy): void
     $q->execute($odbiorcy);
     $n = $q->fetchColumn();
     if ($n) blad('„' . $n . '” stoi na lądowisku. Najpierw start.');
+    // Okręt w doku orbitalnym: najpierw „Oddokuj” (zwalnia stanowisko).
+    if (function_exists('doki_dostepne') && doki_dostepne()) {
+        $q = polaczenie_bazy()->prepare("SELECT nazwa FROM mapa_obiekty WHERE id IN ($marks) AND dok_stanowisko_id IS NOT NULL LIMIT 1");
+        $q->execute($odbiorcy);
+        if ($n = $q->fetchColumn()) blad('„' . $n . '” stoi w doku. Najpierw oddokuj.');
+    }
 }
 
 // Lądowiska planety (po id planety z mapy). Niepubliczne (ukryte, serwisowe) widzi MG i postać,
@@ -1522,7 +1528,7 @@ function floty_naprawy_aktualizuj(): void
         if (!$najblizszy) {
             // Bez zaległych zakończeń: wolne stanowiska biorą następne wpisy z kolejki od teraz.
             foreach (STOCZNIE as $s => $cfg) {
-                $wolne = $cfg['stanowiska'] - ($zajete[$s] ?? 0);
+                $wolne = (function_exists('doki_stanowiska_stoczni') ? doki_stanowiska_stoczni($s, $cfg['stanowiska']) : $cfg['stanowiska']) - ($zajete[$s] ?? 0);
                 if ($wolne <= 0) continue;
                 $q = $db->prepare("SELECT id FROM stocznia_naprawy WHERE stocznia = ? AND stan = 'kolejka' ORDER BY zgloszono_utc, id LIMIT " . (int) $wolne);
                 $q->execute([$s]);
@@ -1568,7 +1574,8 @@ function floty_naprawy_okretu(int $id): ?array
             $stanowiska[] = max($teraz, $koniec);
             $plan[] = $r + ['od' => $start, 'koniec' => $koniec, 'opoznienie' => $koniec < $teraz];
         } else {
-            while (count($stanowiska) < STOCZNIE[$stocznia]['stanowiska']) $stanowiska[] = $teraz;
+            $ileStanowisk = function_exists('doki_stanowiska_stoczni') ? doki_stanowiska_stoczni($stocznia, STOCZNIE[$stocznia]['stanowiska']) : STOCZNIE[$stocznia]['stanowiska'];
+            while (count($stanowiska) < min($ileStanowisk, 50)) $stanowiska[] = $teraz;
             sort($stanowiska);
             $start = array_shift($stanowiska);
             $koniec = $start + (int) $r['prognoza_s'];
@@ -1589,6 +1596,8 @@ function floty_naprawy_mozliwosc(int $id): array
     if (!floty_naprawy_dostepne()) return ['powod' => 'Zaimportuj api/migracje/041_stocznia_naprawy.sql.'];
     $s = floty_stocznia_jednostki($id);
     if (!$s) return ['powod' => 'Okręt nie stoi na orbicie planety ze stocznią naprawczą.'];
+    // Stocznia z pierścieniem orbitalnym: naprawa tylko w doku (Dokuj → stanowisko).
+    if (function_exists('doki_wymog_naprawy') && ($p = doki_wymog_naprawy($id))) return ['powod' => $p];
     $q = polaczenie_bazy()->prepare("SELECT 1 FROM stocznia_naprawy WHERE obiekt_id = ? AND stan IN ('kolejka','w_toku') LIMIT 1");
     $q->execute([$id]);
     if ($q->fetchColumn()) return ['powod' => 'Okręt już jest w doku naprawczym.'];

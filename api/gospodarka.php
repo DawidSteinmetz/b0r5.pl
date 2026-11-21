@@ -74,10 +74,13 @@ function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk,
 function gosp_obiekty_mapy(): array
 {
     if (!gosp_dostepna()) return [];
+    static $lad = null;
+    if ($lad === null) { try { polaczenie_bazy()->query('SELECT lokalizacja_id FROM gosp_obiekty LIMIT 0'); $lad = true; } catch (Throwable $e) { $lad = false; } }
     return array_map(fn($o) => ['id' => (int) $o['id'], 'planeta' => $o['planeta'], 'nazwa' => $o['nazwa'], 'rodzaj' => $o['rodzaj'], 'miejsce' => $o['miejsce'],
+        'ladowisko_id' => isset($o['lokalizacja_id']) && $o['lokalizacja_id'] !== null ? (int) $o['lokalizacja_id'] : null,
         'szer' => $o['szer'] !== null ? (float) $o['szer'] : null, 'dl' => $o['dl'] !== null ? (float) $o['dl'] : null,
         'kat' => $o['kat_deg'] !== null ? (float) $o['kat_deg'] : null],
-        polaczenie_bazy()->query('SELECT id, planeta, nazwa, rodzaj, miejsce, szer, dl, kat_deg FROM gosp_obiekty ORDER BY id')->fetchAll(PDO::FETCH_ASSOC));
+        polaczenie_bazy()->query('SELECT id, planeta, nazwa, rodzaj, miejsce, szer, dl, kat_deg' . ($lad ? ', lokalizacja_id' : '') . ' FROM gosp_obiekty ORDER BY id')->fetchAll(PDO::FETCH_ASSOC));
 }
 
 // Karta obiektu tła: opis, zużycie na dobę i linie dostaw z czasem najbliższej dostawy (z cyklu statków linii).

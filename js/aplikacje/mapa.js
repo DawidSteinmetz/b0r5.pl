@@ -1942,6 +1942,36 @@ export default {
         analiza, status);
     }
 
+    // Lądowanie przy obiekcie tła: jednostki floty na bliskiej orbicie tej planety (z możliwością lądowania)
+    // i promy w hangarach okrętów przy niej — ten sam rozkaz co „Lądowanie” w nawigacji floty (lot w atmosferze).
+    function sekcjaLadowaniaTla(ob, pl) {
+      const sekcja = h('div.mapa-nawigacja');
+      if (!ob.ladowisko_id || !pl) return sekcja;
+      const info = h('p.maly-tekst');
+      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
+        const przyciski = [];
+        for (const f of dane.floty || []) {
+          for (const j of f.jednostki || []) {
+            if (norm(j.planeta || '') !== pl.klucz || j.rozkaz_id) continue;
+            if (j.w_hangarze && Number(j.moze_ladowac) === 1) {
+              przyciski.push(h('button.przycisk.mapa-krok-opcja', { type: 'button', onclick: async () => {
+                try { const w = await api('prom_wylot', { obiekt_id: j.obiekt_id, ladowisko_id: ob.ladowisko_id }); info.textContent = w.komunikat || 'Prom w drodze.'; await pobierzPozycje(); await odswiezFloty(); }
+                catch (e) { info.textContent = e.message; }
+              } }, h('span', `Ląduj: ${j.obiekt_nazwa}`), h('small', `z hangaru ${j.okret_macierzysty || 'okrętu'}`)));
+            } else if (!j.w_hangarze && !j.ladowisko_id && Number(j.moze_ladowac) === 1) {
+              const bliska = (j.podejscie_teraz || 'bliska') === 'bliska';
+              przyciski.push(h('button.przycisk.mapa-krok-opcja', { type: 'button', disabled: !bliska, onclick: async () => {
+                try { const w = await api('mapa_flota_ladowanie', { flota_id: f.id, jednostki: [j.obiekt_id], lokacja_id: ob.ladowisko_id }); info.textContent = `Lot w atmosferze na: ${w.ladowisko}${w.koniec > teraz() ? ` · na miejscu za ${czasTrwania(w.koniec - teraz())}` : ''}.`; await pobierzPozycje(); await odswiezFloty(); }
+                catch (e) { info.textContent = e.message; }
+              } }, h('span', `Ląduj: ${j.obiekt_nazwa}`), h('small', bliska ? 'z bliskiej orbity' : 'najpierw zejdź na bliską orbitę')));
+            }
+          }
+        }
+        if (przyciski.length) sekcja.append(h('div.slaby.maly-tekst', 'Lądowanie przy obiekcie'), h('div.mapa-krok-lista', ...przyciski), info);
+      }).catch(() => {});
+      return sekcja;
+    }
+
     function sekcjaPokladu(o) {
       const sekcja = h('div.mapa-poklad');
       zLadowaniem(sekcja, api('mapa_poklad', undefined, { obiekt: o.id }), 'Odczyt pokładu').then((d) => {
@@ -2030,6 +2060,7 @@ export default {
             wiersz('Miejsce', ob.miejsce === 'pierscien' ? `pierścień orbitalny · ${liczba(ob.kat, 1)}°` : geoTekst(ob.szer, ob.dl)),
             ob.miejsce !== 'pierscien' && pl && cyklPlanety(pl) ? h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(pl), ob.szer, ob.dl))) : null,
             ob.miejsce === 'pierscien' && pl && cyklPlanety(pl) ? h('tr', h('th', 'Strona'), zywa(() => (stronaOrbity(cyklPlanety(pl), ob.kat).dzien ? 'dzienna (w słońcu)' : 'nocna (w cieniu planety)'))) : null),
+          sekcjaLadowaniaTla(ob, pl),
           szczegoly);
         zLadowaniem(szczegoly, api('gosp_obiekt', undefined, { id: ob.id }), 'Dane zakładu').then((d) => {
           const t = (x) => `${liczba(x, x < 100 ? 1 : 0)} t`;

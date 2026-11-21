@@ -481,61 +481,56 @@ export function utworzScene(canvas) {
   // Okręt w doku pierścienia: rama stoczniowa wokół okrętu — pokład i strop przez całą szerokość okna, dźwigary
   // zbiegające się w perspektywie wzdłuż pierścienia, światła stanowisk. Przez szczelinę widać dalszy pierścień.
   function rysujDok(cy, k) {
+    // Okręt stoi w doku: przez okno widać tunel stoczniowy — pokład, strop i ściany boczne zbiegają się
+    // w perspektywie do wylotu doku na wprost (tam widać kosmos i dalszy pierścień). Zasłania całe okno.
     const RAD = Math.PI / 180;
-    const vx = w / 2, vy = cy;                                  // punkt zbiegu: wzdłuż kursu, na horyzoncie
-    // pół wysokości otwartej przestrzeni przy horyzoncie: część wysokości okna (mostek, kokpit), bez okna — ekranu
+    const vx = w / 2, vy = cy;
     const okno = stan.okno ? geometriaOkna(stan.okno, w, h) : null;
-    // Dok obejmuje całą wysokość ISD z zapasem: pokład i strop przy krawędziach okna, przestrzeń doku pośrodku.
-    const szczelina = (okno ? okno.dol - okno.gora : h) * 0.4;
+    const wysOkna = okno ? okno.dol - okno.gora : h;
+    const oh = wysOkna * 0.1, ow = oh * 2.4;                    // wylot doku (połowy wymiarów)
+    const W = w / 2 + 20, Hg = vy + 20, Hd = h - vy + 20;       // zewnętrzne krawędzie (poza oknem)
     const jasn = 0.55 + 0.35 * Math.max(0, Math.cos(((k.orbita ?? 0) - (k.slonce ?? 0)) * RAD));
-    const kolor = (f) => `rgb(${Math.round((60 + 80 * jasn) * f)}, ${Math.round((64 + 84 * jasn) * f)}, ${Math.round((70 + 90 * jasn) * f)})`;
+    const kolor = (f, a = 1) => `rgba(${Math.round((58 + 82 * jasn) * f)}, ${Math.round((62 + 86 * jasn) * f)}, ${Math.round((68 + 92 * jasn) * f)}, ${a})`;
+    // prostokąt przekroju tunelu w ułamku s głębokości (0 — wylot, 1 — przy oknie)
+    const ramka = (s) => { const f = Math.pow(s, 2.4); return [vx - (ow + (W - ow) * f), vy - (oh + (Hg - oh) * f), vx + (ow + (W - ow) * f), vy + (oh + (Hd - oh) * f)]; };
+    const [l0, g0, p0, d0] = ramka(0), [l1, g1, p1, d1] = ramka(1);
     ctx.save();
-    for (const strona of [1, -1]) {                            // 1 — pokład (dół), -1 — strop (góra)
-      const y0 = vy + strona * szczelina, y1 = strona > 0 ? h : 0;
-      const g = ctx.createLinearGradient(0, y0, 0, y1);
-      g.addColorStop(0, kolor(0.55)); g.addColorStop(1, kolor(1.05));
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.moveTo(-10, y0); ctx.lineTo(w + 10, y0); ctx.lineTo(w + 10, y1); ctx.lineTo(-10, y1); ctx.closePath(); ctx.fill();
-      // płyty i dźwigary poprzeczne — gęstnieją ku horyzontowi (perspektywa)
-      ctx.strokeStyle = 'rgba(25, 28, 32, 0.8)';
-      for (let i = 1; i < 14; i++) {
-        const f = Math.pow(i / 14, 2.2);
-        const y = y0 + (y1 - y0) * f;
-        ctx.lineWidth = Math.max(1, 6 * f);
-        ctx.beginPath(); ctx.moveTo(-10, y); ctx.lineTo(w + 10, y); ctx.stroke();
+    const sciana = (pkt, f0, f1, gx0, gy0, gx1, gy1) => {
+      const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1);
+      g.addColorStop(0, kolor(f0)); g.addColorStop(1, kolor(f1));
+      ctx.fillStyle = g; ctx.beginPath(); pkt.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill();
+    };
+    sciana([[l1, d1], [p1, d1], [p0, d0], [l0, d0]], 1.0, 0.45, 0, d1, 0, d0);   // pokład
+    sciana([[l1, g1], [p1, g1], [p0, g0], [l0, g0]], 0.8, 0.4, 0, g1, 0, g0);    // strop
+    sciana([[l1, g1], [l0, g0], [l0, d0], [l1, d1]], 0.9, 0.42, l1, 0, l0, 0);   // lewa ściana
+    sciana([[p1, g1], [p0, g0], [p0, d0], [p1, d1]], 0.72, 0.38, p1, 0, p0, 0);  // prawa ściana
+    // podłużne belki: od krawędzi przy oknie do krawędzi wylotu
+    ctx.strokeStyle = 'rgba(22, 25, 29, 0.85)';
+    for (let i = 0; i <= 10; i++) {
+      const f = i / 10;
+      for (const [xa, ya, xb, yb] of [[l1 + (p1 - l1) * f, d1, l0 + (p0 - l0) * f, d0], [l1 + (p1 - l1) * f, g1, l0 + (p0 - l0) * f, g0],
+        [l1, g1 + (d1 - g1) * f, l0, g0 + (d0 - g0) * f], [p1, g1 + (d1 - g1) * f, p0, g0 + (d0 - g0) * f]]) {
+        ctx.lineWidth = i % 5 === 0 ? 4 : 1.5;
+        ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke();
       }
-      // podłużne belki zbiegające się do punktu zbiegu
-      ctx.save();
-      ctx.beginPath(); ctx.rect(-10, Math.min(y0, y1), w + 20, Math.abs(y1 - y0)); ctx.clip();
-      for (let i = -12; i <= 12; i++) {
-        const xb = vx + i * w * 0.11;
-        ctx.lineWidth = Math.max(1, 5 - Math.abs(i) * 0.2);
-        ctx.strokeStyle = i % 4 === 0 ? 'rgba(20, 22, 26, 0.9)' : 'rgba(45, 50, 56, 0.6)';
-        ctx.beginPath(); ctx.moveTo(vx, vy); ctx.lineTo(xb, y1 + strona * h * 0.2); ctx.stroke();
-      }
-      // światła stanowisk: rzędy lamp na belkach, coraz mniejsze w głąb
-      for (let i = 1; i < 9; i++) {
-        const f = Math.pow(i / 9, 2.2);
-        const y = y0 + (y1 - y0) * f;
-        const r = Math.max(1, 4 * f);
-        for (let j = -6; j <= 6; j++) {
-          const x = vx + (j * w * 0.11) * ((y - vy) / (y1 + strona * h * 0.2 - vy));
-          ctx.fillStyle = (i + j) % 3 === 0 ? 'rgba(255, 214, 140, 0.95)' : 'rgba(170, 215, 255, 0.85)';
-          ctx.fillRect(x - r, y - r * 0.5, 2 * r, r);
-        }
-      }
-      ctx.restore();
-      // krawędź ramy przy szczelinie
-      ctx.strokeStyle = 'rgba(255, 200, 120, 0.55)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-10, y0); ctx.lineTo(w + 10, y0); ctx.stroke();
     }
-    // słupy ramy po bokach (blisko okrętu)
-    ctx.fillStyle = kolor(0.7);
-    for (const x of [w * 0.04, w * 0.96]) {
-      ctx.fillRect(x - w * 0.02, vy - szczelina - 2, w * 0.04, szczelina * 2 + 4);
-      ctx.strokeStyle = 'rgba(25, 28, 32, 0.9)'; ctx.lineWidth = 2;
-      for (let y = vy - szczelina; y < vy + szczelina; y += szczelina / 3) { ctx.beginPath(); ctx.moveTo(x - w * 0.02, y); ctx.lineTo(x + w * 0.02, y + szczelina / 3); ctx.stroke(); }
+    // żebra poprzeczne (przekroje tunelu) i światła stanowisk na nich — gęstnieją w głąb
+    for (let i = 1; i < 16; i++) {
+      const s = i / 16;
+      const [l, g, pr, d] = ramka(s);
+      ctx.strokeStyle = 'rgba(28, 31, 36, 0.9)'; ctx.lineWidth = Math.max(1, 8 * Math.pow(s, 2.4));
+      ctx.strokeRect(l, g, pr - l, d - g);
+      const r = Math.max(0.8, 3.5 * Math.pow(s, 2.4));
+      for (let j = 1; j < 8; j++) {
+        const fx = l + (pr - l) * j / 8, fy = g + (d - g) * j / 8;
+        ctx.fillStyle = (i + j) % 3 === 0 ? 'rgba(255, 214, 140, 0.95)' : 'rgba(170, 215, 255, 0.85)';
+        ctx.fillRect(fx - r, d - r * 0.6, 2 * r, r * 1.2); ctx.fillRect(fx - r, g - r * 0.6, 2 * r, r * 1.2);
+        ctx.fillRect(l - r * 0.6, fy - r, r * 1.2, 2 * r); ctx.fillRect(pr - r * 0.6, fy - r, r * 1.2, 2 * r);
+      }
     }
+    // obramowanie wylotu doku (światła ostrzegawcze)
+    ctx.strokeStyle = 'rgba(255, 190, 110, 0.75)'; ctx.lineWidth = 2;
+    ctx.strokeRect(l0, g0, p0 - l0, d0 - g0);
     ctx.restore();
   }
 

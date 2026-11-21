@@ -676,7 +676,7 @@ export default {
         const kat = pr.kat0 + lukDeg(pr.kat0, pr.kat1) * f, rKm = pr.r0 + (pr.r1 - pr.r0) * f;
         const [px, py] = pozycjaPlanety(p);
         const u = ukladNaEkranie(p);
-        const R = u ? Math.max(u.rp + 4, rKm * u.skm) : 14;
+        const R = u ? Math.max(u.rp + 8, rKm * u.skm) : 14;
         return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
       }
       if (o.dok) {
@@ -684,7 +684,7 @@ export default {
         const [kat, rKm] = miejsceWDoku(o);
         const [px, py] = pozycjaPlanety(p);
         const u = ukladNaEkranie(p);
-        const R = u ? Math.max(u.rp + 4, rKm * u.skm) : 14;
+        const R = u ? Math.max(u.rp + 8, rKm * u.skm) : 14;
         return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
       }
       const uPl = ukladNaEkranie(p);
@@ -1478,6 +1478,9 @@ export default {
           g.setLineDash([]); g.fillStyle = 'rgba(255, 214, 120, 0.95)'; g.beginPath(); strzalka(g, bx, by, planKarty.kierunek, 5); g.fill(); g.restore();
         }
         const gwiazdy = (cykl.gwiazdy || []).map((x) => `${x.nazwa} (${x.typ})`).join(' + ');
+        // Schemat układu rysuje się co sekundę, ale opis zmienia się najwyżej co minutę (nie skacze pod okiem).
+        if (opis.childNodes.length && Date.now() - (opis._zmieniono || 0) < 60000) return;
+        opis._zmieniono = Date.now();
         wyczysc(opis).append(...[gwiazdy ? `Gwiazda: ${gwiazdy}` : null, `Doba ${liczba(cykl.doba_h, 1)} h · rok ${liczba(cykl.rok_dni, 1)} dni · nachylenie osi ${liczba(cykl.nachylenie, 1)}°`, ...linie].filter(Boolean)
           .map((l) => h('div', l)));
       };
@@ -1686,7 +1689,9 @@ export default {
                 const wykonaj = async (stanowiskoId) => {
                   try {
                     const w = await api('dokuj', { obiekt_id: j.obiekt_id, stanowisko_id: stanowiskoId || 0 });
-                    k.zamien('Dokowanie', tabelaPlanu([['Stanowisko', w.stanowisko], ['Trasa', `łukiem ${Math.abs(w.luk_deg)}° (${w.kierunek}), ok. ${liczba(w.km)} km`], ['W doku', czasGry(w.koniec)]]));
+                    const licznik = h('span.mapa-zywe'); licznik._licz = () => (w.koniec > teraz() ? `za ${czasTrwania(w.koniec - teraz())} (${czasGry(w.koniec)})` : 'w doku');
+                    licznik.textContent = licznik._licz();
+                    k.zamien('Dokowanie', tabelaPlanu([['Stanowisko', w.stanowisko], ['Trasa', `łukiem ${Math.abs(w.luk_deg)}° (${w.kierunek}), ok. ${liczba(w.km)} km`], ['W doku', licznik]]));
                     await pobierzPozycje(); await odswiezFloty();
                   } catch (e) { info.textContent = e.message; k.doPoczatku(); }
                 };
@@ -1908,7 +1913,10 @@ export default {
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku + (o.geo ? ` · ${Math.abs(o.geo.szer).toFixed(1)}°${o.geo.szer >= 0 ? 'N' : 'S'} ${Math.abs(o.geo.dl).toFixed(1)}°${o.geo.dl >= 0 ? 'E' : 'W'}` : '')) : null,
             o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
-            o.dok ? wiersz('Dok', o.dok.do && o.dok.do > teraz() ? `lot łukiem do stanowiska ${o.dok.oznaczenie} · do ${czasGry(o.dok.do)}` : `stanowisko ${o.dok.oznaczenie}`) : null,
+            o.dok ? h('tr', h('th', 'Dok'), zywa(() => {
+              const x = obiektyMapy.find((y) => y.id === o.id)?.dok || o.dok;
+              return x.do && x.do > teraz() ? `lot łukiem do ${x.oznaczenie} · w doku za ${czasTrwania(x.do - teraz())}` : `stanowisko ${x.oznaczenie}`;
+            })) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
             o.opis ? wiersz('Opis', o.opis) : null),
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
@@ -2185,7 +2193,9 @@ export default {
         grupy.get(p).push(s);
       }
       statkiNaMapie = [...grupy].map(([planeta, statki]) => ({ planeta, statki }));
-      if (wybrane?.planeta) wybierz(wybrane); // odśwież kartę (np. statki)
+      // Karta zostaje (nie przebudowujemy jej co 15 s — gubiło to kroki nawigacji i wyniki rozkazów); zaznaczona
+      // jednostka wskazuje na świeży obiekt, więc kamera i karta śledzą jej aktualną pozycję, a nie starą kopię.
+      if (wybrane?.obiekt) { const n = obiektyMapy.find((x) => x.id === wybrane.obiekt.id); if (n) wybrane.obiekt = n; }
     }
 
     async function odswiezFloty() {

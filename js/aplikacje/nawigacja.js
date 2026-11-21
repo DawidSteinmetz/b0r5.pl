@@ -62,29 +62,24 @@ export default {
       }
     }
 
-    // Liczniki odświeżane co sekundę bez przeładowania całego widoku.
-    let odswiezanie = null;
-    let przeladowanie = false;
-    let ostatniePrzeladowanie = 0;
+    // Co sekundę zmieniają się tylko liczniki. Reszta widoku odświeża się dopiero po kliknięciu (akcja albo
+    // dotknięcie licznika, który doszedł do zera) — nic nie przebudowuje się samo pod palcem.
     function tykaj() {
-      clearInterval(odswiezanie);
-      if (d.poklad?.w_locie) odswiezanie = setInterval(() => { if (!w.contains(document.activeElement) || document.activeElement.tagName !== 'INPUT') wczytaj(); }, 8000);
       clearInterval(zegar);
       zegar = setInterval(() => {
-        let koniec = false;
         w.querySelectorAll('[data-koniec]').forEach((el) => {
           const zostalo = Number(el.dataset.koniec) - teraz();
           const start = Number(el.dataset.start || 0);
-          if (el.dataset.pasek) el.style.width = `${Math.min(100, ((teraz() - start) / (Number(el.dataset.koniec) - start)) * 100)}%`;
-          else el.textContent = zostalo > 0 ? odliczanie(zostalo) : el.dataset.opoznienie ? 'opóźnienie' : 'teraz';
-          if (zostalo <= 0 && el.dataset.przeladuj) koniec = true;
+          if (el.dataset.pasek) { el.style.width = `${Math.min(100, ((teraz() - start) / (Number(el.dataset.koniec) - start)) * 100)}%`; return; }
+          if (zostalo > 0) { el.textContent = odliczanie(zostalo); return; }
+          if (el.dataset.opoznienie) { el.textContent = 'opóźnienie'; return; }
+          if (el.dataset.przeladuj && !el.dataset.gotowe) {
+            el.dataset.gotowe = '1';
+            el.textContent = 'gotowe — dotknij, by odświeżyć';
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => wczytaj(), { once: true });
+          } else if (!el.dataset.przeladuj) el.textContent = 'teraz';
         });
-        // Jedno przeładowanie naraz i nie częściej niż co 3 s (zegar tabletu może o sekundę wyprzedzać serwer).
-        if (koniec && !przeladowanie && Date.now() - ostatniePrzeladowanie > 3000) {
-          przeladowanie = true;
-          ostatniePrzeladowanie = Date.now();
-          wczytaj().finally(() => { przeladowanie = false; });
-        }
       }, 1000);
     }
 
@@ -666,6 +661,6 @@ export default {
 
     // Skrót z pulpitu: po wczytaniu od razu trasa do wskazanego miejsca.
     wczytaj().then(() => { if (ctx.parametr?.trasa && d?.gdzie && !d.podroz) trasa(ctx.parametr.trasa, ctx.parametr.nazwa); });
-    return () => { clearInterval(zegar); clearInterval(odswiezanie); };
+    return () => { clearInterval(zegar); };
   },
 };

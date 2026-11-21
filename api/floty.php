@@ -894,6 +894,25 @@ function floty_start(array $odbiorcy): array
         LEFT JOIN lokalizacje l ON l.id = o.ladowisko_id WHERE o.id = ?');
     $u = $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = NULL, start_utc = ?, podejscie = 'bliska', status = 'na orbicie',
         orbita_deg = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL, manewr_od_utc = NULL, manewr_do_utc = NULL WHERE id = ?");
+    if (function_exists('atm_dostepna') && atm_dostepna()) {
+        // Lot w atmosferze: prom leci pod swój okręt macierzysty (choćby na drugą stronę planety), reszta prosto w górę;
+        // start_utc = koniec lotu w atmosferze, więc wznoszenie (START_WZNOSZENIE_S) liczy się od niego.
+        $koniec = $teraz;
+        $mm = floty_hangar_dostepny() ? 'm.orbita_deg AS matka_orbita, m.planeta_id AS matka_planeta,' : 'NULL AS matka_orbita, NULL AS matka_planeta,';
+        $qa = $db->prepare("SELECT o.ladowisko_id, o.planeta_id, {$mm} 1 FROM mapa_obiekty o"
+            . (floty_hangar_dostepny() ? ' LEFT JOIN mapa_obiekty m ON m.id = o.okret_macierzysty_id AND m.id <> o.id' : '') . ' WHERE o.id = ?');
+        foreach ($ids as $id) {
+            $qa->execute([$id]);
+            $o = $qa->fetch(PDO::FETCH_ASSOC);
+            $cel = $o['matka_orbita'] !== null && (int) $o['matka_planeta'] === (int) $o['planeta_id'] ? (float) $o['matka_orbita'] : null;
+            [$wOrbicie, $kat] = atm_start($id, (int) $o['ladowisko_id'], $cel, $teraz);
+            $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = NULL, start_utc = ?, podejscie = 'bliska', status = 'w atmosferze',
+                orbita_deg = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL, manewr_od_utc = NULL, manewr_do_utc = NULL WHERE id = ?")
+                ->execute([czas_utc($wOrbicie), round($kat, 2), round($kat, 2), $id]);
+            $koniec = max($koniec, $wOrbicie + START_WZNOSZENIE_S);
+        }
+        return ['ok' => true, 'orbita' => $koniec];
+    }
     foreach ($ids as $id) {
         $q->execute([$id]);
         $o = $q->fetch(PDO::FETCH_ASSOC);
@@ -929,9 +948,15 @@ function floty_ladowanie(array $odbiorcy, int $lokacjaId): array
         if (czas_z_utc($j['start_utc'] ?? null) + START_WZNOSZENIE_S > $teraz) blad('„' . $j['nazwa'] . '” jeszcze się wznosi.');
     }
     floty_blokada_skoku($odbiorcy);
+    if (function_exists('atm_dostepna') && atm_dostepna()) {
+        // Wejście w atmosferę pod jednostką i lot nad powierzchnią do lądowiska (ląduje floty_aktualizuj_hangary).
+        $koniec = $teraz;
+        foreach ($odbiorcy as $id) $koniec = max($koniec, atm_ladowanie_start((int) $id, $lokacjaId, $teraz));
+        return ['ok' => true, 'ladowisko' => $lok['nazwa'], 'koniec' => $koniec];
+    }
     $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = ?, przylot_utc = ?, status = 'na lądowisku' WHERE id IN ($marks)")
         ->execute([$lokacjaId, czas_utc($teraz), ...$odbiorcy]);
-    return ['ok' => true, 'ladowisko' => $lok['nazwa']];
+    return ['ok' => true, 'ladowisko' => $lok['nazwa'], 'koniec' => $teraz];
 }
 
 function floty_blokada_skoku(array $odbiorcy): void
@@ -1221,6 +1246,7 @@ function floty_lista(string $login, bool $mg = false): array
         . (function_exists('ruch_lokalizator_dostepny') && ruch_lokalizator_dostepny() ? 'o.wlasciciel_login,o.lokalizator_zasieg_pc,o.lokalizator_aktywny,' : '')
         . (floty_punkt_dostepny() ? 'COALESCE(n.predkosc_podswietlna_kms,300) AS predkosc_podswietlna_kms,' : '')
         . (floty_przyspieszenie_dostepne() ? 'COALESCE(n.podswietlna_pc_doba,20) AS podswietlna_pc_doba,' : '')
+        . (function_exists('atm_dostepna') && atm_dostepna() ? 'COALESCE(n.atmosferyczna_kmh,1000) AS atmosferyczna_kmh,' : '')
         . (floty_lot_dostepny() ? 'o.lot_cel_x,o.lot_cel_y,o.lot_od_utc,o.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=o.lot_cel_planeta_id) AS lot_cel_planeta,' : '') . "o.kurs_deg,o.kurs_start_deg,o.kurs_cel_deg,o.manewr_od_utc,o.manewr_do_utc,
         r.id AS rozkaz_id,r.status AS rozkaz_status,r.cel_x,r.cel_y,r.eta_utc,r.wejscie_utc,r.wariant
         FROM mapa_floty_jednostki j JOIN mapa_obiekty o ON o.id=j.obiekt_id
@@ -1796,16 +1822,22 @@ function floty_aktualizuj_hangary(): void
             p.podejscie = o.podejscie, p.podlot_start = NULL, p.podlot_cel = NULL, p.podlot_od_utc = NULL, p.podlot_do_utc = NULL
         WHERE p.w_hangarze = 1");
     $teraz = czas_teraz();
-    $q = $db->query('SELECT id, planeta_id, podejscie, podlot_start, podlot_cel, podlot_od_utc, podlot_do_utc, ladowanie_cel_id, ladowisko_id
-        FROM mapa_obiekty WHERE ladowanie_cel_id IS NOT NULL');
+    $atm = function_exists('atm_dostepna') && atm_dostepna();
+    $q = $db->query('SELECT id, planeta_id, podejscie, podlot_start, podlot_cel, podlot_od_utc, podlot_do_utc, ladowanie_cel_id, ladowisko_id'
+        . ($atm ? ', atm_rodzaj, atm_do_utc' : '') . ' FROM mapa_obiekty WHERE ladowanie_cel_id IS NOT NULL');
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $o) {
         if ($o['ladowisko_id'] || !$o['planeta_id']) {
             $db->prepare('UPDATE mapa_obiekty SET ladowanie_cel_id = NULL WHERE id = ?')->execute([$o['id']]);
             continue;
         }
         if (czas_z_utc($o['podlot_do_utc'] ?? null) > $teraz || floty_podejscie_teraz($o, $teraz) !== 'bliska') continue;
+        if ($atm) {
+            // Na bliskiej orbicie: najpierw lot w atmosferze do lądowiska, lądowanie dopiero po jego końcu.
+            if (($o['atm_rodzaj'] ?? null) !== 'ladowanie') { atm_ladowanie_start((int) $o['id'], (int) $o['ladowanie_cel_id'], $teraz); continue; }
+            if (czas_z_utc($o['atm_do_utc'] ?? null) > $teraz) continue;
+        }
         $db->prepare("UPDATE mapa_obiekty SET ladowisko_id = ?, przylot_utc = ?, status = 'na lądowisku', podejscie = 'bliska', ladowanie_cel_id = NULL,
-            podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL WHERE id = ?")
+            podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL" . ($atm ? ', atm_rodzaj = NULL, atm_od_utc = NULL, atm_do_utc = NULL' : '') . " WHERE id = ?")
             ->execute([(int) $o['ladowanie_cel_id'], czas_utc($teraz), $o['id']]);
     }
 }
@@ -1866,7 +1898,11 @@ function floty_prom_wylot(string $login, int $id, int $ladowiskoId = 0): array
     if (!$ladowiskoId) return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” opuścił hangar.'];
     if ($podejscie === 'bliska') {
         floty_aktualizuj_hangary();
-        return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” wylądował.', 'koniec' => $teraz];
+        $q = polaczenie_bazy()->prepare('SELECT ' . (function_exists('atm_dostepna') && atm_dostepna() ? 'atm_do_utc' : 'NULL') . ' FROM mapa_obiekty WHERE id = ?');
+        $q->execute([$id]);
+        $koniecAtm = czas_z_utc($q->fetchColumn() ?: null);
+        return ['ok' => true, 'komunikat' => $koniecAtm > $teraz ? '„' . $p['nazwa'] . '” leci w atmosferze na lądowisko — na miejscu za ' . max(1, (int) round(($koniecAtm - $teraz) / 60)) . ' min.'
+            : '„' . $p['nazwa'] . '” wylądował.', 'koniec' => max($teraz, $koniecAtm)];
     }
     $w = floty_dolot([$id], 'bliska');
     return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” opuścił hangar i leci na lądowisko.', 'koniec' => $w['koniec']];
@@ -2211,6 +2247,10 @@ function obsluz_floty(string $akcja, bool $post): void
             if (floty_punkt_dostepny() && isset($w['predkosc_podswietlna_kms'])) {
                 polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET predkosc_podswietlna_kms=? WHERE obiekt_id=?')
                     ->execute([max(10, min(5000, (float) $w['predkosc_podswietlna_kms'])), $id]);
+            }
+            if (function_exists('atm_dostepna') && atm_dostepna() && isset($w['atmosferyczna_kmh'])) {
+                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET atmosferyczna_kmh=? WHERE obiekt_id=?')
+                    ->execute([max(50, min(20000, (float) $w['atmosferyczna_kmh'])), $id]);
             }
             if (liczniki_dostepne()) {
                 polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET oslony=?, kadlub=? WHERE obiekt_id=?')

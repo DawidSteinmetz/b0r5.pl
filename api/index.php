@@ -64,6 +64,7 @@ require __DIR__ . '/gielda.php';
 require __DIR__ . '/czas.php';
 require __DIR__ . '/radar.php';
 require __DIR__ . '/doki.php';
+require __DIR__ . '/atmosfera.php';
 require __DIR__ . '/astro.php';
 require __DIR__ . '/gwiazdy.php';
 

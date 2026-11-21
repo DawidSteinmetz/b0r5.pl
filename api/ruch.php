@@ -228,6 +228,8 @@ function mapa_kurs_sql(): string
         . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '')
         // Lądowisko: statek stoi na powierzchni (mapa rysuje go na planecie, nie na orbicie).
         . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',m.ladowisko_id,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko_nazwa' : '')
+        // Lot w atmosferze (lądowanie, start): współrzędne geograficzne początku i końca.
+        . (function_exists('atm_dostepna') && atm_dostepna() ? ',m.atm_rodzaj,m.atm_od_utc,m.atm_do_utc,m.atm_szer0,m.atm_dl0,m.atm_szer1,m.atm_dl1,m.atm_orbita_deg' : '')
         // Dok orbitalny: stanowisko, jego kąt i wysokość pierścienia, lot łukiem do doku (start: kąt i promień).
         . (function_exists('doki_dostepne') && doki_dostepne() ? ',m.dok_stanowisko_id,m.dok_od_utc,m.dok_do_utc,m.dok_kat_start,m.dok_r_start_km,'
             . '(SELECT CONCAT(s.oznaczenie,\'|\',s.kat_deg,\'|\',l.orbita_wysokosc_km) FROM stocznia_stanowiska s JOIN lokalizacje l ON l.id=s.lokalizacja_id WHERE s.id=m.dok_stanowisko_id) AS dok_dane' : '');
@@ -241,6 +243,7 @@ function mapa_kurs_pola(array $r): array
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
     if (!empty($r['ladowisko_id'])) $w['na_ladowisku'] = (string) ($r['ladowisko_nazwa'] ?? '') ?: 'lądowisko';
+    if (function_exists('atm_pola') && array_key_exists('atm_do_utc', $r)) $w += atm_pola($r);
     if (!empty($r['dok_stanowisko_id']) && !empty($r['dok_dane'])) {
         [$ozn, $kat, $wys] = explode('|', (string) $r['dok_dane']) + ['', 0, 0];
         $w['dok'] = ['oznaczenie' => $ozn, 'kat' => (float) $kat, 'wysokosc_km' => (float) $wys,

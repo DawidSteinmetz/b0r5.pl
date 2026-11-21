@@ -103,7 +103,12 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
 - **Lokacje bez siatki** (np. import Kuat ze współrzędnymi NULL): `ruch_wspolrzedne_zastepcze` nadaje im stałe
   współrzędne z hierarchii (regiony setki km od środka, miasta dziesiątki, dzielnice kilometry), więc da się
   chodzić i jeździć taksówką. Gałąź orbity zostaje bez współrzędnych.
-- **Statki na lądowisku** mapa rysuje na tarczy planety (nie na orbicie), karta pokazuje lądowisko.
+- **Lot w atmosferze** (migracja 046, `api/atmosfera.php`): trzeci parametr silnika — `atmosferyczna_kmh`
+  (obok hipernapędu i podświetlnej; panel MG, profil napędu). Lądowanie: zejście z orbity (3 min) pod miejscem
+  jednostki, potem lot po łuku wielkiego koła do lądowiska, choćby na drugą stronę planety. Start: prom leci
+  w atmosferze pod okręt macierzysty, inne prosto w górę, potem wznoszenie (5 min). Mapa rysuje jednostkę na tarczy
+  planety we współrzędnych lądowiska (widok z góry — półkula północna, południowa tak samo; obraca się z planetą)
+  i prowadzi ją nad powierzchnią w trakcie lotu.
 - **Lokacje orbitalne i doki** (migracja 045, `api/doki.php`): lokacja może leżeć na orbicie
   (`orbita_wysokosc_km`, `orbita_kat_deg`) albo w przestrzeni układu (`uklad_kx/ky`). Pierścień stoczniowy Kuat:
   1000 km nad powierzchnią (promień 6000 km, obwód ok. 37 700 km — cały obwód zmieściłby ok. 18 850 ISD), doki

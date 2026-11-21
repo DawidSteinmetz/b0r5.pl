@@ -415,6 +415,29 @@ export default {
     }
     const pozycjaPlanety = (p) => { const u = ukladNaEkranie(p); return u ? [u.px, u.py] : naEkran(p.x, p.y); };
 
+    // Punkt geograficzny na tarczy planety (widok z góry, półkula północna; południowa tak samo): kierunek =
+    // kierunek słońca + kąt godzinny długości (jak floty_start na serwerze), odległość od środka = R·cos(szerokości).
+    // rPx — wprost promień na ekranie (np. w trakcie zejścia z orbity).
+    function geoNaEkran(p, u, szer, dl, t, rPx = null) {
+      const c = u.cykl;
+      const H = ((((c.faza_obrotu + 360 * (t - c.epoka) / (c.doba_h * 3600) + dl + 180) % 360) + 360) % 360) - 180;
+      const kier = (stanUkladu(c, t).katSlonca + H) * RAD;
+      const r = rPx ?? u.rp * Math.cos(Math.max(-89.9, Math.min(89.9, szer)) * RAD);
+      const [px, py] = pozycjaPlanety(p);
+      return [px + Math.cos(-kier) * r, py + Math.sin(-kier) * r];
+    }
+    // Punkt na łuku wielkiego koła z (szer0, dl0) do (szer1, dl1) po ułamku f drogi.
+    function geoLuk(a, f) {
+      f = Math.max(0, Math.min(1, f));
+      const w = (s, d) => [Math.cos(s * RAD) * Math.cos(d * RAD), Math.cos(s * RAD) * Math.sin(d * RAD), Math.sin(s * RAD)];
+      const A = w(a.szer0, a.dl0), B = w(a.szer1, a.dl1);
+      const kat = Math.acos(Math.max(-1, Math.min(1, A[0] * B[0] + A[1] * B[1] + A[2] * B[2])));
+      if (kat < 1e-6) return [a.szer1, a.dl1];
+      const k0 = Math.sin((1 - f) * kat) / Math.sin(kat), k1 = Math.sin(f * kat) / Math.sin(kat);
+      const v = [A[0] * k0 + B[0] * k1, A[1] * k0 + B[1] * k1, A[2] * k0 + B[2] * k1];
+      return [Math.asin(Math.max(-1, Math.min(1, v[2]))) / RAD, Math.atan2(v[1], v[0]) / RAD];
+    }
+
     // Najkrótszy łuk (stopnie, ze znakiem) — jak doki_luk na serwerze.
     const lukDeg = (od, d) => ((((d - od) % 360) + 540) % 360) - 180;
     // Promień pierścienia (km od środka planety) i planeta lokacji orbitalnej.
@@ -654,6 +677,30 @@ export default {
         const u = ukladNaEkranie(p);
         const R = u ? Math.max(u.rp + 4, rKm * u.skm) : 14;
         return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
+      }
+      const uPl = ukladNaEkranie(p);
+      if (uPl && !uPl.ksiezyc && o.atmosfera && teraz() < o.atmosfera.do) {
+        // Lot w atmosferze: zejście z orbity i lot nad powierzchnią (lądowanie) albo lot i wznoszenie (start).
+        const a = o.atmosfera, t = teraz();
+        const rOrb = Math.max(uPl.rp + 8, ((uPl.srednicaKm || 12000) / 2 + 300) * uPl.skm);
+        if (a.rodzaj === 'ladowanie') {
+          const tz = a.od + a.faza_s;
+          if (t < tz) return geoNaEkran(p, uPl, a.szer0, a.dl0, t, rOrb + (uPl.rp - rOrb) * ((t - a.od) / a.faza_s));
+          const [s, d] = geoLuk(a, (t - tz) / Math.max(1, a.do - tz));
+          return geoNaEkran(p, uPl, s, d, t);
+        }
+        const tw = a.do - a.faza_s; // koniec lotu w atmosferze, potem wznoszenie
+        if (t < tw) { const [s, d] = geoLuk(a, (t - a.od) / Math.max(1, tw - a.od)); return geoNaEkran(p, uPl, s, d, t); }
+        const f = (t - tw) / a.faza_s;
+        const [x0, y0] = geoNaEkran(p, uPl, a.szer1, a.dl1, t);
+        const [px, py] = pozycjaPlanety(p);
+        const kat = a.orbita != null ? -a.orbita * RAD : Math.atan2(y0 - py, x0 - px);
+        const r0 = Math.hypot(x0 - px, y0 - py), r = r0 + (rOrb - r0) * f;
+        return [px + Math.cos(kat) * r, py + Math.sin(kat) * r];
+      }
+      if (uPl && !uPl.ksiezyc && o.na_ladowisku && o.geo) {
+        // Na lądowisku: współrzędne geograficzne lądowiska na tarczy planety (widok z góry; obraca się z planetą).
+        return geoNaEkran(p, uPl, o.geo.szer, o.geo.dl, teraz());
       }
       if (o.na_ladowisku || o.rozbity) {
         // Na powierzchni (lądowisko albo wrak): na tarczy planety, nie na orbicie; kilka statków obok siebie.
@@ -1846,7 +1893,8 @@ export default {
             o.wlasciciel ? wiersz('Właściciel / frakcja', o.wlasciciel) : null,
             o.status ? wiersz('Status', o.status) : null,
             o.planeta ? wiersz('Planeta', o.planeta) : null,
-            o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku) : null,
+            o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku + (o.geo ? ` · ${Math.abs(o.geo.szer).toFixed(1)}°${o.geo.szer >= 0 ? 'N' : 'S'} ${Math.abs(o.geo.dl).toFixed(1)}°${o.geo.dl >= 0 ? 'E' : 'W'}` : '')) : null,
+            o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
             o.dok ? wiersz('Dok', o.dok.do && o.dok.do > teraz() ? `lot łukiem do stanowiska ${o.dok.oznaczenie} · do ${czasGry(o.dok.do)}` : `stanowisko ${o.dok.oznaczenie}`) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
             o.opis ? wiersz('Opis', o.opis) : null),

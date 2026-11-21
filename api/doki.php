@@ -149,15 +149,15 @@ function obsluz_doki(string $akcja, bool $post): void
             $q = $db->prepare("SELECT 1 FROM mapa_rozkazy_skokow_jednostki WHERE obiekt_id = ? AND status = 'w_nadprzestrzeni' LIMIT 1");
             $q->execute([$id]);
             if ($q->fetchColumn()) blad('Okręt wykonuje skok.');
-            $podejscie = function_exists('floty_podejscie_teraz') ? (floty_podejscie_teraz($o, $teraz) ?: ($o['podejscie'] ?: 'bliska')) : 'bliska';
-            $rp = $p['promien_km'] - $p['wysokosc_km'];
-            if ($o['dok_stanowisko_id'] && (!$o['dok_do_utc'] || czas_z_utc((string) $o['dok_do_utc']) <= $teraz)) {
-                $r0 = $p['promien_km']; // przestawienie z doku do doku: start z pierścienia
-            } else {
-                $r0 = function_exists('floty_promien_orbity_km') ? floty_promien_orbity_km($rp, $podejscie) : $rp + 300;
+            // Start: sztywne miejsce jednostki teraz (także w trakcie przelotu albo w innym doku).
+            $start = przelot_dostepny() ? przelot_miejsce(przelot_jednostka($id), $teraz) : null;
+            if (!$start) {
+                $rp = $p['promien_km'] - $p['wysokosc_km'];
+                $r0 = floty_promien_orbity_km($rp, floty_podejscie_teraz($o, $teraz) ?: ($o['podejscie'] ?: 'bliska'));
                 if ($r0 === null) blad('Okręt jest na krawędzi układu. Najpierw zejdź na orbitę planety.');
+                $start = [(float) ($o['orbita_deg'] ?? fmod((float) ($o['kurs_deg'] ?? 90) + 180, 360)), $r0];
             }
-            $kat0 = (float) ($o['orbita_deg'] ?? fmod((float) ($o['kurs_deg'] ?? 90) + 180, 360));
+            [$kat0, $r0] = $start;
             $wybor = (int) ($w['stanowisko_id'] ?? 0);
             $db->beginTransaction();
             try {
@@ -176,10 +176,14 @@ function obsluz_doki(string $akcja, bool $post): void
                     $s = $wolne[0];
                 }
                 $kat1 = (float) $s['kat_deg'];
-                $delta = doki_luk($kat0, $kat1);
-                $km = abs($delta) * M_PI / 180 * ($r0 + $p['promien_km']) / 2 + abs($p['promien_km'] - $r0);
-                $kms = max(10.0, min(200.0, (float) $o['pc_doba'] * 2));
-                $czas = DOK_PODEJSCIE_S + (int) round($km / $kms);
+                if (przelot_dostepny()) {
+                    $pr = przelot_ustaw(przelot_jednostka($id), [$kat0, $r0], [$kat1, $p['promien_km']], 'dok', $teraz);
+                    [$delta, $km, $czas] = [$pr['luk'], $pr['km'], $pr['koniec'] - $teraz];
+                } else {
+                    $delta = doki_luk($kat0, $kat1);
+                    $km = abs($delta) * M_PI / 180 * ($r0 + $p['promien_km']) / 2 + abs($p['promien_km'] - $r0);
+                    $czas = DOK_PODEJSCIE_S + (int) round($km / max(10.0, min(200.0, (float) $o['pc_doba'] * 2)));
+                }
                 if ($o['dok_stanowisko_id'] && (int) $o['dok_stanowisko_id'] !== (int) $s['id']) {
                     $db->prepare("UPDATE stocznia_stanowiska SET stan = 'wolne', obiekt_id = NULL, opis = 'Wolne stanowisko naprawcze', postep = 0 WHERE id = ?")->execute([(int) $o['dok_stanowisko_id']]);
                 }
@@ -216,4 +220,85 @@ function obsluz_doki(string $akcja, bool $post): void
 function doki_luk(float $od, float $do): float
 {
     return fmod(fmod($do - $od, 360) + 540, 360) - 180;
+}
+
+// ── Przelot orbitalny (migracja 047) ──────────────────────────────────────────────────────────────────────────────
+// Jedna mechanika dla dokowania i powrotu promu do hangaru: sztywne miejsce jednostki przy planecie (kąt na orbicie
+// i promień od środka planety) → łuk po orbicie krótszą stroną planety do miejsca celu (stanowisko doku albo okręt
+// macierzysty) → na końcu dok albo hangar. Przyciski „Dokuj” i „Powrót do hangaru” to tylko skróty.
+
+const PRZELOT_KONCOWKA_S = ['dok' => 300, 'hangar' => 120, 'orbita' => 0]; // wejście w dok / do hangaru
+
+function przelot_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT przelot_cel, przelot_do_utc, przelot_kat1 FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+// Jednostka z danymi do liczenia miejsca na orbicie.
+function przelot_jednostka(int $id): array
+{
+    $dok = doki_dostepne() ? 'o.dok_stanowisko_id, (SELECT kat_deg FROM stocznia_stanowiska WHERE id = o.dok_stanowisko_id) AS dok_kat,' : 'NULL AS dok_stanowisko_id, NULL AS dok_kat,';
+    $prz = przelot_dostepny() ? 'o.przelot_cel, o.przelot_od_utc, o.przelot_do_utc, o.przelot_kat0, o.przelot_r0_km, o.przelot_kat1, o.przelot_r1_km,' : '';
+    $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.planeta_id, p.nazwa AS planeta, o.orbita_deg, o.kurs_deg, o.podejscie, o.podlot_start, o.podlot_cel,
+            o.podlot_od_utc, o.podlot_do_utc, {$dok} {$prz} COALESCE(n.podswietlna_pc_doba, 20) AS pc_doba
+        FROM mapa_obiekty o LEFT JOIN mapa_planety p ON p.id = o.planeta_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = o.id WHERE o.id = ?");
+    $q->execute([$id]);
+    return $q->fetch(PDO::FETCH_ASSOC) ?: blad('Nie ma takiej jednostki.');
+}
+
+// [kąt °, promień km od środka planety] jednostki w chwili $t: w trakcie przelotu — na łuku, w doku — stanowisko,
+// inaczej sztywne miejsce na orbicie (orbita_deg) i promień z podejścia.
+function przelot_miejsce(array $o, int $t): ?array
+{
+    if (!$o['planeta']) return null;
+    $rp = (float) (astro_cykl((string) $o['planeta'])['srednica_km'] ?? 12000) / 2;
+    if (!empty($o['przelot_do_utc']) && $o['przelot_kat0'] !== null) {
+        $od = czas_z_utc((string) $o['przelot_od_utc']); $do = czas_z_utc((string) $o['przelot_do_utc']);
+        $f = $t >= $do ? 1.0 : max(0.0, ($t - $od) / max(1, $do - $od));
+        $k0 = (float) $o['przelot_kat0'];
+        return [fmod($k0 + doki_luk($k0, (float) $o['przelot_kat1']) * $f + 360, 360),
+            (float) $o['przelot_r0_km'] + ((float) $o['przelot_r1_km'] - (float) $o['przelot_r0_km']) * $f];
+    }
+    if (!empty($o['dok_stanowisko_id']) && $o['dok_kat'] !== null && ($p = doki_pierscien_planety((int) $o['planeta_id']))) {
+        return [(float) $o['dok_kat'], $p['promien_km']];
+    }
+    $podejscie = (floty_podejscie_teraz($o, $t) ?: ($o['podejscie'] ?: 'bliska'));
+    $r = floty_promien_orbity_km($rp, $podejscie) ?? $rp * 15;
+    return [(float) ($o['orbita_deg'] ?? fmod((float) ($o['kurs_deg'] ?? 90) + 180, 360)), $r];
+}
+
+// Ustawia przelot jednostki z miejsca $start do $cel ([kąt, promień]); zwraca czas końca (s).
+function przelot_ustaw(array $o, array $start, array $cel, string $rodzaj, int $teraz): array
+{
+    $delta = doki_luk($start[0], $cel[0]);
+    $km = abs($delta) * M_PI / 180 * ($start[1] + $cel[1]) / 2 + abs($cel[1] - $start[1]);
+    $kms = max(10.0, min(200.0, (float) $o['pc_doba'] * 2));      // manewr przy planecie: ostrożnie
+    $koniec = $teraz + (PRZELOT_KONCOWKA_S[$rodzaj] ?? 0) + (int) round($km / $kms);
+    $kurs = fmod($cel[0] + ($delta >= 0 ? 90 : 270) + 360, 360);  // dziób wzdłuż orbity
+    polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET przelot_cel = ?, przelot_od_utc = ?, przelot_do_utc = ?, przelot_kat0 = ?, przelot_r0_km = ?,
+            przelot_kat1 = ?, przelot_r1_km = ?, orbita_deg = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL, manewr_od_utc = NULL, manewr_do_utc = NULL,
+            podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL WHERE id = ?")
+        ->execute([$rodzaj, czas_utc($teraz), czas_utc($koniec), round($start[0], 3), round($start[1], 1), round($cel[0], 3), round($cel[1], 1),
+            round($cel[0], 3), round($kurs, 2), (int) $o['id']]);
+    return ['koniec' => $koniec, 'km' => $km, 'luk' => $delta];
+}
+
+// Domyka przeloty, których czas minął: prom wchodzi do hangaru, reszta zostaje na miejscu celu.
+function przelot_domknij(): void
+{
+    if (!przelot_dostepny()) return;
+    $db = polaczenie_bazy();
+    $teraz = czas_utc(czas_teraz());
+    $q = $db->prepare("SELECT id FROM mapa_obiekty WHERE przelot_cel = 'hangar' AND przelot_do_utc <= ?");
+    $q->execute([$teraz]);
+    foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $id) {
+        $db->prepare("UPDATE mapa_obiekty SET w_hangarze = 1, ladowanie_cel_id = NULL, status = 'w hangarze' WHERE id = ?")->execute([(int) $id]);
+    }
+    $db->prepare('UPDATE mapa_obiekty SET przelot_cel = NULL, przelot_od_utc = NULL, przelot_do_utc = NULL, przelot_kat0 = NULL, przelot_r0_km = NULL,
+        przelot_kat1 = NULL, przelot_r1_km = NULL WHERE przelot_do_utc IS NOT NULL AND przelot_do_utc <= ?')->execute([$teraz]);
 }

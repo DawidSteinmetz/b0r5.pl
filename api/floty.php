@@ -836,6 +836,11 @@ function floty_blokada_ladowiska(array $odbiorcy): void
     $q->execute($odbiorcy);
     $n = $q->fetchColumn();
     if ($n) blad('„' . $n . '” stoi na lądowisku. Najpierw start.');
+    if (function_exists('przelot_dostepny') && przelot_dostepny()) {
+        $q = polaczenie_bazy()->prepare("SELECT nazwa FROM mapa_obiekty WHERE id IN ($marks) AND przelot_do_utc > ? LIMIT 1");
+        $q->execute([...$odbiorcy, czas_utc(czas_teraz())]);
+        if ($n = $q->fetchColumn()) blad('„' . $n . '” wykonuje manewr na orbicie.');
+    }
     // Okręt w doku orbitalnym: najpierw „Oddokuj” (zwalnia stanowisko).
     if (function_exists('doki_dostepne') && doki_dostepne()) {
         $q = polaczenie_bazy()->prepare("SELECT nazwa FROM mapa_obiekty WHERE id IN ($marks) AND dok_stanowisko_id IS NOT NULL LIMIT 1");
@@ -1815,6 +1820,7 @@ function floty_blokada_hangaru(array $odbiorcy): void
 function floty_aktualizuj_hangary(): void
 {
     if (!floty_hangar_dostepny()) return;
+    if (function_exists('przelot_domknij')) przelot_domknij();
     $db = polaczenie_bazy();
     $db->exec("UPDATE mapa_obiekty p JOIN mapa_obiekty o ON o.id = p.okret_macierzysty_id
         SET p.planeta_id = o.planeta_id, p.x = o.x, p.y = o.y, p.kurs_deg = o.kurs_deg, p.orbita_deg = o.orbita_deg," . (floty_uklad_dostepny() ? 'p.uklad_kx = o.uklad_kx, p.uklad_ky = o.uklad_ky,' : '') . "
@@ -1893,7 +1899,8 @@ function floty_prom_wylot(string $login, int $id, int $ladowiskoId = 0): array
     $db->prepare("UPDATE mapa_obiekty SET w_hangarze = 0, planeta_id = ?, x = ?, y = ?, kurs_deg = ?, kurs_start_deg = NULL, kurs_cel_deg = NULL,
         manewr_od_utc = NULL, manewr_do_utc = NULL, orbita_deg = ?, podejscie = ?, przylot_utc = ?, rozbity = 0,
         podlot_start = NULL, podlot_cel = NULL, podlot_od_utc = NULL, podlot_do_utc = NULL, ladowanie_cel_id = ?, status = 'w locie' WHERE id = ?")
-        ->execute([$planeta, $p['okret_x'], $p['okret_y'], round((float) ($p['okret_kurs'] ?? 90), 2), $p['okret_orbita'], $podejscie,
+        ->execute([$planeta, $p['okret_x'], $p['okret_y'], round((float) ($p['okret_kurs'] ?? 90), 2),
+            $p['okret_orbita'] ?? ($planeta ? round(fmod((float) ($p['okret_kurs'] ?? 90) + 180, 360), 3) : null), $podejscie,
             $planeta ? czas_utc($teraz - 3600) : null, $ladowiskoId ?: null, $id]);
     if (!$ladowiskoId) return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” opuścił hangar.'];
     if ($podejscie === 'bliska') {
@@ -1924,6 +1931,21 @@ function floty_prom_powrot(string $login, int $id): array
             && (($p['uklad_kx'] ?? null) === null) === (($p['okret_kx'] ?? null) === null)
             && hypot((float) ($p['uklad_kx'] ?? 0) - (float) ($p['okret_kx'] ?? 0), (float) ($p['uklad_ky'] ?? 0) - (float) ($p['okret_ky'] ?? 0)) < 50000);
     if (!$razem) blad('„' . $p['okret'] . '” jest gdzie indziej. Najpierw dolećcie do niego.');
+    if ($p['planeta_id'] && function_exists('przelot_dostepny') && przelot_dostepny()) {
+        // Ten sam przelot co dokowanie: łukiem po orbicie z miejsca promu do okrętu, potem wejście do hangaru.
+        $teraz = czas_teraz();
+        $prom = przelot_jednostka($id);
+        if (!empty($prom['przelot_do_utc']) && czas_z_utc((string) $prom['przelot_do_utc']) > $teraz) blad('„' . $p['nazwa'] . '” już wykonuje manewr.');
+        $start = przelot_miejsce($prom, $teraz);
+        $cel = przelot_miejsce(przelot_jednostka((int) $p['okret_macierzysty_id']), $teraz);
+        if ($start && $cel) {
+            if (!empty($prom['dok_stanowisko_id'])) blad('„' . $p['nazwa'] . '” stoi w doku. Najpierw oddokuj.');
+            $pr = przelot_ustaw($prom, $start, $cel, 'hangar', $teraz);
+            polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET status = 'w locie' WHERE id = ?")->execute([$id]);
+            return ['ok' => true, 'koniec' => $pr['koniec'], 'komunikat' => '„' . $p['nazwa'] . '” leci do hangaru ' . $p['okret'] . ' — łukiem '
+                . abs(round($pr['luk'])) . '°, ok. ' . number_format($pr['km'], 0, ',', ' ') . ' km, w hangarze za ' . max(1, (int) round(($pr['koniec'] - $teraz) / 60)) . ' min.'];
+        }
+    }
     polaczenie_bazy()->prepare("UPDATE mapa_obiekty SET w_hangarze = 1, ladowanie_cel_id = NULL, status = 'w hangarze' WHERE id = ?")->execute([$id]);
     floty_aktualizuj_hangary();
     return ['ok' => true, 'komunikat' => '„' . $p['nazwa'] . '” wrócił do hangaru ' . $p['okret'] . '.'];

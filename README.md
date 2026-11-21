@@ -120,6 +120,10 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   pokładzie): automat (najbliższe wolne) albo sektor i stanowisko; trasa łukiem po orbicie krótszą stroną planety
   (kąt i promień zmieniają się płynnie), plus 5 min podejścia. W stoczni z pierścieniem naprawa tylko w doku.
   „Oddokuj” zwalnia stanowisko (przerywa naprawy w toku).
+- **Przelot orbitalny** (migracja 047): jednostka ma sztywne miejsce przy planecie (kąt `orbita_deg` + promień
+  z podejścia). Dokowanie do pierścienia i powrót promu do hangaru to ten sam przelot łukiem po orbicie krótszą
+  stroną planety (`przelot_*`), z końcówką: wejście w dok (5 min) albo do hangaru (2 min). Wachlarzem rozstawia się
+  tylko flota; pojedyncza jednostka nie przesuwa się, gdy przy planecie pojawi się ktoś inny.
 - **Okno promu Lambda:** klasa albo nazwa z „Lambda” daje widok przez kokpit promu (`okno: 'lambda'`).
 - **Wejście na pokład:** na lądowisku Nawigacja pokazuje stojące tam statki z prawem wejścia (właściciel,
   kapitan, dowódca floty okrętu macierzystego promu, dostęp) oraz awaryjny powrót na ostatni statek.

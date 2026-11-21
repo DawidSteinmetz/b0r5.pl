@@ -670,6 +670,15 @@ export default {
       if (!p && !wNadprzestrzeni(o) && o.typ !== 'postac') { const [dx, dy] = szykKm(o); return naEkran(o.x, o.y, dx, dy); }
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || wNadprzestrzeni(o)) return pozycjaDomyslna;
+      if (o.przelot && teraz() < o.przelot.do) {
+        // Przelot orbitalny (dok, powrót do hangaru): łuk krótszą stroną planety, kąt i promień płynnie.
+        const pr = o.przelot, f = Math.max(0, Math.min(1, (teraz() - pr.od) / Math.max(1, pr.do - pr.od)));
+        const kat = pr.kat0 + lukDeg(pr.kat0, pr.kat1) * f, rKm = pr.r0 + (pr.r1 - pr.r0) * f;
+        const [px, py] = pozycjaPlanety(p);
+        const u = ukladNaEkranie(p);
+        const R = u ? Math.max(u.rp + 4, rKm * u.skm) : 14;
+        return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
+      }
       if (o.dok) {
         // Dok orbitalny (albo lot łukiem do doku): kąt i promień od środka planety.
         const [kat, rKm] = miejsceWDoku(o);
@@ -712,14 +721,18 @@ export default {
         const a = i * 2.4;
         return [px + Math.cos(a) * r, py + Math.sin(a) * r];
       }
-      const orbita = !!o.flota || !!o.orbita;
-      if (!orbita && o.typ !== 'postac') return pozycjaDomyslna;
-      const grupaOrbity = (x) => x.flota?.kod || (x.bitwa ? `bitwa:${x.bitwa.nazwa}` : `orbita:${norm(x.planeta)}`);
+      // Sztywne miejsce na orbicie: każda jednostka ma własny kąt (orbita_deg) i promień z podejścia. Wachlarzem
+      // rozstawia się tylko flota (albo strona bitwy); pojedyncza jednostka nie przesuwa się, gdy przy planecie
+      // pojawi się ktoś inny (NPC, prom, lądujący) — wcześniej wtedy „skakała”.
+      const orbita = o.typ !== 'postac';
+      const naOrbicie = (x) => planetaObiektu(x) === p && !wNadprzestrzeni(x) && x.typ !== 'postac' && !(x.id < 0) && !x.na_ladowisku
+        && !x.rozbity && !x.dok && !(x.atmosfera && teraz() < x.atmosfera.do) && !(x.przelot && teraz() < x.przelot.do);
+      const grupaOrbity = (x) => x.flota?.kod || (x.bitwa ? `bitwa:${x.bitwa.nazwa}` : `jednostka:${x.id}`);
       const grupa = grupaOrbity(o);
-      const rodzina = obiektyMapy.filter((x) => planetaObiektu(x) === p && !wNadprzestrzeni(x)
-        && (orbita ? grupaOrbity(x) === grupa : x.typ === 'postac'));
+      const rodzina = orbita ? (o.flota || o.bitwa ? obiektyMapy.filter((x) => naOrbicie(x) && grupaOrbity(x) === grupa) : [o])
+        : obiektyMapy.filter((x) => planetaObiektu(x) === p && x.typ === 'postac' && !naPokladzie(x));
       const indeks = Math.max(0, rodzina.findIndex((x) => x.id === o.id));
-      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.flota || x.orbita) && !wNadprzestrzeni(x)).map(grupaOrbity))];
+      const grupyOrbit = [...new Set(obiektyMapy.filter((x) => naOrbicie(x) && (x.flota || x.bitwa)).map(grupaOrbity))];
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const zwinieta = !!grupaZwinieta(o);
       const uklad = ukladNaEkranie(p);

@@ -322,16 +322,24 @@ function radar_npc_miejsca(array $planety): array
     return $w;
 }
 
-// Miejsce lądowania trasy w porcie: prawdziwa lokacja (stała dla trasy) albo zastępcza według ładunku.
+// Miejsce lądowania trasy w porcie (stałe dla trasy i strony). Planeta ma setki lądowisk: kopalnie, rafinerie,
+// składy, porty — każda trasa dostaje własne, rozrzucone po całej planecie (równomiernie na kuli). Prawdziwe
+// lokacje z bazy (lądowiska, porty, magazyny) biorą tylko część tras — inaczej wszyscy lądowaliby w jednym miejscu.
 function radar_npc_ladowisko(array $t, string $port, array $miejsca, string $strona): array
 {
     $h = crc32("npc|{$t['id']}|{$strona}");
     $lista = $miejsca[$port] ?? [];
-    if ($lista) return $lista[$h % count($lista)];
+    if ($lista && ($h % 100) < min(60, 3 * count($lista))) return $lista[($h >> 7) % count($lista)];
     $l = mb_strtolower((string) $t['ladunek']);
-    $nazwa = str_contains($l, 'ruda') ? 'kopalnia rudy' : (str_contains($l, 'gaz') ? 'rafineria gazu' : (str_contains($l, 'żywno') || str_contains($l, 'zboże')
-        ? 'skład rolniczy' : (str_contains($l, 'pasaż') || str_contains($l, 'pielgrzym') ? 'port pasażerski' : 'port towarowy')));
-    return [$nazwa . ' (' . $port . ')', (float) ($h % 120) - 60, (float) (($h >> 8) % 360) - 180];
+    $rodzaj = str_contains($l, 'ruda') ? 'Kopalnia rudy' : (str_contains($l, 'gaz') || str_contains($l, 'paliw') ? 'Rafineria'
+        : (str_contains($l, 'żywno') || str_contains($l, 'zboże') || str_contains($l, 'racje') ? 'Skład rolniczy'
+        : (str_contains($l, 'pasaż') || str_contains($l, 'pielgrzym') || str_contains($l, 'robotni') ? 'Port pasażerski'
+        : (str_contains($l, 'durastal') || str_contains($l, 'części') || str_contains($l, 'płyty') ? 'Zakłady przemysłowe' : 'Lądowisko towarowe'))));
+    $g = crc32("lad|{$port}|{$t['id']}|{$strona}");
+    $szer = rad2deg(asin(((($g % 20001) / 10000) - 1) * 0.9));       // równomiernie na kuli, bez biegunów
+    $dl = (($g >> 9) % 36000) / 100 - 180;
+    $oznaczenie = strtoupper(base_convert((string) ($g % 1296), 10, 36)) . '-' . (($g >> 5) % 90 + 10);
+    return ["{$rodzaj} {$oznaczenie}", $szer, $dl];
 }
 
 // Faza cyklu trasy NPC w chwili $t (po każdej stronie): postój na lądowisku (2–3 h załadunku) → start i wznoszenie

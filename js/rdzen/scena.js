@@ -343,6 +343,18 @@ export function utworzScene(canvas) {
   // (km od słońca) między odpowiedziami serwera — gwiazda i planeta rosną albo maleją płynnie.
   function widokTeraz() {
     const v = stan.widok;
+    // W doku albo w przelocie do doku: miejsce i wysokość okrętu z pierścienia (łuk po orbicie liczony na tablecie).
+    if (v?.cykl && (v.przelot || v.dok)) {
+      const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+      const Rp = (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2;
+      const p = v.przelot;
+      if (p && t < p.do) {
+        const f = Math.max(0, Math.min(1, (t - p.od) / Math.max(1, p.do - p.od)));
+        const luk = ((((p.kat1 - p.kat0) % 360) + 540) % 360) - 180;
+        return { ...v, orbita: p.kat0 + luk * f, wysokosc_km: Math.max(50, p.r0 + (p.r1 - p.r0) * f - Rp) };
+      }
+      if (v.dok) return { ...v, orbita: v.dok.kat, wysokosc_km: v.dok.wysokosc_km };
+    }
     const l = v?.podswietlny;
     if (!l?.k0 || !l?.k1 || !v.cykl || !v.slonce) return v;
     const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
@@ -393,6 +405,64 @@ export function utworzScene(canvas) {
       zbierz(x, y, `k:${m.nazwa || ''}`, { cialo: { rodzaj: 'ksiezyc', nazwa: m.nazwa || '', opis: `księżyc planety ${stan.miejsce || ''}`, km: dist, r: Math.max(r, 6) } });
       ctx.restore();
     }
+  }
+
+  // Pierścień orbitalny (stocznie Kuat) widziany z okrętu: punkty pierścienia w 3D (płaszczyzna równika), okręt
+  // nieco ponad nią — z daleka elipsa wokół planety, z bliskiej orbity łuk przez całe niebo, z doku konstrukcja
+  // tuż obok. Rzut tą samą skalą co planeta (stopnie → piksele). 'tyl' — za planetą (zasłania go tarcza), 'przod'.
+  function rysujPierscien(t, warstwa) {
+    const v = widokTeraz(), k = kierunki();
+    if (!v?.pierscien || !v.cykl || !k || v.bez_planety) return;
+    const RAD = Math.PI / 180;
+    const Rp = (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2;
+    const Rr = Rp + Number(v.pierscien.wysokosc_km || 1000);
+    const dO = Rp + wysokoscOrbity(Rp * 2);
+    const teraz = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+    const wDoku = !!(v.dok && !(v.przelot && teraz < v.przelot.do));
+    const e = wDoku ? 3 : Math.max(40, dO * 0.1);               // wysokość okrętu nad płaszczyzną pierścienia (km)
+    const ox = Math.cos(k.orbita * RAD) * dO, oy = Math.sin(k.orbita * RAD) * dO;
+    const ppd = w / POLE_WIDZENIA;
+    const elPlanety = Math.atan2(-e, dO) / RAD;
+    // Z bliskiej orbity planeta wypełnia dół okna (stylizacja) — poziom pierścienia zostaje na środku okna.
+    const cy = yWidoku(stan.okno ? 0.46 : 0.55);
+    const styczna = Math.sqrt(Math.max(0, dO * dO + e * e - Rp * Rp)); // dalej niż to — za horyzontem planety
+    const N = 900;
+    let poprzedni = null;
+    ctx.save();
+    ctx.lineCap = 'butt';
+    for (let i = 0; i <= N; i++) {
+      const fi = (i / N) * 2 * Math.PI;
+      const px = Math.cos(fi) * Rr - ox, py = Math.sin(fi) * Rr - oy;
+      const poz = Math.hypot(px, py), dist = Math.hypot(poz, e);
+      const az = Math.atan2(py, px) / RAD;
+      const roz = norm180(az - k.kurs);
+      const el = Math.atan2(-e, poz) / RAD;
+      const x = xKierunku(k.kurs, az), y = cy - (el - elPlanety) * ppd;
+      const tyl = dist > styczna;
+      const ok = Math.abs(roz) < POLE_WIDZENIA / 2 + 8 && (warstwa === 'tyl') === tyl;
+      // grubość: konstrukcja ok. 120 km szerokości (moduły, doki, dźwigary), z bliska do jednej trzeciej okna
+      const sz = Math.min(h * 0.35, Math.max(1.2, Math.atan2(120, dist) / RAD * ppd));
+      if (ok && poprzedni) {
+        // pas jako czworokąt między kolejnymi punktami — z bliska zwęża się w perspektywie w głąb pierścienia
+        const jasn = 0.55 + 0.35 * Math.max(0, Math.cos((az - (k.slonce ?? 0)) * RAD));
+        ctx.fillStyle = `rgba(${Math.round(150 * jasn + 60)}, ${Math.round(160 * jasn + 60)}, ${Math.round(170 * jasn + 60)}, 0.92)`;
+        ctx.beginPath();
+        ctx.moveTo(poprzedni[0], poprzedni[1] - poprzedni[2] / 2); ctx.lineTo(x, y - sz / 2);
+        ctx.lineTo(x, y + sz / 2); ctx.lineTo(poprzedni[0], poprzedni[1] + poprzedni[2] / 2);
+        ctx.closePath(); ctx.fill();
+        if (Math.abs(x - poprzedni[0]) < 0.6 && sz < 3) ctx.fillRect(x - 0.6, y - sz / 2, 1.2, sz);
+        if (sz > 6) {
+          // z bliska: dźwigary i światła doków
+          ctx.strokeStyle = 'rgba(40, 46, 52, 0.7)'; ctx.lineWidth = Math.max(1, sz * 0.08);
+          ctx.beginPath(); ctx.moveTo(x, y - sz / 2); ctx.lineTo(x, y + sz / 2); ctx.stroke();
+          if (i % 3 === 0) { ctx.fillStyle = i % 2 ? 'rgba(255, 220, 150, 0.9)' : 'rgba(180, 220, 255, 0.85)'; ctx.fillRect(x - 1, y - sz * 0.3, 2, 2); ctx.fillRect(x + 2, y + sz * 0.2, 2, 2); }
+        } else if (i % 6 === 0 && sz > 1.2) {
+          ctx.fillStyle = 'rgba(255, 225, 170, 0.8)'; ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+        }
+      }
+      poprzedni = ok ? [x, y, sz] : null;
+    }
+    ctx.restore();
   }
 
   function przygotujPlanete() {
@@ -1379,7 +1449,9 @@ export function utworzScene(canvas) {
         rysujSasiednieGwiazdy();
         rysujSlonce();
         rysujKsiezyce();
+        rysujPierscien(t, 'tyl');
         rysujPlanete(t, 1);
+        rysujPierscien(t, 'przod');
         break;
       case 'powierzchnia':
         rysujPowierzchnie(t, dt * ruch);

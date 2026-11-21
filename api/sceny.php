@@ -339,7 +339,10 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         'odleglosc' => $odleglosc,
         'miejsce' => $planeta,
         'zmieniono' => $zmieniono,
-        'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta), 'gwiazdy' => $gwiazdy],
+        'widok' => mapa_kurs_pola($o) + ['cykl' => astro_cykl($planeta), 'gwiazdy' => $gwiazdy]
+            // Pierścień orbitalny planety (np. stocznie Kuat) — widać go przez okno.
+            + (function_exists('doki_pierscien_planety') && !empty($o['planeta_id']) && ($pr = doki_pierscien_planety((int) $o['planeta_id']))
+                ? ['pierscien' => ['nazwa' => $pr['nazwa'], 'wysokosc_km' => $pr['wysokosc_km']]] : []),
     ];
 }
 

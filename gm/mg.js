@@ -1479,7 +1479,17 @@ function wykresPodgladu(historia, prognoza, bez) {
   return h('div', svg, h('div.rzad.slaby', h('span', `min ${min.toFixed(2)}`), h('span', { style: 'flex:1;text-align:center' }, '▏dziś'), h('span', `max ${max.toFixed(2)}`)));
 }
 
+// Minibaza gospodarki: plik SQL (planety, tabele gosp_*, lokacje wybranych planet) do promptu kolejnej planety.
+function kartaMinibazy() {
+  const planety = h('input', { placeholder: 'np. Mattri, Foundry', style: 'min-width:260px' });
+  const link = h('a.btn', { href: '#', onclick: (e) => { e.currentTarget.href = `../api/?a=mg_minibaza&planety=${encodeURIComponent(planety.value)}`; } }, 'Pobierz minibazę (SQL)');
+  return h('div.karta', h('h2', 'Gospodarka: minibaza dla promptu planety'),
+    h('p.slaby', 'Planety, tabele gospodarki (towary, produkcja, obiekty, zużycie, linie, rynek) i lokacje podanych planet — bez kont i postaci. Załącz plik razem z promptem narzedzia/gospodarka/PROMPT_PLANETA.md.'),
+    h('div.rzad', pole('Planety szczegółowe (lokacje)', planety), link));
+}
+
 async function gielda() {
+  glowna.append(kartaMinibazy());
   const { gielda: g, kursy, portfele } = await api('mg_gielda');
   const nazwyGield = Object.fromEntries(g.gieldy.map((x) => [x.id, x.nazwa]));
   const gieldy = h('textarea', { style: 'min-height:150px' }, JSON.stringify(g.gieldy, null, 2));

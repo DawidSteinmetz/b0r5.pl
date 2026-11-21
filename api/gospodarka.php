@@ -121,6 +121,40 @@ function gosp_obiekt_karta(int $id): array
         'kat' => $o['kat_deg'] !== null ? (float) $o['kat_deg'] : null], 'zuzycie' => $zuzycie, 'linie' => $linie];
 }
 
+// Minibaza gospodarki dla promptu kolejnej planety (MG): planety (bez danych prywatnych), cykle i typy planet,
+// wszystkie tabele gosp_*, a dla planet z ?planety= (po przecinku) — ich lokacje. Tekst SQL do pobrania.
+function gosp_minibaza(string $planety): string
+{
+    $db = polaczenie_bazy();
+    $q = fn($v) => $v === null ? 'NULL' : (is_numeric($v) && !preg_match('/^0\d/', (string) $v) ? (string) $v : $db->quote((string) $v));
+    $blok = function (string $tabela, string $sql, array $par = []) use ($db, $q): string {
+        try { $s = $db->prepare($sql); $s->execute($par); $r = $s->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { return "-- {$tabela}: brak ({$e->getMessage()})\n"; }
+        if (!$r) return "-- {$tabela}: brak wierszy\n";
+        $kol = array_keys($r[0]);
+        $w = "-- {$tabela}: " . count($r) . " wierszy\n";
+        foreach (array_chunk($r, 300) as $paczka) {
+            $w .= "INSERT INTO {$tabela} (" . implode(',', $kol) . ") VALUES\n"
+                . implode(",\n", array_map(fn($x) => '(' . implode(',', array_map($q, array_values($x))) . ')', $paczka)) . ";\n";
+        }
+        return $w . "\n";
+    };
+    $lista = array_values(array_filter(array_map('trim', explode(',', $planety))));
+    $w = "-- MINIBAZA GOSPODARKI HOLOLINK — " . gmdate('Y-m-d H:i') . " UTC\n-- Dane referencyjne dla promptu planety (bez kont i postaci). Planety szczegółowe: " . ($lista ? implode(', ', $lista) : '—') . "\n\n";
+    foreach (['gosp_towary', 'gosp_produkcja', 'gosp_obiekty', 'gosp_zuzycie', 'gosp_linie', 'gosp_rynek'] as $t) {
+        try { $w .= $db->query("SHOW CREATE TABLE {$t}")->fetch(PDO::FETCH_NUM)[1] . ";\n\n"; } catch (Throwable $e) { }
+    }
+    $w .= $blok('mapa_planety', 'SELECT id, nazwa, region, x, y, srednica, doba, rok, ksiezyce FROM mapa_planety ORDER BY id');
+    $w .= $blok('planety_cykle', 'SELECT c.*, p.nazwa AS planeta FROM planety_cykle c JOIN mapa_planety p ON p.id = c.planeta_id');
+    $w .= $blok('planety_gry', 'SELECT g.planeta_id, p.nazwa AS planeta, g.typ_planety, g.urbanizacja FROM planety_gry g JOIN mapa_planety p ON p.id = g.planeta_id WHERE g.typ_planety IS NOT NULL');
+    foreach (['gosp_towary', 'gosp_produkcja', 'gosp_obiekty', 'gosp_zuzycie', 'gosp_linie', 'gosp_rynek'] as $t) $w .= $blok($t, "SELECT * FROM {$t}");
+    if ($lista) {
+        $ph = implode(',', array_fill(0, count($lista), '?'));
+        $w .= $blok('lokalizacje', "SELECT l.id, l.typ, l.rodzaj, l.rodzic_id, l.planeta_id, p.nazwa AS planeta, l.nazwa, l.x_km, l.y_km, l.publiczna, l.status, LEFT(l.opis, 300) AS opis
+            FROM lokalizacje l JOIN mapa_planety p ON p.id = l.planeta_id WHERE p.nazwa IN ($ph) ORDER BY l.id", $lista);
+    }
+    return $w;
+}
+
 // Plan cyklu linii: etapy [długość s, rodzaj, port, strona, kierunek] i ich suma.
 function gosp_plan(array $l): array
 {

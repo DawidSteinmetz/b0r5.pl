@@ -437,6 +437,14 @@ function obsluz_poklad(string $akcja, bool $post): void
     if ($akcja === 'awanse' || $akcja === 'awans') { obsluz_awanse($akcja, $post); return; }
     if (in_array($akcja, ['doki', 'dokuj', 'oddokuj'], true)) { obsluz_doki($akcja, $post); return; }
     if ($akcja === 'gosp_obiekt') { wymagaj_logowania(); odpowiedz(gosp_obiekt_karta((int) ($_GET['id'] ?? 0))); }
+    if ($akcja === 'mg_minibaza') {
+        // Minibaza gospodarki do pobrania (MG): plik SQL dla promptu kolejnej planety.
+        wymagaj_mg();
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="minibaza_gospodarki.sql"');
+        echo gosp_minibaza((string) ($_GET['planety'] ?? ''));
+        exit;
+    }
     if (in_array($akcja, ['maszynownia', 'maszynownia_napraw', 'ladownia', 'ladownia_wloz', 'ladownia_wyjmij'], true)) { obsluz_maszynownie($akcja, $post); return; }
     if ($akcja !== 'poklad_idz') return;
     // Przejście do innego pomieszczenia okrętu (czas z planu wnętrza; odliczanie w Nawigacji).

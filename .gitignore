@@ -30,3 +30,6 @@ desktop.ini
 
 # Dźwięki (duże, licencja zewnętrzna) — wgrywane ręcznie na serwer
 /sound/*.mp3
+
+# Minibazy gospodarki (dane z bazy gry — tylko lokalnie)
+narzedzia/gospodarka/minibaza_*.sql

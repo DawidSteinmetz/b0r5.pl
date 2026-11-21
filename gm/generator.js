@@ -94,11 +94,11 @@ export async function panelGeneratora(kontener) {
         return h('label.gen-check', cb, ` ${s.nazwa}${E.specjalizacjaKariery(e, k) ? '' : ' (spoza kariery)'}`);
       }));
       // Poziom kariery (kariera z poziomami, np. flota): automatycznie z PD zdobytych albo ręcznie.
-      const poziom = kp.poziomy.length ? wiaz(h('select', opcje([['', `auto: ${E.nazwaKariery({ ...e, poziom_kariery: null })} (wg PD łącznie)`],
-        ...kp.poziomy.map((p, i) => [String(i), `${p.nazwa} (od ${p.pd} PD)`])], e.poziom_kariery ?? '')),
-      () => (e.poziom_kariery ?? ''), (v) => { e.poziom_kariery = v === '' ? null : Number(v); }, { przebudowa: true }) : null;
+      // Stopień (poziom kariery) nadaje MG albo przełożony — PD go nie podnoszą.
+      const poziom = kp.poziomy.length ? wiaz(h('select', opcje(kp.poziomy.map((p, i) => [String(i), p.nazwa]), String(kp.poziom))),
+        () => String(kp.poziom), (v) => { e.poziom_kariery = Number(v); }, { przebudowa: true }) : null;
       elementy.push(pole('Kariera', kariera),
-        poziom ? pole(`Poziom kariery — teraz: ${kp.nazwa}${kp.nastepny && !kp.reczny ? ` (następny: ${kp.nastepny.nazwa} od ${kp.nastepny.pd} PD)` : ''}`, poziom) : null,
+        poziom ? pole('Stopień (awans nadaje MG albo przełożony)', poziom) : null,
         pole('Specjalizacja startowa', spec),
         h('details', h('summary.slaby', `Dodatkowe specjalizacje (kolejna: ${10 * ((e.specjalizacje || []).length + 1)} PD w karierze, +10 spoza)`), dodatkowe));
     } else {

@@ -416,51 +416,124 @@ export function utworzScene(canvas) {
     const RAD = Math.PI / 180;
     const Rp = (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2;
     const Rr = Rp + Number(v.pierscien.wysokosc_km || 1000);
+    const POL = 60;                                             // pół szerokości pierścienia (km): razem ok. 120 km
     const dO = Rp + wysokoscOrbity(Rp * 2);
     const teraz = (Date.now() + (stan.przesuniecie || 0)) / 1000;
     const wDoku = !!(v.dok && !(v.przelot && teraz < v.przelot.do));
-    const e = wDoku ? 3 : Math.max(40, dO * 0.1);               // wysokość okrętu nad płaszczyzną pierścienia (km)
+    const e = wDoku ? 2 : Math.max(40, dO * 0.1);               // wysokość okrętu nad płaszczyzną pierścienia (km)
     const ox = Math.cos(k.orbita * RAD) * dO, oy = Math.sin(k.orbita * RAD) * dO;
     const ppd = w / POLE_WIDZENIA;
     const elPlanety = Math.atan2(-e, dO) / RAD;
-    // Z bliskiej orbity planeta wypełnia dół okna (stylizacja) — poziom pierścienia zostaje na środku okna.
+    // Z bliskiej orbity planeta wypełnia dół okna (stylizacja) — horyzont pierścienia zostaje na środku okna.
     const cy = yWidoku(stan.okno ? 0.46 : 0.55);
-    const styczna = Math.sqrt(Math.max(0, dO * dO + e * e - Rp * Rp)); // dalej niż to — za horyzontem planety
-    const N = 900;
-    let poprzedni = null;
-    ctx.save();
-    ctx.lineCap = 'butt';
-    for (let i = 0; i <= N; i++) {
-      const fi = (i / N) * 2 * Math.PI;
-      const px = Math.cos(fi) * Rr - ox, py = Math.sin(fi) * Rr - oy;
-      const poz = Math.hypot(px, py), dist = Math.hypot(poz, e);
+    const styczna = Math.sqrt(Math.max(0, dO * dO + e * e - Rp * Rp)); // dalej — za horyzontem planety
+    const rzut = (fi, r) => {
+      const px = Math.cos(fi) * r - ox, py = Math.sin(fi) * r - oy;
+      const poz = Math.hypot(px, py);
       const az = Math.atan2(py, px) / RAD;
-      const roz = norm180(az - k.kurs);
-      const el = Math.atan2(-e, poz) / RAD;
-      const x = xKierunku(k.kurs, az), y = cy - (el - elPlanety) * ppd;
-      const tyl = dist > styczna;
-      const ok = Math.abs(roz) < POLE_WIDZENIA / 2 + 8 && (warstwa === 'tyl') === tyl;
-      // grubość: konstrukcja ok. 120 km szerokości (moduły, doki, dźwigary), z bliska do jednej trzeciej okna
-      const sz = Math.min(h * 0.35, Math.max(1.2, Math.atan2(120, dist) / RAD * ppd));
-      if (ok && poprzedni) {
-        // pas jako czworokąt między kolejnymi punktami — z bliska zwęża się w perspektywie w głąb pierścienia
-        const jasn = 0.55 + 0.35 * Math.max(0, Math.cos((az - (k.slonce ?? 0)) * RAD));
-        ctx.fillStyle = `rgba(${Math.round(150 * jasn + 60)}, ${Math.round(160 * jasn + 60)}, ${Math.round(170 * jasn + 60)}, 0.92)`;
-        ctx.beginPath();
-        ctx.moveTo(poprzedni[0], poprzedni[1] - poprzedni[2] / 2); ctx.lineTo(x, y - sz / 2);
-        ctx.lineTo(x, y + sz / 2); ctx.lineTo(poprzedni[0], poprzedni[1] + poprzedni[2] / 2);
-        ctx.closePath(); ctx.fill();
-        if (Math.abs(x - poprzedni[0]) < 0.6 && sz < 3) ctx.fillRect(x - 0.6, y - sz / 2, 1.2, sz);
-        if (sz > 6) {
-          // z bliska: dźwigary i światła doków
-          ctx.strokeStyle = 'rgba(40, 46, 52, 0.7)'; ctx.lineWidth = Math.max(1, sz * 0.08);
-          ctx.beginPath(); ctx.moveTo(x, y - sz / 2); ctx.lineTo(x, y + sz / 2); ctx.stroke();
-          if (i % 3 === 0) { ctx.fillStyle = i % 2 ? 'rgba(255, 220, 150, 0.9)' : 'rgba(180, 220, 255, 0.85)'; ctx.fillRect(x - 1, y - sz * 0.3, 2, 2); ctx.fillRect(x + 2, y + sz * 0.2, 2, 2); }
-        } else if (i % 6 === 0 && sz > 1.2) {
-          ctx.fillStyle = 'rgba(255, 225, 170, 0.8)'; ctx.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+      return { x: xKierunku(k.kurs, az), y: cy - (Math.atan2(-e, poz) / RAD - elPlanety) * ppd, roz: norm180(az - k.kurs), d: Math.hypot(poz, e), az };
+    };
+    // Kąty próbek: gęsto tuż przy okręcie (pod nim pierścień to płaszczyzna aż po horyzont), rzadziej dalej.
+    const fi0 = Math.atan2(oy, ox);
+    const kroki = [0];
+    for (let d = 0.00002; d < Math.PI; d *= 1.07) kroki.push(d);
+    kroki.push(Math.PI);
+    const katy = [...kroki.slice(1).reverse().map((d) => fi0 - d), ...kroki.map((d) => fi0 + d)];
+    ctx.save();
+    let poprzedni = null;
+    katy.forEach((fi, i) => {
+      const a = rzut(fi, Rr - POL), b = rzut(fi, Rr + POL);
+      if (poprzedni) {
+        const [a0, b0] = poprzedni;
+        const widac = [a, b, a0, b0].every((q) => Math.abs(q.roz) < 89);
+        const tyl = (a.d + b.d) / 2 > styczna;
+        if (widac && (warstwa === 'tyl') === tyl) {
+          const dist = (a.d + b.d) / 2;
+          const jasn = (0.5 + 0.4 * Math.max(0, Math.cos(((a.az + b.az) / 2 - (k.slonce ?? 0)) * RAD))) * (dist < 400 ? 0.85 + 0.15 * dist / 400 : 1);
+          ctx.fillStyle = `rgba(${Math.round(150 * jasn + 55)}, ${Math.round(158 * jasn + 55)}, ${Math.round(168 * jasn + 55)}, 0.95)`;
+          ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(b0.x, b0.y); ctx.lineTo(b.x, b.y); ctx.lineTo(a.x, a.y); ctx.closePath(); ctx.fill();
+          // z daleka pierścień ogląda się prawie z boku — krawędź co najmniej 1 px, żeby nie znikał
+          ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(a0.x, (a0.y + b0.y) / 2); ctx.lineTo(a.x, (a.y + b.y) / 2); ctx.stroke();
+          const wys = Math.abs(b.y - a.y) + Math.abs(b.x - a.x);
+          if (wys > 10) {
+            // z bliska: dźwigary w poprzek pierścienia, krawędzie i światła doków
+            ctx.strokeStyle = 'rgba(35, 40, 46, 0.75)'; ctx.lineWidth = Math.max(1, Math.min(6, wys * 0.01));
+            if (i % 2 === 0) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+            ctx.beginPath(); ctx.moveTo(a0.x, a0.y); ctx.lineTo(a.x, a.y); ctx.moveTo(b0.x, b0.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+            for (const f of [0.18, 0.5, 0.82]) {
+              if ((i + f * 10) % 3 > 1) continue;
+              ctx.fillStyle = f === 0.5 ? 'rgba(255, 220, 150, 0.9)' : 'rgba(180, 220, 255, 0.85)';
+              const lx = a.x + (b.x - a.x) * f, ly = a.y + (b.y - a.y) * f, r = Math.max(1, Math.min(4, wys * 0.004));
+              ctx.fillRect(lx - r, ly - r, 2 * r, 2 * r);
+            }
+          } else if (i % 5 === 0 && wys > 1.5) {
+            ctx.fillStyle = 'rgba(255, 225, 170, 0.8)'; ctx.fillRect((a.x + b.x) / 2 - 0.75, (a.y + b.y) / 2 - 0.75, 1.5, 1.5);
+          }
         }
       }
-      poprzedni = ok ? [x, y, sz] : null;
+      poprzedni = [a, b];
+    });
+    ctx.restore();
+    if (wDoku && warstwa === 'przod') rysujDok(cy, k);
+  }
+
+  // Okręt w doku pierścienia: rama stoczniowa wokół okrętu — pokład i strop przez całą szerokość okna, dźwigary
+  // zbiegające się w perspektywie wzdłuż pierścienia, światła stanowisk. Przez szczelinę widać dalszy pierścień.
+  function rysujDok(cy, k) {
+    const RAD = Math.PI / 180;
+    const vx = w / 2, vy = cy;                                  // punkt zbiegu: wzdłuż kursu, na horyzoncie
+    // pół wysokości otwartej przestrzeni przy horyzoncie: część wysokości okna (mostek, kokpit), bez okna — ekranu
+    const okno = stan.okno ? geometriaOkna(stan.okno, w, h) : null;
+    const szczelina = (okno ? okno.dol - okno.gora : h) * 0.17;
+    const jasn = 0.55 + 0.35 * Math.max(0, Math.cos(((k.orbita ?? 0) - (k.slonce ?? 0)) * RAD));
+    const kolor = (f) => `rgb(${Math.round((60 + 80 * jasn) * f)}, ${Math.round((64 + 84 * jasn) * f)}, ${Math.round((70 + 90 * jasn) * f)})`;
+    ctx.save();
+    for (const strona of [1, -1]) {                            // 1 — pokład (dół), -1 — strop (góra)
+      const y0 = vy + strona * szczelina, y1 = strona > 0 ? h : 0;
+      const g = ctx.createLinearGradient(0, y0, 0, y1);
+      g.addColorStop(0, kolor(0.55)); g.addColorStop(1, kolor(1.05));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.moveTo(-10, y0); ctx.lineTo(w + 10, y0); ctx.lineTo(w + 10, y1); ctx.lineTo(-10, y1); ctx.closePath(); ctx.fill();
+      // płyty i dźwigary poprzeczne — gęstnieją ku horyzontowi (perspektywa)
+      ctx.strokeStyle = 'rgba(25, 28, 32, 0.8)';
+      for (let i = 1; i < 14; i++) {
+        const f = Math.pow(i / 14, 2.2);
+        const y = y0 + (y1 - y0) * f;
+        ctx.lineWidth = Math.max(1, 6 * f);
+        ctx.beginPath(); ctx.moveTo(-10, y); ctx.lineTo(w + 10, y); ctx.stroke();
+      }
+      // podłużne belki zbiegające się do punktu zbiegu
+      ctx.save();
+      ctx.beginPath(); ctx.rect(-10, Math.min(y0, y1), w + 20, Math.abs(y1 - y0)); ctx.clip();
+      for (let i = -12; i <= 12; i++) {
+        const xb = vx + i * w * 0.11;
+        ctx.lineWidth = Math.max(1, 5 - Math.abs(i) * 0.2);
+        ctx.strokeStyle = i % 4 === 0 ? 'rgba(20, 22, 26, 0.9)' : 'rgba(45, 50, 56, 0.6)';
+        ctx.beginPath(); ctx.moveTo(vx, vy); ctx.lineTo(xb, y1 + strona * h * 0.2); ctx.stroke();
+      }
+      // światła stanowisk: rzędy lamp na belkach, coraz mniejsze w głąb
+      for (let i = 1; i < 9; i++) {
+        const f = Math.pow(i / 9, 2.2);
+        const y = y0 + (y1 - y0) * f;
+        const r = Math.max(1, 4 * f);
+        for (let j = -6; j <= 6; j++) {
+          const x = vx + (j * w * 0.11) * ((y - vy) / (y1 + strona * h * 0.2 - vy));
+          ctx.fillStyle = (i + j) % 3 === 0 ? 'rgba(255, 214, 140, 0.95)' : 'rgba(170, 215, 255, 0.85)';
+          ctx.fillRect(x - r, y - r * 0.5, 2 * r, r);
+        }
+      }
+      ctx.restore();
+      // krawędź ramy przy szczelinie
+      ctx.strokeStyle = 'rgba(255, 200, 120, 0.55)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-10, y0); ctx.lineTo(w + 10, y0); ctx.stroke();
+    }
+    // słupy ramy po bokach (blisko okrętu)
+    ctx.fillStyle = kolor(0.7);
+    for (const x of [w * 0.04, w * 0.96]) {
+      ctx.fillRect(x - w * 0.02, vy - szczelina - 2, w * 0.04, szczelina * 2 + 4);
+      ctx.strokeStyle = 'rgba(25, 28, 32, 0.9)'; ctx.lineWidth = 2;
+      for (let y = vy - szczelina; y < vy + szczelina; y += szczelina / 3) { ctx.beginPath(); ctx.moveTo(x - w * 0.02, y); ctx.lineTo(x + w * 0.02, y + szczelina / 3); ctx.stroke(); }
     }
     ctx.restore();
   }

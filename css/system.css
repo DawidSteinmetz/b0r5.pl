@@ -883,3 +883,9 @@ button.potwierdz { color: var(--akcent-2); border-color: var(--akcent-2); box-sh
 @keyframes pasek-sw { 0%, 100% { background: rgba(77, 226, 201, 0.08); box-shadow: none; }
   25% { background: rgba(77, 226, 201, 0.9); box-shadow: 0 0 8px rgba(77, 226, 201, 0.8); } 55% { background: rgba(77, 226, 201, 0.25); } }
 @media (prefers-reduced-motion: reduce) { .holo svg, .pasek-sw-segmenty i, .holo::after, .holo { animation-duration: 6s; } }
+/* Znak stronnictwa z grafiki: czarne tło znika (screen), brzegi wygaszone maską, obrót jak hologram. */
+.holo img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: screen; animation: holo-obrot 3.4s linear infinite;
+  -webkit-mask-image: radial-gradient(circle, #000 60%, transparent 72%); mask-image: radial-gradient(circle, #000 60%, transparent 72%);
+  filter: saturate(1.1) brightness(1.05); opacity: 0.92; user-select: none; }
+.holo:has(img) { width: 190px; height: 190px; }
+.holo::after { border-radius: 50%; }

@@ -58,6 +58,9 @@ const ZNAKI_FRAKCJI = {
   brak: '<path d="M0 -42 L42 0 L0 42 L-42 0 Z" fill="none" stroke="currentColor" stroke-width="5"/><path d="M0 -20 L20 0 L0 20 L-20 0 Z" fill="currentColor"/>',
 };
 
+// Znaki stronnictw z grafiki (zamiast rysunku kodem): hologram obraca się tak samo, czarne tło znika w trybie „screen”.
+const GRAFIKI_FRAKCJI = { Imperium: 'assets/frakcje/imperium.webp' };
+
 // Pasek ładowania w stylu konsol z Gwiezdnych Wojen: segmenty zapalające się falą.
 export function pasekLadowania(napis = '') {
   return h('div.pasek-sw', h('div.pasek-sw-segmenty', ...Array.from({ length: 14 }, (_, i) => h('i', { style: `--i:${i}` }))),
@@ -68,7 +71,8 @@ export function pasekLadowania(napis = '') {
 export function ladowaniePelne(frakcja) {
   const znak = ZNAKI_FRAKCJI[frakcja] || ZNAKI_FRAKCJI.brak;
   const holo = h('div.holo');
-  holo.innerHTML = `<svg viewBox="-50 -50 100 100" aria-hidden="true">${znak}</svg>`;
+  if (GRAFIKI_FRAKCJI[frakcja]) holo.append(h('img', { src: GRAFIKI_FRAKCJI[frakcja], alt: '', draggable: 'false' }));
+  else holo.innerHTML = `<svg viewBox="-50 -50 100 100" aria-hidden="true">${znak}</svg>`;
   return h('div.ladowanie-pelne', { role: 'status', 'aria-live': 'polite' },
     h('div.holo-scena', holo, h('div.holo-projektor')),
     h('div.ladowanie-napis', 'ŁADOWANIE'),

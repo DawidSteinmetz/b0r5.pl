@@ -42,6 +42,39 @@ function dodaj(el, dzieci) {
   }
 }
 
+// ---------- ładowanie ----------
+// Hologramy znaków stronnictw (stylizowane, rysowane kodem) do ekranu ładowania.
+const ZNAKI_FRAKCJI = {
+  // Imperium: koło zębate — pierścień, sześć rozszerzających się ramion, piasta.
+  Imperium: '<circle r="44" fill="none" stroke="currentColor" stroke-width="5"/><circle r="11" fill="currentColor"/>'
+    + [0, 60, 120, 180, 240, 300].map((a) => `<path transform="rotate(${a})" d="M-4 -14 L4 -14 L11 -39 L-11 -39 Z" fill="currentColor"/>`).join('')
+    + [30, 90, 150, 210, 270, 330].map((a) => `<path transform="rotate(${a})" d="M-3 -41 L3 -41 L2 -47 L-2 -47 Z" fill="currentColor"/>`).join(''),
+  // Rebelia: stylizowany ptak-feniks — pionowe pióro i dwa wznoszące się skrzydła w okręgu.
+  Rebelia: '<path d="M0 -44 C6 -24 7 -8 4 10 L12 30 C26 14 34 -6 30 -26 C40 -8 40 18 22 36 L8 44 L0 30 L-8 44 L-22 36 C-40 18 -40 -8 -30 -26 C-34 -6 -26 14 -12 30 L-4 10 C-7 -8 -6 -24 0 -44 Z" fill="currentColor"/>',
+  // Syndykat: sześciokąt z trzema przecinającymi się ostrzami.
+  Syndykat: '<path d="M0 -44 L38 -22 L38 22 L0 44 L-38 22 L-38 -22 Z" fill="none" stroke="currentColor" stroke-width="5"/>'
+    + [0, 60, 120].map((a) => `<path transform="rotate(${a})" d="M-3 -30 L3 -30 L1.5 30 L-1.5 30 Z" fill="currentColor"/>`).join('') + '<circle r="7" fill="currentColor"/>',
+  // Bez stronnictwa: romb holonetu.
+  brak: '<path d="M0 -42 L42 0 L0 42 L-42 0 Z" fill="none" stroke="currentColor" stroke-width="5"/><path d="M0 -20 L20 0 L0 20 L-20 0 Z" fill="currentColor"/>',
+};
+
+// Pasek ładowania w stylu konsol z Gwiezdnych Wojen: segmenty zapalające się falą.
+export function pasekLadowania(napis = '') {
+  return h('div.pasek-sw', h('div.pasek-sw-segmenty', ...Array.from({ length: 14 }, (_, i) => h('i', { style: `--i:${i}` }))),
+    napis ? h('div.pasek-sw-napis', napis) : null);
+}
+
+// Pełny ekran ładowania: obracający się hologram znaku stronnictwa gracza nad projektorem, napis ŁADOWANIE i pasek.
+export function ladowaniePelne(frakcja) {
+  const znak = ZNAKI_FRAKCJI[frakcja] || ZNAKI_FRAKCJI.brak;
+  const holo = h('div.holo');
+  holo.innerHTML = `<svg viewBox="-50 -50 100 100" aria-hidden="true">${znak}</svg>`;
+  return h('div.ladowanie-pelne', { role: 'status', 'aria-live': 'polite' },
+    h('div.holo-scena', holo, h('div.holo-projektor')),
+    h('div.ladowanie-napis', 'ŁADOWANIE'),
+    pasekLadowania());
+}
+
 // Potwierdzenie na samym przycisku (zamiast systemowego okienka): pierwsze kliknięcie zmienia napis na pytanie,
 // drugie w ciągu 4 s wykonuje akcję. Tylko dla rzeczy kosztownych albo nieodwracalnych — drobiazgi bez pytania.
 export function dwaKroki(pytanie, fn) {

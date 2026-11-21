@@ -9,7 +9,20 @@ export class BladSieci extends Error {
   }
 }
 
+// Zapytania w toku (bez cyklicznego tła sceny) — ekran ładowania aplikacji czeka, aż spadną do zera.
+const TLO = new Set(['scena']);
+const sluchacze = new Set();
+let wToku = 0;
+export function nasluchujApi(fn) { sluchacze.add(fn); return () => sluchacze.delete(fn); }
+const zglos = (zmiana) => { wToku += zmiana; sluchacze.forEach((fn) => { try { fn(wToku); } catch { /* słuchacz nie przerywa */ } }); };
+
 export async function api(akcja, dane, parametry = {}) {
+  if (TLO.has(akcja)) return zapytanie(akcja, dane, parametry);
+  zglos(1);
+  try { return await zapytanie(akcja, dane, parametry); } finally { zglos(-1); }
+}
+
+async function zapytanie(akcja, dane, parametry) {
   const url = new URL(ADRES);
   url.searchParams.set('a', akcja);
   for (const [k, v] of Object.entries(parametry)) url.searchParams.set(k, v);

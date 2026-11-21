@@ -2,7 +2,7 @@
 // dokąd leci i gdzie stoją statki jej firm. Dane astronawigacyjne są pobierane z SQL
 // przez API i buforowane przez service worker do pracy bez zasięgu.
 
-import { h, wyczysc, czasGry, dwaKroki } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry, dwaKroki, pasekLadowania, ladowaniePelne } from '../rdzen/narzedzia.js';
 import { stanUkladu, stronaOrbity } from '../rdzen/astro.js';
 import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
@@ -188,7 +188,8 @@ export default {
         : km < 0.05 * KM_NA_PC ? `${liczba(km / KM_NA_AU, 3)} j.a.` : `${liczba(km / KM_NA_PC, 3)} pc`);
       skalaZoom.textContent = skala >= ZOOM_MAKS * 0.98 ? 'zbliżenie maks. · 1:1' : `1 px = ${naPx(kmNaPx)}`;
     }
-    const ladowanie = h('div.mapa-ladowanie', 'Pobieranie danych astronawigacyjnych...');
+    // Pełny ekran ładowania (hologram znaku stronnictwa) do pobrania bazy astronawigacyjnej.
+    const ladowanie = ladowaniePelne(ctx.uzytkownik?.frakcja);
     const panelFlot = h('section.mapa-floty-panel', { hidden: true });
     const panelRadar = h('section.mapa-radar', { hidden: true });
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
@@ -1513,7 +1514,7 @@ export default {
       };
       odswiezUkladKarty = rysuj;
       const zegar = setInterval(rysuj, 1000);
-      api('uklad', undefined, { planeta: p.nazwa }).then((d) => { cykl = d.cykl; rysuj(); })
+      zLadowaniem(opis, api('uklad', undefined, { planeta: p.nazwa }), 'Dane astronawigacyjne').then((d) => { cykl = d.cykl; opis._zmieniono = 0; rysuj(); })
         .catch(() => { wyczysc(opis).append(h('div', 'Brak danych astronawigacyjnych układu.')); });
       return sekcja;
     }
@@ -1551,7 +1552,13 @@ export default {
     const odlKm = (km) => (km >= KM_NA_AU * 0.1 ? `${liczba(km / KM_NA_AU, 2)} j.a.` : `${liczba(km)} km`);
     const odlTrasy = (km) => (km >= KM_NA_PC * 0.05 ? `${liczba(km / KM_NA_PC, 1)} pc` : odlKm(km));
     const blad = (e) => h('p.maly-tekst.mapa-blad', e.message || String(e));
-    const liczy = () => h('p.slaby.maly-tekst.mapa-liczy', 'Komputer nawigacyjny liczy…');
+    const liczy = () => h('div.mapa-liczy', pasekLadowania('Komputer nawigacyjny liczy'));
+    // Małe okienka mapy: pasek ładowania, dopóki zapytanie trwa (znika i po odpowiedzi, i po błędzie).
+    const zLadowaniem = (el, obietnica, napis = 'Odbiór danych') => {
+      const pasek = pasekLadowania(napis);
+      el.prepend(pasek);
+      return obietnica.finally(() => pasek.remove());
+    };
 
     // Krok 3 skoku: plan z komputera (albo obliczenia mostka), potem rozkaz i „Skok w toku”.
     function krokSkoku(k, dane, poRozkazie) {
@@ -1645,7 +1652,7 @@ export default {
 
     function sekcjaNawigacji(p) {
       const sekcja = h('div.mapa-nawigacja');
-      api('mapa_floty_gracza').then((dane) => {
+      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
         const floty = dane.floty || [];
         if (!floty.length) return;
         let f = floty[0];
@@ -1827,7 +1834,7 @@ export default {
     // Karta punktu mapy dla dowódcy floty: krok 1 — skok albo lot; krok 3 — szczegóły i rozkaz.
     function sekcjaPunktu(pkt) {
       const sekcja = h('div.mapa-nawigacja');
-      api('mapa_floty_gracza').then((dane) => {
+      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
         const floty = dane.floty || [];
         if (!floty.length) return;
         let f = floty[0];
@@ -1880,7 +1887,7 @@ export default {
 
     function sekcjaPokladu(o) {
       const sekcja = h('div.mapa-poklad');
-      api('mapa_poklad', undefined, { obiekt: o.id }).then((d) => {
+      zLadowaniem(sekcja, api('mapa_poklad', undefined, { obiekt: o.id }), 'Odczyt pokładu').then((d) => {
         let zakladka = 'pasazerowie';
         const zakladki = h('div.mapa-poklad-zakladki');
         const tresc = h('div');
@@ -2226,6 +2233,7 @@ export default {
     }
 
     async function odswiezFloty() {
+      if (!panelFlot.childNodes.length) panelFlot.append(pasekLadowania('Łączność z flotą'));
       try {
         const daneFlot = await api('mapa_floty_gracza');
         mojeFloty = daneFlot.floty || [];

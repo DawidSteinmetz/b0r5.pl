@@ -1,7 +1,7 @@
 // HOLOLINK — powłoka datapada: start, rozruch, blokada, pulpit, aplikacje, alfabet.
 
-import { h, wyczysc, ikona, godzina, dataGST, czekaj, pamiec } from './rdzen/narzedzia.js';
-import { api } from './rdzen/api.js';
+import { h, wyczysc, ikona, godzina, dataGST, czekaj, pamiec, ladowaniePelne } from './rdzen/narzedzia.js';
+import { api, nasluchujApi } from './rdzen/api.js';
 import { URZADZENIE } from './rdzen/urzadzenie.js';
 import { utworzScene, TYPY_PLANET } from './rdzen/scena.js';
 import { ustawDzwiek, przelaczWyciszenie, wyciszony } from './rdzen/dzwiek.js';
@@ -816,8 +816,22 @@ function otworz(id, parametr = null) {
     dok: (przyciski) => ustawDokAplikacji(przyciski),
   };
   stan.aplikacja = { def, sprzataj: null, wstecz: null };
+  // Ekran ładowania: hologram znaku stronnictwa, dopóki aplikacja pobiera dane (zapytania z pierwszej chwili).
+  const zaslona = ladowaniePelne(stan.uzytkownik.frakcja);
+  pulpit.append(zaslona);
+  let ruszylo = false, koniec = false;
+  const zdejmij = () => {
+    if (koniec) return;
+    koniec = true; odpnij(); clearTimeout(bezZapytan); clearTimeout(najdluzej);
+    zaslona.classList.add('znika');
+    setTimeout(() => zaslona.remove(), 350);
+  };
+  const odpnij = nasluchujApi((n) => { if (n > 0) ruszylo = true; else if (ruszylo) setTimeout(() => { if (!koniec) zdejmij(); }, 120); });
+  const bezZapytan = setTimeout(() => { if (!ruszylo) zdejmij(); }, 400);
+  const najdluzej = setTimeout(zdejmij, 15000);
   const wynik = def.uruchom(w, kontekst);
-  if (typeof wynik === 'function') stan.aplikacja.sprzataj = wynik;
+  const sprzataj = typeof wynik === 'function' ? wynik : null;
+  stan.aplikacja.sprzataj = () => { zdejmij(); sprzataj?.(); };
 }
 
 async function wyloguj() {

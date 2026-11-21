@@ -806,6 +806,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             $wynik['obiekty'] = $radar['obiekty'];
             $wynik['bitwy_radar'] = $radar['bitwy'];
             $wynik['obiekty'] = mapa_strony($wynik['obiekty'], $u);
+            // Kontakty radaru: jednostki w zasięgu moich okrętów (kolor z transpondera) i ruch w tle.
+            if (function_exists('radar_kontakty')) $wynik['obiekty'] = array_merge($wynik['obiekty'], radar_kontakty($u, $wynik['obiekty']));
             // Znacznik własnej postaci: mapa pokazuje przy nim pulsujące „Jesteś tutaj”.
             if (tabela_sql_dostepna('mapa_obiekty')) {
                 $q = polaczenie_bazy()->prepare("SELECT id FROM mapa_obiekty WHERE legacy_uid = ? AND typ = 'postac' LIMIT 1");

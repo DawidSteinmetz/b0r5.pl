@@ -359,6 +359,28 @@ async function bitwyRadar() {
     h('div.siatka', pole('Nazwa bitwy', nazwa), pole('Planeta', planeta), pole('Opis', opis)),
     btn('Rozpocznij bitwę', bezpiecznie(async () => { await api('mg_bitwa_zapisz',{ nazwa:nazwa.value, planeta_id:Number(planeta.value), opis:opis.value }); await odswiez(); }), '.glowny')),
     ...(karty.length ? karty : [h('div.karta', h('p.slaby','Brak aktywnych bitew.'))]));
+  glowna.append(await bazaSygnatur());
+}
+
+// Imperialna baza sygnatur: poszukiwane jednostki. Radar graczy pokazuje je na czerwono (z prawdziwym transponderem
+// od razu, z fałszywym — dopiero po analizie sygnatury silnika i osłon).
+async function bazaSygnatur() {
+  let d;
+  try { d = await api('mg_radar_baza'); } catch (e) { return h('div.karta', h('h2', 'Baza sygnatur'), msg(e.message)); }
+  const box = h('div.karta', h('h2', 'Baza sygnatur (listy gończe)'),
+    h('p.slaby', 'Poszukiwane jednostki świecą na radarze graczy na czerwono. Fałszywy transponder je ukrywa, dopóki duży okręt nie przeprowadzi analizy sygnatury (6 h).'));
+  const odswiez = async () => { box.replaceWith(await bazaSygnatur()); };
+  const statek = h('select', d.statki.map((s) => h('option', { value: s.id }, `${s.nazwa}${s.klasa ? ` · ${s.klasa}` : ''}${s.transponder_nazwa ? ` (transponder: ${s.transponder_nazwa})` : ''}`)));
+  const nagroda = h('input', { type: 'number', min: 0, step: 1000, value: 10000 });
+  const opis = h('input', { maxlength: 500, placeholder: 'np. przemyt broni dla Rebelii, ucieczka z Kessel' });
+  box.append(
+    d.baza.length ? h('table.tabela', h('thead', h('tr', h('th', 'Jednostka'), h('th', 'Nagroda'), h('th', 'Opis'), h('th', ''))),
+      h('tbody', d.baza.map((b) => h('tr', h('td', `${b.nazwa || `#${b.obiekt_id}`}${b.klasa ? ` · ${b.klasa}` : ''}`), h('td', `${Number(b.nagroda).toLocaleString('pl-PL')} kr`), h('td.slaby', b.opis || '—'),
+        h('td', btn('Usuń', bezpiecznie(async () => { await api('mg_radar_baza_zapisz', { obiekt_id: b.obiekt_id, usun: 1 }); await odswiez(); }), '.zly'))))))
+      : h('p.slaby', 'Baza jest pusta.'),
+    h('div.siatka', pole('Jednostka', statek), pole('Nagroda (kr)', nagroda), pole('Opis', opis)),
+    btn('Dodaj / zmień wpis', bezpiecznie(async () => { await api('mg_radar_baza_zapisz', { obiekt_id: Number(statek.value), nagroda: Number(nagroda.value), opis: opis.value }); await odswiez(); }), '.glowny'));
+  return box;
 }
 
 // ---------- konta ----------

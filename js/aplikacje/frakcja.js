@@ -1,4 +1,4 @@
-// Sieć frakcji: planety i instalacje, zasoby, kadry (drzewo dowodzenia).
+// Sieć frakcji: planety i instalacje, zasoby, kadry (drzewo dowodzenia), awanse.
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
@@ -24,8 +24,9 @@ export default {
     }
 
     function rysuj() {
-      wyczysc(zakladki).append(...[['planety', 'Planety'], ['zasoby', 'Zasoby'], ['kadry', 'Kadry']].map(([k, n]) =>
+      wyczysc(zakladki).append(...[['planety', 'Planety'], ['zasoby', 'Zasoby'], ['kadry', 'Kadry'], ['awanse', 'Awanse']].map(([k, n]) =>
         h('button' + (k === zakladka ? '.aktywna' : ''), { onclick: () => { zakladka = k; rysuj(); } }, n)));
+      if (zakladka === 'awanse') { wyczysc(tresc).append(awanse()); return; }
       if (!dane) return;
       wyczysc(tresc).append({ planety, zasoby, kadry }[zakladka]());
     }
@@ -95,6 +96,48 @@ export default {
           galaz(k.imie))));
       };
       return h('div.panel', galaz(null, true));
+    }
+
+    // Awanse: stopień nadaje MG albo przełożony z tej samej frakcji (o jeden stopień, najwyżej do o jeden niższego
+    // niż własny). Awans zmienia rangę konta i poziom kariery floty na karcie.
+    function awanse() {
+      const box = h('div.panel', h('div.slaby', 'Wczytywanie…'));
+      const status = h('div');
+      const wczytajAwanse = async () => {
+        try {
+          const d = await api('awanse');
+          const opis = d.mg ? 'Jako MG nadajesz dowolny stopień.'
+            : `Twój stopień: ${d.drabina[d.moj]}. Awansujesz podwładnych o jeden stopień, najwyżej do: ${d.moj > 0 ? d.drabina[d.moj - 1] : '—'}.`;
+          const wiersz = (x) => {
+            let akcja;
+            if (d.mg) {
+              const sel = h('select', d.drabina.map((n, i) => h('option', { value: String(i), selected: i === (x.nastepny ?? x.stopien) }, n)));
+              akcja = h('span', sel, ' ', h('button.btn', { type: 'button', onclick: () => awansuj(x, { stopien: Number(sel.value) }) }, 'Nadaj'));
+            } else {
+              akcja = x.mozna ? h('button.btn', { type: 'button', onclick: () => awansuj(x, {}) }, `Awansuj na: ${d.drabina[x.nastepny]}`)
+                : h('span.slaby.maly-tekst', 'Poza twoimi uprawnieniami');
+            }
+            return h('tr', h('td', x.postac), h('td.slaby', x.ranga || '—'), d.mg ? h('td.slaby', x.frakcja || '—') : null, h('td', akcja));
+          };
+          wyczysc(box).append(h('p.slaby.maly-tekst', opis), d.lista.length
+            ? h('table.tabela', h('thead', h('tr', h('th', 'Postać'), h('th', 'Ranga'), d.mg ? h('th', 'Frakcja') : null, h('th', 'Awans'))),
+              h('tbody', d.lista.map(wiersz)))
+            : h('div.pusto', 'Brak podwładnych do awansu.'), status);
+        } catch (e) {
+          wyczysc(box).append(h('div.komunikat.blad', e.message));
+        }
+      };
+      const awansuj = async (x, dodatkowe) => {
+        try {
+          const r = await api('awans', { uid: x.id, ...dodatkowe });
+          await wczytajAwanse();
+          wyczysc(status).append(h('div.komunikat.ok', `${x.postac}: nowa ranga — ${r.ranga}.`));
+        } catch (e) {
+          wyczysc(status).append(h('div.komunikat.blad', e.message));
+        }
+      };
+      wczytajAwanse();
+      return box;
     }
 
     w.append(

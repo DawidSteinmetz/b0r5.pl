@@ -10,7 +10,7 @@ import { api } from '../rdzen/api.js';
 const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
 const RAD = Math.PI / 180;
 // Kolor jednostki z punktu widzenia gracza: sojusznik / wróg / neutralny (serwer: mapa_strony()).
-const KOLORY_STRON = { sojusznik: '#3ddc84', wrog: '#ff5a4f', neutralny: '#e8edf2' };
+const KOLORY_STRON = { sojusznik: '#3ddc84', wrog: '#ff5a4f', neutralny: '#9aa4ad' };
 const kolorObiektu = (o) => {
   const k = o?.bitwa?.kolor || KOLORY_STRON[o?.strona] || o?.kolor;
   return /^#[0-9a-f]{6}$/i.test(k || '') ? k : '#00ff66';
@@ -1595,6 +1595,36 @@ export default {
     }
 
     // Pokład statku: pasażerowie i więźniowie (widzą osoby na pokładzie, dowódca lub właściciel i MG).
+    // Kontakt radaru: dane z transpondera (mogą być fałszywe), list gończy z bazy sygnatur, udostępnienie pozycji
+    // i analiza sygnatury silnika i osłon (6 h, tylko duże okręty; cel musi zostać w zasięgu).
+    function sekcjaRadaru(o) {
+      const r = o.radar;
+      const status = h('div');
+      const znaczki = [
+        r.udostepniony ? h('span.znaczek-tu', 'Pozycja udostępniona') : null,
+        r.zidentyfikowany ? h('span.znaczek-cel', 'Zidentyfikowany (analiza sygnatury)') : null,
+        r.poszukiwany != null ? h('span.znaczek-cel', `Poszukiwany${r.poszukiwany ? ` · nagroda ${r.poszukiwany.toLocaleString('pl-PL')} kr` : ''}`) : null,
+        o.id < 0 ? h('span.slaby.maly-tekst', 'Niezarejestrowany ruch cywilny') : null,
+      ].filter(Boolean);
+      const analiza = r.analiza_do && teraz() < r.analiza_do
+        ? h('p.slaby.maly-tekst', (() => { const el = h('span.mapa-zywe'); el._licz = () => `Analiza sygnatury: jeszcze ${czasTrwania(r.analiza_do - teraz())}`; el.textContent = el._licz(); return el; })())
+        : r.mozna_analizowac ? h('button.przycisk.maly', { onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            const d = await api('radar_analiza', { cel: o.id });
+            r.analiza_do = d.koniec; r.mozna_analizowac = false;
+            wybierz(wybrane);
+          } catch (err) { wyczysc(status).append(h('div.komunikat.blad', err.message)); e.currentTarget.disabled = false; }
+        } }, 'Analiza sygnatury (6 h)') : null;
+      return h('div.mapa-radar',
+        h('div.slaby.maly-tekst', 'Kontakt radaru'),
+        h('table.tabela',
+          h('tr', h('th', 'Transponder'), h('td', r.transponder || '—')),
+          h('tr', h('th', 'Frakcja'), h('td', r.frakcja || 'brak'))),
+        znaczki.length ? h('div.mapa-znaczki', ...znaczki) : null,
+        analiza, status);
+    }
+
     function sekcjaPokladu(o) {
       const sekcja = h('div.mapa-poklad');
       api('mapa_poklad', undefined, { obiekt: o.id }).then((d) => {
@@ -1661,7 +1691,8 @@ export default {
             h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
             o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null,
           o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null,
-          o.typ !== 'postac' ? sekcjaPokladu(o) : null);
+          o.radar ? sekcjaRadaru(o) : null,
+          o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null);
       } else if (obiekt.planeta) {
         const p = obiekt.planeta;
         const tutaj = statkiNaMapie.find((x) => x.planeta === p)?.statki || [];

@@ -379,6 +379,9 @@ function obsluz_poklad(string $akcja, bool $post): void
 {
     if ($akcja === 'inspekcja_start' || $akcja === 'inspekcja_zamknij') { obsluz_inspekcje($akcja, $post); return; }
     if ($akcja === 'mg_morale') { wymagaj_mg(); odpowiedz(['morale' => morale_lista()]); }
+    // Radar, transpondery, udostępnianie pozycji, analiza sygnatur (api/radar.php).
+    if (str_starts_with($akcja, 'radar_') || $akcja === 'mg_radar_baza' || $akcja === 'mg_radar_baza_zapisz') { obsluz_radar($akcja, $post); return; }
+    if ($akcja === 'awanse' || $akcja === 'awans') { obsluz_awanse($akcja, $post); return; }
     if ($akcja !== 'poklad_idz') return;
     // Przejście do innego pomieszczenia okrętu (czas z planu wnętrza; odliczanie w Nawigacji).
     if (!$post) blad('Zła metoda.', 405);
@@ -446,4 +449,105 @@ function morale_lista(): array
     $wynik = [];
     foreach ($m as $okret => $g) foreach ($g as $k => $v) $wynik[] = ['okret' => $nazwy[$okret] ?? "#{$okret}", 'grupa' => $grupy[$k] ?? $k, 'morale' => (int) $v];
     return $wynik;
+}
+
+// ── Awanse ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// Stopień nie rośnie sam z PD. Awansuje MG (dowolny stopień) albo przełożony z tej samej frakcji: o jeden stopień,
+// najwyżej do stopnia o jeden niższego niż własny. Awans zmienia rangę konta i poziom kariery floty na karcie EotE.
+const AWANSE_DRABINA = [['Kadet', 0], ['Chorąży', 4], ['Porucznik', 6], ['Komandor porucznik', 8], ['Komandor', 9],
+    ['Kapitan', 10], ['Komodor', 11], ['Kontradmirał', 12], ['Wiceadmirał', 13], ['Admirał', 14]];
+
+// Indeks na drabinie awansów: dokładna nazwa (najdłuższa pasująca), inaczej ze stopnia rangi (np. „Moff”).
+function awans_indeks(string $ranga): int
+{
+    $r = mb_strtolower(trim($ranga));
+    $naj = -1; $dl = 0;
+    foreach (AWANSE_DRABINA as $i => [$n]) {
+        $n = mb_strtolower($n);
+        if (preg_match('/(^|\s)' . preg_quote($n, '/') . '($|\s)/u', $r) && mb_strlen($n) > $dl) { $naj = $i; $dl = mb_strlen($n); }
+    }
+    if ($naj >= 0) return $naj;
+    $s = stopien_rangi($ranga);
+    $i = 0;
+    foreach (AWANSE_DRABINA as $j => [, $st]) if ($s >= $st) $i = $j;
+    return $s > 0 ? $i : 0;
+}
+
+// Nowa ranga: zamienia nazwę stopnia w randze (zostawia przedrostki typu „Imperialny”), albo ustawia samą nazwę.
+function awans_nowa_ranga(string $ranga, int $cel): string
+{
+    $nowa = AWANSE_DRABINA[$cel][0];
+    $stara = AWANSE_DRABINA[awans_indeks($ranga)][0];
+    $wynik = preg_replace('/(^|\s)' . preg_quote($stara, '/') . '($|\s)/iu', '${1}' . $nowa . '${2}', $ranga, 1, $ile);
+    return $ile ? trim($wynik) : $nowa;
+}
+
+// Czy $kto może awansować $kogo na stopień $cel (null — tak; tekst — powód odmowy).
+function awans_odmowa(array $kto, array $kogo, int $cel): ?string
+{
+    if ($cel < 0 || $cel >= count(AWANSE_DRABINA)) return 'Nie ma takiego stopnia.';
+    if (($kto['rola'] ?? '') === 'mg') return null;
+    if ($kto['id'] === $kogo['id']) return 'Nie można awansować samego siebie.';
+    if (($kogo['rola'] ?? '') === 'mg') return 'Tego konta nie da się awansować.';
+    if (($kto['frakcja'] ?? '') === '' || ($kto['frakcja'] ?? '') !== ($kogo['frakcja'] ?? '')) return 'Awansować można tylko podwładnego z własnej frakcji.';
+    $moj = awans_indeks((string) ($kto['ranga'] ?? ''));
+    $jego = awans_indeks((string) ($kogo['ranga'] ?? ''));
+    if ($jego >= $moj) return 'To nie jest twój podwładny.';
+    if ($cel !== $jego + 1) return 'Przełożony awansuje o jeden stopień.';
+    if ($cel > $moj - 1) return 'Możesz awansować najwyżej do stopnia o jeden niższego niż twój.';
+    return null;
+}
+
+// Poziom kariery floty na karcie EotE (Kadet … Kapitan = 0…5); inne kariery zostają bez zmian.
+function awans_karta(string $uid, int $cel): void
+{
+    $poziom = min($cel, 5);
+    $ustaw = function (array $e) use ($poziom): ?array {
+        if (!in_array($e['kariera'] ?? '', ['kadet', 'mlodszy_oficer', 'oficer'], true)) return null;
+        $e['poziom_kariery'] = $poziom;
+        return $e;
+    };
+    if (function_exists('eote_gracz_odczytaj') && function_exists('eote_sql_zapisz')
+        && tabela_sql_dostepna('eote_cv_karty') && tabela_sql_dostepna('eote_cv_wartosci')) {
+        $legacy = wczytaj('karty', [])[$uid]['eote'] ?? null;
+        $e = eote_gracz_odczytaj($uid, is_array($legacy) ? ['eote' => $legacy] : null);
+        if (is_array($e)) { $e = json_decode(json_encode($e), true); if ($n = $ustaw($e)) eote_sql_zapisz('legacy_uid', $uid, $n); }
+        return;
+    }
+    zmien('karty', function (&$karty) use ($uid, $ustaw) {
+        if (isset($karty[$uid]['eote']) && is_array($karty[$uid]['eote']) && ($n = $ustaw($karty[$uid]['eote']))) $karty[$uid]['eote'] = $n;
+    });
+}
+
+function obsluz_awanse(string $akcja, bool $post): void
+{
+    $u = wymagaj_logowania();
+    $mg = ($u['rola'] ?? '') === 'mg';
+    if ($akcja === 'awanse') {
+        // Lista kont, które ten gracz (albo MG) może awansować, z bieżącym i następnym stopniem.
+        $lista = [];
+        foreach (uzytkownicy() as $x) {
+            if (($x['rola'] ?? '') === 'mg' || $x['id'] === $u['id']) continue;
+            if (!$mg && ($x['frakcja'] ?? '') !== ($u['frakcja'] ?? '')) continue;
+            $i = awans_indeks((string) ($x['ranga'] ?? ''));
+            $nast = $i + 1 < count(AWANSE_DRABINA) ? $i + 1 : null;
+            $mozna = $nast !== null && awans_odmowa($u, $x, $nast) === null;
+            if (!$mg && !$mozna && $i >= awans_indeks((string) ($u['ranga'] ?? ''))) continue;
+            $lista[] = ['id' => $x['id'], 'postac' => $x['postac'] ?? $x['login'], 'login' => $x['login'], 'frakcja' => $x['frakcja'] ?? '',
+                'ranga' => $x['ranga'] ?? '', 'stopien' => $i, 'nastepny' => $nast, 'mozna' => $mozna];
+        }
+        odpowiedz(['lista' => $lista, 'drabina' => array_column(AWANSE_DRABINA, 0), 'mg' => $mg,
+            'moj' => $mg ? null : awans_indeks((string) ($u['ranga'] ?? ''))]);
+    }
+    if (!$post) blad('Zła metoda.', 405);
+    $w = wejscie();
+    $uid = (string) ($w['uid'] ?? '');
+    $kogo = array_values(array_filter(uzytkownicy(), fn($x) => $x['id'] === $uid))[0] ?? blad('Nie ma takiego konta.', 404);
+    $jego = awans_indeks((string) ($kogo['ranga'] ?? ''));
+    $cel = $mg && isset($w['stopien']) ? (int) $w['stopien'] : $jego + 1;
+    if ($odm = awans_odmowa($u, $kogo, $cel)) blad($odm, 403);
+    $ranga = mb_substr(awans_nowa_ranga((string) ($kogo['ranga'] ?? ''), $cel), 0, 60);
+    zmien('uzytkownicy', function (&$us) use ($uid, $ranga) { foreach ($us as &$x) if ($x['id'] === $uid) $x['ranga'] = $ranga; });
+    awans_karta($uid, $cel);
+    odpowiedz(['ok' => true, 'ranga' => $ranga]);
 }

@@ -83,6 +83,18 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   widzą tę jednostkę (MG wszystkie) — na mapie jako pomarańczowa linia z okręgiem niepewności,
   przez 24 h po szacowanym przylocie. Statek gracza radar opisuje polem `transponder` statku
   (puste = „Niezidentyfikowany statek”). Resynchronizacja nie zmienia wykrycia.
+- **Radar kontaktów i transpondery** (migracja 043, `api/radar.php`): okręty gracza (na pokładzie,
+  z dostępem albo dowodzone floty) widzą jednostki w zasięgu — `radar_zasieg_pc` albo z długości kadłuba
+  (≥900 m ok. 3 pc, ≥250 m ok. 1,5 pc, mniejsze 0,5 pc). Kolor z transpondera: przyjazny zielony, neutralny
+  szary, wrogi albo poszukiwany (baza sygnatur MG w „Bitwy / radar”) czerwony. Do tego niezarejestrowany ruch
+  cywilny przy układach w zasięgu, gęsty w Jądrze i pusty w sektorze Hune (ujemne id, liczony na serwerze).
+  Nawigacja → Statek: udostępnienie pozycji graczowi (1 h, 24 h, do odwołania) i fałszywy transponder —
+  tylko przemytnik albo łowca nagród z Krętactwem/Komputerami 3+, 5000 kr, hipernapęd −10%, działa po 30 min.
+  Analiza sygnatury silnika i osłon (karta kontaktu na mapie): 6 h, tylko okręty z komputerem 4+ albo ≥900 m,
+  cel musi zostać w zasięgu; ujawnia prawdziwą tożsamość i list gończy.
+- **Awanse** (Sieć frakcji → Awanse): stopień nie rośnie z PD. MG nadaje dowolny; przełożony z tej samej
+  frakcji awansuje o jeden stopień, najwyżej do o jeden niższego niż własny. Awans zmienia rangę konta
+  i poziom kariery floty (Kadet … Kapitan) na karcie EotE.
 - **Daty gry:** czasy przylotów (ETA) i manewrów datapad i panel MG pokazują jako `DD|MM|RR GG:MM`,
   gdzie rok gry = rok realny − 2010 (np. `18|11|16 17:27`); funkcja `czasGry()` w `js/rdzen/narzedzia.js`.
 - Wymaga migracji 013, 014 i 015 z `api/migracje/` (import w phpMyAdmin, w tej kolejności).

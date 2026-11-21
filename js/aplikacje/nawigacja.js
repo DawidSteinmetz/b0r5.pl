@@ -426,7 +426,46 @@ export default {
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
         panelPromow(p),
-        panelStoczni(p));
+        panelStoczni(p),
+        panelRadaru(p));
+    }
+
+    // Radar i transponder: zasięg radaru, co nadaje transponder (fałszywy — tylko przemytnicy i łowcy nagród;
+    // kosztuje i obciąża hipernapęd, przestawienie trwa 30 min), komu udostępniono pozycję okrętu.
+    function panelRadaru(p) {
+      const el = h('div');
+      api('radar_okret', undefined, { obiekt: p.id }).then((r) => {
+        const t = r.transponder;
+        const aktywny = t.falszywy && (!t.od || t.od <= teraz());
+        const stanT = t.falszywy
+          ? (aktywny ? `fałszywy: ${t.nazwa}${t.frakcja ? ` (${t.frakcja})` : ''}` : h('span', `przestawianie na: ${t.nazwa} · gotowe za `, h('b', { 'data-koniec': t.od }, odliczanie(t.od - teraz()))))
+          : `prawdziwy: ${t.nazwa}`;
+        let zmiana;
+        if (r.zmiana_powod) zmiana = h('div.slaby.maly-tekst', `Zmiana transpondera: ${r.zmiana_powod}`);
+        else {
+          const nazwa = h('input', { placeholder: 'Nadawana nazwa (np. Lekki frachtowiec „Kestrel”)', maxlength: 120 });
+          const frakcja = h('select', [['', 'brak (cywilny)'], ['neutralna', 'neutralna'], ['Imperium', 'Imperium'], ['Rebelia', 'Rebelia'], ['Syndykat', 'Syndykat']].map(([v, n]) => h('option', { value: v }, n)));
+          zmiana = h('details', h('summary', 'Przeprogramuj transponder'),
+            h('div.slaby.maly-tekst', `Koszt ${kr(r.koszt)} z rachunku, hipernapęd −10% sprawności. Nowa tożsamość działa po 30 min. Analiza sygnatury dużego okrętu może cię zdemaskować.`),
+            h('div.pole', nazwa), h('div.pole', frakcja),
+            h('button.przycisk', { onclick: () => { if (nazwa.value.trim() && confirm(`Przeprogramować transponder za ${kr(r.koszt)}?`)) akcja('radar_transponder', { obiekt_id: p.id, nazwa: nazwa.value.trim(), frakcja: frakcja.value }, 'Transponder przestawia się — nowa tożsamość za 30 min.'); } }, 'Przeprogramuj'));
+        }
+        const gracz = h('select', r.gracze.map((g) => h('option', { value: g.login }, g.postac || g.login)));
+        const czas = h('select', [['1', '1 h'], ['24', '24 h'], ['0', 'do odwołania']].map(([v, n]) => h('option', { value: v }, n)));
+        el.append(h('div', { style: 'margin-top:12px' }, h('h3', 'Radar i transponder'),
+          h('table.tabela',
+            h('tr', h('th', 'Zasięg radaru'), h('td', `${String(r.zasieg).replace('.', ',')} pc`)),
+            h('tr', h('th', 'Transponder'), h('td', stanT))),
+          t.falszywy ? h('button.przycisk.drugi', { style: 'margin-top:8px', onclick: () => akcja('radar_transponder_przywroc', { obiekt_id: p.id }, 'Transponder nadaje prawdziwą tożsamość.') }, 'Przywróć prawdziwy transponder') : null,
+          zmiana,
+          h('h3', { style: 'margin-top:12px' }, 'Udostępnienie pozycji'),
+          r.udostepnienia.length ? h('ul.lista', r.udostepnienia.map((x) => h('li', h('div.rzad',
+            h('span.rozpycha', x.postac), h('span.slaby.maly-tekst', x.do ? `do ${czasGry(x.do)}` : 'do odwołania'),
+            h('button.przycisk.maly.drugi', { onclick: () => akcja('radar_cofnij', { obiekt_id: p.id, login: x.login }, `Cofnięto udostępnienie: ${x.postac}.`) }, 'Cofnij'))))) : h('div.slaby.maly-tekst', 'Pozycji tego okrętu nikomu nie udostępniono.'),
+          r.gracze.length ? h('div.rzad', { style: 'margin-top:8px' }, gracz, czas,
+            h('button.przycisk.maly', { onclick: () => akcja('radar_udostepnij', { obiekt_id: p.id, login: gracz.value, godziny: Number(czas.value) }, 'Pozycja udostępniona.') }, 'Udostępnij')) : null));
+      }).catch(() => {});
+      return el;
     }
 
     // Stocznia naprawcza (np. Kuat): „Oddaj do naprawy” jednym kliknięciem, potem prace podzespołów z prognozą.

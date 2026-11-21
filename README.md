@@ -979,6 +979,15 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 - Dane: `datapad_dane` → `morale` (okręt → grupa → 0–100, start 60) i karta postaci (bez migracji). Panel MG → Stan postaci:
   karta **Morale załóg**. Grupy i wzorce nazw: `GRUPY_ZALOGI` w api/poklad.php.
 
+## PD od MG; lądowanie promu
+
+- **Generator postaci → Doświadczenie**: MG dodaje (albo odejmuje) PD zdobyte w grze; przy wybranej karcie zapis od razu.
+  Widać PD zdobyte, razem ze startowymi, do wydania i poziom kariery. PD z inspekcji trafiają do karty EotE (także w SQL).
+- **Prom z hangaru**: rozkazuje mu dowódca floty okrętu macierzystego, kapitan tego okrętu albo konto z dostępem do promu
+  lub okrętu (wcześniej tylko dowódca floty, w której prom musiał być). Lista lądowisk obejmuje też lądowiska znane
+  z karty postaci (konta graczy mają tekstowe id, więc samo `znane_lokacje` ich nie obejmowało).
+- Panel MG → Floty: przy każdej jednostce **Może lądować: Tak/Nie** (zapis z profilem napędu; serwer pilnuje flagi).
+
 ## Dźwięk pokładu
 
 `js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):

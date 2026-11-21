@@ -852,6 +852,14 @@ function floty_ladowiska(int $planetaId, ?array $u = null): array
             WHERE z.lokalizacja_id = lokalizacje.id AND p.konto_id = ?))';
         $parametry[] = (int) ($u['id'] ?? 0);
     }
+    // Lądowiska znane z karty postaci (konta graczy mają tekstowe id, więc znane_lokacje → postacie.konto_id
+    // ich nie obejmuje): klucze „sql:<id>” z listy znanych miejsc.
+    $znane = [];
+    if (($u['rola'] ?? '') !== 'mg' && !empty($u['id']) && function_exists('karta')) {
+        foreach ((array) (karta((string) $u['id'])['znane'] ?? []) as $z) if (preg_match('/^sql:(\d+)$/', (string) $z, $m)) $znane[] = (int) $m[1];
+    }
+    if ($znane) $warunek = '(' . $warunek . ' OR id IN (' . implode(',', array_fill(0, count($znane), '?')) . '))';
+    $parametry = [...$parametry, ...$znane];
     try {
         $q = polaczenie_bazy()->prepare("SELECT id, nazwa, COALESCE(rodzaj, typ) AS rodzaj FROM lokalizacje
             WHERE planeta_id = ? AND status = 'aktywna' AND (typ = 'ladowisko' OR rodzaj IN ('hangar','port','platforma')) AND $warunek ORDER BY nazwa");
@@ -1246,8 +1254,23 @@ function floty_jednostka_moze(string $login, int $obiektId): ?array
     $q = polaczenie_bazy()->prepare('SELECT j.flota_id FROM mapa_floty_jednostki j WHERE j.obiekt_id=?');
     $q->execute([$obiektId]);
     $flotaId = $q->fetchColumn();
-    if (!$flotaId || !floty_czy_dowodca((int) $flotaId, $login)) return null;
-    return ['flota_id' => (int) $flotaId];
+    if ($flotaId && floty_czy_dowodca((int) $flotaId, $login)) return ['flota_id' => (int) $flotaId];
+    // Prom z hangaru okrętu (zwykle poza składem floty): rozkazuje mu dowódca floty okrętu macierzystego,
+    // kapitan tego okrętu albo konto z dostępem do promu lub okrętu (mapa_obiekty_dostep).
+    if (!floty_hangar_dostepny()) return null;
+    $q = polaczenie_bazy()->prepare('SELECT okret_macierzysty_id FROM mapa_obiekty WHERE id = ?');
+    $q->execute([$obiektId]);
+    $matka = (int) $q->fetchColumn();
+    if (!$matka || $matka === $obiektId) return null;
+    $q = polaczenie_bazy()->prepare('SELECT j.flota_id FROM mapa_floty_jednostki j WHERE j.obiekt_id=?');
+    $q->execute([$matka]);
+    $flotaMatki = (int) $q->fetchColumn();
+    if ($flotaMatki && floty_czy_dowodca($flotaMatki, $login)) return ['flota_id' => $flotaMatki];
+    $u = array_values(array_filter(uzytkownicy(), fn($x) => mb_strtolower((string) $x['login']) === mb_strtolower($login)))[0] ?? null;
+    if ($u && function_exists('wskazniki_kapitan') && wskazniki_kapitan('okret:' . $matka, $u)) return ['flota_id' => $flotaMatki];
+    $q = polaczenie_bazy()->prepare('SELECT 1 FROM mapa_obiekty_dostep WHERE obiekt_id IN (?, ?) AND LOWER(konto_login)=LOWER(?) LIMIT 1');
+    $q->execute([$obiektId, $matka, $login]);
+    return $q->fetchColumn() ? ['flota_id' => $flotaMatki] : null;
 }
 
 function floty_odbiorca_widoczny(string $login, int $obiektId): bool
@@ -2183,6 +2206,10 @@ function obsluz_floty(string $akcja, bool $post): void
             if (liczniki_dostepne()) {
                 polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET oslony=?, kadlub=? WHERE obiekt_id=?')
                     ->execute([max(0, min(100, (int) ($w['oslony'] ?? 100))), max(0, min(100, (int) ($w['kadlub'] ?? 100))), $id]);
+            }
+            // Zdolność lądowania konkretnej jednostki (Tak/Nie) — kolumna „Może lądować” w panelu MG.
+            if (floty_ladowanie_dostepne() && isset($w['moze_ladowac'])) {
+                polaczenie_bazy()->prepare('UPDATE mapa_naped_jednostki SET moze_ladowac=? WHERE obiekt_id=?')->execute([$w['moze_ladowac'] ? 1 : 0, $id]);
             }
             odpowiedz(['ok' => true]);
 

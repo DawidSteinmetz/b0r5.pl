@@ -41,6 +41,7 @@ export async function panelGeneratora(kontener) {
 
   // Odświeżenie podglądu i rachunku PD bez przebudowy formularza (zachowuje fokus pola).
   function odswiez() {
+    odswiezPD();
     wyczysc(podglad).append(h('div.slaby', 'Podgląd CV (tak zobaczy je gracz)'), E.rysujCV(h, e, { mg: true }));
     wyczysc(rachunek);
     if (e.tryb !== 'gracz') return;
@@ -270,6 +271,31 @@ export async function panelGeneratora(kontener) {
     } catch (err) { info.append(msg(err.message)); }
   }
 
+  // Nagroda MG: dodanie (albo odjęcie) PD zdobytych w grze; przy wybranej karcie od razu zapis.
+  function panelPD() {
+    const ile = h('input', { type: 'number', step: 1, placeholder: 'np. 25', style: 'max-width:120px' });
+    const stan = h('span.slaby');
+    const pokaz = () => {
+      const r = E.rachunekPD(e);
+      stan.textContent = `PD zdobyte w grze: ${r.zdobyte} · razem z startowymi: ${r.start + r.dodatkowe + r.zdobyte} · do wydania: ${r.zostalo}`
+        + (e.tryb === 'gracz' && E.karieraPostaci(e).poziomy.length ? ` · kariera: ${E.nazwaKariery(e)}` : '');
+    };
+    pokaz();
+    const dodaj = async () => {
+      const n = Math.trunc(Number(ile.value));
+      if (!n) return;
+      (e.pd ||= {}).zdobyte = Math.max(0, Number(e.pd.zdobyte || 0) + n);
+      ile.value = '';
+      przebuduj(); pokaz();
+      if (cel) await zapisz(false);
+      else { wyczysc(info); info.append(msg(`Dodano ${n} PD. Wybierz kartę albo kliknij „Zapisz jako nowy NPC”, żeby zapisać.`, 'ok')); }
+    };
+    ile.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') dodaj(); });
+    odswiezPD = pokaz;
+    return h('div.rzad', { style: 'margin:8px 0' }, h('b', 'Doświadczenie:'), ile, btn('Dodaj PD', dodaj, '.glowny'), stan);
+  }
+  let odswiezPD = () => {};
+
   // Import / eksport karty jako JSON (kopia, przeniesienie między postaciami, gotowa karta z pliku).
   function importEksport() {
     const pole0 = h('textarea', { style: 'min-height:160px;font-family:monospace;font-size:12px', placeholder: 'Wklej tu kartę w JSON i kliknij „Wczytaj”.' });
@@ -305,6 +331,7 @@ export async function panelGeneratora(kontener) {
         btn('Wyczyść', () => { e = E.nowaKarta(cel.startsWith('u:') ? 'gracz' : 'rywal'); przebuduj(); })),
       h('p.slaby', 'Gracz widzi swoje CV w Karcie postaci (bez notatek MG). Karty NPC wymagają migracji 040.'),
       importEksport(),
+      panelPD(),
       rachunek, info),
     h('div.gen-siatka', formularz, podglad));
   przebuduj();

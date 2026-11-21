@@ -230,12 +230,14 @@ async function floty() {
       };
       // Stan komputera: zhakowany = automat działa, ale po cichu daje duży rozrzut; przejęty/brak = mostek liczy ręcznie.
       const stanKomputera = h('select', ['sprawny', 'zhakowany', 'przejety', 'brak'].map((v) => h('option', { value: v, selected: (j.komputer_stan || 'sprawny') === v }, v)));
+      // Może lądować: zdolność tej konkretnej jednostki (prom, Kom'rk, Gozanti…), nie całej klasy.
+      const mozeLadowac = h('select', [['1', 'Tak'], ['0', 'Nie']].map(([v, n]) => h('option', { value: v, selected: String(Number(j.moze_ladowac) || 0) === v }, n)));
       const save = h('button.btn', { type: 'button', onclick: async () => {
-        try { const payload = { obiekt_id: j.obiekt_id, komputer_stan: stanKomputera.value }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.obiekt_nazwa}`, 'sukces')); }
+        try { const payload = { obiekt_id: j.obiekt_id, komputer_stan: stanKomputera.value, moze_ladowac: Number(mozeLadowac.value) }; for (const [key, el] of Object.entries(vals)) payload[key] = Number(el.querySelector('input').value); await api('mg_naped_zapisz', payload); wyczysc(status).append(msg(`Zapisano napęd: ${j.obiekt_nazwa}`, 'sukces')); }
         catch (e) { wyczysc(status).append(msg(e.message)); }
       } }, 'Zapisz napęd');
-      return h('details', h('summary', `${j.obiekt_nazwa || 'Jednostka'} · kurs ${Math.round(j.kurs ?? 90)}° · komputer ${j.komputer_klasa ?? 3} (${j.komputer_stan || 'sprawny'}) · profil napędu`),
-        h('div.mapa-gm-naped', ...Object.values(vals), h('label', 'Komputer nawigacyjny', stanKomputera), save));
+      return h('details', h('summary', `${j.obiekt_nazwa || 'Jednostka'} · kurs ${Math.round(j.kurs ?? 90)}° · komputer ${j.komputer_klasa ?? 3} (${j.komputer_stan || 'sprawny'}) · może lądować: ${Number(j.moze_ladowac) ? 'Tak' : 'Nie'} · profil napędu`),
+        h('div.mapa-gm-naped', ...Object.values(vals), h('label', 'Komputer nawigacyjny', stanKomputera), h('label', 'Może lądować', mozeLadowac), save));
     });
     const usunFlote = h('section.mapa-gm-usun-flote', h('h3', 'Usuń flotę'),
       h('p.slaby', 'Zwalnia okręty z tej floty i jej podgrup. Jednostki oraz historia rozkazów pozostaną w bazie.'),

@@ -308,16 +308,37 @@ function inspekcja_dokoncz(string $uid): void
     $opisy = INSPEKCJA_OPISY[$ok ? 'sukces' : 'porazka'];
     $wynik = ['grupa' => $i['grupa_nazwa'], 'pomieszczenie' => $i['pomieszczenie_nazwa'], 'sukces' => $ok, 'opis' => $opisy[random_int(0, count($opisy) - 1)],
         'morale_zmiana' => $zmiana, 'morale' => max(0, min(100, $morale + $zmiana)), 'pd' => $pd, 'test' => $test, 'czas' => (int) $i['do']];
-    zmien('karty', function (&$karty) use ($uid, $i, $wynik, $pd) {
+    $doKarty = eote_gracz_dodaj_pd($uid, $pd);
+    zmien('karty', function (&$karty) use ($uid, $i, $wynik, $pd, $doKarty) {
         unset($karty[$uid]['inspekcja']);
         $karty[$uid]['inspekcja_wynik'] = $wynik;
         $karty[$uid]['inspekcje_ostatnie'][$i['okret'] . ':' . $i['grupa']] = (int) $i['do'];
-        if (isset($karty[$uid]['eote']) && is_array($karty[$uid]['eote'])) {
-            $karty[$uid]['eote']['pd']['zdobyte'] = (int) ($karty[$uid]['eote']['pd']['zdobyte'] ?? 0) + $pd;
-        } else {
-            $karty[$uid]['pd_bez_karty'] = (int) ($karty[$uid]['pd_bez_karty'] ?? 0) + $pd;
-        }
+        if (!$doKarty) $karty[$uid]['pd_bez_karty'] = (int) ($karty[$uid]['pd_bez_karty'] ?? 0) + $pd;
     });
+}
+
+// PD do „PD zdobytych” karty EotE gracza: karta w tabelach SQL (eote_sql_*), a bez nich — w karcie postaci.
+// Zwraca false, gdy postać nie ma karty EotE (PD trafiają wtedy na bok: pd_bez_karty).
+function eote_gracz_dodaj_pd(string $uid, int $pd): bool
+{
+    if (function_exists('eote_gracz_odczytaj') && function_exists('eote_sql_zapisz')
+        && tabela_sql_dostepna('eote_cv_karty') && tabela_sql_dostepna('eote_cv_wartosci')) {
+        $legacy = wczytaj('karty', [])[$uid]['eote'] ?? null;
+        $e = eote_gracz_odczytaj($uid, is_array($legacy) ? ['eote' => $legacy] : null);
+        if (!is_array($e)) return false;
+        $pdKarty = (array) ($e['pd'] ?? []);
+        $pdKarty['zdobyte'] = (int) ($pdKarty['zdobyte'] ?? 0) + $pd;
+        $e['pd'] = $pdKarty;
+        eote_sql_zapisz('legacy_uid', $uid, $e);
+        return true;
+    }
+    $jest = false;
+    zmien('karty', function (&$karty) use ($uid, $pd, &$jest) {
+        if (!isset($karty[$uid]['eote']) || !is_array($karty[$uid]['eote'])) return;
+        $karty[$uid]['eote']['pd']['zdobyte'] = (int) ($karty[$uid]['eote']['pd']['zdobyte'] ?? 0) + $pd;
+        $jest = true;
+    });
+    return $jest;
 }
 
 // Stan inspekcji do Nawigacji: trwa / wynik ostatniej / czy można w obecnym pomieszczeniu (grupa, morale, przerwa).

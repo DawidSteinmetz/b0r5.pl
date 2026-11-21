@@ -1828,7 +1828,7 @@ export default {
           h('tr', h('th', 'Frakcja'), h('td', r.frakcja || 'brak')),
           r.trasa ? h('tr', h('th', 'Trasa'), h('td', r.trasa)) : null,
           r.ladunek ? h('tr', h('th', 'Ładunek (deklarowany)'), h('td', r.ladunek)) : null,
-          r.faza ? h('tr', h('th', 'Teraz'), h('td', r.faza)) : null),
+          r.faza ? h('tr', h('th', 'Teraz'), h('td', r.faza + (r.faza_do ? ` · do ${czasGry(r.faza_do)}` : ''))) : null),
         znaczki.length ? h('div.mapa-znaczki', ...znaczki) : null,
         analiza, status);
     }

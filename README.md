@@ -93,8 +93,10 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   Analiza sygnatury silnika i osłon (karta kontaktu na mapie): 6 h, tylko okręty z komputerem 4+ albo ≥900 m,
   cel musi zostać w zasięgu; ujawnia prawdziwą tożsamość i list gończy.
 - **Trasy NPC** (migracja 044, tabela `npc_trasy`, generowana skryptem): ok. 6000 jednostek kursuje między
-  dwoma portami w stałym cyklu — postój, lot do punktu skoku w stronę celu, nadprzestrzeń (niewidoczna),
-  dolot do drugiego portu. Fazę liczy serwer z czasu (`radar_npc_faza`), więc każda jest w innym miejscu
+  dwoma portami w stałym cyklu — postój na lądowisku (lokacja planety: lądowisko, port, magazyn, baza; bez lokacji
+  — zastępcza według ładunku, np. kopalnia rudy) przez 2–3 h załadunku, start i wznoszenie, szybki lot do punktu
+  skoku w stronę celu, nadprzestrzeń (niewidoczna), dolot, wejście w atmosferę i lot nad powierzchnią, lądowanie —
+  i z powrotem tą samą procedurą. Fazę liczy serwer z czasu (`radar_npc_faza`), więc każda jest w innym miejscu
   trasy. Karta kontaktu: trasa, deklarowany ładunek, co robi teraz; jednostki bez transpondera (rejestr 0)
   ujawnia analiza sygnatury. Wykrycia skoków własnych i sojuszniczych okrętów są ukryte, opis — po najechaniu.
 - **Pokład statku** (Nawigacja, jedna zakładka z nazwą miejsca): start, zejście, promy, stocznia, radar oraz

@@ -268,10 +268,11 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
     $q->execute([...$nazwy, ...$nazwy]);
     $teraz = czas_teraz();
     $wynik = [];
+    $miejsca = radar_npc_miejsca($nazwy);
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $t) {
         if (count($wynik) >= RADAR_TLO_MAKS) break;
         if (isset($puste[mb_strtolower($t['port_a'])]) || isset($puste[mb_strtolower($t['port_b'])])) continue;
-        $f = radar_npc_faza($t, $teraz);
+        $f = radar_npc_faza($t, $teraz, $miejsca);
         if (!$f || !isset($wZasiegu[$f['port']])) continue; // w nadprzestrzeni albo poza zasięgiem
         $id = -(int) $t['id'];
         $idn = $ident[$id] ?? null;
@@ -283,9 +284,12 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
             'radar' => ['transponder' => $nazwa, 'frakcja' => $frakcja ?: 'brak', 'udostepniony' => false, 'zidentyfikowany' => (bool) $idn,
                 'poszukiwany' => null, 'analiza_do' => isset($trwa[$id]) ? czas_z_utc((string) $trwa[$id]) : null,
                 'mozna_analizowac' => $analityk && !$idn && !isset($trwa[$id]),
-                'trasa' => $jawny ? "{$t['port_a']} ⇄ {$t['port_b']}" : null, 'ladunek' => $jawny ? $t['ladunek'] : null, 'faza' => $f['opis']]];
-        // Postój: na orbicie portu (przypisanie wprost — „+=” nie nadpisałby 'planeta' => null i jednostka lądowała w słońcu).
-        if ($f['planeta'] !== null) { $o['planeta'] = $f['planeta']; $o['podejscie'] = 'srednia'; $o['orbita'] = $f['orbita']; }
+                'trasa' => $jawny ? "{$t['port_a']} ⇄ {$t['port_b']}" : null, 'ladunek' => $jawny ? $t['ladunek'] : null, 'faza' => $f['opis'], 'faza_do' => $f['do']]];
+        // Przy planecie portu: na lądowisku (geo) albo w atmosferze (start, lądowanie). Przypisanie wprost — „+=”
+        // nie nadpisałby 'planeta' => null.
+        if ($f['planeta'] !== null) { $o['planeta'] = $f['planeta']; $o['podejscie'] = 'bliska'; }
+        if ($f['ladowisko'] !== null) { $o['na_ladowisku'] = $f['ladowisko']; $o['geo'] = $f['geo']; }
+        if ($f['atmosfera'] !== null) $o['atmosfera'] = $f['atmosfera'];
         if ($f['lot'] !== null) $o['podswietlny'] = $f['lot'];
         if ($f['k'] !== null) $o['uklad_k'] = $f['k'];
         $wynik[] = $o;
@@ -293,10 +297,49 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
     return $wynik;
 }
 
-// Faza cyklu trasy NPC w chwili $t: postój w porcie A → lot do punktu skoku → nadprzestrzeń → dolot do portu B →
-// postój → lot do punktu skoku → nadprzestrzeń → dolot do A. Zwraca null w nadprzestrzeni, inaczej: port (układ),
-// x/y mapy, planeta (na orbicie) albo lot podświetlny (km od słońca, tablet przesuwa znacznik), kurs i opis.
-function radar_npc_faza(array $t, int $teraz): ?array
+// Miejsca lądowania NPC na planetach portów: lądowiska, porty, hangary, magazyny i bazy z lokalizacji
+// (nazwa i współrzędne geograficzne). planeta => [[nazwa, szer, dl], …].
+function radar_npc_miejsca(array $planety): array
+{
+    $w = [];
+    if (!$planety || !tabela_sql_dostepna('lokalizacje')) return $w;
+    $ph = implode(',', array_fill(0, count($planety), '?'));
+    try {
+        $q = polaczenie_bazy()->prepare("SELECT l.id, l.nazwa, p.nazwa AS planeta FROM lokalizacje l JOIN mapa_planety p ON p.id = l.planeta_id
+            WHERE p.nazwa IN ($ph) AND l.status = 'aktywna' AND (l.typ = 'ladowisko' OR l.rodzaj IN ('hangar','port','platforma','magazyn','baza'))
+              AND l.orbita_wysokosc_km IS NULL ORDER BY l.id");
+        $q->execute($planety);
+    } catch (Throwable $e) {
+        $q = polaczenie_bazy()->prepare("SELECT l.id, l.nazwa, p.nazwa AS planeta FROM lokalizacje l JOIN mapa_planety p ON p.id = l.planeta_id
+            WHERE p.nazwa IN ($ph) AND l.status = 'aktywna' AND (l.typ = 'ladowisko' OR l.rodzaj IN ('hangar','port','platforma','magazyn','baza')) ORDER BY l.id");
+        $q->execute($planety);
+    }
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $l) {
+        $cykl = astro_cykl((string) $l['planeta']);
+        [$s, $d] = function_exists('atm_geo_lokacji') ? atm_geo_lokacji((int) $l['id'], $cykl) : [0.0, 0.0];
+        $w[$l['planeta']][] = [(string) $l['nazwa'], $s, $d];
+    }
+    return $w;
+}
+
+// Miejsce lądowania trasy w porcie: prawdziwa lokacja (stała dla trasy) albo zastępcza według ładunku.
+function radar_npc_ladowisko(array $t, string $port, array $miejsca, string $strona): array
+{
+    $h = crc32("npc|{$t['id']}|{$strona}");
+    $lista = $miejsca[$port] ?? [];
+    if ($lista) return $lista[$h % count($lista)];
+    $l = mb_strtolower((string) $t['ladunek']);
+    $nazwa = str_contains($l, 'ruda') ? 'kopalnia rudy' : (str_contains($l, 'gaz') ? 'rafineria gazu' : (str_contains($l, 'żywno') || str_contains($l, 'zboże')
+        ? 'skład rolniczy' : (str_contains($l, 'pasaż') || str_contains($l, 'pielgrzym') ? 'port pasażerski' : 'port towarowy')));
+    return [$nazwa . ' (' . $port . ')', (float) ($h % 120) - 60, (float) (($h >> 8) % 360) - 180];
+}
+
+// Faza cyklu trasy NPC w chwili $t (po każdej stronie): postój na lądowisku (2–3 h załadunku) → start i wznoszenie
+// → szybki lot do punktu skoku → nadprzestrzeń (niewidoczna) → dolot z punktu wyjścia → wejście w atmosferę i lot
+// nad powierzchnią → lądowanie przy kopalni, porcie czy magazynie → … i z powrotem tą samą procedurą.
+// Zwraca null w nadprzestrzeni, inaczej: port (układ), x/y mapy, planeta, lot podświetlny (km od słońca),
+// atmosfera (jak u jednostek graczy), lądowisko z geo, kurs i opis.
+function radar_npc_faza(array $t, int $teraz, array $miejsca = []): ?array
 {
     $h = crc32('npc|' . $t['id']);
     $a = ['nazwa' => $t['port_a'], 'x' => (float) $t['ax'], 'y' => (float) $t['ay']];
@@ -304,39 +347,70 @@ function radar_npc_faza(array $t, int $teraz): ?array
     $dx = $b['x'] - $a['x']; $dy = $b['y'] - $a['y'];
     $pc = max(1.0, hypot($dx, $dy));
     $ux = $dx / $pc; $uy = $dy / $pc;
-    $v = max(0.2, (float) $t['predkosc_au_h']);                       // j.a./h
+    $v = max(0.5, (float) $t['predkosc_au_h']) * 2.5;                 // j.a./h — w miarę szybko do punktu skoku
     $dj = 1.5 + ($h % 150) / 100;                                     // punkt skoku 1,5–3 j.a. od planety
     $lot = (int) round($dj / $v * 3600);
-    $skok = (int) round(min(40, 3 + $pc / 150) * 3600);               // h w nadprzestrzeni
-    $postoj = (int) round(max(0.5, (float) $t['postoj_h']) * 3600);
-    // [długość, rodzaj, port, kierunek ruchu (+1 = A→B)]
-    $etapy = [[$postoj, 'postoj', $a], [$lot, 'wylot', $a, 1], [$skok, 'skok', null], [$lot, 'dolot', $b, 1],
-              [$postoj, 'postoj', $b], [$lot, 'wylot', $b, -1], [$skok, 'skok', null], [$lot, 'dolot', $a, -1]];
+    $skok = (int) round(min(40, 3 + $pc / 150) * 3600);
+    $postoj = (int) round(max(2.0, min(3.0, (float) $t['postoj_h'])) * 3600);
+    $wzn = START_WZNOSZENIE_S;
+    $vAtm = 800 + $h % 500;                                           // km/h w atmosferze
+    $lad = ['A' => radar_npc_ladowisko($t, $a['nazwa'], $miejsca, 'A'), 'B' => radar_npc_ladowisko($t, $b['nazwa'], $miejsca, 'B')];
+    $cyklA = astro_cykl($a['nazwa']); $cyklB = astro_cykl($b['nazwa']);
+    // Wejście w atmosferę 4–14° od lądowiska (pilot planuje zejście blisko celu): czas lotu nad powierzchnią.
+    $atmS = function (array $cykl, array $l) use ($h, $vAtm): array {
+        $odsun = 4 + $h % 11;
+        $s0 = $l[1] * 0.85; $d0 = $l[2] - $odsun;
+        $km = function_exists('atm_luk_km') ? atm_luk_km((float) $cykl['srednica_km'] / 2, $s0, $d0, $l[1], $l[2]) : 1000;
+        return [$s0, $d0, ATM_WEJSCIE_S + (int) round($km / $vAtm * 3600)];
+    };
+    $atmA = $atmS($cyklA, $lad['A']); $atmB = $atmS($cyklB, $lad['B']);
+    // [długość, rodzaj, port, strona, kierunek ruchu]
+    $etapy = [[$postoj, 'postoj', $a, 'A', 1], [$wzn, 'start', $a, 'A', 1], [$lot, 'wylot', $a, 'A', 1], [$skok, 'skok', null, '', 1],
+              [$lot, 'dolot', $b, 'B', 1], [$atmB[2], 'ladowanie', $b, 'B', 1],
+              [$postoj, 'postoj', $b, 'B', -1], [$wzn, 'start', $b, 'B', -1], [$lot, 'wylot', $b, 'B', -1], [$skok, 'skok', null, '', -1],
+              [$lot, 'dolot', $a, 'A', -1], [$atmA[2], 'ladowanie', $a, 'A', -1]];
     $cykl = array_sum(array_column($etapy, 0));
     $tc = fmod($teraz + (float) $t['faza'] * $cykl, $cykl);
     foreach ($etapy as $e) {
         if ($tc >= $e[0]) { $tc -= $e[0]; continue; }
         if ($e[1] === 'skok') return null;
-        $port = $e[2];
-        $w = ['port' => $port['nazwa'], 'x' => $port['x'], 'y' => $port['y'], 'planeta' => null, 'lot' => null, 'k' => null, 'orbita' => null];
-        if ($e[1] === 'postoj') {
+        [, $rodzaj, $port, $strona, $kier] = $e;
+        $l = $lad[$strona];
+        $cyklP = $strona === 'A' ? $cyklA : $cyklB;
+        $mx = $ux * $kier; $my = $uy * $kier;                        // kierunek ruchu w galaktyce
+        $od = $teraz - (int) $tc;
+        $w = ['port' => $port['nazwa'], 'x' => $port['x'], 'y' => $port['y'], 'planeta' => null, 'lot' => null, 'k' => null, 'do' => $od + $e[0],
+            'atmosfera' => null, 'ladowisko' => null, 'geo' => null, 'kurs' => fmod(rad2deg(atan2($my, $mx)) + 360, 360)];
+        if ($rodzaj === 'postoj') {
             $w['planeta'] = $port['nazwa'];
-            $w['orbita'] = fmod(($h % 360) + $tc / 120, 360);         // powoli okrąża planetę
-            $w['kurs'] = fmod($w['orbita'] + 90, 360);
-            $w['opis'] = 'postój w porcie ' . $port['nazwa'];
+            $w['ladowisko'] = $l[0];
+            $w['geo'] = ['szer' => round($l[1], 4), 'dl' => round($l[2], 4)];
+            $w['opis'] = 'na lądowisku: ' . $l[0] . ' — załadunek';
             return $w;
         }
-        $kier = $e[3];
-        $mx = $ux * $kier; $my = $uy * $kier;                        // kierunek ruchu w galaktyce
-        $pk = astro_pozycja_km(astro_cykl($port['nazwa']), $teraz);
+        if ($rodzaj === 'start') {
+            // Prosto w górę i na orbitę w stronę punktu skoku.
+            $w['planeta'] = $port['nazwa'];
+            $w['atmosfera'] = ['rodzaj' => 'start', 'od' => $od, 'do' => $od + $e[0], 'szer0' => $l[1], 'dl0' => $l[2], 'szer1' => $l[1], 'dl1' => $l[2],
+                'faza_s' => $e[0], 'orbita' => $w['kurs']];
+            $w['opis'] = 'start z: ' . $l[0];
+            return $w;
+        }
+        if ($rodzaj === 'ladowanie') {
+            $atm = $strona === 'A' ? $atmA : $atmB;
+            $w['planeta'] = $port['nazwa'];
+            $w['atmosfera'] = ['rodzaj' => 'ladowanie', 'od' => $od, 'do' => $od + $e[0], 'szer0' => $atm[0], 'dl0' => $atm[1], 'szer1' => $l[1], 'dl1' => $l[2],
+                'faza_s' => ATM_WEJSCIE_S, 'orbita' => null];
+            $w['opis'] = 'wejście w atmosferę, lądowanie: ' . $l[0];
+            return $w;
+        }
+        $pk = astro_pozycja_km($cyklP, $teraz);
         $djKm = $dj * ASTRO_KM_NA_AU;
-        if ($e[1] === 'wylot') { $k0 = $pk; $k1 = [$pk[0] + $mx * $djKm, $pk[1] + $my * $djKm]; $w['opis'] = 'lot do punktu skoku'; }
+        if ($rodzaj === 'wylot') { $k0 = $pk; $k1 = [$pk[0] + $mx * $djKm, $pk[1] + $my * $djKm]; $w['opis'] = 'lot do punktu skoku'; }
         else { $k0 = [$pk[0] - $mx * $djKm, $pk[1] - $my * $djKm]; $k1 = $pk; $w['opis'] = 'dolot z punktu skoku do ' . $port['nazwa']; }
-        $od = $teraz - (int) $tc;
         $w['lot'] = ['od' => $od, 'do' => $od + $e[0], 'x0' => $port['x'], 'y0' => $port['y'], 'x1' => $port['x'], 'y1' => $port['y'],
             'planeta' => null, 'km' => $djKm, 'k0' => $k0, 'k1' => $k1];
-        $w['k'] = $k1;                                                // po końcu lotu (do odświeżenia mapy)
-        $w['kurs'] = fmod(rad2deg(atan2($my, $mx)) + 360, 360);
+        $w['k'] = $k1;
         return $w;
     }
     return null;

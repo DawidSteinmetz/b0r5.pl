@@ -42,6 +42,20 @@ function dodaj(el, dzieci) {
   }
 }
 
+// Potwierdzenie na samym przycisku (zamiast systemowego okienka): pierwsze kliknięcie zmienia napis na pytanie,
+// drugie w ciągu 4 s wykonuje akcję. Tylko dla rzeczy kosztownych albo nieodwracalnych — drobiazgi bez pytania.
+export function dwaKroki(pytanie, fn) {
+  return function (e) {
+    const b = e.currentTarget;
+    if (b.dataset.potwierdz === '1') {
+      clearTimeout(b._potwierdzT); b.dataset.potwierdz = ''; b.textContent = b._potwierdzTekst; b.classList.remove('potwierdz');
+      return fn(e);
+    }
+    b._potwierdzTekst = b.textContent; b.dataset.potwierdz = '1'; b.textContent = `${pytanie} Kliknij ponownie.`; b.classList.add('potwierdz');
+    b._potwierdzT = setTimeout(() => { b.dataset.potwierdz = ''; b.textContent = b._potwierdzTekst; b.classList.remove('potwierdz'); }, 4000);
+  };
+}
+
 export function wyczysc(el) {
   while (el.firstChild) el.firstChild.remove();
   return el;

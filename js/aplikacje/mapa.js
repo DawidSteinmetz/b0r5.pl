@@ -2,7 +2,7 @@
 // dokąd leci i gdzie stoją statki jej firm. Dane astronawigacyjne są pobierane z SQL
 // przez API i buforowane przez service worker do pracy bez zasięgu.
 
-import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry, dwaKroki } from '../rdzen/narzedzia.js';
 import { stanUkladu, stronaOrbity } from '../rdzen/astro.js';
 import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
@@ -1584,8 +1584,7 @@ export default {
 
     // Przerwanie skoku (z potwierdzeniem): w nadprzestrzeni grozi uszkodzeniem reaktora i hipernapędu.
     function przyciskPrzerwij(rozkazId, info) {
-      return h('button.przycisk.maly', { onclick: async () => {
-        if (!confirm('Przerwać skok? W nadprzestrzeni gwałtowne wyjście uszkodzi reaktor i hipernapęd.')) return;
+      return h('button.przycisk.maly', { onclick: dwaKroki('W nadprzestrzeni uszkodzi to reaktor i hipernapęd.', async () => {
         try {
           const w = await api('mapa_rozkaz_anuluj', { id: rozkazId });
           info.textContent = w.komunikat || 'Skok przerwany.';
@@ -1593,7 +1592,7 @@ export default {
           // Wyjście awaryjne: po przeliczeniu odśwież mapę (jednostka wychodzi z nadprzestrzeni).
           if (w.wyjscie) setTimeout(() => { pobierzPozycje().then(odswiezFloty).catch(() => {}); }, Math.max(1000, (w.wyjscie - teraz() + 1) * 1000));
         } catch (e) { info.textContent = e.message; }
-      } }, 'Przerwij skok');
+      }) }, 'Przerwij skok');
     }
 
     // Czas trwania także w dniach i latach (lot podświetlny między układami trwa lata).
@@ -2077,7 +2076,6 @@ export default {
     function przyciskHangaru(j, info) {
       const wylot = !!j.w_hangarze;
       return h('button.przycisk.maly.drugi', { onclick: async () => {
-        if (!confirm(wylot ? `Wylot „${j.obiekt_nazwa}” z hangaru ${j.okret_macierzysty}?` : `Powrót „${j.obiekt_nazwa}” do hangaru ${j.okret_macierzysty}?`)) return;
         try { const w = await api(wylot ? 'prom_wylot' : 'prom_powrot', { obiekt_id: j.obiekt_id }); info.textContent = w.komunikat || 'Gotowe.'; await odswiezFloty(); await pobierzPozycje(); }
         catch (e) { info.textContent = e.message; }
       } }, wylot ? `${j.obiekt_nazwa}: wylot z hangaru` : `${j.obiekt_nazwa}: powrót do hangaru`);

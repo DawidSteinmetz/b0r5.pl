@@ -17,7 +17,7 @@
 //   })
 // gdzie `p` to wspólne narzędzia panelu (zobacz obiekt `panel` niżej).
 
-import { h, wyczysc, dataKrotka } from '../../rdzen/narzedzia.js';
+import { h, wyczysc, dataKrotka, dwaKroki } from '../../rdzen/narzedzia.js';
 import { api } from '../../rdzen/api.js';
 
 const STATUS_KURSU = {
@@ -287,7 +287,7 @@ export default {
             h('span', `${o.cena} kr`),
             f.moze ? h('button.przycisk.maly', {
               disabled: saldo < o.cena,
-              onclick: () => { if (confirm(`Kupić „${o.nazwa}” za ${o.cena} kr z rachunku firmy?`)) wykonaj('budynek_kup', { oferta: o.id }, `Zakupiono: ${o.nazwa}.`); },
+              onclick: dwaKroki(`Zapłacić ${o.cena} kr z rachunku firmy?`, () => wykonaj('budynek_kup', { oferta: o.id }, `Zakupiono: ${o.nazwa}.`)),
             }, 'Kup') : null))))) : null);
     }
 
@@ -317,7 +317,6 @@ export default {
             e.preventDefault();
             const k = Math.floor(Number(kwota.value));
             if (!(k > 0)) return pokaz('Podaj kwotę większą od zera.');
-            if (!confirm(`Przelać ${kr(k)} z rachunku firmy?`)) return;
             await wykonaj('przelew', { numer: numer.value, kwota: k, tytul: tytul.value }, `Przelew ${kr(k)} wykonany.`);
           },
         },
@@ -354,7 +353,7 @@ export default {
               h('span.maly-tekst' + (klasa ? '.' + klasa : ''), opis),
               f.moze && s.auto && s.status === 'wstrzymany' ? h('button.przycisk.maly', { onclick: () => wykonaj('szlak_wznow', { id: s.id }, 'Automat wznowiony.') }, 'Wznów') : null,
               f.moze && s.auto && ['w_realizacji', 'wstrzymany'].includes(s.status)
-                ? h('button.przycisk.zly.maly', { onclick: () => { if (confirm('Zakończyć kurs automatyczny? Statek wróci do dyspozycji.')) wykonaj('szlak_zatrzymaj', { id: s.id }, 'Automat zatrzymany.'); } }, 'Zatrzymaj') : null,
+                ? h('button.przycisk.zly.maly', { onclick: dwaKroki('Statek wróci do dyspozycji.', () => wykonaj('szlak_zatrzymaj', { id: s.id }, 'Automat zatrzymany.')) }, 'Zatrzymaj') : null,
               h('button.przycisk.drugi.maly', { onclick: () => { const k = JSON.parse(JSON.stringify(s)); panel.otworz(() => edytorKursu(k)); } },
                 f.moze && ['szkic', 'odrzucony'].includes(s.status) ? 'Edytuj' : 'Podgląd')));
           })))

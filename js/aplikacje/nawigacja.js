@@ -1,6 +1,6 @@
 // Nawigacja: gdzie jestem, dokąd i czym mogę się dostać, mój statek, portfel, akcje w miejscu.
 
-import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry, dwaKroki } from '../rdzen/narzedzia.js';
 import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
 
@@ -185,7 +185,7 @@ export default {
         return panel(paliwo,
           h('div.rzad', { style: 'margin-top:10px' },
             p.gotowy
-              ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('start', {}, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start')
+              ? h('button.przycisk', { onclick: () => akcja('start', {}, 'Start! Wznoszenie przez atmosferę.') }, 'Start')
               : h('span.slaby', 'Statek nie przeszedł obsługi naziemnej.'),
             h('button.przycisk.drugi', { onclick: () => akcja('zejdz_z_pokladu', {}, 'Zszedłeś do hangaru.') }, 'Zejdź z pokładu')));
       }
@@ -269,10 +269,10 @@ export default {
       return h('div', { style: 'margin-top:8px' },
         ladowiska.length
           ? h('div.rzad', h('div.pole.rozpycha', { style: 'margin:0' }, wybor),
-            h('button.przycisk', { onclick: () => { if (confirm(`Lot promem „${prom.nazwa}” na lądowisko? Wszyscy na pokładzie promu lecą razem.`)) akcja('prom_wylot', { obiekt_id: prom.id, ladowisko_id: Number(wybor.value) }, (r) => r.komunikat); } }, 'Lot na planetę'))
+            h('button.przycisk', { onclick: () => akcja('prom_wylot', { obiekt_id: prom.id, ladowisko_id: Number(wybor.value) }, (r) => r.komunikat) }, 'Lot na planetę'))
           : null,
         h('div.rzad', { style: 'margin-top:8px' },
-          h('button.przycisk.drugi', { onclick: () => { if (confirm(`Wylot „${prom.nazwa}” z hangaru? Dalej: mapa galaktyki → panel floty (skok, lot, lądowanie).`)) akcja('prom_wylot', { obiekt_id: prom.id }, (r) => r.komunikat); } }, 'Wylot z hangaru')));
+          h('button.przycisk.drugi', { onclick: () => akcja('prom_wylot', { obiekt_id: prom.id }, (r) => r.komunikat) }, 'Wylot z hangaru')));
     }
 
     function stanPromu(prom) {
@@ -437,7 +437,7 @@ export default {
         p.prom?.w_hangarze ? null : p.na_ladowisku
           ? h('div', h('div.slaby.maly-tekst', `Na lądowisku: ${p.ladowisko || '—'}`),
             h('div.rzad', { style: 'margin-top:10px' },
-              p.kapitan ? h('button.przycisk', { onclick: () => { if (confirm('Start? Wszyscy na pokładzie lecą razem.')) akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.'); } }, 'Start') : null,
+              p.kapitan ? h('button.przycisk', { onclick: () => akcja('mapa_flota_start', { obiekt_id: p.id }, 'Start! Wznoszenie przez atmosferę.') }, 'Start') : null,
               h('button.przycisk.drugi', { onclick: () => akcja('statek_zejdz', {}, 'Zszedłeś na lądowisko.') }, 'Zejdź z pokładu')))
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
         panelPromow(p),
@@ -502,7 +502,7 @@ export default {
           zmiana = h('details', h('summary', 'Przeprogramuj transponder'),
             h('div.slaby.maly-tekst', `Koszt ${kr(r.koszt)} z rachunku, hipernapęd −10% sprawności. Nowa tożsamość działa po 30 min. Analiza sygnatury dużego okrętu może cię zdemaskować.`),
             h('div.pole', nazwa), h('div.pole', frakcja),
-            h('button.przycisk', { onclick: () => { if (nazwa.value.trim() && confirm(`Przeprogramować transponder za ${kr(r.koszt)}?`)) akcja('radar_transponder', { obiekt_id: p.id, nazwa: nazwa.value.trim(), frakcja: frakcja.value }, 'Transponder przestawia się — nowa tożsamość za 30 min.'); } }, 'Przeprogramuj'));
+            h('button.przycisk', { onclick: dwaKroki(`Zapłacić ${kr(r.koszt)}?`, () => { if (nazwa.value.trim()) akcja('radar_transponder', { obiekt_id: p.id, nazwa: nazwa.value.trim(), frakcja: frakcja.value }, 'Transponder przestawia się — nowa tożsamość za 30 min.'); }) }, 'Przeprogramuj'));
         }
         const gracz = h('select', r.gracze.map((g) => h('option', { value: g.login }, g.postac || g.login)));
         const czas = h('select', [['1', '1 h'], ['24', '24 h'], ['0', 'do odwołania']].map(([v, n]) => h('option', { value: v }, n)));
@@ -534,7 +534,7 @@ export default {
               h('span.slaby.maly-tekst', x.stan === 'w_toku' ? 'w toku' : 'w kolejce'),
               h('b', { 'data-koniec': x.koniec, 'data-opoznienie': '1' }, x.opoznienie ? 'opóźnienie' : odliczanie(x.koniec - teraz())))))),
             h('div.slaby.maly-tekst', `Prognoza całości: ${czasGry(n.koniec)} · stanowisk: ${n.stanowiska}. Prognoza stoczni nie jest gwarancją.`),
-            p.kapitan ? h('button.przycisk.drugi', { style: 'margin-top:8px', onclick: () => { if (confirm('Odebrać okręt z doku przed końcem napraw? Prace w toku przepadną.')) akcja('mapa_naprawa_przerwij', { obiekt_id: p.id }, 'Okręt odebrany z doku.'); } }, 'Odbierz z doku') : null));
+            p.kapitan ? h('button.przycisk.drugi', { style: 'margin-top:8px', onclick: dwaKroki('Prace w toku przepadną.', () => { akcja('mapa_naprawa_przerwij', { obiekt_id: p.id }, 'Okręt odebrany z doku.'); }) }, 'Odbierz z doku') : null));
         } else if (r.mozna) {
           el.append(h('div', { style: 'margin-top:12px' }, h('h3', 'Stocznia naprawcza'),
             h('div.slaby.maly-tekst', `Uszkodzenia: ${r.uszkodzenia.map((x) => `${x.nazwa} ${x.wartosc}%`).join(', ')}`),

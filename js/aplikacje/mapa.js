@@ -3,7 +3,7 @@
 // przez API i buforowane przez service worker do pracy bez zasięgu.
 
 import { h, wyczysc, czasGry, dwaKroki, pasekLadowania, ladowaniePelne } from '../rdzen/narzedzia.js';
-import { stanUkladu, stronaOrbity } from '../rdzen/astro.js';
+import { stanUkladu, stronaOrbity, wysokoscSlonca } from '../rdzen/astro.js';
 import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
 
@@ -427,6 +427,45 @@ export default {
       const [px, py] = pozycjaPlanety(p);
       return [px + Math.cos(-kier) * r, py + Math.sin(-kier) * r];
     }
+    // Odwrotność geoNaEkran: punkt ekranu na tarczy planety → szerokość (półkula północna) i długość geograficzna.
+    function geoZEkranu(p, u, sx, sy, t) {
+      const [px, py] = pozycjaPlanety(p);
+      const dx = sx - px, dy = sy - py, r = Math.hypot(dx, dy);
+      if (r > u.rp) return null;
+      const c = u.cykl;
+      const kier = -Math.atan2(dy, dx) / RAD;
+      const H = kier - stanUkladu(c, t).katSlonca;
+      let dl = (H - c.faza_obrotu - 360 * (t - c.epoka) / (c.doba_h * 3600)) % 360;
+      dl = ((dl + 540) % 360) - 180;
+      return { szer: Math.acos(Math.min(1, r / u.rp)) / RAD, dl };
+    }
+    // Lokalna godzina (w godzinach doby planety) i pora dnia punktu: przy linii nocy — poranek albo wieczór.
+    function lokalnyCzas(c, szer, dl, t = teraz()) {
+      const H = ((((c.faza_obrotu + 360 * (t - c.epoka) / (c.doba_h * 3600) + dl + 180) % 360) + 360) % 360) - 180; // 0 = południe
+      const godz = (H / 360 + 0.5) * c.doba_h;
+      const g = Math.floor(godz), m = Math.floor((godz - g) * 60);
+      const wys = wysokoscSlonca(c, szer, dl, t);
+      const rano = H < 0;
+      const pora = wys > 12 ? (Math.abs(H) < 20 ? 'południe' : rano ? 'przedpołudnie' : 'popołudnie')
+        : wys > 0 ? (rano ? 'poranek' : 'wieczór') : wys > -6 ? (rano ? 'świt' : 'zmierzch') : wys > -18 ? (rano ? 'przed świtem' : 'późny wieczór') : 'noc';
+      return `${String(g).padStart(2, '0')}:${String(m).padStart(2, '0')} (doba ${liczba(c.doba_h, 0)} h) · ${pora}`;
+    }
+    const geoTekst = (szer, dl) => `${Math.abs(szer).toFixed(1)}°${szer >= 0 ? 'N' : 'S'} ${Math.abs(dl).toFixed(1)}°${dl >= 0 ? 'E' : 'W'}`;
+    // Miejsce obiektu tła na ekranie (jak w rysujObiektyTla) albo null.
+    function punktTla(ob, t = teraz()) {
+      const p = wgKlucza.get(norm(ob.planeta));
+      const u = p && ukladNaEkranie(p);
+      if (!u || u.ksiezyc || u.rp < 40) return null;
+      if (ob.miejsce === 'pierscien') {
+        const r = (pozycja?.orbitalne || []).find((x2) => norm(x2.planeta) === p.klucz);
+        if (!r) return null;
+        const [px, py] = pozycjaPlanety(p);
+        const R = promienPierscienia(r, u) * u.skm;
+        return [px + Math.cos(-ob.kat * RAD) * R, py + Math.sin(-ob.kat * RAD) * R];
+      }
+      return geoNaEkran(p, u, ob.szer, ob.dl, t);
+    }
+
     // Punkt na łuku wielkiego koła z (szer0, dl0) do (szer1, dl1) po ułamku f drogi.
     function geoLuk(a, f) {
       f = Math.max(0, Math.min(1, f));
@@ -527,17 +566,13 @@ export default {
         const p = wgKlucza.get(norm(ob.planeta));
         const u = p && ukladNaEkranie(p);
         if (!u || u.ksiezyc || u.rp < 40) continue;
-        let x, y;
-        if (ob.miejsce === 'pierscien') {
-          const r = (pozycja?.orbitalne || []).find((x2) => norm(x2.planeta) === p.klucz);
-          if (!r) continue;
-          const [px, py] = pozycjaPlanety(p);
-          const R = promienPierscienia(r, u) * u.skm;
-          x = px + Math.cos(-ob.kat * RAD) * R; y = py + Math.sin(-ob.kat * RAD) * R;
-        } else [x, y] = geoNaEkran(p, u, ob.szer, ob.dl, t);
+        const pt = punktTla(ob, t);
+        if (!pt) continue;
+        const [x, y] = pt;
         if (x < -10 || y < -10 || x > szer + 10 || y > wys + 10) continue;
         c.save(); c.fillStyle = KOLORY_TLA[ob.rodzaj] || '#cccccc'; c.globalAlpha = 0.85;
         c.fillRect(x - 2.5, y - 2.5, 5, 5);
+        if (wybrane?.tlo?.id === ob.id) { c.strokeStyle = kolory.akcent2; c.lineWidth = 1.5; c.strokeRect(x - 6, y - 6, 12, 12); }
         if (u.rp > 260) { c.font = `10px ${kroj}`; napis(c, ob.nazwa, x + 6, y + 3); }
         c.restore();
       }
@@ -831,6 +866,11 @@ export default {
       } else if (cel.planeta) {
         const ks = skala >= PROG_UKLADU && ukladNaEkranie(cel.planeta)?.ksiezyc;
         podpowiedz.append(h('strong.mapa-hover-tytul', `${ks ? 'Księżyc ' : ''}${cel.planeta.nazwa}`), listaObecnych(cel.planeta));
+      } else if (cel.tlo) {
+        // Podpowiedź obiektu tła: nazwa i lokalna godzina (na pierścieniu — miejsce na orbicie).
+        const ob = cel.tlo, pl = wgKlucza.get(norm(ob.planeta)), c = pl && cyklPlanety(pl);
+        podpowiedz.append(h('strong.mapa-hover-tytul', ob.nazwa),
+          h('small', ob.miejsce === 'pierscien' ? 'pierścień orbitalny' : c ? `lokalnie ${lokalnyCzas(c, ob.szer, ob.dl)}` : ob.planeta));
       } else if (cel.obiekt) {
         const o = cel.obiekt;
         podpowiedz.append(h('strong.mapa-hover-tytul', o.nazwa),
@@ -1367,6 +1407,23 @@ export default {
           if (d < odl) { odl = d; najblizsza = p; slonce = null; }
         }
       }
+      // Obiekty tła (kopalnie, huty, porty…) — małe cele na tarczy planety albo na pierścieniu.
+      let tlo = null, odlTla = 9;
+      for (const ob of pozycja?.obiekty_tla || []) {
+        const pt = punktTla(ob);
+        if (!pt) continue;
+        const d = Math.hypot(pt[0] - sx, pt[1] - sy);
+        if (d < odlTla) { odlTla = d; tlo = ob; }
+      }
+      // Duża tarcza (super zbliżenie): pierwszeństwo mają małe cele — obiekt tła, jednostka; klik w pustą powierzchnię
+      // wybiera planetę razem ze wskazanym punktem (współrzędne i lokalna godzina).
+      const uDuza = najblizsza && !slonce ? ukladNaEkranie(najblizsza) : null;
+      if (uDuza && !uDuza.ksiezyc && uDuza.rp > 40 && odl <= 0) {
+        if (najblizszyObiekt && odlObiektu < 6) return { obiekt: najblizszyObiekt };
+        if (tlo) return { tlo };
+        return { planeta: najblizsza, geo: geoZEkranu(najblizsza, uDuza, sx, sy, teraz()) };
+      }
+      if (tlo && (!najblizszyObiekt || odlTla < odlObiektu)) return { tlo };
       // Klik w samą tarczę ciała (albo tuż przy kropce) wybiera ciało — cel podróży — nawet gdy
       // na jego orbicie stoi flota; jednostkę wybiera się klikiem w jej znacznik.
       if (najblizsza && (!najblizszyObiekt || (odl <= 3 && odlObiektu > 2))) return slonce ? { gwiazda: najblizsza } : { planeta: najblizsza };
@@ -1946,6 +2003,7 @@ export default {
             o.status ? wiersz('Status', o.status) : null,
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku + (o.geo ? ` · ${Math.abs(o.geo.szer).toFixed(1)}°${o.geo.szer >= 0 ? 'N' : 'S'} ${Math.abs(o.geo.dl).toFixed(1)}°${o.geo.dl >= 0 ? 'E' : 'W'}` : '')) : null,
+            o.geo && planetaObiektu(o) && cyklPlanety(planetaObiektu(o)) ? h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(planetaObiektu(o)), o.geo.szer, o.geo.dl))) : null,
             o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
             o.dok ? h('tr', h('th', 'Dok'), zywa(() => {
               const x = obiektyMapy.find((y) => y.id === o.id)?.dok || o.dok;
@@ -1959,6 +2017,32 @@ export default {
           o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null,
           o.radar ? sekcjaRadaru(o) : null,
           o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null);
+      } else if (obiekt.tlo) {
+        // Obiekt tła gospodarki: opis, miejsce i lokalna godzina, zużycie na dobę, linie dostaw z najbliższą dostawą.
+        const ob = obiekt.tlo;
+        const pl = wgKlucza.get(norm(ob.planeta));
+        const RODZAJE_TLA = { huta: 'huta', fabryka: 'fabryka', terminal: 'terminal zaopatrzenia', sklad_paliwa: 'skład paliwa', port: 'port towarowy', zaklad: 'zakład' };
+        const szczegoly = h('div');
+        karta.append(zamknij, h('h2', ob.nazwa),
+          h('div.mapa-znaczki', h('span.znaczek-cel', RODZAJE_TLA[ob.rodzaj] || ob.rodzaj)),
+          h('table.tabela',
+            wiersz('Planeta', ob.planeta),
+            wiersz('Miejsce', ob.miejsce === 'pierscien' ? `pierścień orbitalny · ${liczba(ob.kat, 1)}°` : geoTekst(ob.szer, ob.dl)),
+            ob.miejsce !== 'pierscien' && pl && cyklPlanety(pl) ? h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(pl), ob.szer, ob.dl))) : null,
+            ob.miejsce === 'pierscien' && pl && cyklPlanety(pl) ? h('tr', h('th', 'Strona'), zywa(() => (stronaOrbity(cyklPlanety(pl), ob.kat).dzien ? 'dzienna (w słońcu)' : 'nocna (w cieniu planety)'))) : null),
+          szczegoly);
+        zLadowaniem(szczegoly, api('gosp_obiekt', undefined, { id: ob.id }), 'Dane zakładu').then((d) => {
+          const t = (x) => `${liczba(x, x < 100 ? 1 : 0)} t`;
+          szczegoly.append(
+            d.obiekt.opis ? h('p.slaby.maly-tekst', d.obiekt.opis) : null,
+            h('div.slaby.maly-tekst', 'Zużycie na dobę'),
+            h('table.tabela', d.zuzycie.map((z) => wiersz(z.towar, t(z.t_doba)))),
+            h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, `Dostawy (${d.linie.length} linii)`),
+            h('ul.lista', d.linie.map((l) => h('li',
+              h('div', h('b', l.towar), h('span.slaby', ` · z ${l.producent}`)),
+              h('div.slaby.maly-tekst', `${t(l.ladownosc_t)} co ${czasTrwania(l.odstep_s)} · ${l.klasa} · w obiegu ${l.w_drodze}`),
+              h('div.maly-tekst', (() => { const el = h('span.mapa-zywe'); el._licz = () => `najbliższa dostawa: za ${czasTrwania(l.przylot - teraz())}`; el.textContent = el._licz(); return el; })())))));
+        }).catch((e) => szczegoly.append(h('p.komunikat.blad', e.message)));
       } else if (obiekt.planeta) {
         const p = obiekt.planeta;
         const tutaj = statkiNaMapie.find((x) => x.planeta === p)?.statki || [];
@@ -1969,6 +2053,9 @@ export default {
             p === tuPlaneta ? h('span.znaczek-tu', 'Twoja pozycja') : null,
             p === celPlaneta ? h('span.znaczek-cel', 'Cel skoku') : null,
             p.zastrzezona ? h('span.znaczek-cel', 'Dane zastrzeżone') : null),
+          obiekt.geo && cyklPlanety(p) ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Wskazany punkt'),
+            h('table.tabela', wiersz('Współrzędne', geoTekst(obiekt.geo.szer, obiekt.geo.dl)),
+              h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(p), obiekt.geo.szer, obiekt.geo.dl))))) : null,
           h('table.tabela',
             p.sektor ? wiersz('Sektor', p.sektor) : null,
             wiersz('Region', p.region || 'nieznany'),
@@ -2111,7 +2198,7 @@ export default {
       if (!poprzedni) {
         if (e.pointerType === 'mouse' && D) {
           const n = trafienie(e.offsetX, e.offsetY);
-          const klucz = (x) => x?.obiekt || x?.szlak || (x?.gwiazda ? `g:${x.gwiazda.nazwa}` : x?.planeta);
+          const klucz = (x) => x?.obiekt || x?.szlak || (x?.tlo ? `t:${x.tlo.id}` : x?.gwiazda ? `g:${x.gwiazda.nazwa}` : x?.planeta);
           const zmienilSieCel = klucz(n) !== klucz(najechane);
           if (zmienilSieCel) { najechane = n; pokazPodpowiedz(n, e.offsetX, e.offsetY); odswiez(); }
           else if (n) { podpowiedz.style.left = `${Math.min(Math.max(8, e.offsetX + 16), Math.max(8, szer - 340))}px`; podpowiedz.style.top = `${Math.min(Math.max(68, e.offsetY + 14), Math.max(68, wys - 210))}px`; }

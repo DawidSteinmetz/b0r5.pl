@@ -74,10 +74,48 @@ function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk,
 function gosp_obiekty_mapy(): array
 {
     if (!gosp_dostepna()) return [];
-    return array_map(fn($o) => ['planeta' => $o['planeta'], 'nazwa' => $o['nazwa'], 'rodzaj' => $o['rodzaj'], 'miejsce' => $o['miejsce'],
+    return array_map(fn($o) => ['id' => (int) $o['id'], 'planeta' => $o['planeta'], 'nazwa' => $o['nazwa'], 'rodzaj' => $o['rodzaj'], 'miejsce' => $o['miejsce'],
         'szer' => $o['szer'] !== null ? (float) $o['szer'] : null, 'dl' => $o['dl'] !== null ? (float) $o['dl'] : null,
         'kat' => $o['kat_deg'] !== null ? (float) $o['kat_deg'] : null],
-        polaczenie_bazy()->query('SELECT planeta, nazwa, rodzaj, miejsce, szer, dl, kat_deg FROM gosp_obiekty ORDER BY id')->fetchAll(PDO::FETCH_ASSOC));
+        polaczenie_bazy()->query('SELECT id, planeta, nazwa, rodzaj, miejsce, szer, dl, kat_deg FROM gosp_obiekty ORDER BY id')->fetchAll(PDO::FETCH_ASSOC));
+}
+
+// Karta obiektu tła: opis, zużycie na dobę i linie dostaw z czasem najbliższej dostawy (z cyklu statków linii).
+function gosp_obiekt_karta(int $id): array
+{
+    if (!gosp_dostepna()) blad('Zaimportuj api/migracje/048_gospodarka_kuat.sql.');
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT * FROM gosp_obiekty WHERE id = ?');
+    $q->execute([$id]);
+    $o = $q->fetch(PDO::FETCH_ASSOC) ?: blad('Nie ma takiego obiektu.');
+    $q = $db->prepare('SELECT z.towar, z.t_doba, t.nazwa FROM gosp_zuzycie z JOIN gosp_towary t ON t.kod = z.towar WHERE z.obiekt_id = ? ORDER BY z.t_doba DESC');
+    $q->execute([$id]);
+    $zuzycie = array_map(fn($r) => ['towar' => $r['nazwa'], 't_doba' => (float) $r['t_doba']], $q->fetchAll(PDO::FETCH_ASSOC));
+    $q = $db->prepare("SELECT l.*, o.planeta, o.nazwa AS obiekt, o.miejsce, o.szer, o.dl, o.kat_deg, t.nazwa AS towar_nazwa,
+            pa.x AS ax, pa.y AS ay, pb.x AS bx, pb.y AS by_
+        FROM gosp_linie l JOIN gosp_obiekty o ON o.id = l.obiekt_id JOIN gosp_towary t ON t.kod = l.towar
+        JOIN mapa_planety pa ON pa.nazwa = l.producent JOIN mapa_planety pb ON pb.nazwa = o.planeta WHERE l.obiekt_id = ? ORDER BY l.t_doba DESC");
+    $q->execute([$id]);
+    $teraz = czas_teraz();
+    $linie = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $l) {
+        $plan = gosp_plan($l);
+        // Najbliższy przylot: początek etapu „przylot” po stronie obiektu (B) dla któregokolwiek statku linii.
+        $doPrzylotu = 0;
+        foreach ($plan['etapy'] as $e) { if ($e[1] === 'przylot' && $e[3] === 'B') break; $doPrzylotu += $e[0]; }
+        $ile = max(1, (int) ceil($plan['cykl'] / max(60, (int) $l['odstep_s'])));
+        $najblizej = null;
+        for ($k = 0; $k < $ile; $k++) {
+            $tc = fmod($teraz + (float) $l['faza'] * $plan['cykl'] + $k * (int) $l['odstep_s'], $plan['cykl']);
+            $za = fmod($doPrzylotu - $tc + 2 * $plan['cykl'], $plan['cykl']);
+            if ($najblizej === null || $za < $najblizej) $najblizej = $za;
+        }
+        $linie[] = ['towar' => $l['towar_nazwa'], 'producent' => $l['producent'], 'ladownosc_t' => (int) $l['ladownosc_t'], 't_doba' => (float) $l['t_doba'],
+            'odstep_s' => (int) $l['odstep_s'], 'w_drodze' => $ile, 'przylot' => $teraz + (int) round((float) $najblizej), 'klasa' => $l['klasa']];
+    }
+    return ['obiekt' => ['id' => (int) $o['id'], 'planeta' => $o['planeta'], 'nazwa' => $o['nazwa'], 'rodzaj' => $o['rodzaj'], 'miejsce' => $o['miejsce'],
+        'opis' => $o['opis'], 'szer' => $o['szer'] !== null ? (float) $o['szer'] : null, 'dl' => $o['dl'] !== null ? (float) $o['dl'] : null,
+        'kat' => $o['kat_deg'] !== null ? (float) $o['kat_deg'] : null], 'zuzycie' => $zuzycie, 'linie' => $linie];
 }
 
 // Plan cyklu linii: etapy [długość s, rodzaj, port, strona, kierunek] i ich suma.

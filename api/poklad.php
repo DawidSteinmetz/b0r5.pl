@@ -436,6 +436,7 @@ function obsluz_poklad(string $akcja, bool $post): void
     if (str_starts_with($akcja, 'radar_') || $akcja === 'mg_radar_baza' || $akcja === 'mg_radar_baza_zapisz') { obsluz_radar($akcja, $post); return; }
     if ($akcja === 'awanse' || $akcja === 'awans') { obsluz_awanse($akcja, $post); return; }
     if (in_array($akcja, ['doki', 'dokuj', 'oddokuj'], true)) { obsluz_doki($akcja, $post); return; }
+    if ($akcja === 'gosp_obiekt') { wymagaj_logowania(); odpowiedz(gosp_obiekt_karta((int) ($_GET['id'] ?? 0))); }
     if (in_array($akcja, ['maszynownia', 'maszynownia_napraw', 'ladownia', 'ladownia_wloz', 'ladownia_wyjmij'], true)) { obsluz_maszynownie($akcja, $post); return; }
     if ($akcja !== 'poklad_idz') return;
     // Przejście do innego pomieszczenia okrętu (czas z planu wnętrza; odliczanie w Nawigacji).

@@ -928,7 +928,11 @@ export function utworzScene(canvas) {
     ctx.beginPath();
     ctx.arc(cx, cy, R, 0, Math.PI * 2);
     ctx.clip();
-    const przes = ((t * 0.004 * (spokojnie ? 0 : 1)) % dt);
+    // Obrót planety pod okrętem: pełny obrót tekstury w stałym czasie (z bliska szybciej — tak przesuwa się powierzchnia
+    // pod orbitującym okrętem), liczony z zegara, więc taki sam na wszystkich tabletach. Nie wyłącza go systemowe
+    // „ogranicz animacje” — to powolny ruch, nie efekt (wcześniej planeta wtedy stała w miejscu).
+    const okresS = { blisko: 360, srednio: 900, daleko: 2400 }[stan.odleglosc] ?? 1800;
+    const przes = (((Date.now() + (stan.przesuniecie || 0)) / 1000 / okresS) % 1) * dt;
     ctx.drawImage(tekstura, przes, 0, dt, dt, cx - R, cy - R, R * 2, R * 2);
     const ciemna = k?.slonce != null ? (() => {
       // Z mostka: nocna strona tam, gdzie nie dociera słońce (faza zależna od miejsca na orbicie).

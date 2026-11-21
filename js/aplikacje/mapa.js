@@ -572,8 +572,13 @@ export default {
         if (x < -10 || y < -10 || x > szer + 10 || y > wys + 10) continue;
         c.save(); c.fillStyle = KOLORY_TLA[ob.rodzaj] || '#cccccc'; c.globalAlpha = 0.85;
         c.fillRect(x - 2.5, y - 2.5, 5, 5);
-        if (wybrane?.tlo?.id === ob.id) { c.strokeStyle = kolory.akcent2; c.lineWidth = 1.5; c.strokeRect(x - 6, y - 6, 12, 12); }
-        if (u.rp > 260) { c.font = `10px ${kroj}`; napis(c, ob.nazwa, x + 6, y + 3); }
+        // Najechany albo wybrany znacznik — jak znacznik statku: pierścień wokół i pogrubiona nazwa.
+        const aktywny = najechane?.tlo?.id === ob.id || wybrane?.tlo?.id === ob.id;
+        if (aktywny) {
+          c.globalAlpha = 1; c.strokeStyle = KOLORY_TLA[ob.rodzaj] || '#cccccc'; c.lineWidth = 1.5;
+          c.beginPath(); c.arc(x, y, 10, 0, Math.PI * 2); c.stroke();
+          c.font = 'bold 12px monospace'; napis(c, ob.nazwa, x + 10, y - 7);
+        } else if (u.rp > 260) { c.font = `10px ${kroj}`; napis(c, ob.nazwa, x + 6, y + 3); }
         c.restore();
       }
     }
@@ -869,8 +874,11 @@ export default {
       } else if (cel.tlo) {
         // Podpowiedź obiektu tła: nazwa i lokalna godzina (na pierścieniu — miejsce na orbicie).
         const ob = cel.tlo, pl = wgKlucza.get(norm(ob.planeta)), c = pl && cyklPlanety(pl);
+        const RODZ = { huta: 'huta', fabryka: 'fabryka', terminal: 'terminal zaopatrzenia', sklad_paliwa: 'skład paliwa', port: 'port towarowy', zaklad: 'zakład' };
         podpowiedz.append(h('strong.mapa-hover-tytul', ob.nazwa),
-          h('small', ob.miejsce === 'pierscien' ? 'pierścień orbitalny' : c ? `lokalnie ${lokalnyCzas(c, ob.szer, ob.dl)}` : ob.planeta));
+          h('div', `${RODZ[ob.rodzaj] || ob.rodzaj} · ${ob.planeta}`, h('small', ob.miejsce === 'pierscien' ? `pierścień orbitalny · ${liczba(ob.kat, 1)}°` : geoTekst(ob.szer, ob.dl))),
+          ob.miejsce !== 'pierscien' && c ? h('small', `Lokalnie: ${lokalnyCzas(c, ob.szer, ob.dl)}`) : null,
+          ob.ladowisko_id ? h('small', 'Lądowisko — kliknij, by wylądować') : null);
       } else if (cel.obiekt) {
         const o = cel.obiekt;
         podpowiedz.append(h('strong.mapa-hover-tytul', o.nazwa),
@@ -1408,7 +1416,7 @@ export default {
         }
       }
       // Obiekty tła (kopalnie, huty, porty…) — małe cele na tarczy planety albo na pierścieniu.
-      let tlo = null, odlTla = 9;
+      let tlo = null, odlTla = 12;
       for (const ob of pozycja?.obiekty_tla || []) {
         const pt = punktTla(ob);
         if (!pt) continue;

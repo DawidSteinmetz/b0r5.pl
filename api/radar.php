@@ -284,7 +284,8 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
                 'poszukiwany' => null, 'analiza_do' => isset($trwa[$id]) ? czas_z_utc((string) $trwa[$id]) : null,
                 'mozna_analizowac' => $analityk && !$idn && !isset($trwa[$id]),
                 'trasa' => $jawny ? "{$t['port_a']} ⇄ {$t['port_b']}" : null, 'ladunek' => $jawny ? $t['ladunek'] : null, 'faza' => $f['opis']]];
-        if ($f['planeta'] !== null) $o += ['planeta' => $f['planeta'], 'podejscie' => 'srednia', 'orbita' => $f['orbita']];
+        // Postój: na orbicie portu (przypisanie wprost — „+=” nie nadpisałby 'planeta' => null i jednostka lądowała w słońcu).
+        if ($f['planeta'] !== null) { $o['planeta'] = $f['planeta']; $o['podejscie'] = 'srednia'; $o['orbita'] = $f['orbita']; }
         if ($f['lot'] !== null) $o['podswietlny'] = $f['lot'];
         if ($f['k'] !== null) $o['uklad_k'] = $f['k'];
         $wynik[] = $o;

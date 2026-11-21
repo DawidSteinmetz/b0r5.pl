@@ -135,6 +135,59 @@ function wnetrze_zapisz(string $uid, int $okretId, int $pomieszczenie, ?array $p
     return $zapis;
 }
 
+// Pomieszczenia szablonów wnętrz (plany z mapa_obiekty.plan_wnetrza_id i wszystkie ich podpomieszczenia):
+// id lokacji => id korzenia planu. Szablon leży w `lokalizacje` przypięty do jakiejś planety (import), ale to nie są
+// miejsca na tej planecie — tylko pomieszczenia okrętów danej klasy.
+function wnetrze_pomieszczenia_szablonow(): array
+{
+    static $w = null;
+    if ($w !== null) return $w;
+    $w = [];
+    if (!wnetrze_dostepne()) return $w;
+    $db = polaczenie_bazy();
+    $korzenie = array_flip(array_map('intval', $db->query('SELECT DISTINCT plan_wnetrza_id FROM mapa_obiekty WHERE plan_wnetrza_id IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN)));
+    if (!$korzenie) return $w;
+    $rodzic = $db->query('SELECT id, rodzic_id FROM lokalizacje')->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach ($rodzic as $id => $r) {
+        $x = (int) $id;
+        for ($i = 0; $i < 25 && $x; $i++) {
+            if (isset($korzenie[$x])) { $w[(int) $id] = $x; break; }
+            $x = (int) ($rodzic[$x] ?? 0);
+        }
+    }
+    return $w;
+}
+
+// Naprawa pozycji: postać z lokacją ustawioną na pomieszczenie szablonu (np. przeniesienie na „ISD-I – Tunele
+// transferowe TIE”) trafiała na planetę, do której przypięty jest szablon. Teraz staje na pokładzie okrętu z tym
+// planem — tego, na którym była ostatnio, albo pierwszego takiego okrętu — w tym właśnie pomieszczeniu.
+function wnetrze_napraw_pozycje(): void
+{
+    $sz = wnetrze_pomieszczenia_szablonow();
+    if (!$sz) return;
+    $do = [];
+    foreach (wczytaj('karty', []) as $uid => $k) {
+        if (preg_match('/^sql:(\d+)$/', (string) ($k['pozycja']['lokacja'] ?? ''), $m) && isset($sz[(int) $m[1]])) {
+            $do[(string) $uid] = [(int) $m[1], $sz[(int) $m[1]], (int) ($k['wnetrze']['okret'] ?? 0)];
+        }
+    }
+    foreach ($do as $uid => [$pom, $plan, $ostatni]) {
+        $okret = $ostatni && wnetrze_plan_okretu($ostatni) === $plan ? $ostatni : 0;
+        if (!$okret) {
+            $q = polaczenie_bazy()->prepare('SELECT id FROM mapa_obiekty WHERE plan_wnetrza_id = ? AND aktywny = 1 ORDER BY id LIMIT 1');
+            $q->execute([$plan]);
+            $okret = (int) $q->fetchColumn();
+        }
+        if (!$okret) continue;
+        zmien('karty', function (&$k) use ($uid, $okret, $pom) {
+            $k[$uid]['pozycja']['lokacja'] = 'okret:' . $okret;
+            $k[$uid]['pozycja']['zmieniono'] = teraz_ms();
+            $k[$uid]['wnetrze'] = ['okret' => $okret, 'pomieszczenie' => $pom, 'przejscie' => null];
+        });
+        if (function_exists('pozycja_sql_zapisz')) pozycja_sql_zapisz($uid, wczytaj('karty', [])[$uid]['pozycja'] ?? []);
+    }
+}
+
 // Wyjście z promu do hangaru: postać staje w hangarze promów okrętu.
 function wnetrze_do_hangaru(string $uid, int $okretId): void
 {

@@ -314,7 +314,9 @@ function radar_npc_miejsca(array $planety): array
             WHERE p.nazwa IN ($ph) AND l.status = 'aktywna' AND (l.typ = 'ladowisko' OR l.rodzaj IN ('hangar','port','platforma','magazyn','baza')) ORDER BY l.id");
         $q->execute($planety);
     }
+    $szablony = function_exists('wnetrze_pomieszczenia_szablonow') ? wnetrze_pomieszczenia_szablonow() : [];
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $l) {
+        if (isset($szablony[(int) $l['id']])) continue;
         $cykl = astro_cykl((string) $l['planeta']);
         [$s, $d] = function_exists('atm_geo_lokacji') ? atm_geo_lokacji((int) $l['id'], $cykl) : [0.0, 0.0];
         $w[$l['planeta']][] = [(string) $l['nazwa'], $s, $d];

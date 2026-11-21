@@ -880,7 +880,10 @@ function floty_ladowiska(int $planetaId, ?array $u = null): array
             WHERE planeta_id = ? AND status = 'aktywna' AND (typ = 'ladowisko' OR rodzaj IN ('hangar','port','platforma')) AND publiczna = 1 ORDER BY nazwa");
         $q->execute([$planetaId]);
     }
-    return array_map(fn($l) => ['id' => (int) $l['id'], 'nazwa' => $l['nazwa'], 'rodzaj' => $l['rodzaj']], $q->fetchAll(PDO::FETCH_ASSOC));
+    // Bez pomieszczeń szablonów wnętrz okrętów (hangary ISD przypięte do planety tylko przez import).
+    $szablony = function_exists('wnetrze_pomieszczenia_szablonow') ? wnetrze_pomieszczenia_szablonow() : [];
+    return array_values(array_map(fn($l) => ['id' => (int) $l['id'], 'nazwa' => $l['nazwa'], 'rodzaj' => $l['rodzaj']],
+        array_filter($q->fetchAll(PDO::FETCH_ASSOC), fn($l) => !isset($szablony[(int) $l['id']]))));
 }
 
 function floty_start(array $odbiorcy): array

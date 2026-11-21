@@ -563,7 +563,10 @@ function ruch_lokacje(): array
     if (tabela_sql_dostepna('lokalizacje')) {
         $rows = polaczenie_bazy()->query("SELECT l.id, l.typ AS typ_sql, l.rodzic_id, l.rodzaj, l.planeta_id, p.nazwa AS planeta_nazwa, l.nazwa, l.x_km, l.y_km, l.publiczna, l.opis, (b.lokalizacja_id IS NOT NULL) AS jest_budynkiem FROM lokalizacje l LEFT JOIN mapa_planety p ON p.id=l.planeta_id LEFT JOIN budynki b ON b.lokalizacja_id=l.id WHERE l.status='aktywna' ORDER BY l.id")->fetchAll(PDO::FETCH_ASSOC);
         $rows = ruch_wspolrzedne_zastepcze($rows);
+        // Pomieszczenia szablonów wnętrz okrętów nie są miejscami na planecie, do której przypięto szablon.
+        $szablony = function_exists('wnetrze_pomieszczenia_szablonow') ? wnetrze_pomieszczenia_szablonow() : [];
         foreach ($rows as $x) {
+            if (isset($szablony[(int) $x['id']])) continue;
             if ($x['planeta_id'] !== null && !mapa_planeta_widoczna((int) $x['planeta_id'], $u)) continue;
             $key = 'sql:' . $x['id'];
             $l[$key] = ['klucz' => $key, 'sql_id' => (int) $x['id'], 'nazwa' => $x['nazwa'], 'planeta' => (string) ($x['planeta_id'] ?? ''),
@@ -860,6 +863,8 @@ function obsluz_ruch(string $akcja, bool $post): void
 {
     // Każda akcja najpierw domyka podróż, która w międzyczasie dobiegła końca.
     if (in_array($akcja, AKCJE_RUCHU, true) && ($ja = ja())) ruch_dokoncz($ja['id']);
+    // Postacie przeniesione na pomieszczenie szablonu wnętrza wracają na pokład okrętu (przy mapie i Nawigacji).
+    if (in_array($akcja, ['mapa', 'nawigacja'], true) && function_exists('wnetrze_napraw_pozycje')) wnetrze_napraw_pozycje();
     if (in_array($akcja, AKCJE_RUCHU, true) || $akcja === 'mg_statki_w_locie') ruch_skoki_dokoncz();
     switch ($akcja) {
 

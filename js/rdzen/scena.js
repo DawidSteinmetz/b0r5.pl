@@ -485,7 +485,8 @@ export function utworzScene(canvas) {
     const vx = w / 2, vy = cy;                                  // punkt zbiegu: wzdłuż kursu, na horyzoncie
     // pół wysokości otwartej przestrzeni przy horyzoncie: część wysokości okna (mostek, kokpit), bez okna — ekranu
     const okno = stan.okno ? geometriaOkna(stan.okno, w, h) : null;
-    const szczelina = (okno ? okno.dol - okno.gora : h) * 0.17;
+    // Dok obejmuje całą wysokość ISD z zapasem: pokład i strop przy krawędziach okna, przestrzeń doku pośrodku.
+    const szczelina = (okno ? okno.dol - okno.gora : h) * 0.4;
     const jasn = 0.55 + 0.35 * Math.max(0, Math.cos(((k.orbita ?? 0) - (k.slonce ?? 0)) * RAD));
     const kolor = (f) => `rgb(${Math.round((60 + 80 * jasn) * f)}, ${Math.round((64 + 84 * jasn) * f)}, ${Math.round((70 + 90 * jasn) * f)})`;
     ctx.save();

@@ -94,7 +94,7 @@ export async function panelGeneratora(kontener) {
         return h('label.gen-check', cb, ` ${s.nazwa}${E.specjalizacjaKariery(e, k) ? '' : ' (spoza kariery)'}`);
       }));
       // Poziom kariery (kariera z poziomami, np. flota): automatycznie z PD zdobytych albo ręcznie.
-      const poziom = kp.poziomy.length ? wiaz(h('select', opcje([['', `auto: ${E.nazwaKariery({ ...e, poziom_kariery: null })} (wg PD zdobytych)`],
+      const poziom = kp.poziomy.length ? wiaz(h('select', opcje([['', `auto: ${E.nazwaKariery({ ...e, poziom_kariery: null })} (wg PD łącznie)`],
         ...kp.poziomy.map((p, i) => [String(i), `${p.nazwa} (od ${p.pd} PD)`])], e.poziom_kariery ?? '')),
       () => (e.poziom_kariery ?? ''), (v) => { e.poziom_kariery = v === '' ? null : Number(v); }, { przebudowa: true }) : null;
       elementy.push(pole('Kariera', kariera),

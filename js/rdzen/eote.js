@@ -72,11 +72,12 @@ export const KARIERY = {
   kadet: { nazwa: 'Kadet', umiejetnosci: ['przywodztwo', 'dyscyplina', 'opanowanie', 'negocjacje', 'w_jadro', 'w_edukacja', 'astronawigacja', 'czujnosc'],
     specjalizacje: ['mowca'],
     poziomy: [
+      // progi: PD łącznie (startowe gatunku + za zobowiązanie + zdobyte w grze)
       { nazwa: 'Kadet', pd: 0 },
-      { nazwa: 'Chorąży', pd: 100, umiejetnosci: ['komputery'] },
-      { nazwa: 'Porucznik', pd: 250, umiejetnosci: ['artyleria'], specjalizacje: ['oficer_pokladowy'] },
-      { nazwa: 'Komandor porucznik', pd: 450, umiejetnosci: ['percepcja'] },
-      { nazwa: 'Komandor', pd: 700, umiejetnosci: ['zastraszanie'] },
+      { nazwa: 'Chorąży', pd: 250, umiejetnosci: ['komputery'] },
+      { nazwa: 'Porucznik', pd: 400, umiejetnosci: ['artyleria'], specjalizacje: ['oficer_pokladowy'] },
+      { nazwa: 'Komandor porucznik', pd: 550, umiejetnosci: ['percepcja'] },
+      { nazwa: 'Komandor', pd: 750, umiejetnosci: ['zastraszanie'] },
       { nazwa: 'Kapitan', pd: 1000, umiejetnosci: ['w_rubieze'], specjalizacje: ['dowodca'] },
     ] },
 };
@@ -173,9 +174,9 @@ export function karieraPostaci(e) {
   const k = KARIERY[klucz];
   if (!k) return { klucz, nazwa: '', umiejetnosci: [], specjalizacje: [], poziom: 0, poziomy: [] };
   if (!k.poziomy) return { klucz, nazwa: k.nazwa, umiejetnosci: k.umiejetnosci, specjalizacje: k.specjalizacje, poziom: 0, poziomy: [] };
-  const zdobyte = Number(e.pd?.zdobyte || 0);
+  const lacznie = (GATUNKI[e.gatunek]?.pd || 0) + Number(e.zobowiazanie?.dodatki?.pd || 0) + Number(e.pd?.zdobyte || 0);
   let i = 0;
-  k.poziomy.forEach((p, j) => { if (zdobyte >= p.pd) i = j; });
+  k.poziomy.forEach((p, j) => { if (lacznie >= p.pd) i = j; });
   const reczny = e.poziom_kariery ?? poziomDawny;
   if (reczny != null && k.poziomy[reczny]) i = Number(reczny);
   const dotad = k.poziomy.slice(0, i + 1);

@@ -97,6 +97,13 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   dolot do drugiego portu. Fazę liczy serwer z czasu (`radar_npc_faza`), więc każda jest w innym miejscu
   trasy. Karta kontaktu: trasa, deklarowany ładunek, co robi teraz; jednostki bez transpondera (rejestr 0)
   ujawnia analiza sygnatury. Wykrycia skoków własnych i sojuszniczych okrętów są ukryte, opis — po najechaniu.
+- **Pokład statku** (Nawigacja, jedna zakładka z nazwą miejsca): start, zejście, promy, stocznia, radar oraz
+  maszynownia (odczyt podzespołów; „Pogrzeb” — naprawa polowa z testem Mechaniki, najwyżej do 80%, raz na 12 h)
+  i ładownia (rzeczy z ekwipunku odkładane na statek, magazyn `ladownie` w datapad_dane).
+- **Lokacje bez siatki** (np. import Kuat ze współrzędnymi NULL): `ruch_wspolrzedne_zastepcze` nadaje im stałe
+  współrzędne z hierarchii (regiony setki km od środka, miasta dziesiątki, dzielnice kilometry), więc da się
+  chodzić i jeździć taksówką. Gałąź orbity zostaje bez współrzędnych.
+- **Statki na lądowisku** mapa rysuje na tarczy planety (nie na orbicie), karta pokazuje lądowisko.
 - **Okno promu Lambda:** klasa albo nazwa z „Lambda” daje widok przez kokpit promu (`okno: 'lambda'`).
 - **Wejście na pokład:** na lądowisku Nawigacja pokazuje stojące tam statki z prawem wejścia (właściciel,
   kapitan, dowódca floty okrętu macierzystego promu, dostęp) oraz awaryjny powrót na ostatni statek.

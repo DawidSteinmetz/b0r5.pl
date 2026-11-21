@@ -382,6 +382,7 @@ function obsluz_poklad(string $akcja, bool $post): void
     // Radar, transpondery, udostępnianie pozycji, analiza sygnatur (api/radar.php).
     if (str_starts_with($akcja, 'radar_') || $akcja === 'mg_radar_baza' || $akcja === 'mg_radar_baza_zapisz') { obsluz_radar($akcja, $post); return; }
     if ($akcja === 'awanse' || $akcja === 'awans') { obsluz_awanse($akcja, $post); return; }
+    if (in_array($akcja, ['maszynownia', 'maszynownia_napraw', 'ladownia', 'ladownia_wloz', 'ladownia_wyjmij'], true)) { obsluz_maszynownie($akcja, $post); return; }
     if ($akcja !== 'poklad_idz') return;
     // Przejście do innego pomieszczenia okrętu (czas z planu wnętrza; odliczanie w Nawigacji).
     if (!$post) blad('Zła metoda.', 405);
@@ -550,4 +551,112 @@ function obsluz_awanse(string $akcja, bool $post): void
     zmien('uzytkownicy', function (&$us) use ($uid, $ranga) { foreach ($us as &$x) if ($x['id'] === $uid) $x['ranga'] = $ranga; });
     awans_karta($uid, $cel);
     odpowiedz(['ok' => true, 'ranga' => $ranga]);
+}
+
+// ── Maszynownia i ładownia ──────────────────────────────────────────────────────────────────────────────────────
+// Na pokładzie okrętu z SQL: odczyt podzespołów (reaktor, hipernapęd, osłony, kadłub, paliwo, komputer) i naprawa
+// polowa — test Mechaniki: sukces podnosi wybrany podzespół (najwyżej do 80%, resztę robi stocznia), porażka go
+// psuje. Raz na 12 h na postać i okręt. Ładownia: rzeczy z ekwipunku postaci odkładane na statek i z powrotem.
+const NAPRAWA_POLOWA_MAKS = 80;
+const NAPRAWA_POLOWA_PRZERWA_S = 12 * 3600;
+
+// Id okrętu, na którego pokładzie jest postać (albo 0).
+function poklad_okret_postaci(array $u): int
+{
+    $gdzie = ruch_gdzie(karta((string) $u['id']), ruch_lokacje());
+    return (int) ($gdzie['okret_id'] ?? 0);
+}
+
+function poklad_ranga_umiejetnosci(array $u, string $klucz): int
+{
+    $legacy = wczytaj('karty', [])[$u['id']]['eote'] ?? null;
+    $e = function_exists('eote_gracz_odczytaj') ? eote_gracz_odczytaj((string) $u['id'], is_array($legacy) ? ['eote' => $legacy] : null) : $legacy;
+    $e = $e ? json_decode(json_encode($e), true) : [];
+    return (int) ($e['umiejetnosci'][$klucz]['ranga'] ?? 0);
+}
+
+function poklad_podzespoly(int $id): ?array
+{
+    if (!tabela_sql_dostepna('mapa_naped_jednostki')) return null;
+    $q = polaczenie_bazy()->prepare('SELECT * FROM mapa_naped_jednostki WHERE obiekt_id = ?');
+    $q->execute([$id]);
+    $n = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$n) return null;
+    $klasa = rtrim(rtrim((string) $n['klasa_hipernapedu'], '0'), '.');
+    $w = ['reaktor' => ['Reaktor', (int) $n['sprawnosc_reaktora'], 'sprawnosc_reaktora'],
+        'hipernaped' => ["Hipernapęd (klasa {$klasa})", (int) $n['sprawnosc_hipernapedu'], 'sprawnosc_hipernapedu']];
+    if (array_key_exists('oslony', $n)) $w['oslony'] = ['Generatory osłon', (int) $n['oslony'], 'oslony'];
+    if (array_key_exists('kadlub', $n)) $w['kadlub'] = ['Kadłub', (int) $n['kadlub'], 'kadlub'];
+    return ['podzespoly' => $w, 'paliwo' => (float) $n['paliwo'], 'paliwo_maks' => (float) $n['paliwo_maks'],
+        'komputer' => isset($n['komputer_klasa']) ? ['klasa' => (int) $n['komputer_klasa'], 'stan' => (string) ($n['komputer_stan'] ?? 'sprawny')] : null,
+        'jakosc' => isset($n['jakosc_podzespolow']) ? (int) $n['jakosc_podzespolow'] : null];
+}
+
+function obsluz_maszynownie(string $akcja, bool $post): void
+{
+    $u = wymagaj_logowania();
+    $uid = (string) $u['id'];
+    $id = poklad_okret_postaci($u);
+    if (!$id) blad('Nie jesteś na pokładzie statku.');
+    switch ($akcja) {
+        case 'maszynownia':
+            $p = poklad_podzespoly($id) ?? blad('Ten statek nie ma profilu napędu (panel MG, zakładka Floty).');
+            $ost = (int) (karta($uid)['naprawy_polowe'][$id] ?? 0);
+            $p['podzespoly'] = array_map(fn($x) => ['nazwa' => $x[0], 'wartosc' => $x[1]], $p['podzespoly']);
+            odpowiedz($p + ['mechanika' => poklad_ranga_umiejetnosci($u, 'mechanika'), 'maks' => NAPRAWA_POLOWA_MAKS,
+                'nastepna' => $ost + NAPRAWA_POLOWA_PRZERWA_S > time() ? $ost + NAPRAWA_POLOWA_PRZERWA_S : null]);
+
+        case 'maszynownia_napraw':
+            if (!$post) blad('Zła metoda.', 405);
+            $p = poklad_podzespoly($id) ?? blad('Ten statek nie ma profilu napędu.');
+            $ost = (int) (karta($uid)['naprawy_polowe'][$id] ?? 0);
+            if ($ost + NAPRAWA_POLOWA_PRZERWA_S > time()) blad('Przy tym statku już grzebałeś. Spróbuj później.');
+            $klucz = (string) (wejscie()['podzespol'] ?? '');
+            $cel = $p['podzespoly'][$klucz] ?? blad('Nie ma takiego podzespołu.');
+            if ($cel[1] >= NAPRAWA_POLOWA_MAKS) blad('Polową naprawą nie zrobisz więcej. Resztę zrobi stocznia.');
+            $r = poklad_ranga_umiejetnosci($u, 'mechanika');
+            $szansa = min(90, 45 + 10 * $r);
+            $udane = random_int(1, 100) <= $szansa;
+            $nowa = $udane ? min(NAPRAWA_POLOWA_MAKS, $cel[1] + random_int(2, 3 + 3 * $r)) : max(0, $cel[1] - random_int(1, 3));
+            polaczenie_bazy()->prepare("UPDATE mapa_naped_jednostki SET {$cel[2]} = ? WHERE obiekt_id = ?")->execute([$nowa, $id]);
+            zmien('karty', function (&$k) use ($uid, $id) { $k[$uid]['naprawy_polowe'][$id] = time(); });
+            odpowiedz(['ok' => true, 'udane' => $udane, 'podzespol' => $cel[0], 'od' => $cel[1], 'do' => $nowa, 'szansa' => $szansa]);
+
+        case 'ladownia':
+            $l = wczytaj('ladownie', [])[$id] ?? [];
+            odpowiedz(['ladownia' => array_values($l), 'ekwipunek' => array_values(karta($uid)['ekwipunek'] ?? [])]);
+
+        case 'ladownia_wloz':
+        case 'ladownia_wyjmij':
+            if (!$post) blad('Zła metoda.', 405);
+            $i = (int) (wejscie()['indeks'] ?? -1);
+            $rzecz = null;
+            if ($akcja === 'ladownia_wloz') {
+                zmien('karty', function (&$k) use ($uid, $i, &$rzecz) {
+                    $lista = array_values($k[$uid]['ekwipunek'] ?? []);
+                    if (!isset($lista[$i])) return;
+                    $rzecz = $lista[$i];
+                    array_splice($lista, $i, 1);
+                    $k[$uid]['ekwipunek'] = $lista;
+                });
+                if (!$rzecz) blad('Nie ma takiej rzeczy w ekwipunku.');
+                $kto = (string) ($u['postac'] ?? $u['login']);
+                zmien('ladownie', function (&$l) use ($id, $rzecz, $kto) {
+                    $l[$id] = array_values($l[$id] ?? []);
+                    $l[$id][] = $rzecz + ['odlozyl' => $kto];
+                });
+            } else {
+                zmien('ladownie', function (&$l) use ($id, $i, &$rzecz) {
+                    $lista = array_values($l[$id] ?? []);
+                    if (!isset($lista[$i])) return;
+                    $rzecz = $lista[$i];
+                    array_splice($lista, $i, 1);
+                    $l[$id] = $lista;
+                });
+                if (!$rzecz) blad('Nie ma takiej rzeczy w ładowni.');
+                unset($rzecz['odlozyl']);
+                zmien('karty', function (&$k) use ($uid, $rzecz) { $k[$uid]['ekwipunek'][] = $rzecz; });
+            }
+            odpowiedz(['ok' => true, 'nazwa' => (string) ($rzecz['nazwa'] ?? '')]);
+    }
 }

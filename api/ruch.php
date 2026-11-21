@@ -225,7 +225,9 @@ function mapa_kurs_sql(): string
         . (mapa_dlugosc_dostepna() ? ',m.dlugosc_m' : '')
         . (function_exists('floty_lot_dostepny') && floty_lot_dostepny()
             ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '')
-        . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '');
+        . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '')
+        // Lądowisko: statek stoi na powierzchni (mapa rysuje go na planecie, nie na orbicie).
+        . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',m.ladowisko_id,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko_nazwa' : '');
 }
 
 // Kurs i trwający manewr dla mapy (tablet animuje obrót / przelot po orbicie).
@@ -235,6 +237,7 @@ function mapa_kurs_pola(array $r): array
     $w = ['kurs' => (float) $r['kurs_deg']];
     if (isset($r['orbita_deg'])) $w['orbita'] = (float) $r['orbita_deg'];
     if (!empty($r['rozbity'])) $w['rozbity'] = true;
+    if (!empty($r['ladowisko_id'])) $w['na_ladowisku'] = (string) ($r['ladowisko_nazwa'] ?? '') ?: 'lądowisko';
     if (!empty($r['frakcja'])) $w['frakcja'] = $r['frakcja'];
     if (!empty($r['podejscie'])) $w['podejscie'] = $r['podejscie'];
     if (!empty($r['dlugosc_m'])) $w['dlugosc_m'] = (float) $r['dlugosc_m'];
@@ -488,6 +491,37 @@ function ruch_moje_statki_sql(array $u, ?array $gdzie): array
 }
 
 // Wszystkie lokacje (katalog + budynki firm), klucz => dane.
+// Lokacje bez siatki powierzchni (np. import Kuat ze współrzędnymi NULL): stałe współrzędne zastępcze z hierarchii —
+// każde miejsce wokół rodzica, coraz bliżej z każdym poziomem (regiony setki km, miasta dziesiątki, dzielnice
+// kilometry, budynki setki metrów). Gałąź orbity zostaje bez współrzędnych (tam dolatuje się statkiem).
+function ruch_wspolrzedne_zastepcze(array $rows): array
+{
+    $po = [];
+    foreach ($rows as $i => $r) $po[(int) $r['id']] = $i;
+    $promienie = [[400, 1500], [20, 150], [1, 15], [0.05, 1], [0.01, 0.2]];
+    $licz = function (int $id, int $glebia = 0) use (&$licz, &$rows, $po, $promienie): ?array {
+        if (!isset($po[$id]) || $glebia > 12) return null;
+        $r = &$rows[$po[$id]];
+        if ($r['x_km'] !== null && $r['y_km'] !== null) return [(float) $r['x_km'], (float) $r['y_km'], $r['_poziom'] ?? 0];
+        if (($r['typ_sql'] ?? '') === 'orbita') return null;
+        $rodzic = $r['rodzic_id'] !== null ? (int) $r['rodzic_id'] : 0;
+        if (!$rodzic || !isset($po[$rodzic])) { $r['x_km'] = 0.0; $r['y_km'] = 0.0; $r['_poziom'] = 0; return [0.0, 0.0, 0]; }
+        $p = $licz($rodzic, $glebia + 1);
+        if ($p === null) return null;
+        $poziom = min(count($promienie) - 1, $p[2]);
+        [$od, $do] = $promienie[$poziom];
+        $h = crc32('lok|' . $id);
+        $kat = ($h % 3600) / 10 * M_PI / 180;
+        $odl = $od + ($do - $od) * (($h >> 12) % 1000) / 1000;
+        $r['x_km'] = round($p[0] + cos($kat) * $odl, 3);
+        $r['y_km'] = round($p[1] + sin($kat) * $odl, 3);
+        $r['_poziom'] = $p[2] + 1;
+        return [$r['x_km'], $r['y_km'], $r['_poziom']];
+    };
+    foreach ($rows as $r) if ($r['x_km'] === null || $r['y_km'] === null) $licz((int) $r['id']);
+    return $rows;
+}
+
 function ruch_lokacje(): array
 {
     $l = [];
@@ -509,7 +543,8 @@ function ruch_lokacje(): array
         }
     }
     if (tabela_sql_dostepna('lokalizacje')) {
-        $rows = polaczenie_bazy()->query("SELECT l.id, l.typ, l.rodzaj, l.planeta_id, p.nazwa AS planeta_nazwa, l.nazwa, l.x_km, l.y_km, l.publiczna, l.opis, (b.lokalizacja_id IS NOT NULL) AS jest_budynkiem FROM lokalizacje l LEFT JOIN mapa_planety p ON p.id=l.planeta_id LEFT JOIN budynki b ON b.lokalizacja_id=l.id WHERE l.status='aktywna' ORDER BY l.id")->fetchAll(PDO::FETCH_ASSOC);
+        $rows = polaczenie_bazy()->query("SELECT l.id, l.typ AS typ_sql, l.rodzic_id, l.rodzaj, l.planeta_id, p.nazwa AS planeta_nazwa, l.nazwa, l.x_km, l.y_km, l.publiczna, l.opis, (b.lokalizacja_id IS NOT NULL) AS jest_budynkiem FROM lokalizacje l LEFT JOIN mapa_planety p ON p.id=l.planeta_id LEFT JOIN budynki b ON b.lokalizacja_id=l.id WHERE l.status='aktywna' ORDER BY l.id")->fetchAll(PDO::FETCH_ASSOC);
+        $rows = ruch_wspolrzedne_zastepcze($rows);
         foreach ($rows as $x) {
             if ($x['planeta_id'] !== null && !mapa_planeta_widoczna((int) $x['planeta_id'], $u)) continue;
             $key = 'sql:' . $x['id'];

@@ -569,6 +569,16 @@ export default {
       if (!p && !wNadprzestrzeni(o) && o.typ !== 'postac') { const [dx, dy] = szykKm(o); return naEkran(o.x, o.y, dx, dy); }
       const pozycjaDomyslna = naEkran(o.x, o.y);
       if (!p || wNadprzestrzeni(o)) return pozycjaDomyslna;
+      if (o.na_ladowisku || o.rozbity) {
+        // Na powierzchni (lądowisko albo wrak): na tarczy planety, nie na orbicie; kilka statków obok siebie.
+        const [px, py] = pozycjaPlanety(p);
+        const naPow = obiektyMapy.filter((x) => planetaObiektu(x) === p && (x.na_ladowisku || x.rozbity));
+        const i = Math.max(0, naPow.findIndex((x) => x.id === o.id));
+        const u = ukladNaEkranie(p);
+        const r = Math.min(u ? u.rp * 0.55 : 4, 4 + i * 3);
+        const a = i * 2.4;
+        return [px + Math.cos(a) * r, py + Math.sin(a) * r];
+      }
       const orbita = !!o.flota || !!o.orbita;
       if (!orbita && o.typ !== 'postac') return pozycjaDomyslna;
       const grupaOrbity = (x) => x.flota?.kod || (x.bitwa ? `bitwa:${x.bitwa.nazwa}` : `orbita:${norm(x.planeta)}`);
@@ -635,7 +645,7 @@ export default {
         floty.size ? [...floty.values()].map((f) => h('div.mapa-obecny',
           h('strong', f.nazwa), h('small', f.dowodca || 'Dowódca nieprzypisany'))) : null,
         osoby.length ? h('div', h('b.mapa-obecni-etykieta', 'Postacie'), osoby.map((o) => h('div.mapa-osoba', nazwaPostaci(o)))) : null,
-        jednostki.length ? h('div', h('b.mapa-obecni-etykieta', 'Orbita'), jednostki.map((o) => h('div.mapa-osoba', o.bitwa ? `${o.nazwa} · ${o.bitwa.strona}` : o.nazwa))) : null,
+        jednostki.length ? h('div', h('b.mapa-obecni-etykieta', 'Orbita'), jednostki.map((o) => h('div.mapa-osoba', o.bitwa ? `${o.nazwa} · ${o.bitwa.strona}` : o.na_ladowisku ? `${o.nazwa} · na lądowisku: ${o.na_ladowisku}` : o.nazwa))) : null,
         !floty.size && !osoby.length && !jednostki.length ? h('span.slaby', 'Brak przypisanych postaci i flot') : null);
     }
 
@@ -1704,6 +1714,7 @@ export default {
             o.wlasciciel ? wiersz('Właściciel / frakcja', o.wlasciciel) : null,
             o.status ? wiersz('Status', o.status) : null,
             o.planeta ? wiersz('Planeta', o.planeta) : null,
+            o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
             o.opis ? wiersz('Opis', o.opis) : null),
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,

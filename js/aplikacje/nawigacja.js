@@ -102,14 +102,14 @@ export default {
       const zak = [['miejsce', nazwaMiejsca.length > 34 ? `${nazwaMiejsca.slice(0, 33)}…` : nazwaMiejsca]];
       if (wn) zak.push(['idz', 'Idź po okręcie']);
       else if (!d.podroz && !d.poklad?.w_locie && d.miejsca.length) zak.push(['idz', 'Dokąd?']);
-      if (d.poklad || okr) zak.push(['statek', 'Statek']);
+      // Pokład i statek to jedno: panel statku jest w zakładce miejsca (osobna zakładka „Statek” zniknęła).
       if (d.statki.length || d.moje_statki?.length || d.pojazdy.length) zak.push(['pojazdy', 'Statki i pojazdy']);
       if (!zak.some(([k]) => k === zakladka)) zakladka = 'miejsce';
       const tresci = {
-        miejsce: () => [d.podroz ? podroz() : null, wn ? stanPrzejscia(wn) : null, wn ? panelInspekcji(wn.inspekcja) : null, akcjeWMiejscu(),
+        miejsce: () => [d.podroz ? podroz() : null, wn ? stanPrzejscia(wn) : null, wn ? panelInspekcji(wn.inspekcja) : null,
+          d.poklad ? poklad(d.poklad) : null, okr ? pokladOkretu(okr) : null, akcjeWMiejscu(),
           !wn && !d.podroz && !d.poklad?.w_locie && d.miejsca.length ? h('div.panel', h('button.przycisk.drugi', { onclick: () => { zakladka = 'idz'; rysuj(); } }, `Dokąd? (${d.miejsca.length} znanych miejsc)`)) : null],
         idz: () => [wn ? listaPomieszczen(wn) : dokad()],
-        statek: () => [d.poklad ? poklad(d.poklad) : null, okr ? pokladOkretu(okr) : null],
         pojazdy: () => [d.statki.length ? statki() : null, d.moje_statki?.length ? mojeStatki() : null, d.pojazdy.length ? pojazdy() : null],
       };
       wyczysc(tresc).append(...[kartaMiejsca(),
@@ -442,7 +442,46 @@ export default {
           : h('div.slaby.maly-tekst', 'Statek w locie. Kurs, skok, dolot i lądowanie: mapa galaktyki → karta planety.'),
         panelPromow(p),
         panelStoczni(p),
+        panelMaszynowni(),
+        panelLadowni(),
         panelRadaru(p));
+    }
+
+    // Maszynownia: odczyt podzespołów i naprawa polowa (test Mechaniki, najwyżej do 80%, raz na 12 h).
+    function panelMaszynowni() {
+      const el = h('div');
+      api('maszynownia').then((r) => {
+        const kolor = (v) => (v >= 75 ? 'var(--ok)' : v >= 40 ? 'var(--akcent-2)' : 'var(--zly)');
+        const wolne = !r.nastepna || r.nastepna <= teraz();
+        el.append(h('details', { style: 'margin-top:12px' }, h('summary', h('b', 'Maszynownia'), h('span.slaby.maly-tekst', '  odczyt podzespołów, naprawa polowa')),
+          h('table.tabela', { style: 'margin-top:8px' },
+            ...Object.entries(r.podzespoly).map(([k, p]) => h('tr', h('th', p.nazwa),
+              h('td', h('span.licznik-paliwa', h('i', { style: `width:${p.wartosc}%;background:${kolor(p.wartosc)}` })), ` ${p.wartosc}%`),
+              h('td', wolne && p.wartosc < r.maks ? h('button.przycisk.maly.drugi', { onclick: () => akcja('maszynownia_napraw', { podzespol: k },
+                (x) => (x.udane ? `Udało się: ${x.podzespol} ${x.od}% → ${x.do}%.` : `Nie poszło: ${x.podzespol} ${x.od}% → ${x.do}%.`)) }, 'Pogrzeb') : null))),
+            h('tr', h('th', 'Paliwo'), h('td', `${Math.round((r.paliwo / Math.max(1, r.paliwo_maks)) * 100)}%`), h('td')),
+            r.komputer ? h('tr', h('th', 'Komputer nawigacyjny'), h('td', `klasa ${r.komputer.klasa} · ${r.komputer.stan}`), h('td')) : null,
+            r.jakosc != null ? h('tr', h('th', 'Jakość podzespołów'), h('td', '★'.repeat(r.jakosc) + '☆'.repeat(Math.max(0, 5 - r.jakosc))), h('td')) : null),
+          h('div.slaby.maly-tekst', wolne
+            ? `Naprawa polowa: Mechanika ${r.mechanika}, szansa ok. ${Math.min(90, 45 + 10 * r.mechanika)}%. Bez stoczni najwyżej do ${r.maks}%; porażka może pogorszyć podzespół.`
+            : `Przy tym statku już grzebałeś. Następna próba: ${czasGry(r.nastepna)}.`)));
+      }).catch(() => {});
+      return el;
+    }
+
+    // Ładownia: rzeczy odłożone na statek (widzą je wszyscy na pokładzie) i przekładanie z ekwipunku.
+    function panelLadowni() {
+      const el = h('div');
+      api('ladownia').then((r) => {
+        el.append(h('details', { style: 'margin-top:8px' }, h('summary', h('b', 'Ładownia'), h('span.slaby.maly-tekst', `  ${r.ladownia.length} rzeczy`)),
+          r.ladownia.length ? h('ul.lista', r.ladownia.map((x, i) => h('li', h('div.rzad',
+            h('div.rozpycha', x.nazwa, x.odlozyl ? h('span.slaby.maly-tekst', ` · odłożył(a): ${x.odlozyl}`) : null),
+            h('button.przycisk.maly.drugi', { onclick: () => akcja('ladownia_wyjmij', { indeks: i }, `Zabrano: ${x.nazwa}.`) }, 'Weź'))))) : h('div.slaby.maly-tekst', 'Ładownia jest pusta.'),
+          r.ekwipunek.length ? h('div', { style: 'margin-top:8px' }, h('div.slaby.maly-tekst', 'Odłóż z ekwipunku:'),
+            h('ul.lista', r.ekwipunek.map((x, i) => h('li', h('div.rzad', h('span.rozpycha', x.nazwa),
+              h('button.przycisk.maly.drugi', { onclick: () => akcja('ladownia_wloz', { indeks: i }, `Odłożono do ładowni: ${x.nazwa}.`) }, 'Odłóż')))))) : null));
+      }).catch(() => {});
+      return el;
     }
 
     // Radar i transponder: zasięg radaru, co nadaje transponder (fałszywy — tylko przemytnicy i łowcy nagród;

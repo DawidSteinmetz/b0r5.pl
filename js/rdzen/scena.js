@@ -8,7 +8,7 @@
 //   powierzchnia — widok za oknem (biuro, hotel) albo z wrót hangaru: niebo i krajobraz planety
 //   start       — wznoszenie: ~5 min chmur w kolorze atmosfery, potem czarne niebo i gwiazdy (planeta za rufą)
 //
-// `okno: 'isd'` / `'komrk'` — widok przez okno mostka gwiezdnego niszczyciela albo kokpit Kom'rka (trzy okna, symetryczne względem
+// `okno: 'isd'` / `'komrk'` / `'lambda'` — widok przez okno mostka gwiezdnego niszczyciela albo kokpit Kom'rka czy promu Lambda (okna symetryczne względem
 // środkowego). `widok` (kurs dziobu z manewrem, miejsce na orbicie, cykl planety) przesuwa planetę
 // i słońce w oknie zgodnie z kierunkiem dziobu i oświetla planetę zgodnie z położeniem słońca.
 //
@@ -224,8 +224,26 @@ function geometriaOknaBoczne(w, h) {
   return { gora, dol, okna };
 }
 
-const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : typ === 'iluminator' ? geometriaOknaBoczne(w, h) : geometriaOknaIsd(w, h));
-const OKNA_Z_RAMA = ['isd', 'komrk', 'iluminator'];
+// Kokpit promu Lambda: owiewka z grubymi wspornikami — szeroka szyba środkowa (trapez zwężający się ku górze),
+// dwie skośne szyby boczne zawinięte do tyłu i dwa wąskie okienka nad nimi; pod spodem pulpit pilota.
+function geometriaOknaLambda(w, h) {
+  const sx = w / 2, H = Math.min(h * 0.3, w * 0.3);
+  const gora = h * 0.34, dol = gora + H;
+  const sDol = Math.min(w * 0.17, H * 0.95), sGora = sDol * 0.72, wsp = Math.max(8, w * 0.012);
+  const bDol = sDol + wsp, bGora = sGora + wsp, bokDol = Math.min(w * 0.17, H * 0.95), bokGora = bokDol * 0.8;
+  const gGora = gora - H * 0.24, gDol = gora - wsp * 0.9;
+  return { gora: gGora, dol, konsola: true, okna: [
+    [[sx - sGora, gora], [sx + sGora, gora], [sx + sDol, dol], [sx - sDol, dol]],
+    [[sx - bGora - bokGora, gora + H * 0.12], [sx - bGora, gora], [sx - bDol, dol], [sx - bDol - bokDol, dol - H * 0.06]],
+    [[sx + bGora, gora], [sx + bGora + bokGora, gora + H * 0.12], [sx + bDol + bokDol, dol - H * 0.06], [sx + bDol, dol]],
+    [[sx - sGora * 0.9, gGora], [sx - wsp * 0.6, gGora], [sx - wsp * 0.6, gDol], [sx - sGora, gDol]],
+    [[sx + wsp * 0.6, gGora], [sx + sGora * 0.9, gGora], [sx + sGora, gDol], [sx + wsp * 0.6, gDol]],
+  ] };
+}
+
+const geometriaOkna = (typ, w, h) => (typ === 'komrk' ? geometriaOknaKomrk(w, h) : typ === 'lambda' ? geometriaOknaLambda(w, h)
+  : typ === 'iluminator' ? geometriaOknaBoczne(w, h) : geometriaOknaIsd(w, h));
+const OKNA_Z_RAMA = ['isd', 'komrk', 'lambda', 'iluminator'];
 
 function rysujOknoIsd(w, h, dpr, typ = 'isd') {
   const c = document.createElement('canvas');

@@ -193,12 +193,6 @@ export default {
     const panelRadar = h('section.mapa-radar', { hidden: true });
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
-    const przyciskTu = h('button.przycisk.maly.drugi', { onclick: () => {
-      const ja = mojZnacznik();
-      if (ja) przelec(ja.x, ja.y, Math.max(skala, 0.6), () => wybierz({ obiekt: ja }));
-      else if (tuPlaneta) przelec(tuPlaneta.x, tuPlaneta.y, 0.6, () => wybierz({ planeta: tuPlaneta }));
-    } }, 'Moja pozycja');
-    const przyciskCala = h('button.przycisk.maly.drugi', { onclick: () => calaGalaktyka(true) }, 'Cała galaktyka');
     // Na wąskim ekranie (telefon) panel floty i karta szczegółów nie są otwarte naraz.
     const waski = () => matchMedia('(max-width: 760px)').matches;
     const przyciskFloty = h('button.przycisk.maly.drugi', { onclick: () => {
@@ -219,7 +213,7 @@ export default {
     if (ctx.dok) ctx.dok(IKONY_ZOOMU);
 
     w.append(plotno,
-      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskTu, przyciskCala, przyciskSzlaki, przyciskFloty), skalaEl),
+      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskSzlaki, przyciskFloty), skalaEl),
       panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
@@ -250,6 +244,7 @@ export default {
     let szlakiWidoczne = true;
     let wybrane = null;     // { planeta } albo { szlak }
     let najechane = null;
+    let wykrycieNad = null; // id wykrycia skoku pod kursorem (opis tylko wtedy)
     let pozycja = null;     // odpowiedź api('mapa')
     let tuPlaneta = null, celPlaneta = null;
     let statkiNaMapie = []; // [{ planeta, statki: [...] }]
@@ -377,6 +372,17 @@ export default {
         api('uklad', undefined, { planeta: p.nazwa }).then((d) => { cykle.set(p.nazwa, d.cykl); odswiez(); }).catch(() => {});
       }
       return cykle.get(p.nazwa);
+    }
+    // Dane układu na pewno wczytane (z planetą macierzystą księżyca) — progi zbliżenia liczą z nich miejsce planety.
+    async function cyklWczytany(p) {
+      if (!p?.nazwa) return null;
+      if (!cykle.get(p.nazwa)) {
+        try { cykle.set(p.nazwa, (await api('uklad', undefined, { planeta: p.nazwa })).cykl); } catch { return null; }
+      }
+      const c = cykle.get(p.nazwa);
+      const rodzic = c?.macierz ? wgKlucza.get(norm(c.macierz.nazwa)) : null;
+      if (rodzic && rodzic !== p) await cyklWczytany(rodzic);
+      return c;
     }
     // Układ na ekranie w prawdziwej skali: orbita z promien_orbity_au (ekosfera gwiazdy), średnice
     // z danych planet, brzeg układu z krawedz_au. f = 1 (dawne mieszanie schematu ze skalą — wyłączone).
@@ -623,7 +629,8 @@ export default {
         if (!floty.has(klucz)) floty.set(klucz, o.flota);
       }
       const osoby = obecni.filter((o) => o.typ === 'postac').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
-      const jednostki = obecni.filter((o) => ['statek','jednostka'].includes(o.typ));
+      // Ruch cywilny w tle (ujemne id, z radaru) nie zaśmieca listy orbity — widać go na mapie.
+      const jednostki = obecni.filter((o) => ['statek','jednostka'].includes(o.typ) && !(o.id < 0));
       return h('div.mapa-obecni',
         floty.size ? [...floty.values()].map((f) => h('div.mapa-obecny',
           h('strong', f.nazwa), h('small', f.dowodca || 'Dowódca nieprzypisany'))) : null,
@@ -774,9 +781,12 @@ export default {
     }
 
     // Progi: sektor, układ, planeta — skala progu, środek na celu (zaznaczenie się nie zmienia).
-    function doProgu(prog) {
-      const c = celProgu();
+    async function doProgu(prog) {
+      let c = celProgu();
       if (!c) return;
+      // Z widoku galaktyki układ nie był jeszcze rysowany, więc nie ma jego danych — bez nich kamera trafiała
+      // w słońce zamiast w planetę. Wczytaj i policz cel jeszcze raz.
+      if (c.p && prog !== 'sektor' && !cyklPlanety(c.p)) { await cyklWczytany(c.p); c = celProgu(); if (!c) return; }
       const kr = Math.min(szer, wys) * 0.42; // promień widoku w px
       if (prog === 'sektor') return przelec(c.x, c.y, 4, null, c.k);
       const cykl = c.p ? cyklPlanety(c.p) : null;
@@ -1041,7 +1051,7 @@ export default {
           c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
           if (wNadprzestrzeni(o)) kursRys = Math.atan2(-(cy - sy), cx - sx) / RAD;
         }
-        if (o.podswietlny && teraz() < o.podswietlny.do) {
+        if (o.podswietlny && teraz() < o.podswietlny.do && (!(o.id < 0) || wybrane?.obiekt?.id === o.id)) { // tło: linia tylko zaznaczonej
           // Lot podświetlny: kropkowana linia do celu.
           const l = o.podswietlny, b = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
           const [cx, cy] = l.k1 && !b ? naEkran(l.x1, l.y1, l.k1[0], l.k1[1])
@@ -1087,14 +1097,20 @@ export default {
       for (const w of pozycja?.wykrycia || []) {
         const [ax, ay] = naEkran(w.x0, w.y0);
         const [bx, by] = naEkran(w.x, w.y);
+        // Cienka przerywana linia i okrąg niepewności (wypełniony tylko, gdy mały — po zbliżeniu okrąg
+        // przykrywał cały ekran na żółto). Opis dopiero po najechaniu kursorem na punkt wyjścia.
         const r = Math.max(4, w.margines * skala);
-        c.save(); c.strokeStyle = KOLOR_WYKRYCIA; c.fillStyle = KOLOR_WYKRYCIA; c.lineWidth = 1.2;
-        c.globalAlpha = 0.8; c.setLineDash([2, 6]); c.beginPath(); liniaNaEkranie(c, ax, ay, bx, by); c.stroke();
-        c.setLineDash([]); c.globalAlpha = 0.18; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill();
-        c.globalAlpha = 0.7; c.stroke(); c.restore();
-        c.font = '11px monospace'; c.fillStyle = KOLOR_WYKRYCIA;
-        const eta = w.eta * 1000 > Date.now() ? `ETA ~${czasGry(w.eta)}` : 'wyjście szacowane';
-        napis(c, `Skok · ${w.nazwa} · ${eta}`, bx + Math.min(r, 40) + 6, by + 4);
+        c.save(); c.strokeStyle = KOLOR_WYKRYCIA; c.fillStyle = KOLOR_WYKRYCIA; c.lineWidth = 1;
+        c.globalAlpha = 0.45; c.setLineDash([2, 6]); c.beginPath(); liniaNaEkranie(c, ax, ay, bx, by); c.stroke();
+        c.setLineDash([]);
+        if (r < 60) { c.globalAlpha = 0.1; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.fill(); }
+        if (r < Math.max(szer, wys)) { c.globalAlpha = 0.4; c.beginPath(); c.arc(bx, by, r, 0, Math.PI * 2); c.stroke(); }
+        c.restore();
+        if (wykrycieNad === w.id) {
+          c.font = '11px monospace'; c.fillStyle = KOLOR_WYKRYCIA;
+          const eta = w.eta * 1000 > Date.now() ? `ETA ~${czasGry(w.eta)}` : 'wyjście szacowane';
+          napis(c, `Wykryty skok · ${w.nazwa} · ${eta} · wykrył: ${w.wykryl}`, bx + Math.min(r, 40) + 6, by + 4);
+        }
       }
       if (tuPlaneta && !mojZnacznik()) znacznik(tuPlaneta, kolory.akcent, '', (t % 1800) / 1800);
       if (wybrane?.punkt) {
@@ -1604,7 +1620,7 @@ export default {
         r.udostepniony ? h('span.znaczek-tu', 'Pozycja udostępniona') : null,
         r.zidentyfikowany ? h('span.znaczek-cel', 'Zidentyfikowany (analiza sygnatury)') : null,
         r.poszukiwany != null ? h('span.znaczek-cel', `Poszukiwany${r.poszukiwany ? ` · nagroda ${r.poszukiwany.toLocaleString('pl-PL')} kr` : ''}`) : null,
-        o.id < 0 ? h('span.slaby.maly-tekst', 'Niezarejestrowany ruch cywilny') : null,
+        o.id < 0 ? h('span.slaby.maly-tekst', r.trasa ? 'Ruch cywilny (stała trasa)' : 'Bez transpondera — trasa nieznana') : null,
       ].filter(Boolean);
       const analiza = r.analiza_do && teraz() < r.analiza_do
         ? h('p.slaby.maly-tekst', (() => { const el = h('span.mapa-zywe'); el._licz = () => `Analiza sygnatury: jeszcze ${czasTrwania(r.analiza_do - teraz())}`; el.textContent = el._licz(); return el; })())
@@ -1616,11 +1632,14 @@ export default {
             wybierz(wybrane);
           } catch (err) { wyczysc(status).append(h('div.komunikat.blad', err.message)); e.currentTarget.disabled = false; }
         } }, 'Analiza sygnatury (6 h)') : null;
-      return h('div.mapa-radar',
+      return h('div.mapa-kontakt',
         h('div.slaby.maly-tekst', 'Kontakt radaru'),
         h('table.tabela',
           h('tr', h('th', 'Transponder'), h('td', r.transponder || '—')),
-          h('tr', h('th', 'Frakcja'), h('td', r.frakcja || 'brak'))),
+          h('tr', h('th', 'Frakcja'), h('td', r.frakcja || 'brak')),
+          r.trasa ? h('tr', h('th', 'Trasa'), h('td', r.trasa)) : null,
+          r.ladunek ? h('tr', h('th', 'Ładunek (deklarowany)'), h('td', r.ladunek)) : null,
+          r.faza ? h('tr', h('th', 'Teraz'), h('td', r.faza)) : null),
         znaczki.length ? h('div.mapa-znaczki', ...znaczki) : null,
         analiza, status);
     }
@@ -1841,6 +1860,8 @@ export default {
           if (zmienilSieCel) { najechane = n; pokazPodpowiedz(n, e.offsetX, e.offsetY); odswiez(); }
           else if (n) { podpowiedz.style.left = `${Math.min(Math.max(8, e.offsetX + 16), Math.max(8, szer - 340))}px`; podpowiedz.style.top = `${Math.min(Math.max(68, e.offsetY + 14), Math.max(68, wys - 210))}px`; }
           plotno.style.cursor = n ? 'pointer' : 'grab';
+          const wk = (pozycja?.wykrycia || []).find((w) => { const [bx, by] = naEkran(w.x, w.y); return Math.hypot(bx - e.offsetX, by - e.offsetY) < 14; });
+          if ((wk?.id ?? null) !== wykrycieNad) { wykrycieNad = wk?.id ?? null; odswiez(); }
         }
         return;
       }
@@ -1950,7 +1971,6 @@ export default {
         grupy.get(p).push(s);
       }
       statkiNaMapie = [...grupy].map(([planeta, statki]) => ({ planeta, statki }));
-      przyciskTu.disabled = !tuPlaneta;
       if (wybrane?.planeta) wybierz(wybrane); // odśwież kartę (np. statki)
     }
 
@@ -2170,7 +2190,6 @@ export default {
       try { sessionStorage.setItem(kluczWidoku, JSON.stringify({ skala, camX, camY, camKx, camKy })); } catch { /* bez pamięci */ }
     }
     const zapisWidoku = setInterval(zapiszWidok, 1500);
-    przyciskTu.disabled = true;
 
     wczytajDane(String(ctx.uzytkownik?.login ?? ctx.uzytkownik?.id ?? '')).then(async (d) => {
       D = d;

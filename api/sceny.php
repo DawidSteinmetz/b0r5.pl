@@ -115,9 +115,11 @@ function scena_jest_isd(string $tekst): bool
     return (bool) preg_match('/imperial|\bisd\b|niszczyciel/i', $tekst);
 }
 
-// Rodzaj okna z kokpitu/mostka według klasy: 'isd', 'komrk' albo '' (pełny ekran).
+// Rodzaj okna z kokpitu/mostka według klasy: 'isd', 'komrk', 'lambda' albo '' (pełny ekran).
 function scena_okno(string $tekst): string
 {
+    // Prom Lambda przed ISD: nazwa promu bywa np. „Lambda z ISD Walako”.
+    if (preg_match('/lambda/iu', $tekst)) return 'lambda';
     if (scena_jest_isd($tekst)) return 'isd';
     if (preg_match("/kom'?rk/iu", $tekst)) return 'komrk';
     return '';

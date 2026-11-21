@@ -49,6 +49,17 @@ function radar_wykrycia(array $u, array $obiektyWidoczne): array
     $mg = ($u['rola'] ?? '') === 'mg';
     if (!$mg && !$obiektyWidoczne) return [];
     $warunek = $mg ? '' : ' AND w.obiekt_id IN (' . implode(',', array_map('intval', $obiektyWidoczne)) . ')';
+    // Bez skoków własnych i sojuszniczych okrętów (ta sama frakcja, moja flota, okręt, na którym jestem) — to szum.
+    if (!$mg && tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) {
+        $db = polaczenie_bazy();
+        $frakcja = $db->quote((string) ($u['frakcja'] ?? ''));
+        $login = $db->quote((string) ($u['login'] ?? ''));
+        $uid = $db->quote((string) ($u['id'] ?? ''));
+        $warunek .= " AND NOT (w.cel_rodzaj='flota' AND EXISTS (SELECT 1 FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_obiekty m ON m.id=j.obiekt_id
+            WHERE j.rozkaz_id=w.cel_klucz AND ((m.frakcja IS NOT NULL AND m.frakcja<>'' AND m.frakcja=$frakcja)
+              OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=$uid AND c.typ='postac' LIMIT 1)
+              OR EXISTS (SELECT 1 FROM mapa_floty_jednostki fj JOIN mapa_floty f ON f.id=fj.flota_id WHERE fj.obiekt_id=m.id AND LOWER(f.dowodca_login)=LOWER($login)))))";
+    }
     $q = polaczenie_bazy()->prepare("SELECT w.id, w.cel_nazwa, w.start_x, w.start_y, w.szac_x, w.szac_y, w.margines_pc,
             w.szac_eta_utc, w.wiarygodnosc, w.wykryto_utc, o.nazwa AS wykryl
         FROM mapa_wykrycia_skokow w JOIN mapa_obiekty o ON o.id = w.obiekt_id
@@ -94,10 +105,8 @@ function radar_planeta_mapy(array $planeta): ?array
 const RADAR_ANALIZA_S = 6 * 3600;
 const TRANSPONDER_KOSZT = 5000;
 const TRANSPONDER_PRZESTAWIENIE_S = 1800;
-const RADAR_TLO_GESTOSC = [30, 24, 16, 11, 8, 6, 4, 5, 1, 0]; // jednostek tła na układ według regionu mapy
 const RADAR_TLO_PUSTE_SEKTORY = ['hune'];
 const RADAR_TLO_MAKS = 400;
-const RADAR_TLO_NAZWY = ['Frachtowiec bez rejestracji', 'Kurier', 'Lekki transportowiec', 'Holownik', 'Barka towarowa', 'Prom pasażerski', 'Jacht'];
 
 function radar_dostepny(): bool
 {
@@ -143,8 +152,15 @@ function radar_analizy_dokoncz(): void
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $a) {
         $cel = (int) $a['cel_id'];
         if ($cel < 0) { // ruch w tle: cywilna jednostka bez rejestru
+            // Jednostka NPC ze stałej trasy: prawdziwa nazwa (także tej bez transpondera).
+            $nazwaNpc = 'Cywilna jednostka bez rejestru';
+            if (tabela_sql_dostepna('npc_trasy')) {
+                $qn = $db->prepare('SELECT nazwa FROM npc_trasy WHERE id = ?');
+                $qn->execute([-$cel]);
+                $nazwaNpc = (string) ($qn->fetchColumn() ?: $nazwaNpc);
+            }
             $db->prepare("INSERT INTO radar_identyfikacje (konto_login,cel_id,nazwa,frakcja,poszukiwany,nagroda,kiedy) VALUES (?,?,?,NULL,0,0,?)
-                ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), kiedy=VALUES(kiedy)")->execute([$a['konto_login'], $cel, 'Cywilna jednostka bez rejestru', $a['do_utc']]);
+                ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), kiedy=VALUES(kiedy)")->execute([$a['konto_login'], $cel, $nazwaNpc, $a['do_utc']]);
             $db->prepare("UPDATE radar_analizy SET stan='gotowa' WHERE id=?")->execute([$a['id']]);
             continue;
         }
@@ -223,51 +239,106 @@ function radar_kontakty(array $u, array $widoczne): array
     return array_merge($wynik, radar_tlo($moje, $ident, $trwa, $analityk));
 }
 
-// Niezarejestrowany ruch w tle: jednostki cywilne przy układach w zasięgu radaru. Liczba z regionu (sektory
-// z RADAR_TLO_PUSTE_SEKTORY — pusto), stała dla układu; krążą powoli po układzie. Ujemne id (nie ma ich w bazie).
+// Ruch w tle: jednostki NPC ze stałych tras (npc_trasy, migracja 044) w układach w zasięgu radaru — każda w innej
+// fazie lotu (postój, lot do punktu skoku, dolot); w nadprzestrzeni niewidoczne. Sektor Hune pusty. Id ujemne (−id trasy).
 function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): array
 {
-    if (!$moje) return [];
+    if (!$moje || !tabela_sql_dostepna('npc_trasy')) return [];
     $db = polaczenie_bazy();
     $puste = [];
     foreach (katalog()['planety'] ?? [] as $p) {
         foreach (RADAR_TLO_PUSTE_SEKTORY as $s) if (str_contains(mb_strtolower((string) ($p['sektor'] ?? '')), $s)) $puste[mb_strtolower($p['nazwa'])] = true;
     }
-    $teraz = czas_teraz();
-    $wynik = [];
-    $uklady = [];
+    // Układy w zasięgu radarów (współrzędne mapy) → nazwy planet tych układów.
+    $wZasiegu = [];
     foreach ($moje as $m) {
         $r = $m['zasieg'];
-        $q = $db->prepare('SELECT id, nazwa, region, x, y FROM mapa_planety WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?');
+        $q = $db->prepare('SELECT nazwa, x, y FROM mapa_planety WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?');
         $q->execute([(float) $m['x'] - $r, (float) $m['x'] + $r, (float) $m['y'] - $r, (float) $m['y'] + $r]);
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
-            if (hypot((float) $p['x'] - (float) $m['x'], (float) $p['y'] - (float) $m['y']) > $r) continue;
-            $klucz = round((float) $p['x'], 1) . ':' . round((float) $p['y'], 1); // układ = wspólne współrzędne
-            $uklady[$klucz] ??= $p;
+            if (hypot((float) $p['x'] - (float) $m['x'], (float) $p['y'] - (float) $m['y']) <= $r) $wZasiegu[$p['nazwa']] = true;
         }
     }
-    foreach ($uklady as $p) {
-        if (isset($puste[mb_strtolower($p['nazwa'])])) continue;
-        $baza = RADAR_TLO_GESTOSC[(int) $p['region']] ?? 4;
-        $h = crc32('tlo|' . $p['nazwa']);
-        $ile = (int) round($baza * (0.6 + ($h % 80) / 100));
-        for ($i = 0; $i < $ile && count($wynik) < RADAR_TLO_MAKS; $i++) {
-            $s = crc32("tlo|{$p['nazwa']}|{$i}");
-            $id = -(($s % 2000000000) + 1);
-            $R = (0.4 + ($s % 1000) / 1000 * 5.5) * 149597870.7;             // 0,4–5,9 j.a. od słońca
-            $okres = 20 + ($s >> 10) % 200;                                  // dni na pełne okrążenie
-            $kat = fmod(($s % 360) + 360 * ($teraz / 86400) / $okres, 360);
-            $nazwaTyp = RADAR_TLO_NAZWY[($s >> 4) % count(RADAR_TLO_NAZWY)];
-            $znak = strtoupper(base_convert((string) ($s % 46656), 10, 36));
-            $idn = $ident[$id] ?? null;
-            $wynik[] = ['id' => $id, 'typ' => 'jednostka', 'nazwa' => $idn ? $idn['nazwa'] : "{$nazwaTyp} {$znak}", 'klasa' => '', 'planeta' => null,
-                'x' => (float) $p['x'], 'y' => (float) $p['y'], 'znacznik' => 'trojkat', 'strona' => 'neutralny', 'frakcja' => null,
-                'uklad_k' => [$R * cos(deg2rad($kat)), $R * sin(deg2rad($kat))], 'kurs' => fmod($kat + 90, 360),
-                'radar' => ['transponder' => $idn ? $idn['nazwa'] : "{$nazwaTyp} {$znak}", 'frakcja' => 'brak', 'udostepniony' => false, 'zidentyfikowany' => (bool) $idn,
-                    'poszukiwany' => null, 'analiza_do' => isset($trwa[$id]) ? czas_z_utc((string) $trwa[$id]) : null, 'mozna_analizowac' => $analityk && !$idn && !isset($trwa[$id])]];
-        }
+    if (!$wZasiegu) return [];
+    $nazwy = array_keys($wZasiegu);
+    $ph = implode(',', array_fill(0, count($nazwy), '?'));
+    $q = $db->prepare("SELECT t.*, pa.x AS ax, pa.y AS ay, pb.x AS bx, pb.y AS by_ FROM npc_trasy t
+        JOIN mapa_planety pa ON pa.nazwa = t.port_a JOIN mapa_planety pb ON pb.nazwa = t.port_b
+        WHERE t.aktywna = 1 AND (t.port_a IN ($ph) OR t.port_b IN ($ph))");
+    $q->execute([...$nazwy, ...$nazwy]);
+    $teraz = czas_teraz();
+    $wynik = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $t) {
+        if (count($wynik) >= RADAR_TLO_MAKS) break;
+        if (isset($puste[mb_strtolower($t['port_a'])]) || isset($puste[mb_strtolower($t['port_b'])])) continue;
+        $f = radar_npc_faza($t, $teraz);
+        if (!$f || !isset($wZasiegu[$f['port']])) continue; // w nadprzestrzeni albo poza zasięgiem
+        $id = -(int) $t['id'];
+        $idn = $ident[$id] ?? null;
+        $jawny = (int) $t['rejestr'] === 1 || $idn;
+        $nazwa = $jawny ? $t['nazwa'] : 'Niezidentyfikowany statek';
+        $frakcja = $jawny ? ($t['frakcja'] ?: null) : null;
+        $o = ['id' => $id, 'typ' => 'jednostka', 'nazwa' => $nazwa, 'klasa' => $jawny ? $t['klasa'] : '', 'planeta' => null,
+            'x' => $f['x'], 'y' => $f['y'], 'znacznik' => 'trojkat', 'strona' => 'neutralny', 'frakcja' => $frakcja, 'kurs' => $f['kurs'],
+            'radar' => ['transponder' => $nazwa, 'frakcja' => $frakcja ?: 'brak', 'udostepniony' => false, 'zidentyfikowany' => (bool) $idn,
+                'poszukiwany' => null, 'analiza_do' => isset($trwa[$id]) ? czas_z_utc((string) $trwa[$id]) : null,
+                'mozna_analizowac' => $analityk && !$idn && !isset($trwa[$id]),
+                'trasa' => $jawny ? "{$t['port_a']} ⇄ {$t['port_b']}" : null, 'ladunek' => $jawny ? $t['ladunek'] : null, 'faza' => $f['opis']]];
+        if ($f['planeta'] !== null) $o += ['planeta' => $f['planeta'], 'podejscie' => 'srednia', 'orbita' => $f['orbita']];
+        if ($f['lot'] !== null) $o['podswietlny'] = $f['lot'];
+        if ($f['k'] !== null) $o['uklad_k'] = $f['k'];
+        $wynik[] = $o;
     }
     return $wynik;
+}
+
+// Faza cyklu trasy NPC w chwili $t: postój w porcie A → lot do punktu skoku → nadprzestrzeń → dolot do portu B →
+// postój → lot do punktu skoku → nadprzestrzeń → dolot do A. Zwraca null w nadprzestrzeni, inaczej: port (układ),
+// x/y mapy, planeta (na orbicie) albo lot podświetlny (km od słońca, tablet przesuwa znacznik), kurs i opis.
+function radar_npc_faza(array $t, int $teraz): ?array
+{
+    $h = crc32('npc|' . $t['id']);
+    $a = ['nazwa' => $t['port_a'], 'x' => (float) $t['ax'], 'y' => (float) $t['ay']];
+    $b = ['nazwa' => $t['port_b'], 'x' => (float) $t['bx'], 'y' => (float) $t['by_']];
+    $dx = $b['x'] - $a['x']; $dy = $b['y'] - $a['y'];
+    $pc = max(1.0, hypot($dx, $dy));
+    $ux = $dx / $pc; $uy = $dy / $pc;
+    $v = max(0.2, (float) $t['predkosc_au_h']);                       // j.a./h
+    $dj = 1.5 + ($h % 150) / 100;                                     // punkt skoku 1,5–3 j.a. od planety
+    $lot = (int) round($dj / $v * 3600);
+    $skok = (int) round(min(40, 3 + $pc / 150) * 3600);               // h w nadprzestrzeni
+    $postoj = (int) round(max(0.5, (float) $t['postoj_h']) * 3600);
+    // [długość, rodzaj, port, kierunek ruchu (+1 = A→B)]
+    $etapy = [[$postoj, 'postoj', $a], [$lot, 'wylot', $a, 1], [$skok, 'skok', null], [$lot, 'dolot', $b, 1],
+              [$postoj, 'postoj', $b], [$lot, 'wylot', $b, -1], [$skok, 'skok', null], [$lot, 'dolot', $a, -1]];
+    $cykl = array_sum(array_column($etapy, 0));
+    $tc = fmod($teraz + (float) $t['faza'] * $cykl, $cykl);
+    foreach ($etapy as $e) {
+        if ($tc >= $e[0]) { $tc -= $e[0]; continue; }
+        if ($e[1] === 'skok') return null;
+        $port = $e[2];
+        $w = ['port' => $port['nazwa'], 'x' => $port['x'], 'y' => $port['y'], 'planeta' => null, 'lot' => null, 'k' => null, 'orbita' => null];
+        if ($e[1] === 'postoj') {
+            $w['planeta'] = $port['nazwa'];
+            $w['orbita'] = fmod(($h % 360) + $tc / 120, 360);         // powoli okrąża planetę
+            $w['kurs'] = fmod($w['orbita'] + 90, 360);
+            $w['opis'] = 'postój w porcie ' . $port['nazwa'];
+            return $w;
+        }
+        $kier = $e[3];
+        $mx = $ux * $kier; $my = $uy * $kier;                        // kierunek ruchu w galaktyce
+        $pk = astro_pozycja_km(astro_cykl($port['nazwa']), $teraz);
+        $djKm = $dj * ASTRO_KM_NA_AU;
+        if ($e[1] === 'wylot') { $k0 = $pk; $k1 = [$pk[0] + $mx * $djKm, $pk[1] + $my * $djKm]; $w['opis'] = 'lot do punktu skoku'; }
+        else { $k0 = [$pk[0] - $mx * $djKm, $pk[1] - $my * $djKm]; $k1 = $pk; $w['opis'] = 'dolot z punktu skoku do ' . $port['nazwa']; }
+        $od = $teraz - (int) $tc;
+        $w['lot'] = ['od' => $od, 'do' => $od + $e[0], 'x0' => $port['x'], 'y0' => $port['y'], 'x1' => $port['x'], 'y1' => $port['y'],
+            'planeta' => null, 'km' => $djKm, 'k0' => $k0, 'k1' => $k1];
+        $w['k'] = $k1;                                                // po końcu lotu (do odświeżenia mapy)
+        $w['kurs'] = fmod(rad2deg(atan2($my, $mx)) + 360, 360);
+        return $w;
+    }
+    return null;
 }
 
 // Okręt, na którym gracz może zarządzać transponderem i udostępnieniami: jest na pokładzie albo nim dowodzi.

@@ -397,6 +397,48 @@ function ruch_lokalizator_dostepny(): bool
     return $jest;
 }
 
+// Czy konto może wejść na pokład statku z SQL: właściciel, kapitan, dowódca (także prom okrętu macierzystego —
+// floty_jednostka_moze), konto z dostępem albo ostatni statek, z którego postać zeszła.
+function ruch_moze_wejsc(array $u, int $id, ?string $wlasciciel = null): bool
+{
+    if (($u['rola'] ?? '') === 'mg') return true;
+    if ($wlasciciel !== null && $wlasciciel !== '' && mb_strtolower($wlasciciel) === mb_strtolower((string) $u['login'])) return true;
+    if (function_exists('wskazniki_kapitan') && wskazniki_kapitan('okret:' . $id, $u)) return true;
+    if (function_exists('floty_jednostka_moze') && floty_jednostka_moze((string) $u['login'], $id)) return true;
+    if ((int) (karta((string) $u['id'])['pozycja']['ostatni_statek'] ?? 0) === $id) return true;
+    $q = polaczenie_bazy()->prepare('SELECT 1 FROM mapa_obiekty_dostep WHERE obiekt_id = ? AND LOWER(konto_login) = LOWER(?) LIMIT 1');
+    $q->execute([$id, (string) $u['login']]);
+    return (bool) $q->fetchColumn();
+}
+
+// Statki stojące na lądowisku, na którym jest postać (z prawem wejścia), i awaryjny powrót na ostatni statek.
+function ruch_statki_tutaj(array $u, ?array $gdzie): array
+{
+    $wynik = ['statki_tutaj' => [], 'powrot' => null];
+    if (!function_exists('floty_ladowanie_dostepne') || !floty_ladowanie_dostepne() || !tabela_sql_dostepna('mapa_obiekty')) return $wynik;
+    $db = polaczenie_bazy();
+    $klucz = (string) ($gdzie['klucz'] ?? '');
+    if (preg_match('/^sql:(\d+)$/', $klucz, $m)) {
+        $q = $db->prepare("SELECT id, nazwa, klasa, wlasciciel_login FROM mapa_obiekty WHERE aktywny = 1 AND ladowisko_id = ? AND typ IN ('statek','jednostka') ORDER BY nazwa");
+        $q->execute([(int) $m[1]]);
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            $wynik['statki_tutaj'][] = ['id' => (int) $s['id'], 'nazwa' => $s['nazwa'], 'klasa' => $s['klasa'],
+                'mozna' => ruch_moze_wejsc($u, (int) $s['id'], (string) $s['wlasciciel_login'])];
+        }
+    }
+    $ost = (int) (karta((string) $u['id'])['pozycja']['ostatni_statek'] ?? 0);
+    if ($ost && !str_starts_with($klucz, 'okret:') && !in_array($ost, array_column($wynik['statki_tutaj'], 'id'), true)) {
+        $q = $db->prepare('SELECT o.nazwa, o.ladowisko_id, o.planeta_id, l.nazwa AS ladowisko FROM mapa_obiekty o LEFT JOIN lokalizacje l ON l.id = o.ladowisko_id WHERE o.id = ? AND o.aktywny = 1');
+        $q->execute([$ost]);
+        if ($s = $q->fetch(PDO::FETCH_ASSOC)) {
+            $powod = !$s['ladowisko_id'] ? 'Statek nie stoi na lądowisku.'
+                : ((string) ($gdzie['planeta'] ?? '') !== (string) $s['planeta_id'] ? 'Statek stoi na innej planecie.' : null);
+            $wynik['powrot'] = ['id' => $ost, 'nazwa' => $s['nazwa'], 'ladowisko' => $s['ladowisko'], 'powod' => $powod];
+        }
+    }
+    return $wynik;
+}
+
 function ruch_moje_statki_sql(array $u, ?array $gdzie): array
 {
     if (!ruch_lokalizator_dostepny() || !function_exists('floty_ladowanie_dostepne') || !floty_ladowanie_dostepne()) return [];
@@ -899,6 +941,7 @@ function obsluz_ruch(string $akcja, bool $post): void
                 $wynik['bankomat'] = ($gdzie['typ'] ?? '') === 'bankomat';
             }
             $wynik['moje_statki'] = ruch_moje_statki_sql($u, $gdzie);
+            $wynik += ruch_statki_tutaj($u, $gdzie);
             // Własny statek na lądowisku tej planety jest też na liście „Dokąd?” (trasa na jego lądowisko).
             if (empty($wynik['poklad']['w_locie'])) {
                 foreach ($wynik['moje_statki'] as $s) {
@@ -918,12 +961,15 @@ function obsluz_ruch(string $akcja, bool $post): void
             $id = (int) (wejscie()['obiekt_id'] ?? 0);
             $karta = karta($u['id']);
             $gdzie = ruch_gdzie($karta, ruch_lokacje());
-            $q = polaczenie_bazy()->prepare('SELECT ladowisko_id, wlasciciel_login FROM mapa_obiekty WHERE id = ? AND aktywny = 1');
+            $q = polaczenie_bazy()->prepare('SELECT ladowisko_id, planeta_id, wlasciciel_login FROM mapa_obiekty WHERE id = ? AND aktywny = 1');
             $q->execute([$id]);
             $s = $q->fetch(PDO::FETCH_ASSOC);
             if (!$s || !$s['ladowisko_id']) blad('Statek nie stoi na lądowisku.');
-            if (mb_strtolower((string) $s['wlasciciel_login']) !== mb_strtolower((string) $u['login']) && !wskazniki_kapitan('okret:' . $id, $u)) blad('Właz pozostaje zamknięty.', 403);
-            if (($gdzie['klucz'] ?? '') !== 'sql:' . (int) $s['ladowisko_id']) blad('Najpierw dojdź na lądowisko.');
+            if (!ruch_moze_wejsc($u, $id, (string) $s['wlasciciel_login'])) blad('Właz pozostaje zamknięty.', 403);
+            // Powrót na ostatni statek (awaryjnie): wystarczy ta sama planeta — postać wraca na jego lądowisko.
+            $powrot = !empty(wejscie()['powrot']) && (int) ($karta['pozycja']['ostatni_statek'] ?? 0) === $id
+                && (string) ($gdzie['planeta'] ?? '') === (string) $s['planeta_id'];
+            if (!$powrot && ($gdzie['klucz'] ?? '') !== 'sql:' . (int) $s['ladowisko_id']) blad('Najpierw dojdź na lądowisko.');
             zmien('karty', function (&$k) use ($u, $id) {
                 $k[$u['id']]['pozycja']['lokacja'] = 'okret:' . $id;
                 $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
@@ -981,8 +1027,9 @@ function obsluz_ruch(string $akcja, bool $post): void
             $q->execute([$id]);
             $s = $q->fetch(PDO::FETCH_ASSOC);
             if (!$s || !$s['ladowisko_id']) blad('Statek nie stoi na lądowisku — nie da się zejść.');
-            zmien('karty', function (&$k) use ($u, $s) {
+            zmien('karty', function (&$k) use ($u, $s, $id) {
                 $k[$u['id']]['pozycja']['lokacja'] = 'sql:' . (int) $s['ladowisko_id'];
+                $k[$u['id']]['pozycja']['ostatni_statek'] = $id; // do „Wejdź na pokład” i awaryjnego powrotu
                 $k[$u['id']]['pozycja']['zmieniono'] = teraz_ms();
             });
             pozycja_sql_zapisz($u['id'], wczytaj('karty', [])[$u['id']]['pozycja'] ?? []);

@@ -92,6 +92,14 @@ Bez frameworków i bez budowania. Pliki trafiają na serwer w takiej postaci, w 
   tylko przemytnik albo łowca nagród z Krętactwem/Komputerami 3+, 5000 kr, hipernapęd −10%, działa po 30 min.
   Analiza sygnatury silnika i osłon (karta kontaktu na mapie): 6 h, tylko okręty z komputerem 4+ albo ≥900 m,
   cel musi zostać w zasięgu; ujawnia prawdziwą tożsamość i list gończy.
+- **Trasy NPC** (migracja 044, tabela `npc_trasy`, generowana skryptem): ok. 6000 jednostek kursuje między
+  dwoma portami w stałym cyklu — postój, lot do punktu skoku w stronę celu, nadprzestrzeń (niewidoczna),
+  dolot do drugiego portu. Fazę liczy serwer z czasu (`radar_npc_faza`), więc każda jest w innym miejscu
+  trasy. Karta kontaktu: trasa, deklarowany ładunek, co robi teraz; jednostki bez transpondera (rejestr 0)
+  ujawnia analiza sygnatury. Wykrycia skoków własnych i sojuszniczych okrętów są ukryte, opis — po najechaniu.
+- **Okno promu Lambda:** klasa albo nazwa z „Lambda” daje widok przez kokpit promu (`okno: 'lambda'`).
+- **Wejście na pokład:** na lądowisku Nawigacja pokazuje stojące tam statki z prawem wejścia (właściciel,
+  kapitan, dowódca floty okrętu macierzystego promu, dostęp) oraz awaryjny powrót na ostatni statek.
 - **Awanse** (Sieć frakcji → Awanse): stopień nie rośnie z PD. MG nadaje dowolny; przełożony z tej samej
   frakcji awansuje o jeden stopień, najwyżej do o jeden niższego niż własny. Awans zmienia rangę konta
   i poziom kariery floty (Kadet … Kapitan) na karcie EotE.

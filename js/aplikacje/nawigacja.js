@@ -97,7 +97,9 @@ export default {
         return;
       }
       const okr = d.poklad_okret, wn = okr?.wnetrze;
-      const zak = [['miejsce', 'Tutaj']];
+      // Pierwsza zakładka nosi nazwę miejsca, w którym jest postać (zamiast „Tutaj”).
+      const nazwaMiejsca = (wn ? `${wn.tu.nazwa} — ${okr.nazwa}` : d.gdzie.nazwa) || 'Miejsce';
+      const zak = [['miejsce', nazwaMiejsca.length > 34 ? `${nazwaMiejsca.slice(0, 33)}…` : nazwaMiejsca]];
       if (wn) zak.push(['idz', 'Idź po okręcie']);
       else if (!d.podroz && !d.poklad?.w_locie && d.miejsca.length) zak.push(['idz', 'Dokąd?']);
       if (d.poklad || okr) zak.push(['statek', 'Statek']);
@@ -145,6 +147,19 @@ export default {
     // Bankomat, sklep, zejście z pokładu.
     function akcjeWMiejscu() {
       const el = [];
+      // Statki na tym lądowisku (wejście na pokład) i awaryjny powrót na statek, z którego postać zeszła.
+      if (d.statki_tutaj?.length) {
+        el.push(h('div.panel', h('h2', 'Statki na lądowisku'), h('ul.lista', d.statki_tutaj.map((s) => h('li', h('div.rzad',
+          h('div.rozpycha', s.nazwa, s.klasa ? h('span.slaby.maly-tekst', ` · ${s.klasa}`) : null),
+          s.mozna ? h('button.przycisk', { onclick: () => akcja('statek_wejdz', { obiekt_id: s.id }, `Jesteś na pokładzie ${s.nazwa}.`) }, 'Wejdź na pokład')
+            : h('span.slaby.maly-tekst', 'właz zamknięty')))))));
+      }
+      if (d.powrot) {
+        const p = d.powrot;
+        el.push(h('div.panel', h('h2', `Twój ostatni statek: ${p.nazwa}`),
+          h('div.slaby.maly-tekst', p.powod || `Stoi na lądowisku: ${p.ladowisko || '—'}.`),
+          p.powod ? null : h('button.przycisk', { style: 'margin-top:8px', onclick: () => akcja('statek_wejdz', { obiekt_id: p.id, powrot: 1 }, `Wróciłeś na pokład ${p.nazwa}.`) }, 'Wróć na pokład')));
+      }
       if (d.bankomat) {
         const kwota = h('input', { type: 'number', min: 1, step: 1, placeholder: 'kwota' });
         el.push(h('div.panel', h('h2', 'Bankomat'),

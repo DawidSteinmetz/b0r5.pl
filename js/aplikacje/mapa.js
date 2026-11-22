@@ -85,6 +85,30 @@ function rodzajSylwetki(o) {
   return 'prom';
 }
 const dlugoscOkretu = (o) => o?.dlugosc_m || DLUGOSCI_KLAS[rodzajSylwetki(o)] || 100;
+
+// Szyk floty (mapa_floty.szyk, migracja 065): miejsce i-tej jednostki względem prowadzącej w km — [do przodu, w prawo].
+// obronny: pierścienie co odstęp (6, 12, 18… miejsc, co drugi przesunięty o pół kroku); eskortowy: klin za prowadzącą;
+// linia: szereg w poprzek kursu.
+function miejsceWSzyku(rodzaj, i, d) {
+  if (i <= 0) return [0, 0];
+  const n = Math.ceil(i / 2), bok = i % 2 ? 1 : -1;
+  if (rodzaj === 'eskortowy') return [-n * d, bok * n * d];
+  if (rodzaj === 'linia') return [0, bok * n * d];
+  let k = 1, j = i - 1;
+  while (j >= 6 * k) { j -= 6 * k; k++; }
+  const a = ((360 / (6 * k)) * (j + (k % 2 ? 0 : 0.5))) * Math.PI / 180;
+  return [Math.cos(a) * k * d, Math.sin(a) * k * d];
+}
+const odstepSzyku = (o) => Number(o?.flota?.odstep_km) || 8;
+// Przesunięcie jednostki w szyku (km, osie mapy: x wschód, y północ) i prowadząca; członkowie — jednostki floty w tym
+// samym miejscu. Kierunek szyku = kurs prowadzącej (pierwszej według kolejności floty).
+function przesuniecieWSzyku(o, czlonkowie) {
+  const lista = [...czlonkowie].sort((a, b) => (a.flota?.kolejnosc ?? 0) - (b.flota?.kolejnosc ?? 0) || a.id - b.id);
+  const i = Math.max(0, lista.findIndex((x) => x.id === o.id));
+  const [f, r] = miejsceWSzyku(o.flota?.szyk, i, odstepSzyku(o));
+  const a = kursTeraz(lista[0]) * Math.PI / 180;
+  return { prowadzaca: lista[0], km: [f * Math.cos(a) + r * Math.sin(a), f * Math.sin(a) - r * Math.cos(a)] };
+}
 function sylwetkaOkretu(g, o, x, y, kurs, r) {
   const a = -kurs * RAD, c = Math.cos(a), s = Math.sin(a);
   SYLWETKI[rodzajSylwetki(o)].forEach(([px, py], i) => {
@@ -665,7 +689,7 @@ export default {
       if (!o?.flota || o.typ === 'postac' || wNadprzestrzeni(o) || postepLotu(o) != null) return null;
       const p = planetaObiektu(o);
       if (p) {
-        if (skala >= PROG_ROZWINIECIA) return null;
+        if (o.flota.szyk ? odstepSzyku(o) * (skala / KM_NA_PC) >= 12 : skala >= PROG_ROZWINIECIA) return null;
         const czlonkowie = obiektyMapy.filter((x) => x.flota?.kod === o.flota.kod && x.typ !== 'postac'
           && planetaObiektu(x) === p && !wNadprzestrzeni(x) && postepLotu(x) == null);
         return { glowny: czlonkowie[0]?.id === o.id, ile: czlonkowie.length };
@@ -674,6 +698,10 @@ export default {
         && !planetaObiektu(x) && !wNadprzestrzeni(x) && postepLotu(x) == null
         && x.x === o.x && x.y === o.y && String(x.uklad_k || '') === String(o.uklad_k || ''));
       if (czlonkowie.length < 2) return null;
+      if (o.flota.szyk) {
+        if (odstepSzyku(o) * (skala / KM_NA_PC) >= 12) return null;
+        return { glowny: przesuniecieWSzyku(o, czlonkowie).prowadzaca.id === o.id, ile: czlonkowie.length };
+      }
       const odstepKm = 2.5 * Math.max(...czlonkowie.map(dlugoscOkretu)) / 1000;
       const rozpietoscPx = odstepKm * Math.ceil((czlonkowie.length - 1) / 2) * (skala / KM_NA_PC);
       if (rozpietoscPx >= 10) return null;
@@ -834,6 +862,13 @@ export default {
         // W widoku układu: tylko prawdziwy odstęp (trzy długości okrętu) — znacznik stoi tam, gdzie flota jest naprawdę
         // i skąd serwer liczy trasę; nakładające się okręty pokazuje zwinięta grupa (×N). Wachlarz tylko przy oddaleniu
         // do galaktyki (planeta to kropka) — wcześniej w układzie rozchodził się nawet o ±90° i flota „wisiała” obok.
+        if (o.flota?.szyk && uklad) {
+          // Szyk: prowadząca w swoim miejscu na orbicie, reszta w stałych miejscach szyku (km) wokół niej.
+          const { prowadzaca, km } = przesuniecieWSzyku(o, rodzina);
+          const katP = -miejsceNaOrbicie(prowadzaca) * RAD;
+          const s = zwinieta ? 0 : skala / KM_NA_PC;
+          return [px + Math.cos(katP) * promien + km[0] * s, py + Math.sin(katP) * promien - km[1] * s];
+        }
         const rozrzutS = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
         const rozrzut = rozrzutReal ? rozrzutReal.st : rozrzutS;
         const kat = -(miejsceNaOrbicie(o) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
@@ -851,6 +886,13 @@ export default {
         && !planetaObiektu(x) && String(x.uklad_k || '') === String(o.uklad_k || '') && postepLotu(x) == null;
       const grupa = obiektyMapy.filter(tuSamo);
       if (grupa.length < 2) return [0, 0];
+      if (o.flota?.szyk) {
+        const swoi = grupa.filter((x) => x.flota?.kod === o.flota.kod);
+        if (swoi.length > 1) {
+          const { prowadzaca, km } = przesuniecieWSzyku(o, swoi);
+          if (prowadzaca.id === grupa[0].id || !grupa[0].flota || grupa[0].flota.kod === o.flota.kod) return km;
+        }
+      }
       const i = grupa.findIndex((x) => x.id === o.id);
       if (i <= 0) return [0, 0];
       const odstep = 2.5 * Math.max(...grupa.map(dlugoscOkretu)) / 1000;
@@ -2508,6 +2550,24 @@ export default {
       } }, wylot ? `${j.obiekt_nazwa}: wylot z hangaru` : `${j.obiekt_nazwa}: powrót do hangaru`);
     }
 
+    // Szyk floty: rodzaj i odstęp (km). Prowadzi pierwsza jednostka floty; przy zbliżeniu trójkąt floty rozdziela się
+    // na okręty w ich miejscach szyku.
+    function sekcjaSzyku(flota, info) {
+      const rodzaj = h('select', [['', 'bez szyku'], ['obronny', 'obronny — pierścienie wokół prowadzącego'], ['eskortowy', 'eskortowy — klin za prowadzącym'], ['linia', 'linia — szereg w poprzek kursu']]
+        .map(([v, n]) => h('option', { value: v, selected: (flota.szyk || '') === v }, n)));
+      const odstep = h('input', { type: 'number', min: '1', max: '200', step: '1', value: String(Number(flota.szyk_odstep_km) || 8) });
+      const zapisz = h('button.przycisk.maly', { onclick: async () => {
+        try {
+          await api('mapa_flota_szyk', { flota_id: flota.id, szyk: rodzaj.value, odstep_km: Number(odstep.value) });
+          info.textContent = rodzaj.value ? `Szyk ${rodzaj.value}, odstęp ${odstep.value} km.` : 'Flota bez szyku.';
+          await odswiezFloty(); await pobierzPozycje();
+        } catch (e) { info.textContent = e.message; }
+      } }, 'Ustaw szyk');
+      const prowadzi = flota.jednostki[0]?.obiekt_nazwa;
+      return h('div.mapa-flota-form', rodzaj, h('label.maly-tekst', 'Odstęp (km) ', odstep), zapisz,
+        prowadzi ? h('p.slaby.maly-tekst', `Prowadzi: ${prowadzi} (pierwsza jednostka floty).`) : null);
+    }
+
     function rysujPanelFlot() {
       wyczysc(panelFlot);
       panelFlot.append(h('button.mapa-zamknij', { 'aria-label': 'Zamknij', onclick: () => { panelFlot.hidden = true; } }, '×'), h('h2', 'Dowodzenie flotą'));
@@ -2569,6 +2629,7 @@ export default {
             h('p.slaby.maly-tekst', 'Skok do planety albo punktu w układzie: kliknij go na mapie. Tu: współrzędne albo inna jednostka.'),
             h('div.mapa-flota-form', x, y, cel, rozkaz)),
           promy.length ? sekcjaFloty('Hangar', false, h('div.mapa-krok-przyciski', ...promy.map((j) => przyciskHangaru(j, info)))) : null,
+          'szyk' in flota ? sekcjaFloty('Szyk', false, sekcjaSzyku(flota, info)) : null,
           sekcjaFloty('Podział na grupy', false, h('div.mapa-flota-form', nazwaGrupy, podziel)),
           sekcjaFloty('Wskaźniki pokładowe', false, panelZgod({ filtr: (o) => flota.jednostki.some((j) => `okret:${j.obiekt_id}` === o.klucz) })),
           info));

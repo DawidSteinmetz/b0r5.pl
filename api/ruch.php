@@ -302,7 +302,8 @@ function mapa_obiekty_widoczne(array $u): array
     if ($obiekty && tabela_sql_dostepna('mapa_floty_jednostki') && tabela_sql_dostepna('mapa_floty')) {
         $ids = array_column($obiekty, 'id');
         $marks = implode(',', array_fill(0, count($ids), '?'));
-        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.rola,j.tie_liczba,f.kod AS flota_kod,f.nazwa AS flota_nazwa,
+        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.rola,j.tie_liczba,j.kolejnosc,"
+            . (function_exists('floty_szyk_dostepny') && floty_szyk_dostepny() ? 'COALESCE(f.szyk,rodzic.szyk) AS szyk,COALESCE(f.szyk_odstep_km,rodzic.szyk_odstep_km) AS szyk_odstep_km,' : '') . "f.kod AS flota_kod,f.nazwa AS flota_nazwa,
                 rodzic.nazwa AS flota_glowna,COALESCE(NULLIF(f.dowodca_login,''),NULLIF(rodzic.dowodca_login,'')) AS dowodca_login
             FROM mapa_floty_jednostki j JOIN mapa_floty f ON f.id=j.flota_id
             LEFT JOIN mapa_floty rodzic ON rodzic.id=f.rodzic_id WHERE j.obiekt_id IN ($marks)");
@@ -320,6 +321,9 @@ function mapa_obiekty_widoczne(array $u): array
                 'dowodca' => (string) ($dowodca['postac'] ?? $f['dowodca_login'] ?? ''),
                 'dowodca_login' => (string) ($f['dowodca_login'] ?? ''), 'rola' => $f['rola'],
                 'tie_liczba' => $f['tie_liczba'] === null ? null : (int) $f['tie_liczba'],
+                // Szyk floty (migracja 065): miejsce w szyku według kolejności, rodzaj i odstęp w km.
+                'kolejnosc' => (int) ($f['kolejnosc'] ?? 0), 'szyk' => $f['szyk'] ?? null,
+                'odstep_km' => isset($f['szyk_odstep_km']) ? (float) $f['szyk_odstep_km'] : null,
             ];
         }
         $obiekty = array_values($indeks);

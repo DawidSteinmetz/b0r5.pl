@@ -1237,7 +1237,7 @@ function floty_lista(string $login, bool $mg = false): array
 {
     floty_aktualizuj_ruch();
     $db = polaczenie_bazy();
-    $all = $db->query("SELECT f.id,f.kod,f.nazwa,f.dowodca_login,f.dowodca_osoba_id,p.nazwa AS dowodca_npc_nazwa,f.rodzic_id,f.status,f.opis FROM mapa_floty f LEFT JOIN osoby o ON o.podmiot_id=f.dowodca_osoba_id LEFT JOIN podmioty p ON p.id=o.podmiot_id WHERE f.status<>'nieaktywna' ORDER BY f.nazwa")->fetchAll(PDO::FETCH_ASSOC);
+    $all = $db->query("SELECT f.id,f.kod,f.nazwa,f.dowodca_login,f.dowodca_osoba_id,p.nazwa AS dowodca_npc_nazwa,f.rodzic_id,f.status,f.opis" . (floty_szyk_dostepny() ? ',f.szyk,f.szyk_odstep_km' : '') . " FROM mapa_floty f LEFT JOIN osoby o ON o.podmiot_id=f.dowodca_osoba_id LEFT JOIN podmioty p ON p.id=o.podmiot_id WHERE f.status<>'nieaktywna' ORDER BY f.nazwa")->fetchAll(PDO::FETCH_ASSOC);
     $dozwolone = [];
     foreach ($all as $f) if ($mg || floty_czy_dowodca((int) $f['id'], $login)) $dozwolone[(int) $f['id']] = true;
     $out = [];
@@ -1799,6 +1799,18 @@ function floty_przerwij_skok(array $u, int $id): array
 // Dowodzi nim dowódca jego grupy (podgrupa floty okrętu: dziedziczy dowódcę). Wylot: prom staje na
 // orbicie obok okrętu; z wybranym lądowiskiem sam leci na bliską orbitę i ląduje (ladowanie_cel_id).
 // Powrót: z orbity tej samej planety (albo z tego samego punktu przestrzeni) z powrotem do hangaru.
+// Szyk floty (migracja 065): mapa_floty.szyk i szyk_odstep_km.
+const FLOTY_SZYKI = ['obronny' => 'obronny (pierścienie wokół prowadzącego)', 'eskortowy' => 'eskortowy (klin za prowadzącym)', 'linia' => 'linia (szereg w poprzek kursu)'];
+function floty_szyk_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT szyk, szyk_odstep_km FROM mapa_floty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
 function floty_hangar_dostepny(): bool
 {
     static $jest = null;
@@ -1987,7 +1999,7 @@ function obsluz_floty(string $akcja, bool $post): void
     $akcje = ['mapa_floty_gracza','mapa_flota_podziel','mapa_flota_rozkaz','mapa_rozkaz_anuluj','mapa_flota_kurs','mapa_flota_dolot',
         'mapa_flota_start','mapa_flota_ladowanie','mapa_ladowiska','mapa_flota_lot','mapa_lot_przerwij','mapa_poklad','mg_poklad_rola',
         'mg_floty','mg_flota_zapisz','mg_flota_jednostki','mg_flota_usun','mg_naped_zapisz','mg_mapa_teleport','mg_flota_kurs',
-        'prom_wylot','prom_powrot','mapa_naprawa','mapa_naprawa_zglos','mapa_naprawa_przerwij'];
+        'prom_wylot','prom_powrot','mapa_flota_szyk','mapa_naprawa','mapa_naprawa_zglos','mapa_naprawa_przerwij'];
     if (!in_array($akcja, $akcje, true)) return;
     floty_gotowe();
     switch ($akcja) {
@@ -2025,6 +2037,19 @@ function obsluz_floty(string $akcja, bool $post): void
             if (!$post) blad('Zła metoda.', 405);
             $u = wymagaj_logowania();
             odpowiedz(floty_rozkaz((string) $u['login'], wejscie()));
+
+        case 'mapa_flota_szyk':
+            // Dowódca (albo MG) ustawia szyk floty: rodzaj (pusty — bez szyku) i odstęp w km.
+            if (!$post) blad('Zła metoda.', 405);
+            $u = wymagaj_logowania(); $w = wejscie();
+            if (!floty_szyk_dostepny()) blad('Szyk floty wymaga migracji 065.');
+            $flotaId = (int) ($w['flota_id'] ?? 0);
+            if (($u['rola'] ?? '') !== 'mg' && !floty_czy_dowodca($flotaId, (string) $u['login'])) blad('Nie dowodzisz tą flotą.', 403);
+            $szyk = (string) ($w['szyk'] ?? '');
+            if ($szyk !== '' && !isset(FLOTY_SZYKI[$szyk])) blad('Nieznany szyk.');
+            $odstep = max(1, min(200, (float) ($w['odstep_km'] ?? 8)));
+            polaczenie_bazy()->prepare('UPDATE mapa_floty SET szyk=?, szyk_odstep_km=? WHERE id=?')->execute([$szyk === '' ? null : $szyk, $odstep, $flotaId]);
+            odpowiedz(['ok' => true, 'szyk' => $szyk ?: null, 'odstep_km' => $odstep]);
 
         case 'mapa_flota_kurs':
             // Dowódca ustawia kurs (na orbicie: stronę planety). Manewr trwa zależnie od tempa obrotu.

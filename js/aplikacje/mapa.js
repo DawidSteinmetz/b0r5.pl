@@ -759,6 +759,11 @@ export default {
         // Lot w atmosferze: zejście z orbity i lot nad powierzchnią (lądowanie) albo lot i wznoszenie (start).
         const a = o.atmosfera, t = teraz();
         const rOrb = Math.max(uPl.rp + 8, ((uPl.srednicaKm || 12000) / 2 + 300) * uPl.skm);
+        if (a.rodzaj === 'lokalny') {
+          // Dostawa lokalna: cały czas nad powierzchnią, od zakładu do obiektu.
+          const [s, d] = geoLuk(a, (t - a.od) / Math.max(1, a.do - a.od));
+          return geoNaEkran(p, uPl, s, d, t);
+        }
         if (a.rodzaj === 'ladowanie') {
           const tz = a.od + a.faza_s;
           if (t < tz) return geoNaEkran(p, uPl, a.szer0, a.dl0, t, rOrb + (uPl.rp - rOrb) * ((t - a.od) / a.faza_s));
@@ -2042,7 +2047,7 @@ export default {
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku + (o.geo ? ` · ${Math.abs(o.geo.szer).toFixed(1)}°${o.geo.szer >= 0 ? 'N' : 'S'} ${Math.abs(o.geo.dl).toFixed(1)}°${o.geo.dl >= 0 ? 'E' : 'W'}` : '')) : null,
             o.geo && planetaObiektu(o) && cyklPlanety(planetaObiektu(o)) ? h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(planetaObiektu(o)), o.geo.szer, o.geo.dl))) : null,
-            o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
+            o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : o.atmosfera.rodzaj === 'lokalny' ? 'przelot nad powierzchnią' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
             o.dok ? h('tr', h('th', 'Dok'), zywa(() => {
               const x = obiektyMapy.find((y) => y.id === o.id)?.dok || o.dok;
               return x.do && x.do > teraz() ? `lot łukiem do ${x.oznaczenie} · w doku za ${czasTrwania(x.do - teraz())}` : `stanowisko ${x.oznaczenie}`;

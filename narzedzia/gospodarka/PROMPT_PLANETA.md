@@ -54,15 +54,23 @@ Tabele:
    `wydajność / (1 + odległość_pc / 1500)²` (bliżej i więcej — chętniej). `t_doba` linii = zużycie / liczba
    producentów. `ladownosc_t` = `gosp_towary.ladownosc_t`, ale gdy `t_doba < ladownosc / 7` — mniejszy statek:
    `ladownosc = max(500, round(t_doba × 7, -2))` (dostawa raz w tygodniu). `odstep_s = round(ladownosc / t_doba × 86400)`.
-   `predkosc_au_h` 1,0–2,5, `postoj_h` 2,0–3,0, `faza` losowa 0–1 (4 miejsca po przecinku), `obieg = 'oficjalny_hurt'`.
-   Producent musi istnieć w `gosp_produkcja` z tym towarem (dopisz go, jeśli wprowadzasz nowego).
+   `predkosc_au_h` 1,0–2,5 i `postoj_h` 2,0–3,0 **różne dla linii** (np. `1.0 + MOD(id * 0.37, 1.5)`,
+   `2.0 + MOD(id * 0.23, 1.0)` — nie jedna stała dla całego pliku), `faza` losowa 0–1 (4 miejsca po przecinku),
+   `obieg = 'oficjalny_hurt'`. Producent musi istnieć w `gosp_produkcja` z tym towarem (dopisz go, jeśli wprowadzasz nowego).
+   **Wydajność producenta musi wystarczyć:** suma `t_doba` wszystkich linii od producenta danego towaru (także z innych
+   planet — sprawdź `gosp_linie` w minibazie) ≤ jego `wydajnosc_t_doba`. Gdy brakuje — wybierz innego producenta albo,
+   jeśli opracowujesz właśnie tego producenta, podnieś jego wydajność.
+   **Dostawy lokalne** (producent na tej samej planecie co obiekt) są dozwolone i gra pokazuje je jako lot w atmosferze
+   od zakładu do obiektu — używaj ich dla towarów, które planeta sama wytwarza (żywność rolniczego świata, durastal huty).
 3. **Cena** (`gosp_rynek`):
    `saldo = produkcja − zużycie`, `obrót = produkcja + zużycie`,
    `f_saldo = 1 − 0,30 · saldo / obrót` (czysty eksporter 0,70, czysty importer 1,30),
    `f_transport = 1 + 0,00008 · d` (d — parseki do najbliższego producenta towaru; producent: 0),
    `cena_indeks = min(2,5; max(0,5; f_saldo · f_transport))` (3 miejsca), `cena_kr_t = cena_bazowa · cena_indeks`.
 4. **Wydajność producentów** w minibazie bywa przesadzona (generator losował). Dla planety, którą opracowujesz, popraw
-   `gosp_produkcja` do realiów (UPDATE) i przelicz jej wiersze w `gosp_rynek`.
+   `gosp_produkcja` do realiów (UPDATE) i przelicz jej wiersze w `gosp_rynek`. **Cudzych planet nie nadpisuj:** nowych
+   producentów innych planet dopisuj tylko `INSERT IGNORE` (bez `ON DUPLICATE KEY UPDATE`) — inaczej ponowny import
+   starszego pliku cofnąłby poprawki z planety opracowanej później.
 5. **Kanon** — sprawdź Wookieepedię (Canon i Legends): czym planeta słynie, co eksportuje, klimat, ludność, miasta.
    Co z Wookieepedii — `zrodlo = 'wookieepedia'`; co wymyślone — `'wygenerowane'`. Nie przeczytasz stron? Napisz to
    w raporcie i oznacz dane jako wygenerowane — nie zmyślaj cytatów.
@@ -107,20 +115,16 @@ co z Wookieepedii, co wymyślone.
 
 ## ZADANIE BIEŻĄCE
 
-Planeta: **Mattri** (`mapa_planety`: id 1411, region 1 — Światy Jądra, x 5219,0, y −1351,5; w bazie brak średnicy,
-doby i roku — ustaw je). Plik: `051_gospodarka_mattri.sql`.
+Opracowane szczegółowo (migracje 051–060): Mattri, Albrae-Don, Foundry, Corellia, Alpheridies, Cassander, Mygeeto,
+Eriadu, Ord Mantell (+ Kuat z 048). Kolejny numer pliku: **061**.
 
-Kontekst: Mattri jest dziś w minibazie tylko producentem żywności (`gosp_produkcja`: 2 951 000 t/dobę — popraw do
-realiów) i dostawcą Kuat: 8 linii żywności, razem ok. 249 000 t/dobę, m.in. do portu **K-60V** (Port towarowy
-Kuat City K-60V; jego kontrakty: żywność z Mattri i Foundry, towary luksusowe z Albrae-Don). Zaczynamy galaktyczną
-sieć żywności od tej ścieżki.
+Planeta: **<NAZWA>** (sprawdź w `mapa_planety`: id, region, x, y; ustaw średnicę, dobę i typ, jeśli brak).
+Plik: `061_gospodarka_<nazwa>.sql`.
+
+Kontekst: <czym planeta ma być w sieci — np. „dostawca X dla Y”, otwarte wątki z `gosp_rynek`, które ma zamknąć>.
 
 Do zrobienia:
-1. Mattri szczegółowo: farmy i plantacje, przetwórnie, chłodnie, spichlerze, porty eksportowe (stąd odlatują kontrakty
-   do Kuat), osady i miasta (ich zaopatrzenie), lokalny przemysł obsługujący rolnictwo — z lądowiskami.
-2. Zużycie obiektów Mattri i **linie dostaw do Mattri** — to, co Mattri sprowadza (maszyny rolnicze, nawozy, paliwo,
-   części, elektronika, towary dla ludności…). Nowe towary dopisz do `gosp_towary`; producentów wybierz z istniejących
-   albo dopisz nowych (z Wookieepedii, jeśli się da).
-3. `gosp_rynek`: Mattri → `obiekty`; nowe towary i producenci → `szacunek` z uwagami (otwarte wątki). Popraw wydajność
-   żywności Mattri tak, żeby obecne kontrakty z Kuat były w niej realnym ułamkiem eksportu.
-4. Nie zmieniaj obiektów ani linii Kuat.
+1. Obiekty planety z lądowiskami, zużycie i linie dostaw (z zasadami wydajności i dostaw lokalnych).
+2. Zamknij otwarte wątki z `gosp_rynek`, których dotyczy planeta (`szacunek` → `obiekty` dla niej).
+3. `gosp_rynek` dla planety i nowych producentów; cudzych planet tylko dopisuj.
+4. Nie zmieniaj obiektów ani linii innych planet.

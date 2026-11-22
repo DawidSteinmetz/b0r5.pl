@@ -2058,6 +2058,7 @@ export default {
       podpowiedz.hidden = true;
       if (obiekt && waski()) panelFlot.hidden = true;
       wyczysc(karta);
+      karta.classList.remove('szeroka');
       karta.hidden = !obiekt;
       if (!obiekt) return;
       const wiersz = (k, v) => h('tr', h('th', k), h('td', v));
@@ -2077,8 +2078,12 @@ export default {
         : postac ? widoki.findIndex((w) => w.obiekt?.id === postac.id) : -1;
       if (obiekt.obiekt) {
         const o = obiekt.obiekt;
-        karta.append(zamknij, h('h2', nazwaPostaci(o)),
-          h('div.mapa-znaczki', h('span.znaczek-cel', o.typ === 'postac' ? 'Pozycja postaci' : 'Pozycja jednostki')),
+        // Karta jednostki: szeroka, w dwóch kolumnach — po lewej dane, flota i lot, po prawej dowodzenie
+        // (radar) i pokład. Postać bez pokładu zostaje wąska.
+        const prawa = [
+          o.radar ? sekcjaRadaru(o) : null,
+          o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null].filter(Boolean);
+        const lewa = [
           h('table.tabela',
             wiersz('Typ', o.rodzaj || o.typ),
             o.klasa ? wiersz('Klasa', o.klasa) : null,
@@ -2097,9 +2102,11 @@ export default {
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
             h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
             o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null,
-          o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null,
-          o.radar ? sekcjaRadaru(o) : null,
-          o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null);
+          o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null];
+        karta.classList.toggle('szeroka', prawa.length > 0);
+        karta.append(zamknij, h('h2', nazwaPostaci(o)),
+          h('div.mapa-znaczki', h('span.znaczek-cel', o.typ === 'postac' ? 'Pozycja postaci' : 'Pozycja jednostki')),
+          prawa.length ? h('div.mapa-karta-kolumny', h('div.mapa-karta-kolumna', ...lewa), h('div.mapa-karta-kolumna', ...prawa)) : h('div', ...lewa));
       } else if (obiekt.tlo) {
         // Obiekt tła gospodarki: opis, miejsce i lokalna godzina, zużycie na dobę, linie dostaw z najbliższą dostawą.
         const ob = obiekt.tlo;

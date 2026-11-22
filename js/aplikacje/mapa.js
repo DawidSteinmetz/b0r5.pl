@@ -204,12 +204,18 @@ export default {
     // Zbliżenie: małe ikonki w doku (obok głośnika), tylko gdy mapa jest otwarta — +/− (×4) i progi:
     // galaktyka, sektor, układ, planeta (płynny przelot na zaznaczony obiekt albo moją pozycję).
     const IKONY_ZOOMU = [
-      ['<path d="M24 12v24M12 24h24"/>', 'Przybliż', () => zoomOkolo(4)],
-      ['<path d="M12 24h24"/>', 'Oddal', () => zoomOkolo(1 / 4)],
+      // 1. Moja pozycja: odznacza wybrany obiekt, okolica (sektor) wokół mnie.
+      ['<circle cx="24" cy="24" r="13"/><circle cx="24" cy="24" r="4"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7"/>', 'Moja pozycja (okolica)', () => { wybierz(null); doProgu('sektor'); }],
+      // 2. Cała galaktyka.
       ['<path d="M25 24c0-3 5-3 5 0s-7 7-11 2-1-12 7-12 14 7 10 16-13 10-18 5"/>', 'Cała galaktyka', () => calaGalaktyka(true)],
-      ['<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>', 'Sektor (okolica wybranego miejsca)', () => doProgu('sektor')],
-      ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ planetarny', () => doProgu('uklad')],
+      // 3. Krawędź układu: wybranej planety albo mojej pozycji.
+      ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ (krawędź układu)', () => doProgu('uklad')],
+      // 4. Słońce: wybrana planeta i jej słońce albo najbliższe słońce i moja pozycja.
+      ['<circle cx="17" cy="24" r="8"/><path d="M17 10v-4M17 42v-4M3 24h-0M6 13l-2-2M28 13l2-2M6 35l-2 2M28 35l2 2"/><circle cx="38" cy="24" r="3.5"/>', 'Słońce i planeta', () => doProgu('slonce')],
+      // 5. Planeta i księżyce: wybrana planeta albo najbliższa mojej pozycji.
       ['<circle cx="21" cy="27" r="10"/><circle cx="37" cy="12" r="3.5"/>', 'Planeta i księżyce', () => doProgu('planeta')],
+      // 6. Zbliżenie na planetę (tarcza na cały widok).
+      ['<circle cx="24" cy="24" r="18"/><path d="M24 6v36M6 24h36"/>', 'Zbliżenie na planetę', () => doProgu('tarcza')],
     ].map(([ikona, tytul, akcja]) => ({ ikona, tytul, akcja }));
     if (ctx.dok) ctx.dok(IKONY_ZOOMU);
 
@@ -1020,7 +1026,9 @@ export default {
       return tuPlaneta ? { x: tuPlaneta.x, y: tuPlaneta.y, k: kmWUkladzie(tuPlaneta), p: tuPlaneta } : null;
     }
 
-    // Progi: sektor, układ, planeta — skala progu, środek na celu (zaznaczenie się nie zmienia).
+    // Progi zbliżenia (przyciski w doku): sektor, układ (krawędź), słońce z planetą, planeta z księżycami, tarcza
+    // planety. Cel: wybrana planeta (albo obiekt), a bez wyboru — moja pozycja; dla mojej pozycji „planeta” to
+    // najbliższa planeta układu (ta, przy której stoję, albo najbliższa punktowi w układzie).
     async function doProgu(prog) {
       let c = celProgu();
       if (!c) return;
@@ -1032,11 +1040,38 @@ export default {
       const cykl = c.p ? cyklPlanety(c.p) : null;
       if (prog === 'uklad') {
         const Rbrzeg = (cykl?.krawedz_au || 50) * KM_NA_AU;
-        return przelec(c.x, c.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), null, c.k);
+        return przelec(c.x, c.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), null, [0, 0]);
       }
-      const ks = cykl?.ksiezyce || [];
-      const R = Math.max((cykl?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
-      przelec(c.x, c.y, Math.min(ZOOM_MAKS, Math.max(PROG_UKLADU, kr / (R / KM_NA_PC))), null, c.k);
+      // Planeta progu: wybrana planeta (księżyc — jego planeta macierzysta przy tarczy) albo najbliższa celowi.
+      let pl = wybrane?.planeta || null;
+      if (!pl) {
+        const wUkladzie = P.filter((p) => Math.abs(p.x - c.x) < 1e-3 && Math.abs(p.y - c.y) < 1e-3);
+        for (const p of wUkladzie) if (!cyklPlanety(p)) await cyklWczytany(p);
+        const dKm = (p) => { const k = kmWUkladzie(p); return k && c.k ? Math.hypot(k[0] - c.k[0], k[1] - c.k[1]) : Infinity; };
+        pl = (c.p && P.includes(c.p) && !wybrane ? (dKm(c.p) < Infinity ? c.p : null) : null);
+        for (const p of wUkladzie) if (!pl || dKm(p) < dKm(pl)) pl = p;
+        pl = pl || c.p;
+      }
+      if (!pl) return;
+      if (!cyklPlanety(pl)) await cyklWczytany(pl);
+      const cp = cyklPlanety(pl);
+      const kP = kmWUkladzie(pl) || c.k || [0, 0];
+      if (prog === 'slonce') {
+        // Słońce (środek układu) i planeta albo moja pozycja: oba w kadrze.
+        const cel = wybrane?.planeta ? kP : (c.k || kP);
+        const R = Math.max(1, Math.hypot(cel[0], cel[1])) * 0.62;
+        return przelec(pl.x, pl.y, Math.min(ZOOM_MAKS, Math.max(PROG_UKLADU, kr / (R / KM_NA_PC))), null, [cel[0] / 2, cel[1] / 2]);
+      }
+      if (prog === 'tarcza') {
+        const p = cp?.macierz ? wgKlucza.get(norm(cp.macierz.nazwa)) || pl : pl;
+        const cpp = cyklPlanety(p) || cp;
+        const srednica = Number(cpp?.srednica_km || 12000);
+        const skalaTarczy = Math.min(ZOOM_MAKS, 0.86 * Math.min(szer, wys) * KM_NA_PC / (srednica / 2));
+        return przelec(p.x, p.y, skalaTarczy, null, kmWUkladzie(p) || kP);
+      }
+      const ks = cp?.ksiezyce || [];
+      const R = Math.max((cp?.srednica_km || 12000) * 20, ...ks.map((x) => (x.promien_km || 0) * 1.2));
+      przelec(pl.x, pl.y, Math.min(ZOOM_MAKS, Math.max(PROG_UKLADU, kr / (R / KM_NA_PC))), null, kP);
     }
 
     // ---------- rysowanie ----------

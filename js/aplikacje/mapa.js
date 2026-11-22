@@ -823,8 +823,11 @@ export default {
       const [px, py] = pozycjaPlanety(p);
       if (orbita && (o.orbita != null || o.kurs != null)) {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
+        // W widoku układu: tylko prawdziwy odstęp (trzy długości okrętu) — znacznik stoi tam, gdzie flota jest naprawdę
+        // i skąd serwer liczy trasę; nakładające się okręty pokazuje zwinięta grupa (×N). Wachlarz tylko przy oddaleniu
+        // do galaktyki (planeta to kropka) — wcześniej w układzie rozchodził się nawet o ±90° i flota „wisiała” obok.
         const rozrzutS = zwinieta ? 0 : Math.min(18, 200 / Math.max(rodzina.length, 1));
-        const rozrzut = rozrzutReal ? rozrzutS * (1 - rozrzutReal.f) + rozrzutReal.st * rozrzutReal.f : rozrzutS;
+        const rozrzut = rozrzutReal ? rozrzutReal.st : rozrzutS;
         const kat = -(miejsceNaOrbicie(o) + (indeks - (rodzina.length - 1) / 2) * rozrzut) * RAD;
         return [px + Math.cos(kat) * promien, py + Math.sin(kat) * promien];
       }

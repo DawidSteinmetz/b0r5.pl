@@ -193,6 +193,49 @@ function pokazCialo(s, c) {
   gwiazdaInfo.style.top = `${Math.max(8, Math.min(y - 12, pr.height - 140))}px`;
 }
 
+// Skok do znanego układu wskazanego przez okno: dowódca floty (albo kapitan) wybiera orbitę wyjścia, komputer liczy
+// prognozę (obrót, punkt skoku, lot, ETA), potem „Wykonaj skok” — ten sam rozkaz co na mapie (mapa_flota_rozkaz).
+// Leci flota okrętu przy planecie, na której jest postać (bez jednostek w skoku, na lądowisku, w hangarze i w doku).
+const WARIANTY_SKOKU = [['daleka', 'daleka orbita'], ['srednia', 'średnia orbita'], ['bliska', 'bliska orbita'], ['krawedz', 'krawędź układu']];
+function panelSkoku(cel, el) {
+  const info = h('div.slaby');
+  const wariant = h('select', WARIANTY_SKOKU.map(([v, n]) => h('option', { value: v }, n)));
+  const czas = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.max(1, Math.round(s / 60))} min`);
+  const godz = (t) => new Date(t * 1000).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  const przelicz = h('button.przycisk.maly', { onclick: async (e) => {
+    e.stopPropagation();
+    przelicz.disabled = true;
+    wyczysc(info).append(h('div', 'Komputer nawigacyjny liczy…'));
+    try {
+      const { floty = [] } = await api('mapa_floty_gracza');
+      const tu = (stanSceny?.miejsce || '').toLowerCase();
+      const wolne = (f) => (f.jednostki || []).filter((j) => !j.rozkaz_id && !j.ladowisko_id && !j.w_hangarze && !j.dok
+        && (!tu || (j.planeta || '').toLowerCase() === tu));
+      const f = floty.find((x) => wolne(x).length) || null;
+      if (!f) { wyczysc(info).append(h('div', floty.length ? 'Żadna jednostka twojej floty nie stoi gotowa przy tej planecie.' : 'Skok zleca dowódca floty.')); przelicz.disabled = false; return; }
+      const dane = { flota_id: f.id, jednostki: wolne(f).map((j) => j.obiekt_id), cel_planeta: cel, wariant: wariant.value };
+      const w = await api('mapa_flota_rozkaz', { ...dane, plan: true });
+      const kolizje = (w.jednostki || []).map((j) => j.kolizja).filter(Boolean);
+      const wykonaj = h('button.przycisk.maly', { disabled: kolizje.length > 0, onclick: async (ev) => {
+        ev.stopPropagation();
+        wykonaj.disabled = true;
+        try {
+          const r = await api('mapa_flota_rozkaz', dane);
+          wyczysc(info).append(h('div', `Skok do układu ${cel}: wejście w nadprzestrzeń ${godz(r.wejscie)}, ETA ${godz(r.eta)}.`));
+        } catch (err) { wyczysc(info).append(h('div', err.message)); }
+      } }, kolizje.length ? 'Trasa kolizyjna' : 'Wykonaj skok');
+      wyczysc(info).append(
+        h('div', `${f.nazwa}: ${dane.jednostki.length} ${dane.jednostki.length === 1 ? 'jednostka' : 'jednostek'}`),
+        h('div', `obrót ${czas(w.manewr_s || 0)}${w.punkt_s > 0 ? ` · do punktu skoku ${czas(w.punkt_s)}` : ''} · lot ${czas(w.lot_s || 0)}`),
+        h('div', `ETA ${godz(w.eta)}`),
+        kolizje.length ? h('div', `Trajektoria przecina: ${[...new Set(kolizje)].join(', ')}`) : null,
+        wykonaj);
+    } catch (err) { wyczysc(info).append(h('div', err.message)); }
+    przelicz.disabled = false;
+  } }, 'Skok do układu');
+  el.append(h('div.gwiazda-skok', wariant, przelicz), info);
+}
+
 function pokazGwiazde(s, przypnij) {
   if (!s) {
     gwiazdaInfo.hidden = true; gwiazdaPrzypieta = null; scena.zaznacz(null); return;
@@ -206,7 +249,7 @@ function pokazGwiazde(s, przypnij) {
   const wynik = h('div.gwiazda-skan');
   const pokazWynik = (n) => wyczysc(wynik).append(h('div', n ? `Skan: ${n} ${odmianaPlanet(n)} w układzie` : 'Skan: brak planet'));
   const znany = skany()[o.klucz];
-  if (o.nazwa) wynik.append(h('div.slaby', 'Układ w bazie nawigacyjnej'));
+  if (o.nazwa) { wynik.append(h('div.slaby', 'Układ w bazie nawigacyjnej')); if (przypnij) panelSkoku(o.nazwa, wynik); }
   else if (znany != null) pokazWynik(znany);
   else if (przypnij) {
     wynik.append(h('button.przycisk.maly', { onclick: async (e) => {

@@ -1,6 +1,6 @@
 // Pliki systemu w pamięci tabletu: datapad uruchamia się nawet przy słabym zasięgu.
 // Dane gry (api/) zawsze idą z sieci. Po zmianie plików systemu podbijcie WERSJA.
-const WERSJA = 'hololink-105';
+const WERSJA = 'hololink-106';
 const PLIKI = [
   './', 'index.html', 'manifest.webmanifest', 'css/system.css', 'css/cv.css', 'js/rdzen/eote.js', 'assets/ikona.svg',
   'assets/wnetrza/isd-winda.svg', 'assets/wnetrza/isd-stolowka.svg', 'assets/wnetrza/isd-umywalnia.svg', 'assets/wnetrza/isd-szatnia.svg', 'assets/wnetrza/isd-reaktor.svg', 'assets/wnetrza/isd-korytarz.svg', 'assets/wnetrza/isd-kajuta.svg', 'assets/wnetrza/isd-koszary.svg', 'assets/wnetrza/isd-hangar.svg', 'assets/wnetrza/isd-ambulatorium.svg', 'assets/wnetrza/isd-cela.svg', 'assets/wnetrza/isd-maszynownia.svg', 'assets/wnetrza/isd-centrum.svg', 'assets/wnetrza/isd-zbrojownia.svg', 'assets/wnetrza/isd-magazyn.svg', 'assets/wnetrza/isd-iluminator-okno.svg', 'assets/wnetrza/isd-panorama-okno.svg',

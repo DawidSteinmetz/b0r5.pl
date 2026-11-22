@@ -889,3 +889,7 @@ button.potwierdz { color: var(--akcent-2); border-color: var(--akcent-2); box-sh
   filter: saturate(1.1) brightness(1.05); opacity: 0.92; user-select: none; }
 .holo:has(img) { width: 190px; height: 190px; }
 .holo::after { border-radius: 50%; }
+
+/* Skok do znanego układu z okna: wybór orbity wyjścia i przycisk w karcie gwiazdy. */
+.gwiazda-skok { display: flex; gap: 6px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+.gwiazda-skok select { font-size: 11px; padding: 2px 4px; max-width: 120px; }

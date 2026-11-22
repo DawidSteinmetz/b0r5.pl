@@ -634,12 +634,46 @@ html.z-tlem #ekran::before {
   position: absolute; right: 12px; top: 140px; bottom: 12px; width: min(340px, calc(100% - 24px)); overflow-y: auto;
   padding: 14px 16px; border: 1px solid var(--linia-mocna); border-radius: var(--promien); background: rgba(10, 17, 20, 0.94);
 }
-.mapa-karta.szeroka { width: min(760px, calc(100% - 24px)); }
-.mapa-karta-kolumny { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-.mapa-karta-kolumna { min-width: 0; display: grid; gap: 10px; align-content: start; }
-.mapa-karta-kolumna > .mapa-obiekt-flota { margin-top: 0; }
-.mapa-karta select, .mapa-karta input, .mapa-karta button { max-width: 100%; }
+/* Szeroka karta jednostki: dwie kolumny jednakowych paneli (nagłówek-etykieta, treść w siatce), wysokość według treści. */
 .mapa-karta { overflow-x: hidden; }
+.mapa-karta select, .mapa-karta input, .mapa-karta button { max-width: 100%; }
+.mapa-karta.szeroka { width: min(780px, calc(100% - 24px)); bottom: auto; max-height: calc(100% - 152px); padding: 16px 18px 18px; font-size: 13px; }
+.mapa-karta.szeroka h2 { font-size: 20px; margin-bottom: 6px; }
+.mapa-karta-kolumny { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 4px; }
+.mapa-karta-kolumna { min-width: 0; display: grid; gap: 14px; align-content: start; }
+.mapa-karta .mapa-karta-kolumna > * { margin: 0 !important; padding: 12px 14px; border: 1px solid var(--linia); border-left: 1px solid var(--linia);
+  border-radius: var(--promien); background: rgba(77, 226, 201, 0.035); font-size: 13px; }
+.mapa-karta-kolumna > .przycisk { padding: 10px 14px; background: rgba(77, 226, 201, 0.08); border-color: var(--linia-mocna); text-align: center; }
+/* Nagłówek panelu: mała etykieta wersalikami z kreską pod spodem. */
+.mapa-karta-kolumna > * > strong:first-child, .mapa-karta-kolumna > .mapa-poklad > .slaby:first-child, .mapa-karta-etykieta {
+  display: block; margin: 0 0 10px; padding-bottom: 7px; border-bottom: 1px solid var(--linia);
+  font-size: 11px; font-weight: normal; letter-spacing: 0.16em; text-transform: uppercase; color: var(--akcent); }
+/* Tabela danych: etykieta po lewej, wartość po prawej. */
+.mapa-karta-kolumna .tabela { width: 100%; }
+.mapa-karta-kolumna .tabela th { width: 50%; white-space: nowrap; color: var(--tekst-slaby); font-weight: normal; text-align: left; }
+.mapa-karta-kolumna .tabela td { text-align: right; color: var(--tekst); }
+.mapa-karta-kolumna .tabela tr:last-child th, .mapa-karta-kolumna .tabela tr:last-child td { border-bottom: 0; }
+/* Flota: nazwa, dowódca, myśliwce jako lista wierszy. */
+.mapa-karta-kolumna > .mapa-obiekt-flota { display: grid; gap: 6px; }
+.mapa-karta-kolumna > .mapa-obiekt-flota > span { color: var(--tekst); }
+.mapa-karta-kolumna > .mapa-obiekt-flota > small { color: var(--tekst-slaby); line-height: 1.45; margin-bottom: 4px; }
+/* Formularze w panelu: etykieta i pole w jednej siatce. */
+.mapa-karta-kolumna > .mapa-obiekt-flota > label { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; align-items: center; color: var(--tekst-slaby); font-size: 12px; }
+.mapa-karta-kolumna > .mapa-obiekt-flota select { width: 100%; padding: 6px 8px; font-size: 12px; }
+.mapa-karta-kolumna > .mapa-obiekt-flota > .przycisk { width: 100%; margin: 6px 0 0; }
+/* Pokład: zakładki jako przełącznik, osoby jako wiersze (imię i rola po lewej, akcja po prawej). */
+.mapa-karta-kolumna .mapa-poklad-zakladki { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 8px; }
+.mapa-karta-kolumna .mapa-poklad-zakladki .przycisk { margin: 0; border-radius: 0; font-size: 12px; padding: 7px 8px; }
+.mapa-karta-kolumna .mapa-poklad-zakladki .przycisk:first-child { border-radius: var(--promien) 0 0 var(--promien); }
+.mapa-karta-kolumna .mapa-poklad-zakladki .przycisk:last-child { border-radius: 0 var(--promien) var(--promien) 0; border-left: 0; }
+.mapa-karta-kolumna .mapa-poklad .lista { margin: 0; padding: 0; list-style: none; }
+.mapa-karta-kolumna .mapa-poklad .lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--linia); }
+.mapa-karta-kolumna .mapa-poklad .lista li:last-child { border-bottom: 0; }
+.mapa-karta-kolumna .mapa-poklad .lista li > span:first-child { grid-column: 1; color: var(--tekst); }
+.mapa-karta-kolumna .mapa-poklad .lista li > span.slaby { grid-column: 1; font-size: 11px; }
+.mapa-karta-kolumna .mapa-poklad .lista li > .przycisk { grid-column: 2; grid-row: 1 / span 2; margin: 0; font-size: 11px; padding: 4px 9px; }
+.mapa-karta-kolumna .mapa-poklad > .maly-tekst:last-child { margin-top: 10px !important; padding-top: 8px; border-top: 1px solid var(--linia); }
 .mapa-karta h2 { margin: 0 32px 8px 0; font-size: 18px; font-weight: normal; letter-spacing: 0.08em; color: var(--akcent-2); }
 .mapa-karta .tabela th, .mapa-karta .tabela td { padding: 6px 4px; font-size: 13px; }
 .mapa-uklad-sekcja { margin: 10px 0; }

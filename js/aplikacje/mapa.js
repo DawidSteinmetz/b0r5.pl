@@ -2084,7 +2084,7 @@ export default {
           o.radar ? sekcjaRadaru(o) : null,
           o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null].filter(Boolean);
         const lewa = [
-          h('table.tabela',
+          h('div', h('div.mapa-karta-etykieta', o.typ === 'postac' ? 'Postać' : 'Dane jednostki'), h('table.tabela',
             wiersz('Typ', o.rodzaj || o.typ),
             o.klasa ? wiersz('Klasa', o.klasa) : null,
             o.wlasciciel ? wiersz('Właściciel / frakcja', o.wlasciciel) : null,
@@ -2098,7 +2098,7 @@ export default {
               return x.do && x.do > teraz() ? `lot łukiem do ${x.oznaczenie} · w doku za ${czasTrwania(x.do - teraz())}` : `stanowisko ${x.oznaczenie}`;
             })) : null,
             wiersz('Współrzędne', `${liczba(o.x, 1)} · ${liczba(o.y, 1)}`),
-            o.opis ? wiersz('Opis', o.opis) : null),
+            o.opis ? wiersz('Opis', o.opis) : null)),
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
             h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
             o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null,

@@ -667,6 +667,16 @@ html.z-tlem #ekran::before {
 .mapa-karta-kolumna .mapa-poklad-zakladki .przycisk:first-child { border-radius: var(--promien) 0 0 var(--promien); }
 .mapa-karta-kolumna .mapa-poklad-zakladki .przycisk:last-child { border-radius: 0 var(--promien) var(--promien) 0; border-left: 0; }
 .mapa-karta-kolumna .mapa-poklad .lista { margin: 0; padding: 0; list-style: none; }
+.mapa-karta-kolumna > [hidden] { display: none !important; }
+/* Klucze myśliwców: start dwoma przyciskami obok siebie, klucze jako wiersze z polem zaznaczenia po prawej. */
+.mapa-klucze-start { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 4px 0; }
+.mapa-klucze-start .przycisk { margin: 0; width: 100%; }
+.mapa-klucze-lista { margin: 4px 0; padding: 0; list-style: none; }
+.mapa-klucze-lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--linia); }
+.mapa-klucze-lista li:last-child { border-bottom: 0; }
+.mapa-klucze-lista li > span:first-child { color: var(--tekst); }
+.mapa-klucze-lista li > span.slaby { grid-column: 1; font-size: 11px; }
+.mapa-klucze-lista li > input { grid-column: 2; grid-row: 1 / span 2; width: 18px; height: 18px; accent-color: var(--akcent); }
 .mapa-karta-kolumna .mapa-poklad .lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center;
   padding: 8px 0; border-bottom: 1px solid var(--linia); }
 .mapa-karta-kolumna .mapa-poklad .lista li:last-child { border-bottom: 0; }

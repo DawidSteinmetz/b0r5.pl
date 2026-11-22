@@ -277,6 +277,7 @@ export default {
     let szlakiWidoczne = true;
     let wybrane = null;     // { planeta } albo { szlak }
     let najechane = null;
+    let klucze = []; // klucze myśliwców w locie (api mapa_klucze)
     let wykrycieNad = null; // id wykrycia skoku pod kursorem (opis tylko wtedy)
     let pozycja = null;     // odpowiedź api('mapa')
     let tuPlaneta = null, celPlaneta = null;
@@ -613,6 +614,122 @@ export default {
         } else if (u.rp > 260) { c.font = `10px ${kroj}`; napis(c, ob.nazwa, x + 6, y + 3); }
         c.restore();
       }
+    }
+
+    // Klucze myśliwców i promów (api/klucze.php): trasa zaplanowana przez serwer (km od słońca w czasie gry),
+    // po dolocie krążenie wokół celu. W locie pozycja dociągana do celu widocznego na mapie (szyk, miejsce
+    // na orbicie), żeby przy dolocie nie było skoku. Widać je w widoku układu; krążące tuż przy okręcie (okrąg
+    // poniżej 6 px) chowają się w jego znaczniku.
+    function ukladKlucza(k) {
+      const p = P.find((x) => Math.abs(x.x - k.uklad[0]) < 1e-3 && Math.abs(x.y - k.uklad[1]) < 1e-3 && !cyklPlanety(x)?.macierz);
+      const u = p && ukladNaEkranie(p);
+      return u && !u.ksiezyc ? u : null;
+    }
+    function punktKlucza(k, t = teraz()) {
+      const tr = k.trasa;
+      if (!tr?.length || t < tr[0][0]) return null;
+      const u = ukladKlucza(k);
+      if (!u) return null;
+      const naEkr = (kx, ky) => [u.sx + kx * u.skm, u.sy - ky * u.skm];
+      const n = tr.length - 1;
+      const cel = k.po ? obiektyMapy.find((o) => o.id === k.po.id) : null;
+      const celPt = cel && !naPokladzie(cel) ? punktObiektu(cel) : null;
+      if (t < tr[n][0]) {
+        let i = 0;
+        while (i < n - 1 && t > tr[i + 1][0]) i++;
+        const f = (t - tr[i][0]) / Math.max(1, tr[i + 1][0] - tr[i][0]);
+        let [x, y] = naEkr(tr[i][1] + (tr[i + 1][1] - tr[i][1]) * f, tr[i][2] + (tr[i + 1][2] - tr[i][2]) * f);
+        if (celPt) {
+          const [ex, ey] = naEkr(tr[n][1] - k.po.r, tr[n][2]);
+          const g = (t - tr[0][0]) / Math.max(1, tr[n][0] - tr[0][0]);
+          x += (celPt[0] - ex) * g; y += (celPt[1] - ey) * g;
+        }
+        return [x, y];
+      }
+      if (celPt) {
+        const a = (2 * Math.PI * (t - tr[n][0])) / (k.po.okres || 120);
+        return [celPt[0] + Math.cos(a) * k.po.r * u.skm, celPt[1] - Math.sin(a) * k.po.r * u.skm];
+      }
+      return naEkr(tr[n][1], tr[n][2]);
+    }
+    const kluczPrzyOkrecie = (k, t = teraz()) => {
+      const tr = k.trasa, u = ukladKlucza(k);
+      return !!(u && k.po && tr?.length && t >= tr.at(-1)[0] && k.po.r * u.skm < 6);
+    };
+    function rysujKlucze() {
+      if (skala < PROG_UKLADU || !klucze.length) return;
+      const t = teraz();
+      for (const k of klucze) {
+        if (kluczPrzyOkrecie(k, t)) continue;
+        const pt = punktKlucza(k, t);
+        if (!pt) continue;
+        const [x, y] = pt;
+        if (x < -20 || y < -20 || x > szer + 20 || y > wys + 20) continue;
+        const wczesniej = punktKlucza(k, t - 1) || pt;
+        const kurs = Math.atan2(-(y - wczesniej[1]), x - wczesniej[0]) / RAD;
+        const kolor = k.rodzaj === 'lambda' ? '#ffd27a' : '#8fe8ff';
+        const aktywny = najechane?.obiekt?.id === k.okret_id || wybrane?.obiekt?.id === k.okret_id;
+        c.save(); c.fillStyle = kolor; c.globalAlpha = aktywny ? 1 : 0.85;
+        c.beginPath(); strzalka(c, x, y, kurs, 5); c.fill();
+        if (aktywny || (k.po && k.po.r * (ukladKlucza(k)?.skm || 0) > 40)) {
+          c.font = `10px ${kroj}`; napis(c, `${k.nazwa} · ${k.rozkaz_opis}`, x + 7, y - 5);
+        }
+        c.restore();
+      }
+    }
+
+    // Klucze okrętu na karcie: hangar, start z taśmociągu, lista kluczy w locie i rozkaz dla zaznaczonych.
+    function sekcjaKluczy(o) {
+      const sekcja = h('section.mapa-obiekt-flota', { hidden: true });
+      const rysuj = (d) => {
+        const ht = d.hangar.tie, hl = d.hangar.lambda;
+        const info = h('small.slaby');
+        const odmiana = (n) => (n === 1 ? 'klucz' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'klucze' : 'kluczy');
+        const wypusc = (rodzaj, ile, napisPrz) => h('button.przycisk.maly', { type: 'button', disabled: ile < 1, onclick: async () => {
+          try {
+            const w = await api('mapa_klucz_start', { obiekt_id: o.id, rodzaj });
+            await odswiezKlucze(); wczytaj(`${w.nazwa} startuje z taśmociągu ${czasGry(w.start)}.`);
+          } catch (e) { info.textContent = e.message; }
+        } }, napisPrz);
+        const lista = h('ul.mapa-klucze-lista', d.klucze.map((k) => h('li',
+          h('span', `${k.nazwa} · ${k.maszyny} ${k.rodzaj === 'lambda' ? 'Lambda' : 'TIE'}`),
+          h('span.slaby', `${k.rozkaz_opis}${k.cel ? ` · ${k.cel}` : ''}${k.trasa?.[0]?.[0] > teraz() ? ` · start ${czasGry(k.trasa[0][0])}` : ''}`),
+          h('input', { type: 'checkbox', value: String(k.id), 'aria-label': k.nazwa }))));
+        const rozkaz = h('select', Object.entries(d.rozkazy || {}).map(([v, n]) => h('option', { value: v }, n)));
+        const cel = h('select', h('option', { value: '' }, 'Wybierz okręt'), (d.cele || []).map((x) => h('option', { value: String(x.id) }, `${x.nazwa}${x.klasa ? ` · ${x.klasa}` : ''}`)));
+        const polCelu = h('label.maly-tekst', 'Cel', cel);
+        const bezCelu = () => { polCelu.hidden = ['patrol', 'powrot'].includes(rozkaz.value); };
+        rozkaz.addEventListener('change', bezCelu); bezCelu();
+        const wydaj = h('button.przycisk.maly', { type: 'button', onclick: async () => {
+          const ids = [...lista.querySelectorAll('input:checked')].map((x) => Number(x.value));
+          if (!ids.length) { info.textContent = 'Zaznacz klucze na liście.'; return; }
+          wydaj.disabled = true;
+          try {
+            const w = await api('mapa_klucz_rozkaz', { klucze: ids, rozkaz: rozkaz.value, cel_obiekt_id: Number(cel.value) || null });
+            await odswiezKlucze(); wczytaj(`Rozkaz przyjęty · dolot ${czasGry(w.dolot)}.`);
+          } catch (e) { info.textContent = e.message; wydaj.disabled = false; }
+        } }, 'Wydaj rozkaz zaznaczonym');
+        wyczysc(sekcja).append(h('strong', 'Klucze myśliwców'),
+          h('small', `W hangarze: ${ht.w_hangarze} ${odmiana(ht.w_hangarze)} TIE${hl.razem ? ` · ${hl.w_hangarze} ${odmiana(hl.w_hangarze)} Lambda` : ''} · w locie: ${ht.w_locie + hl.w_locie}. Klucz = 4 maszyny, taśmociąg: jeden klucz na minutę, zasięg operacyjny 1 mln km.`),
+          h('div.mapa-klucze-start', ht.razem ? wypusc('tie', ht.w_hangarze, `Wypuść klucz TIE (${ht.w_hangarze})`) : null,
+            hl.razem ? wypusc('lambda', hl.w_hangarze, `Wypuść Lambdy (${hl.w_hangarze})`) : null),
+          d.klucze.length ? lista : null,
+          d.klucze.length ? h('label.maly-tekst', 'Rozkaz', rozkaz) : null,
+          d.klucze.length ? polCelu : null,
+          d.klucze.length ? wydaj : null,
+          info);
+      };
+      const wczytaj = (komunikat) => api('mapa_klucze_okretu', undefined, { obiekt: o.id }).then((d) => {
+        if (!d.mozna || !d.hangar || (!d.hangar.tie.razem && !d.hangar.lambda.razem)) return;
+        sekcja.hidden = false;
+        rysuj(d);
+        if (komunikat) sekcja.querySelector('small.slaby:last-child').textContent = komunikat;
+      }).catch(() => {});
+      wczytaj();
+      return sekcja;
+    }
+    async function odswiezKlucze() {
+      try { klucze = (await api('mapa_klucze')).klucze || []; } catch { /* bez migracji 066 — bez kluczy */ }
     }
 
     function rysujUklady() {
@@ -1356,6 +1473,7 @@ export default {
       rysujUklady();
       rysujPierscienie();
       rysujObiektyTla();
+      rysujKlucze();
       const moj = mojZnacznik();
       for (const o of obiektyMapy) {
         if (naPokladzie(o)) continue;
@@ -1480,6 +1598,14 @@ export default {
         const [px, py] = punktObiektu(obiekt);
         const d = Math.hypot(px - sx, py - sy) - (rozmiarNaEkranie(obiekt) ?? 0);
         if (d < odlObiektu) { odlObiektu = d; najblizszyObiekt = obiekt; }
+      }
+      // Klucz myśliwców: wybiera okręt macierzysty (tam są rozkazy kluczy).
+      for (const k of klucze) {
+        if (kluczPrzyOkrecie(k)) continue;
+        const pt = punktKlucza(k);
+        const m = pt && obiektyMapy.find((x) => x.id === k.okret_id);
+        const d = pt ? Math.hypot(pt[0] - sx, pt[1] - sy) : Infinity;
+        if (m && d < odlObiektu) { odlObiektu = d; najblizszyObiekt = m; }
       }
       // Ciała: w widoku układu słońce, planeta i księżyc to osobne cele (każde w swoim miejscu na ekranie);
       // przy małym zbliżeniu układ to jedna kropka — wtedy wybiera się planetę.
@@ -2124,6 +2250,7 @@ export default {
         // (radar) i pokład. Postać bez pokładu zostaje wąska.
         const prawa = [
           o.radar ? sekcjaRadaru(o) : null,
+          o.id > 0 && ['statek', 'jednostka'].includes(o.typ) ? sekcjaKluczy(o) : null,
           o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null].filter(Boolean);
         const lewa = [
           h('div', h('div.mapa-karta-etykieta', o.typ === 'postac' ? 'Postać' : 'Dane jednostki'), h('table.tabela',
@@ -2432,6 +2559,7 @@ export default {
       if (!D) return;
       ustawDodatkowe(pozycja.dodatkowe || []);
       obiektyMapy = pozycja.obiekty || [];
+      odswiezKlucze();
       bitwyRadar = pozycja.bitwy_radar || [];
       wyczysc(panelRadar);
       panelRadar.hidden = !bitwyRadar.length;

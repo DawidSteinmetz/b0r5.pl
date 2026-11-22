@@ -735,7 +735,10 @@ html.z-tlem #ekran::before {
   .mapa-przyciski { margin-left: 0; }
   .mapa-floty-panel, .mapa-karta { left: 8px; right: 8px; width: auto; max-height: 62%; }
   .mapa-karta { top: auto; }
-  .mapa-karta-kolumny { grid-template-columns: minmax(0, 1fr); }
+  .mapa-karta-kolumny { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .mapa-karta-kolumna { gap: 10px; }
+  .mapa-karta.szeroka { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; max-height: 72%; padding: 12px 12px 14px; }
+  .mapa-karta.szeroka h2 { font-size: 17px; }
   .mapa-radar { top: auto; bottom: 34px; }
 }
 /* Panel floty: wąskie sekcje rozwijane dotknięciem */

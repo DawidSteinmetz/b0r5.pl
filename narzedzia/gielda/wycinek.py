@@ -1,176 +1,220 @@
-"""Wycinek bazy dla łańcucha giełd planet: schemat tabel giełdy i gospodarki + minimum danych (bez historii kursów i graczy).
-Użycie: python wycinek.py <migracja_bazowa_gieldy.sql> <wyjscie.sql> [zrzut_bazy.sql — pełna mapa planet]"""
-import re, sys, datetime
+"""Wycinek bazy dla łańcucha giełd planet — wprost ze zrzutu bazy (phpMyAdmin): dokładny schemat tabel giełdy
+i gospodarki oraz minimum danych (bez historii kursów — tylko liczba dni i ostatni kurs; bez kont, postaci i portfeli).
+Użycie: python wycinek.py <zrzut_bazy.sql> <wyjscie.sql>
+"""
+import re, sys, math, datetime
+from collections import defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-BAZA = Path(sys.argv[1])           # gielda_00_baza.sql (poprawiona migracja bazowa)
-WYJ = Path(sys.argv[2])
+ZRZUT, WYJ = Path(sys.argv[1]), Path(sys.argv[2])
+s = ZRZUT.read_text(encoding='utf-8')
 
-KANDYDACI = ['Coruscant', 'Corellia', 'Kuat', 'Bespin', 'Nar Shaddaa', 'Nal Hutta', 'Zephyria', 'Kessel', 'Mon Calamari', 'Sullust',
-             'Fondor', 'Chandrila', 'Alderaan', 'Naboo', 'Tatooine', 'Ryloth', 'Thyferra', 'Muunilinst', 'Carida', 'Lothal',
-             'Eriadu', 'Mygeeto', 'Foundry', 'Mattri', 'Ord Mantell', 'Fresia', 'Rendili', 'Agamar', 'Manaan', 'Affa',
-             'Cato Neimoidia', 'Kashyyyk', 'Bothawui', 'Hapes', 'Anaxes', 'Corulag', 'Brentaal IV', 'Commenor', 'Duro']
+KANDYDACI = ['Coruscant', 'Corellia', 'Kuat', 'Bespin', 'Nar Shaddaa', 'Nal Hutta', 'Zephyria', 'Kessel', 'Mon Calamari',
+             'Sullust', 'Fondor', 'Chandrila', 'Alderaan', 'Naboo', 'Tatooine', 'Ryloth', 'Thyferra', 'Muunilinst', 'Carida',
+             'Lothal', 'Eriadu', 'Mygeeto', 'Foundry', 'Mattri', 'Ord Mantell', 'Fresia', 'Rendili', 'Agamar', 'Manaan',
+             'Affa', 'Cato Neimoidia', 'Kashyyyk', 'Bothawui', 'Hapes', 'Anaxes', 'Corulag', 'Brentaal IV', 'Commenor',
+             'Duro', 'Gizer', 'Loronar', 'Hosnian Prime', 'Havis III']
+TABELE_SCHEMATU = ['mapa_planety', 'planety_gry', 'gielde', 'towary', 'kategorie_towarow', 'towary_kategorie', 'podmioty',
+                   'firmy', 'instrumenty', 'kursy_dzienne', 'gosp_towary', 'gosp_rynek', 'ustawienia', 'schema_migracje']
 
-def L(v):
-    t = f'{float(v):.4f}'.rstrip('0').rstrip('.')
-    return t if t not in ('', '-0') else '0'
+
+def wartosci(tekst):
+    """Krotki VALUES z dumpu phpMyAdmin (napisy z \\' i '', NULL, liczby)."""
+    wiersze, i, n = [], 0, len(tekst)
+    while i < n:
+        if tekst[i] != '(':
+            i += 1; continue
+        i += 1; pola = []
+        while True:
+            while tekst[i] in ' \n': i += 1
+            if tekst[i] == "'":
+                i += 1; b = []
+                while True:
+                    c = tekst[i]
+                    if c == '\\': b.append({'n': '\n', 'r': '\r', 't': '\t', '0': '\0'}.get(tekst[i + 1], tekst[i + 1])); i += 2; continue
+                    if c == "'" and tekst[i + 1] == "'": b.append("'"); i += 2; continue
+                    if c == "'": i += 1; break
+                    b.append(c); i += 1
+                pola.append(''.join(b))
+            else:
+                j = i
+                while tekst[i] not in ',)': i += 1
+                t = tekst[j:i].strip()
+                pola.append(None if t == 'NULL' else (float(t) if re.fullmatch(r'-?[\d.]+(e[-+]?\d+)?', t) else t))
+            while tekst[i] in ' \n': i += 1
+            if tekst[i] == ',': i += 1; continue
+            if tekst[i] == ')': i += 1; break
+        wiersze.append(pola)
+    return wiersze
+
+
+def dane(tabela):
+    out = []
+    for m in re.finditer(r"^INSERT INTO `" + tabela + r"` \(([^)]*)\) VALUES\n(.*?);\n", s, re.S | re.M):
+        kol = [k.strip(' `') for k in m.group(1).split(',')]
+        out += [dict(zip(kol, w)) for w in wartosci(m.group(2))]
+    return out
+
+
+def schemat(tabela):
+    m = re.search(r"^CREATE TABLE `" + tabela + r"` \(\n(.*?)\n\)[^;]*;", s, re.S | re.M)
+    if not m: return f'-- (brak tabeli {tabela})'
+    kolumny = [re.sub(r' COLLATE \w+', '', l.strip().rstrip(',')) for l in m.group(1).split('\n') if l.strip().startswith('`')]
+    klucze = []
+    for a in re.finditer(r"^ALTER TABLE `" + tabela + r"`\n(.*?);", s, re.S | re.M):
+        for l in a.group(1).split('\n'):
+            l = l.strip().rstrip(',')
+            if l.startswith(('ADD PRIMARY', 'ADD UNIQUE', 'ADD KEY', 'ADD CONSTRAINT')): klucze.append(l[4:])
+            if 'AUTO_INCREMENT' in l and l.startswith('MODIFY'):
+                kol = re.match(r"MODIFY `(\w+)`", l).group(1)
+                kolumny = [k + ' AUTO_INCREMENT' if k.startswith(f'`{kol}` ') else k for k in kolumny]
+    return f"CREATE TABLE `{tabela}` (\n  " + ',\n  '.join(kolumny + klucze) + '\n);'
+
 
 def q(v):
     if v is None: return 'NULL'
-    if isinstance(v, (int, float)): return f'{L(v)}' if isinstance(v, float) else str(v)
+    if isinstance(v, float):
+        t = f'{v:.4f}'.rstrip('0').rstrip('.')
+        return t if t not in ('', '-0') else '0'
     return "'" + str(v).replace("'", "''") + "'"
 
-# --- planety ---
-planety = {}
-for m in re.finditer(r"VALUES \((\d+),'((?:[^']|'')*)',(\d+),(-?[\d.]+),(-?[\d.]+)", (ROOT / 'api/mapa_seed.sql').read_text(encoding='utf-8')):
-    planety[m.group(2).replace("''", "'")] = (int(m.group(1)), int(m.group(3)), float(m.group(4)), float(m.group(5)))
-# Pełna mapa ze zrzutu bazy (planety dopisane migracjami, np. Nar Shaddaa, Zephyria) — nadpisuje seed.
-zrzut = Path(sys.argv[3]).read_text(encoding='utf-8') if len(sys.argv) > 3 else ''
-for m in re.finditer(r"\((\d+), '((?:[^']|'')*)', (\d+), (-?[\d.]+), (-?[\d.]+), [\d.]+, \d+, \d+, ", zrzut):
-    planety[m.group(2).replace("''", "'")] = (int(m.group(1)), int(m.group(3)), float(m.group(4)), float(m.group(5)))
 
-# --- gospodarka: towary i rynek z migracji 048–060 (kolejność plików, IGNORE nie nadpisuje) ---
-gt = {}
-krotka = r"\(((?:'(?:[^']|'')*'|-?[\d.]+|NULL)(?:\s*,\s*(?:'(?:[^']|'')*'|-?[\d.]+|NULL))*)\)"
-def pola(t):
-    return [None if x[0] == 'NULL' else (x[1].replace("''", "'") if x[1] is not None and x[0].startswith("'") else float(x[0]))
-            for x in [(a, a[1:-1] if a.startswith("'") else None) for a in re.findall(r"'(?:[^']|'')*'|-?[\d.]+|NULL", t)]]
-rynek = {}
-pliki = sorted(p for p in (ROOT / 'api/migracje').glob('0[4-6][0-9]_*.sql') if 48 <= int(p.name[:3]) <= 60)
-for p in pliki:
-    s = p.read_text(encoding='utf-8')
-    for st in s.split(';\n'):
-        if re.search(r'INSERT (IGNORE )?INTO gosp_towary', st):
-            kol = re.search(r'gosp_towary \(([^)]*)\)', st).group(1).replace(' ', '').split(',')
-            for t in re.findall(krotka, st.split('VALUES', 1)[1]):
-                r = dict(zip(kol, pola(t)))
-                gt.setdefault(r['kod'], {}).update({k: v for k, v in r.items() if k in ('kod', 'nazwa', 'kategoria', 'cena_bazowa_kr_t')})
-        for m in re.finditer(r"UPDATE gosp_towary SET cena_bazowa_kr_t = ([\d.]+) WHERE kod = '([a-z_]+)'", st):
-            gt.setdefault(m.group(2), {})['cena_bazowa_kr_t'] = float(m.group(1))
-        if re.search(r'INSERT (IGNORE )?INTO gosp_rynek', st):
-            ignore = 'IGNORE' in st.split('gosp_rynek')[0]
-            for t in re.findall(krotka, st.split('VALUES', 1)[1] if 'VALUES' in st else ''):
-                r = pola(t)
-                if len(r) != 10: continue
-                k = (r[0], r[1], r[2])
-                if ignore and k in rynek: continue
-                rynek[k] = r
+def wstaw(tabela, kolumny, wiersze, kom=''):
+    if not wiersze: return f'-- {tabela}: brak wierszy\n'
+    return (f'-- {kom}\n' if kom else '') + f"INSERT INTO `{tabela}` ({','.join(kolumny)}) VALUES\n" + ',\n'.join(
+        '(' + ','.join(q(w.get(k)) for k in kolumny) + ')' for w in wiersze) + ';\n'
 
-# --- giełda: z migracji bazowej (ceny po poprawkach) ---
-b = BAZA.read_text(encoding='utf-8')
-gielde = re.findall(r"INSERT INTO `gielde` \(`kod`,`planeta_id`,`nazwa`,`aktywna`\) SELECT '([a-z]+)',(\d+),'([^']+)'", b)
-instr = re.findall(r"SELECT '([^']+)','([^']+)','(towar|spolka)','([^']*)','([^']*)',(NULL|'[^']*'),ge\.id,(t\.id|NULL),(f\.podmiot_id|NULL),([0-9.]+),([0-9.]+),1 FROM `gielde` ge[^\n]*?ge\.kod='([a-z]+)'(?:[^\n]*?t\.nazwa='([^']+)')?(?:[^\n]*?p\.nazwa='([^']+)')?", b)
-ostatni = {}
-for sym in [i[0] for i in instr]:
-    st = b.find(f"`symbol`='{sym}');")
-    m = list(re.finditer(r"\(@i,'(\d{4}-\d\d-\d\d)',([0-9.]+)\)", b[st:b.find('SET @i', st + 10) if b.find('SET @i', st + 10) > 0 else len(b)]))
-    ostatni[sym] = (m[-1].group(1), float(m[-1].group(2))) if m else (None, None)
-towary_b = re.findall(r"SELECT '([^']+)','([a-z]+)',([0-9.]+),'([^']*)',(\d+),([01]),'((?:[^']|'')*)' FROM DUAL WHERE NOT EXISTS \(SELECT 1 FROM `towary`", b)
-for nazwa, cena in re.findall(r"UPDATE `towary` SET `cena_bazowa`=(\d+) WHERE `nazwa`='([^']+)';", b):
-    pass
-ceny_upd = {n: int(c) for c, n in re.findall(r"UPDATE `towary` SET `cena_bazowa`=(\d+) WHERE `nazwa`='([^']+)';", b)}
-masa_upd = {n: float(m) for m, n in re.findall(r"UPDATE `towary` SET `masa_t_na_jednostke`=([0-9.]+) WHERE `nazwa`='([^']+)';", b)}
-powiazania = dict(re.findall(r"UPDATE `gosp_towary` SET `towar_id`=\(SELECT id FROM `towary` WHERE `nazwa`='([^']+)'\) WHERE `kod`='([a-z_]+)';", b))
-powiazania = {k: n for n, k in powiazania.items()}
-# Towary katalogu spoza migracji bazowej, które są notowane albo są pułapkami (stan bazy z 21.11.2026).
-dawne = [('Bacta', 'medycyna', 0.001, 'l', 120, 0, 'Płyn regeneracyjny. Dostawy kontrolowane przez Xi Char.'),
-         ('Glitterstim', 'przyprawy', 0.001, 'kg', 800000, 1, 'Narkotyk stymulujący. Obrót nielegalny w całym Sektorze Hune.'),
-         ('Duralstal w blokach', 'surowce', 1.0, 't', 350, 0, 'Stop konstrukcyjny. Podstawa przemysłu stoczniowego.'),
-         ('Koaksium stabilizowane', 'paliwo', 0.001, 'kg', 12000, 1, 'Paliwo skoków o podwyższonej sprawności. Obrót reglamentowany.'),
-         ('Cukier z Zephyrii', 'zywnosc', 0.001, 'kg', 200000, 0, 'Cena wg kursu 1 Z = 100 000 IC.'),
-         ('Paliwo hipernapędowe rafinowane', 'paliwo', 1.0, 't', 900, 0, 'Standardowe paliwo okrętowe.'),
-         ('Krzem zephyryjski', 'surowce', 1.0, 't', 60, 0, 'Nadprodukcja lokalna.'),
-         ('Kryształ kyber surowy', 'surowce', 0.001, 'szt', 25000, 1, 'Monopol Imperium.'),
-         ('Racje wojskowe typ R', 'zywnosc', 0.0005, 'szt', 3, 0, 'Dzienna racja żołnierska.'),
-         ('Karabin blasterowy E-11', 'bron', 0.0034, 'szt', 900, 0, 'Broń podstawowa piechoty Imperium.'),
-         ('Komputer nawigacyjny klasy 2', 'technika', 0.2, 'szt', 45000, 0, 'Moduł obliczeń skoku.'),
-         ('Wino alderaańskie', 'luksus', 0.0012, 'szt', 1500, 0, 'Rocznik sprzed zniszczenia Alderaanu.')]
 
-# --- wybór wierszy rynku: planety kandydackie i giełd + wszyscy producenci (najbliższy producent) ---
-wazne = set(KANDYDACI) | {n for _, n, _ in [(None, [k for k, v in planety.items() if v[0] == int(pid)][0] if [k for k, v in planety.items() if v[0] == int(pid)] else '', None) for _, pid, _ in gielde]}
-wiersze = [r for k, r in sorted(rynek.items()) if r[0] in wazne or (r[3] or 0) > 0]
-uzyte_planety = sorted({r[0] for r in wiersze} | set(KANDYDACI) | {n for n in wazne if n})
+# --- dane ---
+planety = {p['nazwa']: p for p in dane('mapa_planety')}
+po_id = {int(p['id']): p for p in planety.values()}
+gielde = dane('gielde')
+instr = dane('instrumenty')
+towary = dane('towary')
+tow_id = {int(t['id']): t for t in towary}
+kategorie = dane('kategorie_towarow')
+podmioty = {int(p['id']): p for p in dane('podmioty')}
+firmy = dane('firmy')
+gt = dane('gosp_towary')
+prod = dane('gosp_produkcja')
+obiekty = {int(o['id']): o for o in dane('gosp_obiekty')}
+zuzycie = dane('gosp_zuzycie')
+planety_gry = {int(p['planeta_id']): p for p in dane('planety_gry')}
+ustawienia = [u for u in dane('ustawienia') if str(u['klucz']).startswith('gielda.')]
+migracje = dane('schema_migracje')
 
-out = []
+kursy = defaultdict(list)
+for m in re.finditer(r"^INSERT INTO `kursy_dzienne`[^\n]*\n(.*?);\n", s, re.S | re.M):
+    for w in wartosci(m.group(1)): kursy[int(w[0])].append((w[1], w[2]))
+gielda_kod = {int(g['id']): g['kod'] for g in gielde}
+stan = []
+for i in instr:
+    k = sorted(kursy.get(int(i['id']), []))
+    firma = podmioty.get(int(i['firma_id']))['nazwa'] if i['firma_id'] else None
+    stan.append({**i, 'gielda_kod': gielda_kod[int(i['gielda_id'])], 'towar_nazwa': tow_id[int(i['towar_id'])]['nazwa'] if i['towar_id'] else None,
+                 'firma_nazwa': firma, 'dni_historii': float(len(k)), 'kurs_ostatni': k[-1][1] if k else None,
+                 'data_pierwsza': k[0][0] if k else None, 'data_ostatnia': k[-1][0] if k else None})
+# --- stan po kroku 00 (gielda_00_naprawa.sql): ten sam wzór co migracja ---
+rynek = dane('gosp_rynek')
+nazwa_pl = {int(g['id']): po_id[int(g['planeta_id'])]['nazwa'] for g in gielde}
+gt_kod = {int(g['towar_id']): g for g in gt if g['towar_id']}
+cena_r = {(r_['planeta'], r_['towar']): r_['cena_kr_t'] for r_ in rynek if r_['obieg'] == 'oficjalny_hurt'}
+for t in towary:
+    if t['nazwa'] == 'Cukier 99,7%' and t['masa_t_na_jednostke'] == 10: t['masa_t_na_jednostke'] = 0.01
+    if t['nazwa'] == 'Sól 97%' and t['masa_t_na_jednostke'] == 25: t['masa_t_na_jednostke'] = 0.025
+mnoznik = {}
+for w in stan:
+    if w['rodzaj'] != 'towar' or not w['towar_id']: continue
+    g = gt_kod.get(int(w['towar_id']))
+    c = g and cena_r.get((nazwa_pl[int(w['gielda_id'])], g['kod']))
+    if c: mnoznik[w['symbol']] = round(c * tow_id[int(w['towar_id'])]['masa_t_na_jednostke'], 4) / w['cena_bazowa']
+if 'TIBP' in mnoznik: mnoznik['TIBW'] = mnoznik['TIBP']
+tibw = [t for t in towary if t['nazwa'] == 'Gaz tibanna wysokiej czystości']
+tibp = [t for t in towary if t['nazwa'] == 'Gaz tibanna przemysłowy']
+if tibw and tibp and int(tibp[0]['id']) in [int(g['towar_id']) for g in gt if g['towar_id']]:
+    gp = [g for g in gt if g['towar_id'] and int(g['towar_id']) == int(tibp[0]['id'])][0]
+    tibw[0]['cena_bazowa'] = float(round(tibw[0]['cena_bazowa'] * gp['cena_bazowa_kr_t'] * tibp[0]['masa_t_na_jednostke'] / tibp[0]['cena_bazowa']))
+for t in towary:
+    g = gt_kod.get(int(t['id']))
+    if g: t['cena_bazowa'] = float(round(g['cena_bazowa_kr_t'] * t['masa_t_na_jednostke']))
+for w in stan:
+    k = mnoznik.get(w['symbol'])
+    if k and abs(k - 1) > 1e-9:
+        w['cena_bazowa'] = round(w['cena_bazowa'] * k, 4); w['kurs_ostatni'] = round(w['kurs_ostatni'] * k, 2) if w['kurs_ostatni'] else None
+    if w['dni_historii'] < 30: w['dni_historii'] = w['dni_historii'] + 374; w['data_pierwsza'] = None
+    if w['symbol'] == 'ZYW' and w['kategoria'] == 'zywnosc': w['kategoria'] = 'żywność'
+gt_tow = {g['kod']: (tow_id[int(g['towar_id'])]['nazwa'] if g['towar_id'] else None) for g in gt}
+# Zużycie z obiektów tła (dziś tylko Kuat) — suma na planetę i towar.
+zuz = defaultdict(float)
+for z in zuzycie: zuz[(obiekty[int(z['obiekt_id'])]['planeta'], z['towar'])] += z['t_doba']
+zuz_w = [{'planeta': p, 'towar': t, 'zuzycie_t_doba': v} for (p, t), v in sorted(zuz.items())]
+firmy_notowane = {int(i['firma_id']) for i in instr if i['firma_id']}
+firmy_w = [{**f, 'nazwa': podmioty[int(f['podmiot_id'])]['nazwa']} for f in firmy if int(f['podmiot_id']) in firmy_notowane or podmioty[int(f['podmiot_id'])]['typ'] == 'firma']
+gielda_planety = {po_id[int(g['planeta_id'])]['nazwa'] for g in gielde if int(g['planeta_id']) in po_id}
+rynek_w = [r_ for r_ in rynek if r_['obieg'] == 'oficjalny_hurt' and (r_['planeta'] in set(KANDYDACI) | gielda_planety or r_['produkcja_t_doba'] > 0)]
+uzyte = sorted(set(KANDYDACI) | gielda_planety | {r_['planeta'] for r_ in rynek_w})
+pl_w = [planety[n] for n in uzyte if n in planety]
+brak = [n for n in uzyte if n not in planety]
+pg_w = [{**planety_gry[int(p['id'])], 'nazwa': p['nazwa']} for p in pl_w if int(p['id']) in planety_gry]
+
+# --- wynik ---
 dzis = datetime.date.today().isoformat()
-out.append(f"""-- WYCINEK BAZY GIEŁDY HOLOLINK — stan {dzis} (łańcuch giełd planet)
--- Schemat tabel jak w bazie (MySQL 8) i minimum danych potrzebnych do zaprojektowania giełdy kolejnej planety.
--- To nie jest plik do importu. Dane w skróconej postaci: kolumny *_kod / *_nazwa zastępują klucze obce
--- (w migracji odwołuj się do nich podzapytaniami). Historia kursów pominięta — jest tylko ostatni kurs.
--- Na końcu pliku dopisywane są bloki „KROK NN” z kolejnych migracji (stan narasta krok po kroku).
-""")
-out.append("""-- ===== SCHEMAT (prawdziwe tabele) =====
-CREATE TABLE mapa_planety (id INT UNSIGNED PRIMARY KEY, nazwa VARCHAR(160) UNIQUE, region TINYINT, x DECIMAL(10,1), y DECIMAL(10,1)); -- x, y w parsekach
-CREATE TABLE gielde (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, kod VARCHAR(8) NOT NULL UNIQUE, planeta_id INT UNSIGNED NOT NULL, nazwa VARCHAR(120) NOT NULL UNIQUE, aktywna TINYINT(1) NOT NULL DEFAULT 1);
-CREATE TABLE towary (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, nazwa VARCHAR(160) NOT NULL,
-  kategoria ENUM('paliwo','surowce','zywnosc','medycyna','technika','bron','luksus','przyprawy') NOT NULL,
-  masa_t_na_jednostke DECIMAL(12,4) NOT NULL DEFAULT 1, jednostka VARCHAR(20) NOT NULL DEFAULT 'szt',
-  cena_bazowa BIGINT UNSIGNED NOT NULL DEFAULT 0, kontrabanda TINYINT(1) NOT NULL DEFAULT 0, opis TEXT);
-CREATE TABLE kategorie_towarow (id BIGINT UNSIGNED PRIMARY KEY, kod VARCHAR(40) UNIQUE, nazwa VARCHAR(100)); -- kod = towary.kategoria
-CREATE TABLE towary_kategorie (towar_id BIGINT UNSIGNED, kategoria_id BIGINT UNSIGNED, glowna TINYINT(1) NOT NULL DEFAULT 0);
-CREATE TABLE podmioty (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, typ VARCHAR(12) NOT NULL, nazwa VARCHAR(160) NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'aktywny');
-CREATE TABLE firmy (podmiot_id BIGINT UNSIGNED PRIMARY KEY, typ VARCHAR(12) NOT NULL DEFAULT 'firma',
-  profil VARCHAR(20) NOT NULL, -- produkcja, wydobycie, transport, finanse, handel, uslugi
-  kapital_zakladowy BIGINT UNSIGNED NOT NULL, skala TINYINT NOT NULL, opis TEXT); -- skala 3: 4 mld, 4: 12 mld, 5: 30 mld
-CREATE TABLE instrumenty (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, symbol VARCHAR(16) NOT NULL UNIQUE, nazwa VARCHAR(160) NOT NULL,
-  rodzaj ENUM('towar','spolka') NOT NULL, kategoria VARCHAR(40) NOT NULL DEFAULT '', jednostka VARCHAR(30) NOT NULL DEFAULT 'szt',
-  pochodzenie VARCHAR(80) NULL, gielda_id BIGINT UNSIGNED NOT NULL, towar_id BIGINT UNSIGNED NULL, firma_id BIGINT UNSIGNED NULL UNIQUE,
-  cena_bazowa DECIMAL(18,4) UNSIGNED NOT NULL, zmiennosc DECIMAL(6,3) NOT NULL DEFAULT 1, notowany TINYINT(1) NOT NULL DEFAULT 1,
-  UNIQUE KEY uq_instrumenty_gielda_towar (gielda_id, towar_id));
-CREATE TABLE kursy_dzienne (instrument_id BIGINT UNSIGNED NOT NULL, data DATE NOT NULL, kurs DECIMAL(18,4) UNSIGNED NOT NULL, PRIMARY KEY (instrument_id, data));
--- Widok gry łączy instrumenty z kursy_dzienne: notowanie bez kursów nie pokazuje się graczom.
-CREATE TABLE gosp_towary (kod VARCHAR(40) PRIMARY KEY, nazwa VARCHAR(120) NOT NULL, kategoria VARCHAR(40) NOT NULL,
-  cena_bazowa_kr_t DECIMAL(12,2) NOT NULL, -- średnia cena galaktyczna, kr za tonę
-  towar_id BIGINT UNSIGNED NULL UNIQUE);  -- towar katalogu, którym jest ten towar gospodarki
-CREATE TABLE gosp_rynek (planeta VARCHAR(160) NOT NULL, towar VARCHAR(40) NOT NULL, obieg VARCHAR(30) NOT NULL DEFAULT 'oficjalny_hurt',
-  produkcja_t_doba DECIMAL(14,1) NOT NULL DEFAULT 0, zuzycie_t_doba DECIMAL(14,1) NOT NULL DEFAULT 0,
-  cena_indeks DECIMAL(6,3) NOT NULL DEFAULT 1, cena_kr_t DECIMAL(12,2) NOT NULL DEFAULT 0,
-  szczegolowosc ENUM('obiekty','szacunek') NOT NULL DEFAULT 'szacunek', zrodlo VARCHAR(80) NOT NULL DEFAULT 'wygenerowane',
-  uwagi VARCHAR(300) NOT NULL DEFAULT '', PRIMARY KEY (planeta, towar, obieg));
-CREATE TABLE ustawienia (klucz VARCHAR(80) PRIMARY KEY, wartosc VARCHAR(255), opis VARCHAR(255));
-CREATE TABLE schema_migracje (wersja VARCHAR(80) PRIMARY KEY, opis VARCHAR(255));
--- portfele_gieldowe i transakcje_gieldowe (dane graczy) istnieją, ale migracje giełdy ich nie dotykają.
-""")
-out.append("-- ===== DANE =====\nINSERT INTO ustawienia VALUES ('gielda.powrot','0.08','siła powrotu kursu do ceny bazowej'),('gielda.prowizja','0.005','prowizja'),"
-           "('gielda.zmiennosc_towar','0.025','dzienna zmienność towarów'),('gielda.zmiennosc_spolka','0.018','dzienna zmienność spółek');\n")
-out.append("-- Planety: giełd, kandydaci do kolejnych kroków i producenci z gosp_rynek (region: 0 Głębokie Jądro, 1 Światy Jądra, 2 Kolonie, 3 Wewnętrzne Rubieże, 4 Obszar Ekspansji, 5 Środkowe Rubieże, 6 Zewnętrzne Rubieże, 7 Przestrzeń Huttów, 8 Nieznane Regiony, 9 Dzika Przestrzeń)")
-out.append("INSERT INTO mapa_planety (id,nazwa,region,x,y) VALUES\n" + ',\n'.join(f"({planety[n][0]},{q(n)},{planety[n][1]},{L(planety[n][2])},{L(planety[n][3])})" for n in uzyte_planety if n in planety) + ';\n')
-brak = [n for n in uzyte_planety if n not in planety]
-DODATKOWE = {'Wadi Raffa': (-9850.0, 4120.0), 'Nag Ubdur': (7340.0, -10950.0)}  # planety dopisane migracjami gospodarki
-if brak: out.append("INSERT INTO mapa_planety (id,nazwa,region,x,y) VALUES " + ','.join(f"(NULL,{q(n)},NULL,{L(DODATKOWE[n][0])},{L(DODATKOWE[n][1])})" for n in brak if n in DODATKOWE) + "; -- id nadane migracją gospodarki\n")
-out.append("INSERT INTO gielde (kod,planeta_id,nazwa) VALUES\n" + ',\n'.join(f"({q(k)},{pid},{q(n)})" for k, pid, n in gielde) + ';\n')
-tw = [(n, k, float(m), j, ceny_upd.get(n, int(c)), int(kb), o.replace("''", "'")) for n, k, m, j, c, kb, o in towary_b]
-tw = [(n, k, masa_upd.get(n, m), j, c, kb, o) for n, k, m, j, c, kb, o in tw]
-nazwy = {t[0] for t in tw}
-tw += [d for d in dawne if d[0] not in nazwy]
-out.append("-- Katalog towarów (towary notowane, powiązane z gospodarką i takie, które łatwo zdublować).")
-out.append("INSERT INTO towary (nazwa,kategoria,masa_t_na_jednostke,jednostka,cena_bazowa,kontrabanda,opis) VALUES\n" + ',\n'.join(
-    f"({q(n)},{q(k)},{L(m)},{q(j)},{c},{kb},{q(o)})" for n, k, m, j, c, kb, o in tw) + ';\n')
-out.append("-- Spółki notowane (podmioty typ 'firma' + firmy) — tylko nazwy; nowe spółki dodawaj obiema tabelami.")
-spolki = sorted({i[12] for i in instr if i[2] == 'spolka' and i[12]})
-out.append("INSERT INTO podmioty (typ,nazwa) VALUES\n" + ',\n'.join(f"('firma',{q(n)})" for n in spolki) + ';\n')
-out.append("-- Notowania: gielda_kod / towar_nazwa / firma_nazwa zamiast kluczy; kurs_ostatni i data_ostatnia z kursy_dzienne.")
-out.append("-- CREATE VIEW stan_instrumenty (symbol,nazwa,rodzaj,kategoria,jednostka,pochodzenie,gielda_kod,towar_nazwa,firma_nazwa,cena_bazowa,zmiennosc,kurs_ostatni,data_ostatnia)")
-out.append("INSERT INTO stan_instrumenty VALUES\n" + ',\n'.join(
-    f"({q(i[0])},{q(i[1])},{q(i[2])},{q(i[3])},{q(i[4])},{'NULL' if i[5] == 'NULL' else i[5]},{q(i[10])},{q(i[11] or None)},{q(i[12] or None)},{L(float(i[8]))},{L(float(i[9]))},{L(ostatni[i[0]][1])},{q(ostatni[i[0]][0])})"
-    for i in instr) + ';\n')
-out.append("-- Towary gospodarki: towar_nazwa = towar katalogu (gosp_towary.towar_id); NULL — jeszcze bez towaru w katalogu.")
-out.append("INSERT INTO gosp_towary (kod,nazwa,kategoria,cena_bazowa_kr_t,towar_nazwa) VALUES\n" + ',\n'.join(
-    f"({q(k)},{q(v.get('nazwa'))},{q(v.get('kategoria'))},{L(v.get('cena_bazowa_kr_t', 100))},{q(powiazania.get(k))})" for k, v in sorted(gt.items())) + ';\n')
-out.append(f"-- Rynek (obieg oficjalny hurt): wszystkie planety giełd i kandydaci + wszyscy producenci. {len(wiersze)} wierszy.")
-out.append("INSERT INTO gosp_rynek (planeta,towar,produkcja_t_doba,zuzycie_t_doba,cena_indeks,cena_kr_t,szczegolowosc) VALUES\n" + ',\n'.join(
-    f"({q(r[0])},{q(r[1])},{L(r[3])},{L(r[4])},{L(r[5])},{L(r[6])},{q(r[7])})" for r in wiersze) + ';\n')
-out.append("""-- ===== OTWARTE SPRAWY =====
--- Do uzgodnienia (ceny z dawnego JSON, skala inna niż gospodarka; uzgadnia krok danej giełdy):
---   cor: COAXR, PLZ, ZBO, NRF, BCT, KOL, MDR, JED · crl: OGN, BRZ, HIP, WIN · nar: COAX, BLS, GLT, RYL · hune: CUK997, SOL097 (decyzja MG)
--- Pułapki katalogu: „Duralstal w blokach” = durastal; „Koaksium stabilizowane” obok „Coaxium surowe/rafinowane” (nie dodawaj
---   kolejnego); „Cukier z Zephyrii” 200 000 kr/kg vs CUK997 200 000 kr za 10 kg (decyzja MG); Glitterstim w katalogu
---   800 000 kr/kg vs GLT 1500 kr/kg; Bacta w litrach vs BCT w zbiornikach.
--- Kuat: czesci_maszyn (eksport 90 000 t/d) bez notowania.
+zast = sorted(m['wersja'] for m in migracje)
+out = [f"""-- WYCINEK BAZY HOLOLINK DLA ŁAŃCUCHA GIEŁD PLANET — ze zrzutu bazy z {dzis}
+-- Plik do czytania, nie do importu. Schemat: dokładne definicje tabel z bazy (MySQL 8.4). Dane: wszystko, czego trzeba
+-- do zaprojektowania giełdy kolejnej planety, bez historii kursów (jest liczba dni i ostatni kurs), bez kont i graczy.
+-- Bloki „KROK NN” na końcu to zmiany kolejnych kroków łańcucha (późniejszy wygrywa).
+--
+-- Stan: zrzut bazy + migracja kroku 00 (gielda_00_naprawa.sql): ceny notowań powiązanych z gospodarką = gosp_rynek,
+-- ceny odniesienia = gosp_towary.cena_bazowa_kr_t, historia notowań Kuat uzupełniona (data_pierwsza NULL = wstecz).
+-- Zastosowane migracje gospodarki: {', '.join(m for m in zast if 'gosp' in m or 'ladowiska' in m) or '—'}.
+""", '-- ================= SCHEMAT =================\n']
+for t in TABELE_SCHEMATU: out.append(schemat(t) + '\n')
+v = re.search(r"VIEW `v_gielda_instrumenty`\s+AS (SELECT .*?);\n", s, re.S)
+out.append("-- Widok, z którego gra czyta notowania: łączy instrumenty z kursy_dzienne (INNER JOIN) — notowanie bez ani jednego\n"
+           "-- kursu nie pokazuje się graczom. Gra dopisuje kurs dzienny sama (symulacja z ustawień gielda.*).\n"
+           "-- CREATE VIEW v_gielda_instrumenty AS SELECT i.id, i.symbol, …, ge.kod AS gielda, k1.data AS dzien, k1.kurs, poprzedni FROM instrumenty i\n"
+           "--   JOIN gielde ge … JOIN kursy_dzienne k1 ON k1.instrument_id = i.id AND k1.data = (SELECT MAX(data) …);\n")
+out.append('\n-- ================= DANE =================\n')
+out.append(wstaw('ustawienia', ['klucz', 'wartosc', 'opis'], ustawienia, 'Ustawienia giełdy (symulacja kursów w grze).'))
+out.append(wstaw('mapa_planety', ['id', 'nazwa', 'region', 'x', 'y', 'srednica'], pl_w,
+                 'Planety: giełd, kandydaci i producenci. x, y w parsekach. Region: 0 Głębokie Jądro, 1 Światy Jądra, 2 Kolonie, '
+                 '3 Wewnętrzne Rubieże, 4 Obszar Ekspansji, 5 Środkowe Rubieże, 6 Zewnętrzne Rubieże, 7 Przestrzeń Huttów, '
+                 '8 Nieznane Regiony, 9 Dzika Przestrzeń.'))
+if brak: out.append('-- Planet spoza mapy (nazwy w danych gospodarki): ' + ', '.join(brak) + '\n')
+out.append(wstaw('planety_gry', ['planeta_id', 'nazwa', 'typ_planety', 'urbanizacja', 'opis'], pg_w, 'Dane gry planet (tylko te, które je mają).'))
+out.append(wstaw('gielde', ['id', 'kod', 'planeta_id', 'nazwa', 'aktywna'], gielde, 'Giełdy.'))
+out.append(wstaw('kategorie_towarow', ['id', 'kod', 'nazwa'], kategorie, 'Kategorie katalogu (kod = towary.kategoria).'))
+out.append(wstaw('towary', ['id', 'nazwa', 'kategoria', 'masa_t_na_jednostke', 'jednostka', 'cena_bazowa', 'kontrabanda', 'opis'], towary,
+                 'Katalog towarów (cały). cena_bazowa = cena odniesienia za jednostkę katalogu.'))
+out.append(wstaw('firmy', ['podmiot_id', 'nazwa', 'profil', 'kapital_zakladowy', 'skala', 'opis'], firmy_w,
+                 'Firmy (podmioty typu firma) — nazwa z tabeli podmioty.'))
+out.append("-- Notowania: wiersz instrumenty + gielda_kod, towar_nazwa, firma_nazwa (zamiast kluczy obcych) i stan historii kursów.\n")
+out.append(wstaw('instrumenty', ['id', 'symbol', 'nazwa', 'rodzaj', 'kategoria', 'jednostka', 'pochodzenie', 'gielda_kod', 'towar_nazwa', 'firma_nazwa',
+                                 'cena_bazowa', 'zmiennosc', 'notowany', 'dni_historii', 'data_pierwsza', 'data_ostatnia', 'kurs_ostatni'], stan))
+out.append(wstaw('gosp_towary', ['kod', 'towar_nazwa', 'nazwa', 'kategoria', 'cena_bazowa_kr_t', 'ladownosc_t', 'klasa_transportu'],
+                 [{**g, 'towar_nazwa': gt_tow[g['kod']]} for g in gt],
+                 'Towary gospodarki: cena_bazowa_kr_t = średnia galaktyczna (kr/t); towar_nazwa = towar katalogu (gosp_towary.towar_id), NULL — brak.'))
+out.append(wstaw('gosp_rynek', ['planeta', 'towar', 'produkcja_t_doba', 'zuzycie_t_doba', 'cena_indeks', 'cena_kr_t', 'szczegolowosc'], rynek_w,
+                 f'Rynek gospodarki (obieg oficjalny hurt): planety giełd, kandydaci i wszyscy producenci — {len(rynek_w)} z {len(rynek)} wierszy.'))
+out.append("""
+-- ================= OTWARTE SPRAWY =================
+-- Pułapki katalogu (nie twórz kolejnych duplikatów):
+--   „Duralstal w blokach” (id 3) i „Durastal” (id 50) to ten sam stop — używaj „Durastal” (powiązany z gospodarką i DUR);
+--   „Koaksium stabilizowane” (id 2) obok „Coaxium surowe/rafinowane” — nie dodawaj kolejnego koaksium;
+--   „Cukier z Zephyrii” (id 6, 200 000 kr/kg) i „Cukier 99,7%” (200 000 kr za zgrzewkę 10 kg) — decyzja MG;
+--   „Glitterstim” w katalogu 800 000 kr/kg (ceny Sektora Hune), notowanie GLT 1500 kr/kg (Nar Shaddaa);
+--   „Bacta” w litrach (120 kr/l), notowanie BCT w zbiornikach (900);
+--   towary „… z <planeta>” o cenie 0 (fabularne Nowej Rebelii) — nie notuj ich.
+-- Do uzgodnienia (ceny z dawnego JSON, bez odpowiednika w gospodarce — skala często wielokrotnie niższa niż gospodarki;
+-- uzgadnia krok danej giełdy): cor: COAXR, PLZ, ZBO, NRF, BCT, KOL, MDR, JED · crl: OGN, BRZ, HIP, WIN ·
+-- nar: COAX, BLS, GLT, RYL · hune: CUK997, SOL097 (decyzja MG). Spółki — ceny z JSON zostają.
+-- Towary gospodarki bez towaru w katalogu (towar_nazwa NULL) — przy pierwszym notowaniu dodaj towar i powiązanie.
+-- Planety giełd bez wierszy gosp_rynek: Coruscant, Nar Shaddaa, Zephyria — przy ich kroku dopisz szacunek.
 
--- ===== KROKI ŁAŃCUCHA (dopisuj na końcu bloki „KROK NN” z odpowiedzi kolejnych instancji) =====
--- KROK 00 — migracja bazowa: 6 giełd, 53 notowania, ceny Kuat z gosp_rynek.
+-- ================= KROKI ŁAŃCUCHA =================
+-- KROK 00 — zrzut bazy (6 giełd, 53 notowania) + gielda_00_naprawa.sql: ceny notowań towarów z gospodarki (Kuat, Bespin),
+--   ceny odniesienia z gosp_towary, historia notowań Kuat wstecz, masy cukru i soli, kategoria ZYW.
 """)
 WYJ.write_text('\n'.join(out), encoding='utf-8')
-print(WYJ, WYJ.stat().st_size, 'B, rynek', len(wiersze), 'planety', len(uzyte_planety), 'instr', len(instr), 'brak', brak)
+print(WYJ, WYJ.stat().st_size, 'B', 'planety', len(pl_w), 'brak', brak, 'rynek', len(rynek_w), 'firmy', len(firmy_w), 'mnozniki', {k: round(v, 3) for k, v in mnoznik.items()})

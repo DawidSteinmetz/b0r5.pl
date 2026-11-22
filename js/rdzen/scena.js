@@ -76,7 +76,7 @@ function hash(t) {
 }
 
 // Tekstura powierzchni planety: pas o szerokości 2× średnicy, przewijany przy obrocie.
-function teksturaPlanety(typ, d, ziarno) {
+export function teksturaPlanety(typ, d, ziarno) {
   const t = TYPY_PLANET[typ] || TYPY_PLANET.skalista;
   const c = document.createElement('canvas');
   c.width = d * 2;
@@ -132,7 +132,7 @@ function teksturaPlanety(typ, d, ziarno) {
 }
 
 // Światła miast po nocnej stronie.
-function teksturaSwiatel(d, ziarno) {
+export function teksturaSwiatel(d, ziarno) {
   const c = document.createElement('canvas');
   c.width = d * 2;
   c.height = d;
@@ -299,6 +299,8 @@ function rysujOknoIsd(w, h, dpr, typ = 'isd') {
 }
 
 export function utworzScene(canvas) {
+  // Tryb 3D (js/rdzen/scena3d.js): na orbicie świat rysuje WebGL pod spodem, a to płótno — przezroczyste — tylko ramę okna.
+  let swiat3d = false;
   const ctx = canvas.getContext('2d');
   let w = 0, h = 0, dpr = 1;
   // Ekran (CSS px) i przesunięcie kadru: przy ramie w × h to wymiary wzoru, większe od ekranu.
@@ -1461,6 +1463,8 @@ export function utworzScene(canvas) {
     kadrYTeraz = kadrY;
     narysowane = zbierane; zbierane = [];
     ctx.setTransform(dpr, 0, 0, dpr, kadrX * dpr, kadrY * dpr);
+    const w3d = swiat3d && stan.scena === 'orbita' && stan.okno !== 'brak';
+    if (w3d) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.restore(); }
 
     // Pomieszczenie okrętu bez okien: tylko wnętrze (przestrzeń i skok niewidoczne).
     if (stan.okno === 'brak' && stan.scena !== 'powierzchnia' && stan.scena !== 'start') { rysujWnetrze(t); return; }
@@ -1518,6 +1522,7 @@ export function utworzScene(canvas) {
         break;
       }
       case 'orbita':
+        if (w3d) break; // świat rysuje WebGL pod spodem
         if (!rysujPanorame(t)) { tlo(); rysujGwiazdy(0.000012 * ruch, dt, 0.9, 0.05); }
         rysujSasiednieGwiazdy();
         rysujSlonce();
@@ -1591,6 +1596,21 @@ export function utworzScene(canvas) {
       return naj;
     },
     zaznacz(klucz) { zaznaczona = klucz; },
+    // Tryb 3D: włącza / wyłącza rysowanie świata orbity na tym płótnie (zostaje rama okna).
+    ustaw3d(aktywne) { swiat3d = !!aktywne; },
+    // Dane widoku dla sceny 3D: scena, typ planety, kierunki z mostka (kurs, orbita, słońce), wysokość, dok, okno, kadr.
+    widok3d() {
+      const v = widokTeraz(), k = kierunki();
+      if (!v || !k) return { scena: stan.scena, okno: stan.okno };
+      const srednica = Number(v.cykl?.srednica_km) || SREDNICA_DOMYSLNA_KM;
+      const t = (Date.now() + (stan.przesuniecie || 0)) / 1000;
+      const okno = OKNA_Z_RAMA.includes(stan.okno) ? geometriaOkna(stan.okno, w, h) : null;
+      return { scena: stan.scena, planeta: stan.planeta, miejsce: stan.miejsce, okno: stan.okno, odleglosc: stan.odleglosc,
+        widok: v, kierunki: k, srednica, wysokosc: wysokoscOrbity(srednica), teraz: t,
+        wDoku: !!(v.dok && !(v.przelot && t < v.przelot.do)), bezPlanety: !!v.bez_planety,
+        // środek okna (poziom horyzontu) na ekranie: kadr + środek otworu okna
+        horyzontY: (kadrYTeraz || 0) + (okno ? (okno.gora + okno.dol) / 2 : h * 0.55), poleWidzenia: POLE_WIDZENIA, bokKadru: w };
+    },
     // Miniatura bieżącego widoku (z oknem mostka) jako JPEG, najwyżej 480 px szerokości.
     zdjecie() {
       const szer = Math.min(480, canvas.width);

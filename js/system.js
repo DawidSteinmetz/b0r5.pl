@@ -4,6 +4,7 @@ import { h, wyczysc, ikona, godzina, dataGST, czekaj, pamiec, ladowaniePelne } f
 import { api, nasluchujApi } from './rdzen/api.js';
 import { URZADZENIE } from './rdzen/urzadzenie.js';
 import { utworzScene, TYPY_PLANET } from './rdzen/scena.js';
+import { utworzScene3d } from './rdzen/scena3d.js';
 import { ustawDzwiek, przelaczWyciszenie, wyciszony } from './rdzen/dzwiek.js';
 
 import holonet from './aplikacje/holonet.js';
@@ -131,7 +132,8 @@ async function bateria() {
 
 const plotno = h('canvas#scena', { 'aria-hidden': 'true' });
 document.getElementById('ekran').prepend(plotno);
-const scena = utworzScene(plotno);
+// Grafika 3D (eksperymentalna, Ustawienia): świat orbity w WebGL pod ramą okna; bez niej — scena 2D.
+const scena = pamiec.czytaj('grafika3d', false) ? utworzScene3d(plotno) : utworzScene(plotno);
 let stanSceny = pamiec.czytaj('scena', null);
 if (stanSceny) scena.ustaw({ ...stanSceny, zmieniono: 0 }); // z pamięci: bez animacji przejścia
 

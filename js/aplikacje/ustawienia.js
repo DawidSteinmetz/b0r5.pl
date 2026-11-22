@@ -1,6 +1,6 @@
 // Ustawienia: alfabet (moduł ZPH), jasność, informacje o urządzeniu, blokada.
 
-import { h, wyczysc } from '../rdzen/narzedzia.js';
+import { h, wyczysc, pamiec } from '../rdzen/narzedzia.js';
 import { URZADZENIE } from '../rdzen/urzadzenie.js';
 import { api } from '../rdzen/api.js';
 
@@ -24,6 +24,7 @@ export default {
     jasnosc.addEventListener('input', () => ctx.jasnosc(Number(jasnosc.value)));
 
     const wiersz = (k, v) => h('tr', h('th', k), h('td', v));
+    const info3d = h('div');
 
     // Wtyczki zewnętrzne: paczka instalowana kluczem. Zainstalowana dodaje kanał w Holonecie.
     const wtyczki = h('div');
@@ -69,7 +70,15 @@ export default {
         wynik),
       h('div.panel',
         h('h2', 'Ekran'),
-        h('div.pole', h('label', 'Jasność'), jasnosc)),
+        h('div.pole', h('label', 'Jasność'), jasnosc),
+        // Grafika 3D: świat za oknem (orbita, pierścień, dok) w WebGL; po zmianie — ponowne uruchomienie tabletu.
+        h('label.rzad', { style: 'gap:10px;align-items:center;margin-top:10px' },
+          h('input', { type: 'checkbox', checked: pamiec.czytaj('grafika3d', false), onchange: (e) => {
+            pamiec.zapisz('grafika3d', e.target.checked);
+            wyczysc(info3d).append(h('div.komunikat.ok', 'Zapisano. Uruchom tablet ponownie (odśwież stronę), żeby zmienić grafikę.'));
+          } }),
+          h('span', 'Grafika 3D (eksperymentalna) — widok z okna na orbicie')),
+        info3d),
       h('div.panel',
         h('h2', 'Użytkownik'),
         h('table.tabela',

@@ -676,7 +676,8 @@ html.z-tlem #ekran::before {
 .mapa-klucze-lista li:last-child { border-bottom: 0; }
 .mapa-klucze-lista li > span:first-child { color: var(--tekst); }
 .mapa-klucze-lista li > span.slaby { grid-column: 1; font-size: 11px; }
-.mapa-klucze-lista li > input { grid-column: 2; grid-row: 1 / span 2; width: 18px; height: 18px; accent-color: var(--akcent); }
+.mapa-klucze-lista li > input { grid-column: 2; grid-row: 1 / span 4; width: 18px; height: 18px; accent-color: var(--akcent); }
+.mapa-klucze-lista .mapa-skan-udany { color: var(--ok); }
 .mapa-karta-kolumna .mapa-poklad .lista li { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; row-gap: 2px; align-items: center;
   padding: 8px 0; border-bottom: 1px solid var(--linia); }
 .mapa-karta-kolumna .mapa-poklad .lista li:last-child { border-bottom: 0; }

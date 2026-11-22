@@ -687,16 +687,32 @@ export default {
         const odmiana = (n) => (n === 1 ? 'klucz' : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'klucze' : 'kluczy');
         const wypusc = (rodzaj, ile, napisPrz) => h('button.przycisk.maly', { type: 'button', disabled: ile < 1, onclick: async () => {
           try {
-            const w = await api('mapa_klucz_start', { obiekt_id: o.id, rodzaj });
-            await odswiezKlucze(); wczytaj(`${w.nazwa} startuje z taśmociągu ${czasGry(w.start)}.`);
+            const w = await api('mapa_klucz_start', { obiekt_id: o.id, rodzaj, zaloga: zaloga.value });
+            const kto = (w.zaloga || []).map((p) => `${p.imie} (${p.ranga_opis}, poz. ${p.poziom})`).join(', ');
+            await odswiezKlucze(); wczytaj(`${w.nazwa} startuje z taśmociągu ${czasGry(w.start)}.${kto ? ` Załoga: ${kto}.` : ''}`);
           } catch (e) { info.textContent = e.message; }
         } }, napisPrz);
         const lista = h('ul.mapa-klucze-lista', d.klucze.map((k) => h('li',
           h('span', `${k.nazwa} · ${k.maszyny} ${k.rodzaj === 'lambda' ? 'Lambda' : 'TIE'}`),
           h('span.slaby', `${k.rozkaz_opis}${k.cel ? ` · ${k.cel}` : ''}${k.trasa?.[0]?.[0] > teraz() ? ` · start ${czasGry(k.trasa[0][0])}` : ''}`),
+          k.zaloga?.length ? h('span.slaby', `załoga: ${opisZalogi(k.zaloga)}`) : null,
+          k.skan ? h('span.slaby' + (k.skan.stan === 'udany' ? '.mapa-skan-udany' : ''), k.skan.stan === 'trwa'
+            ? `skan z bliska${k.skan.koniec ? ` · wynik ${czasGry(k.skan.koniec)}` : ''}` : `skan ${k.skan.stan}: ${k.skan.opis || ''}`) : null,
           h('input', { type: 'checkbox', value: String(k.id), 'aria-label': k.nazwa }))));
         const rozkaz = h('select', Object.entries(d.rozkazy || {}).map(([v, n]) => h('option', { value: v }, n)));
-        const cel = h('select', h('option', { value: '' }, 'Wybierz okręt'), (d.cele || []).map((x) => h('option', { value: String(x.id) }, `${x.nazwa}${x.klasa ? ` · ${x.klasa}` : ''}`)));
+        const opcjaCelu = (x) => h('option', { value: String(x.id) }, `${x.nazwa}${x.klasa ? ` · ${x.klasa}` : ''}`);
+        const celeJ = (d.cele || []).filter((x) => !x.npc), celeN = (d.cele || []).filter((x) => x.npc);
+        const cel = h('select', h('option', { value: '' }, 'Wybierz okręt'),
+          celeJ.length ? h('optgroup', { label: 'Jednostki' }, celeJ.map(opcjaCelu)) : null,
+          celeN.length ? h('optgroup', { label: 'Ruch w tle (NPC)' }, celeN.map(opcjaCelu)) : null);
+        const zaloga = h('select', [['automat', 'automat (standardowi, potem kadeci)'], ['as', 'asy'], ['standard', 'standardowi'], ['kadet', 'kadeci']]
+          .map(([v, n]) => h('option', { value: v }, n)));
+        const p = d.piloci;
+        const rangi = p ? ['as', 'standard', 'kadet'].filter((r) => p.rangi[r]).map((r) => `${p.rangi[r].opis} ${p.rangi[r].ile} (×${String(p.rangi[r].mnoznik).replace('.', ',')})`).join(' · ') : '';
+        const piloci = p ? h('section.mapa-obiekt-flota', h('strong', 'Piloci'),
+          h('small', `Na pokładzie: ${p.razem} · w locie: ${p.w_locie}. ${rangi}. W nawiasie mnożnik zdobywania doświadczenia.`),
+          h('ul.mapa-klucze-lista', (p.najlepsi || []).map((x) => h('li', h('span', x.imie),
+            h('span.slaby', `${x.ranga} · poziom ${x.poziom} · ${x.xp} PD${x.w_locie ? ' · w locie' : ''}`))))) : null;
         const polCelu = h('label.maly-tekst', 'Cel', cel);
         const bezCelu = () => { polCelu.hidden = ['patrol', 'powrot'].includes(rozkaz.value); };
         rozkaz.addEventListener('change', bezCelu); bezCelu();
@@ -711,6 +727,7 @@ export default {
         } }, 'Wydaj rozkaz zaznaczonym');
         wyczysc(sekcja).append(h('strong', 'Klucze myśliwców'),
           h('small', `W hangarze: ${ht.w_hangarze} ${odmiana(ht.w_hangarze)} TIE${hl.razem ? ` · ${hl.w_hangarze} ${odmiana(hl.w_hangarze)} Lambda` : ''} · w locie: ${ht.w_locie + hl.w_locie}. Klucz = 4 maszyny, taśmociąg: jeden klucz na minutę, zasięg operacyjny 1 mln km.`),
+          p ? h('label.maly-tekst', 'Załoga', zaloga) : null,
           h('div.mapa-klucze-start', ht.razem ? wypusc('tie', ht.w_hangarze, `Wypuść klucz TIE (${ht.w_hangarze})`) : null,
             hl.razem ? wypusc('lambda', hl.w_hangarze, `Wypuść Lambdy (${hl.w_hangarze})`) : null),
           d.klucze.length ? lista : null,
@@ -718,6 +735,16 @@ export default {
           d.klucze.length ? polCelu : null,
           d.klucze.length ? wydaj : null,
           info);
+        pilociEl?.remove();
+        pilociEl = piloci;
+        if (piloci) sekcja.after(piloci);
+      };
+      let pilociEl = null;
+      const opisZalogi = (z) => {
+        const ile = (r) => z.filter((x) => x.ranga === r).length;
+        const sr = Math.round(z.reduce((s, x) => s + x.poziom, 0) / z.length);
+        return [['as', 'as', 'asy'], ['standard', 'standardowy', 'standardowi'], ['kadet', 'kadet', 'kadeci']]
+          .filter(([r]) => ile(r)).map(([r, j, m]) => `${ile(r)} ${ile(r) === 1 ? j : m}`).join(', ') + ` · śr. poziom ${sr}`;
       };
       const wczytaj = (komunikat) => api('mapa_klucze_okretu', undefined, { obiekt: o.id }).then((d) => {
         if (!d.mozna || !d.hangar || (!d.hangar.tie.razem && !d.hangar.lambda.razem)) return;

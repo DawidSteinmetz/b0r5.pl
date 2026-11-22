@@ -48,6 +48,121 @@ function klucze_lambda_dostepne(): bool
     return $jest;
 }
 
+// Piloci i skan z bliska (migracja 067): mapa_piloci, mapa_klucze.rozkaz_login / skan_stan / skan_opis.
+function klucze_piloci_dostepni(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT p.id, k.skan_stan, k.rozkaz_login FROM mapa_piloci p, mapa_klucze k LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+// Piloci: asy (ok. 5%), standardowi (60%), kadeci (35%). Doświadczenie globalne dla pilota; mnożnik zdobywania
+// as ×0,5, standardowy ×1, kadet ×1,5. Poziom = 1 + ⌊√(xp / 40)⌋. Na pokładzie 2 pilotów na maszynę.
+const PILOT_RANGI = ['as' => ['as', 0.5], 'standard' => ['standardowy', 1.0], 'kadet' => ['kadet', 1.5]];
+const PILOT_IMIONA = ['Arven', 'Bael', 'Corin', 'Dace', 'Erel', 'Feyn', 'Garos', 'Hal', 'Ilan', 'Jorek', 'Kael', 'Lorn', 'Maris', 'Nyle', 'Oren',
+    'Pell', 'Quinn', 'Rhys', 'Sela', 'Tarn', 'Ulric', 'Vala', 'Wes', 'Yara', 'Zev', 'Ansa', 'Brisa', 'Cade', 'Dren', 'Ezra', 'Fen', 'Ivra', 'Jace', 'Kira', 'Lira', 'Mako'];
+const PILOT_NAZWISKA = ['Thrass', 'Veers', 'Kallus', 'Dorran', 'Vex', 'Sorne', 'Halcyn', 'Marek', 'Tolan', 'Crane', 'Draven', 'Ostrak', 'Pellaeon', 'Rennic',
+    'Sarkis', 'Tavor', 'Ulmer', 'Vosk', 'Wexley', 'Yularen', 'Zorrin', 'Brand', 'Castell', 'Dalor', 'Erso', 'Fenn', 'Gorran', 'Holt', 'Iden', 'Jarrus'];
+const PILOT_ZALOGA = ['tie' => 4, 'lambda' => 8]; // klucz TIE: 4 pilotów; Lambdy: pilot i drugi pilot na maszynę
+const SKAN_S = 300;          // skan z bliska: 5 minut przy celu
+const SKAN_XP = [40, 10];    // doświadczenie: udany, nieudany (× mnożnik rangi)
+
+function klucze_poziom(int $xp): int { return 1 + (int) floor(sqrt(max(0, $xp) / 40)); }
+
+// Uzupełnia pilotów okrętu do 2 na maszynę (TIE i Lambdy z hangaru). Imiona i rangi stałe z numeru pilota.
+function klucze_piloci_zapewnij(int $okret): void
+{
+    if (!klucze_piloci_dostepni()) return;
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT tie_liczba' . (klucze_lambda_dostepne() ? ',lambda_liczba' : ',0 AS lambda_liczba') . ' FROM mapa_floty_jednostki WHERE obiekt_id=?');
+    $q->execute([$okret]);
+    $r = $q->fetch(PDO::FETCH_ASSOC) ?: [];
+    $potrzeba = 2 * ((int) ($r['tie_liczba'] ?? 0) + (int) ($r['lambda_liczba'] ?? 0));
+    $q = $db->prepare('SELECT COUNT(*) FROM mapa_piloci WHERE okret_id=?');
+    $q->execute([$okret]);
+    $jest = (int) $q->fetchColumn();
+    if ($jest >= $potrzeba) return;
+    $ins = $db->prepare('INSERT INTO mapa_piloci (okret_id, numer, imie, ranga, xp) VALUES (?,?,?,?,?)');
+    for ($i = $jest + 1; $i <= $potrzeba; $i++) {
+        $h = crc32("pilot|{$okret}|{$i}");
+        $imie = PILOT_IMIONA[$h % count(PILOT_IMIONA)] . ' ' . PILOT_NAZWISKA[intdiv($h, 97) % count(PILOT_NAZWISKA)];
+        $los = intdiv($h, 7) % 100;
+        $ranga = $los < 5 ? 'as' : ($los < 65 ? 'standard' : 'kadet');
+        $xp = match ($ranga) { 'as' => 2200 + $h % 1800, 'standard' => 400 + $h % 800, default => $h % 120 };
+        $ins->execute([$okret, $i, $imie, $ranga, $xp]);
+    }
+}
+
+// Przydział załogi do klucza: tryb as / standard / kadet (pierwszeństwo tej rangi, braki uzupełnia reszta) albo automat.
+function klucze_zaloga_przydziel(int $okret, int $klucz, string $rodzaj, string $tryb): array
+{
+    if (!klucze_piloci_dostepni()) return [];
+    klucze_piloci_zapewnij($okret);
+    $kolejnosc = match ($tryb) { 'as' => ['as', 'standard', 'kadet'], 'kadet' => ['kadet', 'standard', 'as'], default => ['standard', 'kadet', 'as'] };
+    $q = polaczenie_bazy()->prepare("SELECT id, ranga FROM mapa_piloci WHERE okret_id=? AND klucz_id IS NULL
+        ORDER BY FIELD(ranga, ?, ?, ?), xp " . ($tryb === 'as' ? 'DESC' : 'ASC') . ', id LIMIT ' . (int) PILOT_ZALOGA[$rodzaj]);
+    $q->execute([$okret, ...$kolejnosc]);
+    $ids = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
+    if (count($ids) < PILOT_ZALOGA[$rodzaj]) blad('Za mało wolnych pilotów na pokładzie — poczekaj na powrót innych kluczy.');
+    $marks = implode(',', array_fill(0, count($ids), '?'));
+    polaczenie_bazy()->prepare("UPDATE mapa_piloci SET klucz_id=? WHERE id IN ($marks)")->execute([$klucz, ...$ids]);
+    return $ids;
+}
+
+function klucze_zaloga(int $klucz): array
+{
+    if (!klucze_piloci_dostepni()) return [];
+    $q = polaczenie_bazy()->prepare('SELECT id, imie, ranga, xp FROM mapa_piloci WHERE klucz_id=? ORDER BY FIELD(ranga,\'as\',\'standard\',\'kadet\'), xp DESC');
+    $q->execute([$klucz]);
+    return array_map(static fn($p) => ['id' => (int) $p['id'], 'imie' => $p['imie'], 'ranga' => $p['ranga'], 'ranga_opis' => PILOT_RANGI[$p['ranga']][0] ?? $p['ranga'],
+        'xp' => (int) $p['xp'], 'poziom' => klucze_poziom((int) $p['xp'])], $q->fetchAll(PDO::FETCH_ASSOC));
+}
+
+// Ruch w tle (kontakty NPC) w układzie punktu mapy: id → kontakt (jak na radarze, bez identyfikacji).
+function klucze_npc_uklad(float $x, float $y): array
+{
+    static $pamiec = [];
+    $klucz = round($x, 1) . '|' . round($y, 1);
+    if (!isset($pamiec[$klucz])) {
+        $pamiec[$klucz] = [];
+        if (function_exists('radar_tlo')) {
+            try { foreach (radar_tlo([['x' => $x, 'y' => $y, 'zasieg' => 0.5]], [], [], false) as $c) $pamiec[$klucz][(int) $c['id']] = $c; }
+            catch (Throwable $e) { $pamiec[$klucz] = []; }
+        }
+        klucze_npc_rejestr($pamiec[$klucz]);
+    }
+    return $pamiec[$klucz];
+}
+function klucze_npc_rejestr(?array $dodaj = null): array
+{
+    static $wszystkie = [];
+    if ($dodaj) $wszystkie = $dodaj + $wszystkie;
+    return $wszystkie;
+}
+
+// Pozycja kontaktu NPC (km od słońca) w chwili $t z jego bieżącej fazy: lot podświetlny (k0 → k1 w czasie od–do),
+// postój przy planecie (planeta krąży), punkt układu. Skok w nadprzestrzeń — poza zasięgiem kluczy.
+function klucze_npc_km(int $id, int $t): ?array
+{
+    $c = klucze_npc_rejestr()[$id] ?? null;
+    if (!$c) return null;
+    $l = $c['podswietlny'] ?? null;
+    if ($l && isset($l['k0'], $l['k1'])) {
+        $f = max(0.0, min(1.0, ($t - (int) $l['od']) / max(1, (int) $l['do'] - (int) $l['od'])));
+        return [$l['k0'][0] + ($l['k1'][0] - $l['k0'][0]) * $f, $l['k0'][1] + ($l['k1'][1] - $l['k0'][1]) * $f];
+    }
+    if (!empty($c['planeta'])) {
+        $cy = astro_cykl((string) $c['planeta']);
+        [$kx, $ky] = astro_pozycja_km($cy, $t);
+        return [$kx + (float) ($cy['srednica_km'] ?? 12000) / 2 + 300, $ky];
+    }
+    if (!empty($c['uklad_k'])) return [(float) $c['uklad_k'][0], (float) $c['uklad_k'][1]];
+    return null;
+}
+
 // Wiersz jednostki mapy potrzebny do pozycji w układzie (pamięć na czas żądania).
 function klucze_obiekt(int $id): ?array
 {
@@ -66,6 +181,7 @@ function klucze_obiekt(int $id): ?array
 // (promień z podejścia, kąt orbita_deg) albo punkt układu. Null — poza układem / brak danych.
 function klucze_obiekt_km(int $id, int $t): ?array
 {
+    if ($id < 0) return klucze_npc_km($id, $t);
     $o = klucze_obiekt($id);
     if (!$o) return null;
     if (!empty($o['lot_do_utc'])) {
@@ -115,6 +231,7 @@ function klucze_km(array $k, int $t): ?array
         }
     }
     if (!empty($k['po_cel_id'])) {
+        if ((int) $k['po_cel_id'] < 0) klucze_npc_uklad((float) $k['uklad_x'], (float) $k['uklad_y']);
         $c = klucze_obiekt_km((int) $k['po_cel_id'], $t);
         if ($c) { [$ox, $oy] = klucze_okrag((float) $k['po_promien_km'], (int) $tr[$n][0], $t); return [$c[0] + $ox, $c[1] + $oy]; }
     }
@@ -150,6 +267,7 @@ function klucze_plan(array $klucz, string $rozkaz, ?int $celId, int $t0, array $
     $po = in_array($rozkaz, ['patrol', 'powrot'], true) ? $okret : $celId;
     if (!$po) blad('Wskaż cel rozkazu.');
     $r = KLUCZ_ROZKAZY[$rozkaz][1];
+    if ($po < 0) { $m = klucze_obiekt($okret); if ($m) klucze_npc_uklad((float) $m['x'], (float) $m['y']); }
     $cel = static fn(int $t) => klucze_obiekt_km($po, $t);
     if (!$cel($t0)) blad('Cel jest poza układem klucza albo w nadprzestrzeni.');
     $tMax = (int) min(6 * 3600, 2 * KLUCZ_ZASIEG_KM / max(1.0, $v) + 900);
@@ -237,7 +355,9 @@ function klucze_dla_mapy(array $k): array
         'cel_id' => $k['cel_obiekt_id'] === null ? null : (int) $k['cel_obiekt_id'], 'cel' => $k['cel'] ?? null,
         'uklad' => [(float) $k['uklad_x'], (float) $k['uklad_y']], 'trasa' => $tr, 'start' => czas_z_utc((string) $k['start_utc']),
         'po' => $k['po_cel_id'] === null ? null : ['id' => (int) $k['po_cel_id'], 'r' => (float) $k['po_promien_km'], 'okres' => KLUCZ_OKRES_S],
-        'predkosc_kms' => (float) $k['predkosc_kms']];
+        'predkosc_kms' => (float) $k['predkosc_kms'],
+        'skan' => empty($k['skan_stan']) ? null : ['stan' => $k['skan_stan'], 'opis' => $k['skan_opis'] ?? null,
+            'koniec' => $k['rozkaz'] === 'skan' && $tr ? (int) end($tr)[0] + SKAN_S : null]];
 }
 
 function klucze_wiersze(?int $okret = null): array
@@ -247,8 +367,12 @@ function klucze_wiersze(?int $okret = null): array
     // Powrót zakończony: klucz wylądował w hangarze.
     foreach ($db->query("SELECT id, trasa_json FROM mapa_klucze WHERE rozkaz='powrot'")->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $tr = json_decode((string) $r['trasa_json'], true) ?: [];
-        if (!$tr || $teraz >= (int) end($tr)[0]) $db->prepare('DELETE FROM mapa_klucze WHERE id=?')->execute([(int) $r['id']]);
+        if (!$tr || $teraz >= (int) end($tr)[0]) {
+            $db->prepare('DELETE FROM mapa_klucze WHERE id=?')->execute([(int) $r['id']]);
+            if (klucze_piloci_dostepni()) $db->prepare('UPDATE mapa_piloci SET klucz_id=NULL WHERE klucz_id=?')->execute([(int) $r['id']]);
+        }
     }
+    klucze_skany_rozstrzygnij();
     $q = $db->prepare('SELECT k.*, o.nazwa AS okret, c.nazwa AS cel FROM mapa_klucze k JOIN mapa_obiekty o ON o.id=k.okret_id
         LEFT JOIN mapa_obiekty c ON c.id=k.cel_obiekt_id' . ($okret ? ' WHERE k.okret_id=?' : '') . ' ORDER BY k.okret_id, k.rodzaj, k.numer');
     $q->execute($okret ? [$okret] : []);
@@ -265,7 +389,73 @@ function klucze_cele(int $okret): array
         . (floty_hangar_dostepny() ? ' AND COALESCE(o.w_hangarze,0)=0' : '')
         . " AND NOT EXISTS (SELECT 1 FROM mapa_rozkazy_skokow_jednostki r WHERE r.obiekt_id=o.id AND r.status='w_nadprzestrzeni') ORDER BY o.nazwa LIMIT 200");
     $q->execute([$okret, (float) $o['x'], LOT_W_UKLADZIE_PC, (float) $o['y'], LOT_W_UKLADZIE_PC]);
-    return array_map(static fn($r) => ['id' => (int) $r['id'], 'nazwa' => $r['nazwa'], 'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel']], $q->fetchAll(PDO::FETCH_ASSOC));
+    $cele = array_map(static fn($r) => ['id' => (int) $r['id'], 'nazwa' => $r['nazwa'], 'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel']], $q->fetchAll(PDO::FETCH_ASSOC));
+    // Ruch w tle (statki NPC) w tym układzie — także bez transpondera (cel skanu z bliska).
+    foreach (klucze_npc_uklad((float) $o['x'], (float) $o['y']) as $id => $c) {
+        if (klucze_npc_km($id, czas_teraz()) === null) continue;
+        $cele[] = ['id' => $id, 'nazwa' => (string) $c['nazwa'], 'klasa' => (string) ($c['klasa'] ?? ''), 'wlasciciel' => null, 'npc' => true];
+    }
+    return $cele;
+}
+
+// Skan z bliska: klucz z rozkazem „skan” krąży 40 km od celu; po 5 minutach przy celu wynik zależy od poziomu
+// załogi (50% + 6% za średni poziom, najwyżej 95%). Udany — prawdziwa nazwa, ładunek i trasa trafiają do identyfikacji
+// radaru konta, które wydało rozkaz (jak analiza sygnatury); piloci dostają doświadczenie (× mnożnik rangi).
+function klucze_skany_rozstrzygnij(): void
+{
+    if (!klucze_piloci_dostepni()) return;
+    $db = polaczenie_bazy();
+    $teraz = czas_teraz();
+    foreach ($db->query("SELECT * FROM mapa_klucze WHERE rozkaz='skan' AND skan_stan='trwa'")->fetchAll(PDO::FETCH_ASSOC) as $k) {
+        $tr = klucze_trasa($k);
+        if (!$tr || $teraz < (int) end($tr)[0] + SKAN_S) continue;
+        $cel = (int) $k['cel_obiekt_id'];
+        $zaloga = klucze_zaloga((int) $k['id']);
+        $poziom = $zaloga ? array_sum(array_column($zaloga, 'poziom')) / count($zaloga) : 1;
+        $szansa = min(95, 50 + 6 * $poziom);
+        $udany = (crc32("skan|{$k['id']}|{$k['rozkaz_utc']}") % 100) < $szansa;
+        $dane = $udany ? klucze_skan_dane($cel, (float) $k['uklad_x'], (float) $k['uklad_y']) : null;
+        $opis = 'Skan nieudany — cel zagłuszył sensory.';
+        if ($udany && !$dane) { $udany = false; $opis = 'Cel opuścił układ przed końcem skanu.'; }
+        elseif ($udany) {
+            $opis = trim($dane['nazwa'] . ($dane['ladunek'] ? " · ładunek: {$dane['ladunek']}" : '') . ($dane['trasa'] ? " · trasa: {$dane['trasa']}" : ''));
+            if (!empty($k['rozkaz_login']) && function_exists('radar_dostepny') && radar_dostepny()) {
+                $db->prepare("INSERT INTO radar_identyfikacje (konto_login,cel_id,nazwa,frakcja,poszukiwany,nagroda,kiedy) VALUES (?,?,?,?,?,?,?)
+                    ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa), frakcja=VALUES(frakcja), poszukiwany=VALUES(poszukiwany), nagroda=VALUES(nagroda), kiedy=VALUES(kiedy)")
+                    ->execute([$k['rozkaz_login'], $cel, mb_substr($dane['nazwa'], 0, 160), $dane['frakcja'], $dane['poszukiwany'] ? 1 : 0, $dane['nagroda'], czas_utc($teraz)]);
+            }
+        }
+        $xp = SKAN_XP[$udany ? 0 : 1];
+        foreach ($zaloga as $p) {
+            $db->prepare('UPDATE mapa_piloci SET xp = xp + ? WHERE id=?')->execute([(int) round($xp * PILOT_RANGI[$p['ranga']][1]), $p['id']]);
+        }
+        $db->prepare('UPDATE mapa_klucze SET skan_stan=?, skan_opis=? WHERE id=?')->execute([$udany ? 'udany' : 'nieudany', mb_substr($opis, 0, 250), (int) $k['id']]);
+    }
+}
+
+// Prawdziwe dane celu skanu: nazwa, frakcja, ładunek, trasa, poszukiwany (baza sygnatur). Null — celu nie ma w układzie.
+function klucze_skan_dane(int $cel, float $x, float $y): ?array
+{
+    $db = polaczenie_bazy();
+    if ($cel < 0) {
+        $c = klucze_npc_uklad($x, $y)[$cel] ?? null;
+        if (!$c) return null;
+        $nazwa = (string) $c['nazwa']; $ladunek = $c['radar']['ladunek'] ?? null; $trasa = $c['radar']['trasa'] ?? null; $frakcja = $c['frakcja'] ?? null;
+        if ($cel > -10000000 && tabela_sql_dostepna('npc_trasy')) { // stara trasa NPC: dane z rejestru tras
+            $q = $db->prepare('SELECT nazwa, frakcja, ladunek, port_a, port_b FROM npc_trasy WHERE id=?');
+            $q->execute([-$cel]);
+            if ($t = $q->fetch(PDO::FETCH_ASSOC)) { $nazwa = $t['nazwa']; $frakcja = $t['frakcja'] ?: null; $ladunek = $t['ladunek']; $trasa = "{$t['port_a']} ⇄ {$t['port_b']}"; }
+        }
+        return ['nazwa' => $nazwa, 'frakcja' => $frakcja, 'ladunek' => $ladunek, 'trasa' => $trasa, 'poszukiwany' => false, 'nagroda' => 0];
+    }
+    $radar = function_exists('radar_dostepny') && radar_dostepny();
+    $q = $db->prepare('SELECT m.nazwa, m.frakcja, m.wlasciciel, m.x, m.y' . ($radar ? ', b.nagroda, b.obiekt_id AS w_bazie' : ', 0 AS nagroda, NULL AS w_bazie')
+        . ' FROM mapa_obiekty m' . ($radar ? ' LEFT JOIN radar_baza_sygnatur b ON b.obiekt_id=m.id' : '') . ' WHERE m.id=? AND m.aktywny=1');
+    $q->execute([$cel]);
+    $c = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$c || hypot((float) $c['x'] - $x, (float) $c['y'] - $y) > LOT_W_UKLADZIE_PC) return null;
+    return ['nazwa' => (string) $c['nazwa'], 'frakcja' => $c['frakcja'] ?: (function_exists('mapa_frakcja_z_opisu') ? mapa_frakcja_z_opisu((string) $c['wlasciciel']) : null),
+        'ladunek' => null, 'trasa' => null, 'poszukiwany' => (bool) $c['w_bazie'], 'nagroda' => (int) ($c['nagroda'] ?? 0)];
 }
 
 function obsluz_klucze(string $akcja, bool $post): void
@@ -296,7 +486,23 @@ function obsluz_klucze(string $akcja, bool $post): void
             if (!klucze_moze($u, $okret)) odpowiedz(['mozna' => false]);
             $hangar = klucze_hangar($okret);
             if (!$hangar['tie']['razem'] && !$hangar['lambda']['razem']) odpowiedz(['mozna' => true, 'hangar' => $hangar, 'klucze' => []]);
-            odpowiedz(['mozna' => true, 'hangar' => $hangar, 'klucze' => array_map('klucze_dla_mapy', klucze_wiersze($okret)),
+            $piloci = null;
+            if (klucze_piloci_dostepni()) {
+                klucze_piloci_zapewnij($okret);
+                $q = $db->prepare('SELECT ranga, COUNT(*) AS ile, SUM(klucz_id IS NOT NULL) AS w_locie FROM mapa_piloci WHERE okret_id=? GROUP BY ranga');
+                $q->execute([$okret]);
+                $piloci = ['rangi' => [], 'razem' => 0, 'w_locie' => 0];
+                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                    $piloci['rangi'][$r['ranga']] = ['ile' => (int) $r['ile'], 'w_locie' => (int) $r['w_locie'], 'opis' => PILOT_RANGI[$r['ranga']][0] ?? $r['ranga'], 'mnoznik' => PILOT_RANGI[$r['ranga']][1] ?? 1];
+                    $piloci['razem'] += (int) $r['ile']; $piloci['w_locie'] += (int) $r['w_locie'];
+                }
+                $q = $db->prepare('SELECT imie, ranga, xp, klucz_id FROM mapa_piloci WHERE okret_id=? ORDER BY xp DESC LIMIT 8');
+                $q->execute([$okret]);
+                $piloci['najlepsi'] = array_map(static fn($p) => ['imie' => $p['imie'], 'ranga' => PILOT_RANGI[$p['ranga']][0] ?? $p['ranga'], 'xp' => (int) $p['xp'],
+                    'poziom' => klucze_poziom((int) $p['xp']), 'w_locie' => $p['klucz_id'] !== null], $q->fetchAll(PDO::FETCH_ASSOC));
+            }
+            $lista = array_map(static fn($k) => klucze_dla_mapy($k) + ['zaloga' => klucze_zaloga((int) $k['id'])], klucze_wiersze($okret));
+            odpowiedz(['mozna' => true, 'hangar' => $hangar, 'klucze' => $lista, 'piloci' => $piloci,
                 'cele' => klucze_cele($okret), 'rozkazy' => array_map(static fn($r) => $r[0], KLUCZ_ROZKAZY), 'zasieg_km' => KLUCZ_ZASIEG_KM]);
 
         case 'mapa_klucz_start':
@@ -326,11 +532,21 @@ function obsluz_klucze(string $akcja, bool $post): void
             $numer = 1; while (in_array($numer, $zajete, true)) $numer++;
             $klucz = ['okret_id' => $okret, 'predkosc_kms' => klucze_predkosc($okret, $rodzaj)];
             $plan = klucze_plan($klucz, 'patrol', null, $start, $k0);
-            $db->prepare('INSERT INTO mapa_klucze (okret_id,numer,rodzaj,maszyny,uklad_x,uklad_y,rozkaz,cel_obiekt_id,po_cel_id,po_promien_km,trasa_json,predkosc_kms,start_utc,rozkaz_utc)
-                VALUES (?,?,?,?,?,?,\'patrol\',NULL,?,?,?,?,?,?)')
-                ->execute([$okret, $numer, $rodzaj, KLUCZ_MASZYNY, (float) $o['x'], (float) $o['y'], $plan['po_cel_id'], $plan['po_promien_km'],
-                    json_encode($plan['trasa']), $klucz['predkosc_kms'], czas_utc($start), czas_utc($teraz)]);
-            odpowiedz(['ok' => true, 'start' => $start, 'nazwa' => ($rodzaj === 'lambda' ? 'Lambda ' : 'Klucz ') . $numer, 'hangar' => klucze_hangar($okret)]);
+            $tryb = (string) ($w['zaloga'] ?? 'automat');
+            if (!in_array($tryb, ['automat', 'as', 'standard', 'kadet'], true)) blad('Nieznany przydział załogi.');
+            $db->beginTransaction();
+            try {
+                $db->prepare('INSERT INTO mapa_klucze (okret_id,numer,rodzaj,maszyny,uklad_x,uklad_y,rozkaz,cel_obiekt_id,po_cel_id,po_promien_km,trasa_json,predkosc_kms,start_utc,rozkaz_utc)
+                    VALUES (?,?,?,?,?,?,\'patrol\',NULL,?,?,?,?,?,?)')
+                    ->execute([$okret, $numer, $rodzaj, KLUCZ_MASZYNY, (float) $o['x'], (float) $o['y'], $plan['po_cel_id'], $plan['po_promien_km'],
+                        json_encode($plan['trasa']), $klucz['predkosc_kms'], czas_utc($start), czas_utc($teraz)]);
+                $nowy = (int) $db->lastInsertId();
+                klucze_zaloga_przydziel($okret, $nowy, $rodzaj, $tryb);
+                if (klucze_piloci_dostepni()) $db->prepare('UPDATE mapa_klucze SET rozkaz_login=? WHERE id=?')->execute([(string) $u['login'], $nowy]);
+                $db->commit();
+            } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+            odpowiedz(['ok' => true, 'start' => $start, 'nazwa' => ($rodzaj === 'lambda' ? 'Lambda ' : 'Klucz ') . $numer, 'hangar' => klucze_hangar($okret),
+                'zaloga' => klucze_zaloga($nowy)]);
 
         case 'mapa_klucz_rozkaz':
             // Rozkaz dla zaznaczonych kluczy: nowa trasa od miejsca, w którym każdy klucz jest teraz.
@@ -355,6 +571,8 @@ function obsluz_klucze(string $akcja, bool $post): void
                 $plan = klucze_plan($k, $rozkaz, $celId, $t0, $k0);
                 $db->prepare('UPDATE mapa_klucze SET rozkaz=?, cel_obiekt_id=?, po_cel_id=?, po_promien_km=?, trasa_json=?, rozkaz_utc=? WHERE id=?')
                     ->execute([$rozkaz, in_array($rozkaz, ['patrol', 'powrot'], true) ? null : $celId, $plan['po_cel_id'], $plan['po_promien_km'], json_encode($plan['trasa']), czas_utc($teraz), $id]);
+                if (klucze_piloci_dostepni()) $db->prepare('UPDATE mapa_klucze SET rozkaz_login=?, skan_stan=?, skan_opis=NULL WHERE id=?')
+                    ->execute([(string) $u['login'], $rozkaz === 'skan' ? 'trwa' : null, $id]);
                 $wyniki[] = ['id' => $id, 'dolot' => $plan['dolot']];
             }
             odpowiedz(['ok' => true, 'klucze' => $wyniki, 'dolot' => max(array_column($wyniki, 'dolot'))]);

@@ -637,10 +637,10 @@ html.z-tlem #ekran::before {
 /* Szeroka karta jednostki: dwie kolumny jednakowych paneli (nagłówek-etykieta, treść w siatce), wysokość według treści. */
 .mapa-karta { overflow-x: hidden; }
 .mapa-karta select, .mapa-karta input, .mapa-karta button { max-width: 100%; }
-.mapa-karta.szeroka { width: min(780px, calc(100% - 24px)); bottom: auto; max-height: calc(100% - 152px); padding: 16px 18px 18px; font-size: 13px; }
+.mapa-karta.szeroka { width: min(440px, calc(100% - 24px)); bottom: auto; max-height: calc(100% - 152px); padding: 16px 18px 18px; font-size: 13px; }
 .mapa-karta.szeroka h2 { font-size: 20px; margin-bottom: 6px; }
-.mapa-karta-kolumny { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; margin-top: 4px; }
-.mapa-karta-kolumna { min-width: 0; display: grid; gap: 14px; align-content: start; }
+.mapa-karta-kolumny { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 4px; }
+.mapa-karta-kolumna { min-width: 0; display: grid; gap: 12px; align-content: start; }
 .mapa-karta .mapa-karta-kolumna > * { margin: 0 !important; padding: 12px 14px; border: 1px solid var(--linia); border-left: 1px solid var(--linia);
   border-radius: var(--promien); background: rgba(77, 226, 201, 0.035); font-size: 13px; }
 .mapa-karta-kolumna > .przycisk { padding: 10px 14px; background: rgba(77, 226, 201, 0.08); border-color: var(--linia-mocna); text-align: center; }

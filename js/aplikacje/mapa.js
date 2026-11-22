@@ -208,6 +208,8 @@ export default {
       ['<circle cx="24" cy="24" r="13"/><circle cx="24" cy="24" r="4"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7"/>', 'Moja pozycja (okolica)', () => { wybierz(null); doProgu('sektor'); }],
       // 2. Cała galaktyka.
       ['<path d="M25 24c0-3 5-3 5 0s-7 7-11 2-1-12 7-12 14 7 10 16-13 10-18 5"/>', 'Cała galaktyka', () => calaGalaktyka(true)],
+      // Sektor: okolica wybranej planety (obiektu) albo mojej pozycji — bez odznaczania.
+      ['<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>', 'Sektor (okolica)', () => doProgu('sektor')],
       // 3. Krawędź układu: wybranej planety albo mojej pozycji.
       ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ (krawędź układu)', () => doProgu('uklad')],
       // 4. Słońce: wybrana planeta i jej słońce albo najbliższe słońce i moja pozycja.

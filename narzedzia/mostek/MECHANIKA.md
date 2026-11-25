@@ -467,6 +467,29 @@ wykryły jego sensory. [U koncepcja, R wagi]
 | Ochrona okrętów | niska | wysoka | średnia |
 | Reakcja na przeciążenie | ignoruje | wycofuje się | odciąża burtę |
 
+### 11.1 Wdrożone w silniku [R]
+
+SI wydaje rozkazy przez tę samą kolejkę co gracze (czas wykonania, ranga) — spóźniona reakcja SI jest widoczna.
+Parametry dowódców w `silnik.py` STALE['dowodcy'] (= `api/bitwa_silnik.php` BITWA_STALE['dowodcy']):
+
+| | Radus | Calrissian | Ackbar |
+|---|---|---|---|
+| Dystans walki okrętu | 6 km | 10 km | 18 km |
+| Odwrót poniżej kadłuba | 15% | 35% | 55% |
+| Skłonność kluczy do uników | 0,10 | 0,25 | 0,40 |
+| Bombowce (X/Y/B-wing) | zawsze nalot | nalot, gdy torpedy przebiją osłony | nalot, gdy przebiją i brak myśliwców wroga w 10 km; inaczej ochrona |
+
+- **Okręt SI**: skręca z prędkością obrotu z profilu (ISD 30°/min, MC80 40°/min); dalej niż dystans walki + 2 km —
+  kurs na najbliższy okręt wroga; bliżej — burtą do wroga, tą o mniejszym obciążeniu generatorów (obraca się, gdy
+  gracze przeciążą jedną burtę). Poniżej progu odwrotu odchodzi od wroga; dalej niż 60 km od wszystkich wrogów —
+  stan `wycofana` (zdarzenie „wycofanie”).
+- **Klucz SI** (co tik, gdy nic nie ładuje się na jego kanałach): wróg do 1,5 km za rufą → unik (as: spirala; inni:
+  split-S 35%, beczka) z prawdopodobieństwem 2 × skłonność; wybór rozkazu nalot / atak / ochrona (zmiana z
+  prawdopodobieństwem 0,1 na tik — reaguje na przestrojenie osłon graczy); w nalocie, okręt ≤ 3 km w stożku 30° →
+  figura `torpedy` (energia ×8, Hz ×1,5 przez 4 s, odnowienie 30 s; tylko X-wing, Y-wing, B-wing); przy okręcie —
+  beczka / zygzak i przelot.
+- Rozkaz klucza `nalot`: prosto na najbliższy okręt wroga, z pominięciem myśliwców (dostępny też dla graczy).
+
 ---
 
 ## 12. Decyzje do podjęcia (wspólne)

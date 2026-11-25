@@ -5,6 +5,7 @@ Wszystko o pulpitach mostka (konsolach okrętów) w jednym miejscu.
 | Plik | Zawartość |
 |---|---|
 | [MECHANIKA.md](MECHANIKA.md) | mechanika walki wspólna dla wszystkich klas (wzory, reguły, decyzje wspólne) |
+| [PROMPT_SCENARIUSZ.md](PROMPT_SCENARIUSZ.md) | prompt z szablonem scenariusza bitwy — do pisania scenariuszy w innej instancji |
 | [WDROZENIE.md](WDROZENIE.md) | analiza wdrożenia do silnika gry: symulacje bitwy, model danych, XP, decyzje W1–W24, etapy |
 | [PULPITY.md](PULPITY.md) | zasady pulpitów: siatka 13×9, kolory, suwaki zakresu, symetria burt, ekrany, warstwy, czasowniki |
 | [profile/ISD_I.md](profile/ISD_I.md) · [profile/MC80.md](profile/MC80.md) · [profile/ZBIEG.md](profile/ZBIEG.md) | profile klas słownie (MC80: wątpliwości przed projektem pulpitów) |

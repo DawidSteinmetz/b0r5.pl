@@ -135,11 +135,13 @@ INSERT INTO rozkazy_profile (kod, nazwa, grupa, przygotowanie_s, dzialanie_s, od
   ('nozyce', 'nożyce (pojedynek)', 'walka', 2, 12, 0, NULL, NULL, NULL, 0, 'kadet', 1, 'celność obu stron zależy od rangi'),
   ('ogon', 'ogon (trzymaj się celu)', 'walka', 2, NULL, 0, NULL, 0.83, NULL, 0, 'kadet', 1, 'celniej po 3 s utrzymania'),
   ('eskorta', 'eskorta wskazanej jednostki', 'walka', 2, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, 'przejmuje część ostrzału chronionej jednostki'),
+  ('torpedy', 'torpedy protonowe', 'walka', 3, 4, 30, NULL, 0.8, NULL, 0, 'kadet', 1, 'okno ognia w okręt: energia ×8, Hz ×1,5 (X-wing, Y-wing, B-wing)'),
   ('patrol', 'patrol', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, NULL),
   ('ochrona', 'ochrona okrętu', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, NULL),
   ('atak', 'atak', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, NULL),
   ('skan', 'skan z bliska', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, NULL),
   ('powrot', 'powrót do hangaru', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, NULL),
+  ('nalot', 'nalot na okręt', 'rozkaz_klucza', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, 'prosto na najbliższy okręt wroga, z pominięciem myśliwców'),
   ('start', 'start z hangaru', 'rozkaz_klucza', 1, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 1, 'tylko gdy klucz gotowy (lampa niebieska)'),
   ('przestrojenie_reczne', 'przestrojenie Hz ręcznie', 'okret', 12, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, NULL),
   ('przestrojenie_preset', 'przestrojenie Hz z presetu', 'okret', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, NULL),
@@ -155,7 +157,7 @@ ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), grupa = VALUES(grupa), przygotowa
 -- Scenariusze
 -- Atak na Walako
 INSERT INTO bitwy_scenariusze (kod, nazwa, odprawa, opis_mg, okno_s, pole_km, zwyciestwo, porazka, status) VALUES
-  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s (pasmo 40 km po ok. 4 min od wyjścia, 10 km po ok. 5 min). Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
+  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s (pasmo 40 km po ok. 4 min od wyjścia). SI (Calrissian): MC80 staje ok. 10 km od Walako burtą o mniej obciążonych osłonach i obraca się, gdy gracze przeciążą jedną stronę; poniżej 35% kadłuba odchodzi i wycofuje się za 60 km. Y-wingi i B-wing wybierają nalot z torpedami tylko wtedy, gdy torpedy (Hz ×1,5) przebiją osłony Walako — inaczej walczą z TIE. Klucze z TIE na ogonie robią uniki (split-S, beczki, spirala asa). Wariant: dowodzenie radus (nalot zawsze, dystans 6 km, odwrót przy 15%) albo ackbar (18 km, 55%, bombowce chronią MC80, póki w pobliżu są TIE). Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), odprawa = VALUES(odprawa), opis_mg = VALUES(opis_mg), okno_s = VALUES(okno_s), pole_km = VALUES(pole_km), zwyciestwo = VALUES(zwyciestwo), porazka = VALUES(porazka), status = VALUES(status);
 
 DELETE FROM bitwy_scenariusze_wyzwalacze WHERE scenariusz_kod = 'walako_atak';
@@ -186,7 +188,7 @@ INSERT INTO bitwy_scenariusze_wyzwalacze (scenariusz_kod, nr, czas_s, rozrzut_s,
 
 -- Szkolenie: klucze rebelii nad Walako
 INSERT INTO bitwy_scenariusze (kod, nazwa, odprawa, opis_mg, okno_s, pole_km, zwyciestwo, porazka, status) VALUES
-  ('walako_klucze', 'Szkolenie: klucze rebelii nad Walako', 'Ćwiczenie obrony przed myśliwcami. Z nadprzestrzeni wychodzi grupa myśliwców rebelii bez okrętu macierzystego. Zadanie: zniszczyć napastników, zanim przebiją osłony.', 'Scenariusz bez MC80 — działa przed decyzjami M1–M10. Sprawdza filtr osłon na mieszance maszyn: X-wingi nie przebijają 1800 Hz, Y-wingi przebijają o 10%, B-wing o 40% (wymusza 3600 Hz).', 900, 120, 'Imperium: zestrzelone co najmniej 27 z 36 maszyn rebelii w 15 minut.', 'Imperium: kadłub Walako poniżej 90%.', 'roboczy')
+  ('walako_klucze', 'Szkolenie: klucze rebelii nad Walako', 'Ćwiczenie obrony przed myśliwcami. Z nadprzestrzeni wychodzi grupa myśliwców rebelii bez okrętu macierzystego. Zadanie: zniszczyć napastników, zanim przebiją osłony.', 'Scenariusz bez MC80 — działa przed decyzjami M1–M10. Sprawdza filtr osłon na mieszance maszyn: X-wingi nie przebijają 1800 Hz, Y-wingi przebijają o 10%, B-wing o 40% (wymusza 3600 Hz). SI (Radus): bombowce i X-wingi od razu idą w nalot na Walako i odpalają torpedy (Hz ×1,5), więc osłony muszą wyprzedzać torpedy; klucze z TIE na ogonie robią uniki.', 900, 120, 'Imperium: zestrzelone co najmniej 27 z 36 maszyn rebelii w 15 minut.', 'Imperium: kadłub Walako poniżej 90%.', 'roboczy')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), odprawa = VALUES(odprawa), opis_mg = VALUES(opis_mg), okno_s = VALUES(okno_s), pole_km = VALUES(pole_km), zwyciestwo = VALUES(zwyciestwo), porazka = VALUES(porazka), status = VALUES(status);
 
 DELETE FROM bitwy_scenariusze_wyzwalacze WHERE scenariusz_kod = 'walako_klucze';
@@ -194,7 +196,7 @@ DELETE FROM bitwy_scenariusze_strony WHERE scenariusz_kod = 'walako_klucze';
 
 INSERT INTO bitwy_scenariusze_strony (scenariusz_kod, strona, kolor, dowodzenie, rola, asy_proc, kadeci_proc) VALUES
   ('walako_klucze', 'Imperium', '#9fb4c8', 'gracze', 'obrona', 5, 35),
-  ('walako_klucze', 'Rebelia', '#ff6b55', 'calrissian', 'atak', 10, 30);
+  ('walako_klucze', 'Rebelia', '#ff6b55', 'radus', 'atak', 10, 30);
 
 INSERT INTO bitwy_scenariusze_jednostki (scenariusz_kod, nr, strona, profil_kod, nazwa, z_mapy, x_km, y_km, kurs_deg, predkosc_km_s, kadlub, wejscie_s, wejscie_rozrzut_s) VALUES
   ('walako_klucze', 1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0);

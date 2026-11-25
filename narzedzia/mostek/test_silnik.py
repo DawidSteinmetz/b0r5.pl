@@ -74,6 +74,13 @@ rowne('determinizm: te same pozycje', [(round(k['x'], 9), round(k['y'], 9)) for 
 c = S.rozegraj('walako_klucze', 6, 120)
 rowne('inne ziarno — inny przebieg', a['zdarzenia'] != c['zdarzenia'], True)
 
+# --- każdy scenariusz z dane/scenariusze.py buduje się i liczy 10 min bez błędu (nowe scenariusze z PROMPT_SCENARIUSZ.md)
+for sc in S.SCENARIUSZE:
+    try:
+        S.rozegraj(sc['kod'], 1, 600)
+    except Exception as e:
+        BLEDY.append(f'scenariusz {sc["kod"]}: {type(e).__name__}: {e}')
+
 if BLEDY:
     print('BŁĘDY:'); [print('  ' + x) for x in BLEDY]; sys.exit(1)
 print('testy silnika: OK')

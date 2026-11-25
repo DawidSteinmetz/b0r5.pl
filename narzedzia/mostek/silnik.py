@@ -10,6 +10,8 @@ import math, sys, zlib
 from mechanika import stopnie_natywne, stopien_w_gore, moc_zyly, pojemnosc, filtr
 from profile_klas import PROFILE, WSPOLNE
 W_ENERGIA_ZYLY = WSPOLNE['energia_zyly_lufy_J']  # energia bolta na aktywną żyłę baterii
+TORPEDY = ('X_WING', 'Y_WING', 'B_WING')          # maszyny z torpedami protonowymi
+UNIKI = ('beczka_l', 'beczka_p', 'zygzak', 'spirala', 'skok_cieniowy', 'split_s', 'petla', 'burst')
 from dane.maszyny import MASZYNY, WALKA
 from dane.uzbrojenie import UZBROJENIE
 from dane.rozkazy import ROZKAZY
@@ -47,7 +49,16 @@ STALE = {
     'p_min': 0.01, 'p_maks': 0.95,  # [R] granice celności na strzał (MECHANIKA 4.3)
     'prog_unieszkodliwienia': 25.0, # [?] W13: średnia integralność kadłuba poniżej — okręt unieszkodliwiony, nie walczy
     'przekroj_okretu': 0.05,        # [R] przekrój okrętu do celności baterii: długość² × 0,05 (ISD 128 000 m²)
-    'jon': {'ISD_I': (4e20, 1, 8), 'MC80': (2e20, 3, 8)},  # [R] bateria jonowa: energia lufy (J), lufy, ładowanie (tiki) taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
+    'jon': {'ISD_I': (4e20, 1, 8), 'MC80': (2e20, 3, 8)},  # [R] bateria jonowa: energia lufy (J), lufy, ładowanie (tiki)
+    'torpedy_energia': 8.0, 'torpedy_hz': 1.5,              # [R] torpedy protonowe: energia ×8, Hz ×1,5
+    'wycofanie_km': 60.0,           # [R] okręt w odwrocie opuszcza bitwę dalej niż tyle od wrogów
+    # [R] Dowódcy AI (MECHANIKA 11): dystans walki okrętu, próg odwrotu (% kadłuba), skłonność kluczy do uników,
+    # nalot bombowców: zawsze / gdy torpedy przebiją osłony (hz) / jw., ale tylko bez myśliwców wroga w pobliżu.
+    'dowodcy': {
+        'radus': {'dystans_km': 6.0, 'odwrot_proc': 15.0, 'unik': 0.10, 'nalot': 'zawsze'},
+        'calrissian': {'dystans_km': 10.0, 'odwrot_proc': 35.0, 'unik': 0.25, 'nalot': 'hz'},
+        'ackbar': {'dystans_km': 18.0, 'odwrot_proc': 55.0, 'unik': 0.40, 'nalot': 'ostroznie'},
+    },
     'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
     'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
     'promien_skanu_km': 10.0,       # [R] skan: krąży przy celu poza zasięgiem jego ognia
@@ -209,6 +220,7 @@ def utworz(scenariusz_kod, ziarno):
                                    'x': float(x if x is not None else mac['x']), 'y': float(y if y is not None else mac['y']),
                                    'kurs': 0.0, 'rozkaz': rozkaz, 'macierzysta': jedn_nr, 'ladunek': 0, 'akcje': 0,
                                    'ai': st[2] != 'gracze', 'oslona_pkt': 0.0, 'kurs_zadany': None})
+    stan['dowodcy'] = {st[0]: st[2] for st in s['strony']}
     tasmociag(stan)
     return stan
 
@@ -267,7 +279,10 @@ def cel_klucza(stan, k):
     mac = macierzysta(stan, k)
     r = k['rozkaz']
     if r == 'powrot' and mac is not None: return mac, 0.0, 'powrot'
-    if r == 'atak' or mac is None:
+    if r == 'nalot':
+        wj = wrogowie(stan, k['strona'])
+        if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
+    if r in ('atak', 'nalot') or mac is None:
         kt = najblizszy(wrogie_klucze(stan, k['strona']), k, STALE['zasieg_walki_atak_km'])
         if kt is not None: return kt, STALE['ogon_km'], 'klucz'
         wj = wrogowie(stan, k['strona'])
@@ -472,21 +487,93 @@ def ai_oslony(stan, tik, j):
             przyjmij_rozkaz(stan, f'{j["nr"]}:{gen["kod"]}', 'przestrojenie_auto', tik)
 
 
+def dowodca(stan, strona):
+    return STALE['dowodcy'].get(stan['dowodcy'].get(strona), STALE['dowodcy']['calrissian'])
+
+
 def ai_klucza(stan, tik, k):
-    """Prosta AI klucza (dowodzenie stron AI i klucze bez gracza): podejście do celu; w zasięgu ognia wroga — unik
-    (beczka albo zygzak), potem przelot. Rozkazy przez przyjmij_rozkaz — z tym samym czasem wykonania co gracze."""
+    """SI klucza strony AI (MECHANIKA 11), rozkazy przez przyjmij_rozkaz — z tym samym czasem wykonania co gracze:
+    1) wróg na ogonie (do 1,5 km za rufą) — unik: as spirala, inni split-S albo beczka (skłonność dowódcy);
+    2) maszyny z torpedami wybierają nalot na okręt albo walkę z myśliwcami — według Hz osłon okrętu gracza
+       (torpedy przebiją osłony → nalot) i dowódcy (Radus zawsze, Ackbar tylko bez myśliwców wroga w 10 km);
+    3) w nalocie, okręt do 3 km przed dziobem — torpedy; 4) przy okręcie — uniki i przelot."""
+    kan, kanr = kanal_klucza(k), kanal_rozkazu(k)
+    if any(w['kanal'] in (kan, kanr) and w['stan'] == 'przygotowanie' for w in stan['rozkazy']): return
+    cfg = dowodca(stan, k['strona'])
+    z = stan['ziarno']
+    fig = figura(stan, kan)
+    # 1) ogon
+    for t in wrogie_klucze(stan, k['strona']):
+        if odleglosc(k, t) <= 1.5 and abs(norm180(namiar(k, t) - k['kurs'])) > 135:
+            if fig not in UNIKI and los(z, tik, 'ai_ogon', kan) < 2 * cfg['unik']:
+                kod = 'spirala' if k['ranga'] == 'as' else 'split_s' if los(z, tik, 'ai_ogon2', kan) < 0.35 else \
+                    'beczka_l' if los(z, tik, 'ai_ogon3', kan) < 0.5 else 'beczka_p'
+                przyjmij_rozkaz(stan, kan, kod, tik, k['ranga'], k)
+            return
+    # 2) rozkaz: nalot, walka z myśliwcami albo ochrona okrętu matki
+    wj = wrogowie(stan, k['strona'])
+    if k['typ'] in TORPEDY and wj:
+        okret = min(wj, key=lambda j: odleglosc(k, j))
+        hz_o = max([g['hz_osiagane'] for g in okret['generatory']] or [0])
+        przebija = hz_klucza(k) * STALE['torpedy_hz'] > hz_o
+        mysliwce = najblizszy(wrogie_klucze(stan, k['strona']), k, 10.0) is not None
+        if cfg['nalot'] == 'zawsze': chce = 'nalot'
+        elif cfg['nalot'] == 'hz': chce = 'nalot' if przebija else 'atak'
+        else: chce = 'nalot' if przebija and not mysliwce else ('atak' if mysliwce else 'ochrona')
+    else:
+        chce = 'atak' if cfg['nalot'] != 'ostroznie' else 'ochrona'
+    if chce == 'ochrona' and macierzysta(stan, k) is None: chce = 'atak'
+    if k['rozkaz'] != chce and los(z, tik, 'ai_rozkaz', kan) < 0.1:
+        przyjmij_rozkaz(stan, kanr, chce, tik, k['ranga'], k)
+        return
     cel, _, rodzaj = cel_klucza(stan, k)
     if cel is None or rodzaj not in ('klucz', 'okret'): return
     d = odleglosc(k, cel)
-    kan = kanal_klucza(k)
-    fig = figura(stan, kan)
-    w_przygot = any(w['kanal'] == kan and w['stan'] == 'przygotowanie' for w in stan['rozkazy'])
-    if w_przygot: return
-    if d < 8 and fig not in ('beczka_l', 'beczka_p', 'zygzak', 'przelot') and los(stan['ziarno'], tik, 'ai', kan) < 0.15:
-        kod = 'beczka_l' if los(stan['ziarno'], tik, 'ai2', kan) < 0.5 else 'zygzak'
-        przyjmij_rozkaz(stan, kan, kod, tik, k['ranga'], k)
-    elif rodzaj == 'okret' and d < STALE['zasieg_ognia_klucza_km'] and fig != 'przelot' and los(stan['ziarno'], tik, 'ai3', kan) < 0.2:
+    # 3) torpedy
+    if rodzaj == 'okret' and k['typ'] in TORPEDY and k['rozkaz'] == 'nalot' and d <= STALE['zasieg_ognia_klucza_km'] \
+            and abs(norm180(namiar(k, cel) - k['kurs'])) <= STALE['stozek_okret_deg'] and fig != 'torpedy' and los(z, tik, 'ai_torp', kan) < 0.5:
+        przyjmij_rozkaz(stan, kan, 'torpedy', tik, k['ranga'], k)
+        return
+    # 4) przy okręcie: uniki i przelot
+    if rodzaj == 'okret' and d < 8 and fig not in UNIKI + ('przelot', 'torpedy') and los(z, tik, 'ai', kan) < cfg['unik']:
+        przyjmij_rozkaz(stan, kan, 'beczka_l' if los(z, tik, 'ai2', kan) < 0.5 else 'zygzak', tik, k['ranga'], k)
+    elif rodzaj == 'okret' and d < STALE['zasieg_ognia_klucza_km'] and fig not in ('przelot', 'torpedy') and los(z, tik, 'ai3', kan) < 0.2:
         przyjmij_rozkaz(stan, kan, 'przelot', tik, k['ranga'], k)
+
+
+def kadlub(j):
+    """Średnia ważona integralność kadłuba (sekcje w kolejności alfabetycznej — jak PHP)."""
+    udzialy = dict((s, u) for s, _, u in PROFILE[j['profil']]['kadlub'])
+    w = 0.0
+    for s in sorted(j['sekcje']): w += j['sekcje'][s] * udzialy[s]
+    return w
+
+
+def ai_okretu(stan, tik, j):
+    """SI okrętu strony AI: skręca z prędkością obrotu z profilu; podchodzi na dystans walki dowódcy, potem ustawia
+    się burtą — tą, której osłony są mniej obciążone; poniżej progu odwrotu kadłuba odchodzi od wroga, a dalej niż
+    60 km od wszystkich wrogów — wycofuje się z bitwy."""
+    cfg = dowodca(stan, j['strona'])
+    wj = wrogowie(stan, j['strona'])
+    sil = PROFILE[j['profil']].get('silniki') or {}
+    zwrot = (sil.get('obrot_deg_na_min') or 60) / 60
+    chce = j['kurs']
+    if kadlub(j) < cfg['odwrot_proc']:
+        if not wj or all(odleglosc(j, w) > STALE['wycofanie_km'] for w in wj):
+            j['stan'] = 'wycofana'
+            stan['zdarzenia'].append((tik, 'wycofanie', j['strona'], j['nazwa']))
+            return
+        chce = namiar(min(wj, key=lambda w: odleglosc(j, w)), j)
+    elif wj:
+        w = min(wj, key=lambda x: odleglosc(j, x))
+        if odleglosc(j, w) > cfg['dystans_km'] + 2:
+            chce = namiar(j, w)
+        else:
+            pol = len(j['generatory']) // 2 or 1
+            lewa = sum(g['obciazenie'] for g in j['generatory'][:pol])
+            prawa = sum(g['obciazenie'] for g in j['generatory'][pol:])
+            chce = namiar(j, w) - 90 if lewa > prawa else namiar(j, w) + 90   # wróg na burcie mniej obciążonej
+    j['kurs'] = norm180(j['kurs'] + max(-zwrot, min(zwrot, norm180(chce - j['kurs']))))
 
 
 # Figury kursu: zmiana kursu zadanego (°); klucz skręca do niego z własną prędkością kątową, aż do kolejnego rozkazu.
@@ -551,8 +638,9 @@ def krok(stan):
         k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
         if j['stan'] != 'w_bitwie': continue
-        # okręt AI (do czasu modelu manewrów): stoi w paśmie wymiany ognia od najbliższego wrogiego okrętu
-        if j['ai'] and j['v'] and any(odleglosc(j, w) <= STALE['dystans_walki_km'] for w in wrogowie(stan, j['strona'])): continue
+        if j['ai']:
+            ai_okretu(stan, tik, j)
+            if j['stan'] != 'w_bitwie': continue
         j['x'] += j['v'] * math.sin(radiany(j['kurs']))
         j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów
@@ -572,8 +660,10 @@ def krok(stan):
             strzal_w_klucz(stan, tik, k, cel)
         elif rodzaj == 'okret' and d <= STALE['zasieg_ognia_klucza_km'] and odchyl <= STALE['stozek_okret_deg']:
             k['ladunek'] = 0
+            torp = fig == 'torpedy' and k['typ'] in TORPEDY
             gen = generator_od_strony(cel, k['x'], k['y'])
-            trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'], hz_klucza(k), f'{k["strona"]} {k["nr"]}', kanal_klucza(k))
+            trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'] * (STALE['torpedy_energia'] if torp else 1),
+                             hz_klucza(k) * (STALE['torpedy_hz'] if torp else 1), f'{k["strona"]} {k["nr"]}' + (' torpedy' if torp else ''), kanal_klucza(k))
     for j in stan['jednostki']:
         if j['stan'] == 'w_bitwie': obrona_punktowa(stan, tik, j)
     for j in stan['jednostki']:

@@ -447,6 +447,7 @@ function bitwa_wczytaj_stan(array $b): array
     $q = $db->prepare('SELECT strona, dowodzenie FROM bitwy_scenariusze_strony WHERE scenariusz_kod=?');
     $q->execute([(string) $b['scenariusz_kod']]);
     $dowodzenie = $q->fetchAll(PDO::FETCH_KEY_PAIR);
+    $S['dowodcy'] = $dowodzenie;
     $q = $db->prepare('SELECT * FROM bitwy_jednostki WHERE bitwa_id=? ORDER BY id');
     $q->execute([$id]);
     $qg = $db->prepare("SELECT s.*, z.liczba, z.martwe, z.temperatury FROM bitwy_systemy s JOIN bitwy_zyly z ON z.system_id = s.id

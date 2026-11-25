@@ -242,6 +242,10 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   cele z rozkazu, ogień w stożku z celnością zależną od geometrii (ogon ×0,5), osłony maszyn, straty maszyn,
   60 działek PD ISD z pozycją i łukiem z rysunku użytkownika. Ogień turbolaserów i jonów okrętów, unieszkodliwienie
   okrętu poniżej 25% kadłuba (MECHANIKA 5.1).
+- SI dowódców (25.11.2026, MECHANIKA 11.1; migracja 069 odświeżona): okręt SI manewruje (dystans walki, burta mniej
+  obciążona do wroga, odwrót i wycofanie), klucze SI reagują na graczy (uniki z ogonem wroga, nalot albo walka zależnie
+  od Hz osłon graczy, torpedy). Nowy rozkaz klucza `nalot` i figura `torpedy`. Szablon nowych scenariuszy dla innych
+  instancji: [PROMPT_SCENARIUSZ.md](PROMPT_SCENARIUSZ.md).
 - Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

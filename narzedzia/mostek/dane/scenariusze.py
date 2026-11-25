@@ -15,7 +15,12 @@ SCENARIUSZE = [
                    'zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — '
                    'załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, '
                    'klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s '
-                   '(pasmo 40 km po ok. 4 min od wyjścia, 10 km po ok. 5 min). Profil MC80 jest propozycją (M1–M10).',
+                   '(pasmo 40 km po ok. 4 min od wyjścia). SI (Calrissian): MC80 staje ok. 10 km od Walako burtą o mniej obciążonych '
+                   'osłonach i obraca się, gdy gracze przeciążą jedną stronę; poniżej 35% kadłuba odchodzi i wycofuje się '
+                   'za 60 km. Y-wingi i B-wing wybierają nalot z torpedami tylko wtedy, gdy torpedy (Hz ×1,5) przebiją '
+                   'osłony Walako — inaczej walczą z TIE. Klucze z TIE na ogonie robią uniki (split-S, beczki, spirala asa). '
+                   'Wariant: dowodzenie radus (nalot zawsze, dystans 6 km, odwrót przy 15%) albo ackbar (18 km, 55%, '
+                   'bombowce chronią MC80, póki w pobliżu są TIE). Profil MC80 jest propozycją (M1–M10).',
         'okno_s': 3600, 'pole_km': 200,
         'zwyciestwo': 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii '
                       'unieszkodliwiony lub wycofany.',
@@ -54,14 +59,16 @@ SCENARIUSZE = [
         'odprawa': 'Ćwiczenie obrony przed myśliwcami. Z nadprzestrzeni wychodzi grupa myśliwców rebelii bez okrętu '
                    'macierzystego. Zadanie: zniszczyć napastników, zanim przebiją osłony.',
         'opis_mg': 'Scenariusz bez MC80 — działa przed decyzjami M1–M10. Sprawdza filtr osłon na mieszance maszyn: '
-                   'X-wingi nie przebijają 1800 Hz, Y-wingi przebijają o 10%, B-wing o 40% (wymusza 3600 Hz).',
+                   'X-wingi nie przebijają 1800 Hz, Y-wingi przebijają o 10%, B-wing o 40% (wymusza 3600 Hz). '
+                   'SI (Radus): bombowce i X-wingi od razu idą w nalot na Walako i odpalają torpedy (Hz ×1,5), '
+                   'więc osłony muszą wyprzedzać torpedy; klucze z TIE na ogonie robią uniki.',
         'okno_s': 900, 'pole_km': 120,
         'zwyciestwo': 'Imperium: zestrzelone co najmniej 27 z 36 maszyn rebelii w 15 minut.',
         'porazka': 'Imperium: kadłub Walako poniżej 90%.',
         'status': 'roboczy',
         'strony': [
             ('Imperium', '#9fb4c8', 'gracze', 'obrona', 5, 35),
-            ('Rebelia', '#ff6b55', 'calrissian', 'atak', 10, 30),
+            ('Rebelia', '#ff6b55', 'radus', 'atak', 10, 30),
         ],
         'jednostki': [
             (1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),

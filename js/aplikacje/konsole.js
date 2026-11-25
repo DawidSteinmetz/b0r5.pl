@@ -26,8 +26,10 @@ const rad = (d) => (d * Math.PI) / 180;
 const odl = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mmss = (s) => { s = Math.max(0, Math.round(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const km = (d) => (d >= 100 ? d.toFixed(0) : d.toFixed(1));
-// Opis okręgu: liczba bez zbędnych miejsc po przecinku (po powiększeniu pierścienie mają ułamki km).
-const zaokr = (r) => (r >= 10 ? Math.round(r) : r >= 1 ? Math.round(r * 10) / 10 : Math.round(r * 100) / 100);
+// Promienie okręgów zostają dokładne (rysunek w skali); zaokrągla się tylko opis — poniżej 1 km w metrach.
+const zaokr = (r) => r;
+const opisOdl = (r) => (r >= 10 ? `${Math.round(r)} km` : r >= 1 ? `${Math.round(r * 10) / 10} km`
+  : r >= 0.01 ? `${Math.round(r * 1000)} m` : `${Math.round(r * 10000) / 10} m`);
 
 // Sylwetki z góry (długość 1, dziób w górę, środek w 0,0) — według grafik: ISD (Top View; rufa z dwóch trójkątów —
 // od narożników burt ukośnie do bloku silników) i MC80 (ostry dziób, wąski kadłub, skrzydła odchylone do rufy).
@@ -78,17 +80,18 @@ export function nowyStanKonsol() {
   };
 }
 
-// Ekran z powiększaniem: + i − w rogu oraz kółko myszy (×1,25 na ząbek, od ×1/8 do ×64). rysuj(zoom) zwraca SVG.
+// Ekran z powiększaniem: + i − w rogu (×2) oraz kółko myszy (×1,4 na ząbek), od ×1/16 do ×10 000 — przy skali 50 km
+// to ok. 5 m na promień ekranu, więc widać manewry krążownika i kluczy tuż przy burcie. rysuj(zoom) zwraca SVG.
 function powiekszany(st, akcje, id, rysuj) {
   const z = st.zoom[id] || 1;
-  const ustaw = (nowy) => { st.zoom[id] = Math.min(64, Math.max(0.125, nowy)); akcje.odswiez(); };
+  const ustaw = (nowy) => { st.zoom[id] = Math.min(10000, Math.max(0.0625, nowy)); akcje.odswiez(); };
   const przycisk = (znak, mnoznik) => h('button', { type: 'button', style: 'width:26px;height:26px;padding:0;border:1px solid rgba(77,226,201,.6);border-radius:4px;'
     + 'background:rgba(11,16,18,.85);color:#4de2c9;font-size:16px;line-height:1;cursor:pointer', 'aria-label': znak === '+' ? 'Przybliż' : 'Oddal',
     onclick: (ev) => { ev.stopPropagation(); ustaw(z * mnoznik); } }, znak);
   const el = h('div', { style: 'position:relative;width:100%;height:100%' }, rysuj(z),
-    h('div', { style: 'position:absolute;right:4px;top:4px;display:flex;flex-direction:column;gap:3px' }, przycisk('+', 1.5), przycisk('−', 1 / 1.5)),
-    z !== 1 ? h('div', { style: `position:absolute;left:5px;top:4px;color:#4de2c9;font-size:11px;${CZCIONKA}` }, `×${z >= 1 ? z.toFixed(1) : z.toFixed(2)}`) : null);
-  el.addEventListener('wheel', (ev) => { ev.preventDefault(); ustaw(z * (ev.deltaY < 0 ? 1.25 : 0.8)); }, { passive: false });
+    h('div', { style: 'position:absolute;right:4px;top:4px;display:flex;flex-direction:column;gap:3px' }, przycisk('+', 2), przycisk('−', 0.5)),
+    z !== 1 ? h('div', { style: `position:absolute;left:5px;top:4px;color:#4de2c9;font-size:11px;${CZCIONKA}` }, `×${z >= 100 ? Math.round(z) : z >= 1 ? z.toFixed(1) : z.toFixed(2)}`) : null);
+  el.addEventListener('wheel', (ev) => { ev.preventDefault(); ustaw(z * (ev.deltaY < 0 ? 1.4 : 1 / 1.4)); }, { passive: false });
   return el;
 }
 
@@ -174,7 +177,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   const e = svg('svg', { viewBox: `0 0 ${2 * P} ${2 * P}`, style: `width:100%;height:100%;display:block;${CZCIONKA}` });
   for (const r of pierscienie) {
     e.append(svg('circle', { cx: P, cy: P, r: r * sk, fill: 'none', stroke: 'rgba(77,226,201,.35)', 'stroke-width': 1 }));
-    e.append(svg('text', { x: P + 4, y: P - r * sk + 12, fill: 'rgba(77,226,201,.7)', 'font-size': 11 }, `${r} km`));
+    e.append(svg('text', { x: P + 4, y: P - r * sk + 12, fill: 'rgba(77,226,201,.7)', 'font-size': 11 }, opisOdl(r)));
   }
   if (sektor) {
     const a0 = rad((srodek.kurs || 0) + sektor[0]), a1 = rad((srodek.kurs || 0) + sektor[1]), R = zasieg * sk;
@@ -240,7 +243,13 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     }
     const g = svg('g', { transform: `translate(${x} ${y}) rotate(${o.kurs || 0})`, style: wybierz ? 'cursor:pointer' : '' });
     if (klucz) g.append(svg('path', { d: 'M0 -6 L5 5 L-5 5Z', fill: kolor }));
-    else g.append(sylwetka(o.profil, kolor, Math.max(o === srodek ? 34 : 22, (o.dlugosc_km || 1) * sk)));
+    else {
+      // Przy dużym powiększeniu okręt w skali bywa większy od ekranu — wtedy półprzezroczysty, żeby nie zasłaniał kontaktów.
+      const rozmiar = Math.max(o === srodek ? 34 : 22, (o.dlugosc_km || 1) * sk);
+      const syl = sylwetka(o.profil, kolor, rozmiar);
+      if (rozmiar > P * 0.8) syl.setAttribute('opacity', rozmiar > 3 * P ? 0.18 : 0.35);
+      g.append(syl);
+    }
     if (wybierz) g.addEventListener('click', (ev) => { ev.stopPropagation(); wybierz(o); });
     ruch.append(g);
     const id = (klucz ? 'k' : 'j') + o.id;

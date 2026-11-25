@@ -101,8 +101,9 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   lampki ze zbliżeniem, rozkazy dla całej eskadry.
 - **Nawigacja** — ekran 250 / 500 / 1000 km, wybór celu, odczyty kursu, prędkości, odległości i ETA (sterowanie ruchem
   czeka na model ruchu okrętu w silniku). **Kontrola ognia** — ekran celu (ogień okrętu — kolejny etap).
-- **Powiększanie** każdego ekranu sytuacyjnego: przyciski + i − w rogu oraz kółko myszy (×1/8 … ×64) — przy małych
-  odległościach (krążownik blisko) liczy się każdy kilometr.
+- **Powiększanie** każdego ekranu sytuacyjnego: przyciski + i − w rogu (×2) oraz kółko myszy (×1,4), od ×1/16
+  do ×10 000 (przy skali 50 km ok. 5 m na promień ekranu); opisy okręgów poniżej 1 km w metrach; okręt w skali
+  większy od ekranu jest półprzezroczysty, żeby nie zasłaniał kontaktów przy burcie.
 - **Ekrany na żywo**: wiązka omiatania obraca się płynnie (animacja SVG, faza z zegara — odświeżanie stanu co 1 s
   jej nie przerywa), za nią rozmyta smuga poświaty (60°); kontakt rozbłyskuje, gdy wiązka nad nim przechodzi,
   i przygasa do następnego obrotu; między odczytami kontakty przesuwają się płynnie po kursie; tory to rozmyte,

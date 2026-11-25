@@ -205,6 +205,19 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
 
 ## 6. Kolejność prac
 
+**Stan (25.11.2026): E0 gotowe w repo, niezaimportowane.**
+- [`api/migracje/068_bitwy_symulacje.sql`](../../api/migracje/068_bitwy_symulacje.sql) — struktura: słowniki mechaniki,
+  profile klas z sekcjami kadłuba, typy maszyn, `rozkazy_profile`, scenariusze, stan bitwy, `mapa_bitwy` (rodzaj,
+  scenariusz, zegar), `mapa_piloci.xp` DECIMAL(10,1), `mapa_obiekty.profil_klasy`. Wymaga 010 i 067.
+- [`api/migracje/069_mostek_dane.sql`](../../api/migracje/069_mostek_dane.sql) — dane, generowane przez `dane_sql.py`
+  z `profile_klas.py` i `dane/`: stałe, 3 profile, 8 typów maszyn (W16), 35 rozkazów z czasem wykonania (W1, W18),
+  scenariusze „Atak na Walako” i „Szkolenie: klucze rebelii nad Walako” (bez MC80).
+- `api/schema.sql` nieprzebudowany: w katalogu migracji są dwa pliki 060 (`zbuduj.js` przerywa na duplikacie numeru),
+  a plik ma niezapisane przebudowanie 001–063 spoza tej pracy.
+- PHP kluczy rzutuje `xp` na int — po zmianie na DECIMAL działa bez zmian (połówki widać dopiero po zmianie
+  wyświetlania w E3).
+
+
 | Etap | Zakres | Gotowe, gdy |
 |---|---|---|
 | E0 | migracja 068 (rozdz. 3), `profile_klas` z generatora, `mapa_piloci.xp` DECIMAL | migracja wchodzi na czystą bazę i na produkcyjną |

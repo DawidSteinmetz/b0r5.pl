@@ -60,6 +60,9 @@ PROFILE = {
             'jonowe_wieze': 2, 'jonowe_nk7': 60,  # [R]
         },
         'mysliwce': 72,             # [U] = 18 kluczy
+        'typ_mysliwcow': 'TIE_LN',
+        'kadlub': [('burta_l', 'burta lewa', 0.25), ('burta_p', 'burta prawa', 0.25), ('dziob', 'dziób', 0.15),
+                   ('rufa', 'rufa', 0.15), ('nadbudowka', 'nadbudówka i mostek', 0.10), ('hangar', 'hangar', 0.10)],  # [?] W13
         'silniki': {'glowne': 3, 'manewrowe': 4, 'obrot_deg_na_min': 30},  # [U]
         'predkosc_km_s': 0.5,       # [R]
     },
@@ -98,6 +101,9 @@ PROFILE = {
             'jonowe_baterie': 6, 'jonowe_lufy': 3,  # [?] Mon Calamari polegają na jonach
         },
         'mysliwce': 36,             # [U] = 9 kluczy
+        'typ_mysliwcow': 'X_WING',  # [?] skład w scenariuszach
+        'kadlub': [('burta_l', 'burta lewa', 0.25), ('burta_p', 'burta prawa', 0.25), ('dziob', 'dziób', 0.20),
+                   ('rufa', 'rufa', 0.20), ('hangar', 'hangar', 0.10)],  # [?] W13
         'silniki': {'glowne': 3, 'manewrowe': 6, 'obrot_deg_na_min': 40},  # [?]
         'predkosc_km_s': 0.5,       # [R]
     },
@@ -121,6 +127,8 @@ PROFILE = {
         },
         'baterie': None,
         'mysliwce': 0,
+        'typ_mysliwcow': None,
+        'kadlub': [('calosc', 'kadłub', 1.0)],
         'silniki': None,
         'predkosc_km_s': 1.2,       # [R] burst 2,0 km/s przez 12 tików
     },

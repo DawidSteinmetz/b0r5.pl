@@ -9,6 +9,10 @@ declare(strict_types=1);
 //     zdarzenia (nowe w tym doliczeniu), jednostki, klucze, profile, maszyny.
 
 const BITWA_TORPEDY = ['X_WING', 'Y_WING', 'B_WING'];
+// Maszyny bez sensorów dalekiego zasięgu (jak dane/maszyny.py BEZ_SENSOROW): radar własny 5 km, dalej dane okrętu matki (60 km).
+const BITWA_BEZ_SENSOROW = ['TIE_LN', 'TIE_IN', 'TIE_SA'];
+const BITWA_RADAR_WLASNY_KM = 5.0;
+const BITWA_RADAR_MATKI_KM = 60.0;
 const BITWA_UNIKI = ['beczka_l', 'beczka_p', 'zygzak', 'spirala', 'skok_cieniowy', 'split_s', 'petla', 'burst'];
 
 const BITWA_STALE = [
@@ -313,29 +317,39 @@ function bitwa_wrogie_klucze(array $S, string $strona): array
     return $w;
 }
 
+// Czy klucz zna położenie obiektu (jak silnik.py widzi).
+function bitwa_widzi(array $S, array $k, array $o): bool
+{
+    if (!in_array($k['typ'], BITWA_BEZ_SENSOROW, true) || bitwa_odleglosc($k, $o) <= BITWA_RADAR_WLASNY_KM) return true;
+    $mac = bitwa_macierzysta($S, $k);
+    return $mac !== null && bitwa_odleglosc($S['jednostki'][$mac], $o) <= BITWA_RADAR_MATKI_KM;
+}
+
 // Cel klucza z rozkazu (jak silnik.py cel_klucza): ['k'|'j', indeks, promień km, rodzaj] albo [null, null, 0.0, null].
 function bitwa_cel_klucza(array $S, array $k): array
 {
     $mac = bitwa_macierzysta($S, $k);
     $r = $k['rozkaz'];
     if ($r === 'powrot' && $mac !== null) return ['j', $mac, 0.0, 'powrot'];
+    $wk = array_values(array_filter(bitwa_wrogie_klucze($S, $k['strona']), static fn($i) => bitwa_widzi($S, $k, $S['klucze'][$i])));
+    $wjw = array_values(array_filter(bitwa_wrogowie($S, $k['strona']), static fn($i) => bitwa_widzi($S, $k, $S['jednostki'][$i])));
     if ($r === 'nalot') {
-        $wj = bitwa_wrogowie($S, $k['strona']);
+        $wj = $wjw;
         if ($wj) return ['j', bitwa_najblizsza($S, $k, $wj), BITWA_STALE['dystans_ataku_km'], 'okret'];
     }
     if ($r === 'atak' || $r === 'nalot' || $mac === null) {
-        $kt = bitwa_najblizszy_klucz($S, bitwa_wrogie_klucze($S, $k['strona']), $k, BITWA_STALE['zasieg_walki_atak_km']);
+        $kt = bitwa_najblizszy_klucz($S, $wk, $k, BITWA_STALE['zasieg_walki_atak_km']);
         if ($kt !== null) return ['k', $kt, BITWA_STALE['ogon_km'], 'klucz'];
-        $wj = bitwa_wrogowie($S, $k['strona']);
+        $wj = $wjw;
         if ($wj) return ['j', bitwa_najblizsza($S, $k, $wj), BITWA_STALE['dystans_ataku_km'], 'okret'];
         return [null, null, 0.0, null];
     }
     if ($r === 'skan') {
-        $wj = bitwa_wrogowie($S, $k['strona']);
+        $wj = $wjw;
         if ($wj) return ['j', bitwa_najblizsza($S, $k, $wj), BITWA_STALE['promien_skanu_km'], 'okret'];
     }
     $zasieg = $r === 'patrol' ? BITWA_STALE['zasieg_walki_patrol_km'] : BITWA_STALE['zasieg_walki_ochrona_km'];
-    $kt = bitwa_najblizszy_klucz($S, bitwa_wrogie_klucze($S, $k['strona']), $S['jednostki'][$mac], $zasieg);
+    $kt = bitwa_najblizszy_klucz($S, $wk, $S['jednostki'][$mac], $zasieg);
     if ($kt !== null) return ['k', $kt, BITWA_STALE['ogon_km'], 'klucz'];
     return ['j', $mac, $r === 'patrol' ? BITWA_STALE['promien_patrolu_km'] : BITWA_STALE['promien_ochrony_km'], 'macierzysta'];
 }

@@ -47,7 +47,7 @@ Nie zmieniaj nazw kluczy ani kolejności pól w krotkach. Wartości spoza list d
         # nr, strona, profil, nazwa, z_mapy, x, y, kurs, prędkość km/s, kadłub %, wejście s, rozrzut wejścia s
         'jednostki': [
             (1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20),
+            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.25, 100, 120, 20),
         ],
         # fala, strona, jednostka_nr (okręt matka albo None), typ maszyny, liczba kluczy, start s, rozrzut s,
         # x, y (None = z hangaru okrętu matki; liczby = klucze wychodzą z nadprzestrzeni w tym punkcie), rozkaz
@@ -82,7 +82,7 @@ we wszystkich listach. Kolory: Imperium `#9fb4c8`, Rebelia `#ff6b55`, inne frakc
 | ZBIEG | kurier piracki HLK-P1 | 40 m | 1 generator | 900 | 0 | 60°/min |
 
 - `z_mapy`: 1 tylko dla okrętu, który istnieje na mapie gry (Walako) — inaczej 0.
-- `prędkość`: 0 = stoi; okręty 0,2–0,6 km/s. Okręt SI i tak manewruje sam (SI okrętu), prędkość to jego „cała naprzód”.
+- `prędkość`: 0 = stoi; okręty 0,15–0,3 km/s (ISD 975 km/h ≈ 0,27; myśliwce są niewiele szybsze). Okręt SI i tak manewruje sam (SI okrętu), prędkość to jego „cała naprzód”.
 - `kadłub %`: 1–100 (np. 60 = wchodzi do bitwy uszkodzony). Poniżej 25% okręt jest unieszkodliwiony.
 - `wejście s` > 0 = okręt czeka w nadprzestrzeni i wychodzi z niej po tym czasie. Sensory graczy widzą zmarszczkę
   nadprzestrzeni wcześniej (ostrzeżenie) — dobry moment na komunikat.
@@ -94,15 +94,18 @@ we wszystkich listach. Kolory: Imperium `#9fb4c8`, Rebelia `#ff6b55`, inne frakc
 
 | typ | strona | Hz broni | osłona Hz | v km/s | uwagi |
 |---|---|---|---|---|---|
-| TIE_LN | Imperium | 600 | 0 | 1,05 | tani, liczny |
-| TIE_IN | Imperium | 900 | 0 | 1,25 | najszybszy TIE |
-| TIE_SA | Imperium | 1500 | 0 | 0,80 | bombowiec |
-| LAMBDA | Imperium | 300 | 600 | 0,85 | prom, słaby |
-| X_WING | Rebelia | 1200 | 900 | 1,00 | torpedy protonowe |
-| Y_WING | Rebelia | 1600 | 1200 | 0,80 | torpedy, przebija 1800 Hz o ~10% |
-| A_WING | Rebelia | 800 | 600 | 1,30 | najszybszy, mały przekrój |
-| B_WING | Rebelia | 2400 | 1500 | 0,85 | torpedy, przebija 1800 Hz |
+| TIE_LN | Imperium | 600 | 0 | 0,333 | tani, liczny; bez radaru dalekiego |
+| TIE_IN | Imperium | 900 | 0 | 0,347 | najszybszy TIE; bez radaru dalekiego |
+| TIE_SA | Imperium | 1500 | 0 | 0,236 | bombowiec; bez radaru dalekiego |
+| LAMBDA | Imperium | 300 | 600 | 0,236 | prom, słaby |
+| X_WING | Rebelia | 1200 | 900 | 0,292 | torpedy protonowe |
+| Y_WING | Rebelia | 1600 | 1200 | 0,278 | torpedy, przebija 1800 Hz o ~10% |
+| A_WING | Rebelia | 800 | 600 | 0,361 | najszybszy, mały przekrój |
+| B_WING | Rebelia | 2400 | 1500 | 0,264 | torpedy, przebija 1800 Hz |
 
+  Prędkości to maks. prędkość w atmosferze z Wookieepedii (Legends): 0,29 km/s = 30 km w niecałe 2 minuty.
+  TIE nie mają radaru dalekiego zasięgu: widzą 5 km wokół siebie, dalej tylko to, co widzi radar okrętu matki
+  (60 km od niego). Klucze TIE bez okrętu matki (albo gdy jest unieszkodliwiony) są półślepe.
   Osłona okrętu zatrzymuje strzały o Hz niższym niż jej Hz osiągane; wyższe Hz przechodzą częściowo. Torpedy mnożą
   Hz × 1,5 i energię × 8 — dlatego bombowce wymuszają przestrojenie osłon w górę.
 - `rozkaz` startowy: `ochrona` (krąży 3 km przy matce, broni jej w 8 km) | `patrol` (8 km, broni w 15 km) |
@@ -168,7 +171,7 @@ Reakcje SI:
         ],
         'jednostki': [
             (1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20),
+            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.25, 100, 120, 20),
         ],
         'klucze': [
             (1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, None, None, 'ochrona'),

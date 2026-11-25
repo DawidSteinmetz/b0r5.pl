@@ -490,6 +490,14 @@ Parametry dowódców w `silnik.py` STALE['dowodcy'] (= `api/bitwa_silnik.php` BI
   beczka / zygzak i przelot.
 - Rozkaz klucza `nalot`: prosto na najbliższy okręt wroga, z pominięciem myśliwców (dostępny też dla graczy).
 
+### 11.2 Sensory i prędkość maszyn [R]
+
+- TIE (ln, in, sa) nie mają radaru dalekiego zasięgu: klucz widzi cele do 5 km od siebie, dalej tylko te, które są
+  w zasięgu radaru okrętu matki (60 km od niego, okręt w bitwie). Bez okrętu matki klucz TIE leci prosto, dopóki
+  czegoś nie zobaczy. Konsola Klucz pokazuje graczowi TIE tylko to, co klucz zna. Maszyny Rebelii mają własne sensory.
+- Prędkości maszyn = maks. prędkość w atmosferze z Wookieepedii (Legends): TIE/ln 1200 km/h (0,333 km/s),
+  X-wing 1050 (0,292), A-wing 1300, Y-wing 1000, B-wing 950, TIE/sa i Lambda 850, TIE/in 1250 [?].
+
 ---
 
 ## 12. Decyzje do podjęcia (wspólne)

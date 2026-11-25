@@ -12,7 +12,7 @@ from profile_klas import PROFILE, WSPOLNE
 W_ENERGIA_ZYLY = WSPOLNE['energia_zyly_lufy_J']  # energia bolta na aktywną żyłę baterii
 TORPEDY = ('X_WING', 'Y_WING', 'B_WING')          # maszyny z torpedami protonowymi
 UNIKI = ('beczka_l', 'beczka_p', 'zygzak', 'spirala', 'skok_cieniowy', 'split_s', 'petla', 'burst')
-from dane.maszyny import MASZYNY, WALKA
+from dane.maszyny import MASZYNY, WALKA, BEZ_SENSOROW, RADAR_WLASNY_KM, RADAR_MATKI_KM
 from dane.uzbrojenie import UZBROJENIE
 from dane.rozkazy import ROZKAZY
 from dane.scenariusze import SCENARIUSZE
@@ -272,6 +272,14 @@ def wrogie_klucze(stan, strona):
     return [x for x in stan['klucze'] if x['strona'] != strona and x['stan'] == 'w_locie']
 
 
+def widzi(stan, k, o):
+    """Czy klucz zna położenie obiektu: maszyny z własnymi sensorami — tak; TIE — w promieniu radaru krótkiego zasięgu
+    albo z danych okrętu matki (w bitwie), gdy obiekt jest w zasięgu jego radaru."""
+    if k['typ'] not in BEZ_SENSOROW or odleglosc(k, o) <= RADAR_WLASNY_KM: return True
+    mac = macierzysta(stan, k)
+    return mac is not None and odleglosc(mac, o) <= RADAR_MATKI_KM
+
+
 def cel_klucza(stan, k):
     """Cel klucza z rozkazu → (cel, promień km, rodzaj): atak — klucze wroga w 12 km, inaczej najbliższy okręt (2 km);
     skan — okręt (10 km); ochrona / patrol — klucze wroga w 8 / 15 km od okrętu matki, inaczej krąg 3 / 8 km wokół
@@ -279,20 +287,22 @@ def cel_klucza(stan, k):
     mac = macierzysta(stan, k)
     r = k['rozkaz']
     if r == 'powrot' and mac is not None: return mac, 0.0, 'powrot'
+    wk = [t for t in wrogie_klucze(stan, k['strona']) if widzi(stan, k, t)]
+    wjw = [j for j in wrogowie(stan, k['strona']) if widzi(stan, k, j)]
     if r == 'nalot':
-        wj = wrogowie(stan, k['strona'])
+        wj = wjw
         if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
     if r in ('atak', 'nalot') or mac is None:
-        kt = najblizszy(wrogie_klucze(stan, k['strona']), k, STALE['zasieg_walki_atak_km'])
+        kt = najblizszy(wk, k, STALE['zasieg_walki_atak_km'])
         if kt is not None: return kt, STALE['ogon_km'], 'klucz'
-        wj = wrogowie(stan, k['strona'])
+        wj = wjw
         if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
         return None, 0.0, None
     if r == 'skan':
-        wj = wrogowie(stan, k['strona'])
+        wj = wjw
         if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['promien_skanu_km'], 'okret'
     zasieg = STALE['zasieg_walki_patrol_km'] if r == 'patrol' else STALE['zasieg_walki_ochrona_km']
-    kt = najblizszy(wrogie_klucze(stan, k['strona']), mac, zasieg)
+    kt = najblizszy(wk, mac, zasieg)
     if kt is not None: return kt, STALE['ogon_km'], 'klucz'
     return mac, STALE['promien_patrolu_km'] if r == 'patrol' else STALE['promien_ochrony_km'], 'macierzysta'
 

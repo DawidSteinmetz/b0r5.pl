@@ -14,6 +14,8 @@ const NS = 'http://www.w3.org/2000/svg';
 const ZASIEG_SENSOROW_KM = 200; // jak automatyczne osłony w silniku (STALE zasieg_sensorow_km)
 // Radar: do 12 km obraz na bieżąco, 12–60 km echo odświeżane przejściem wiązki. Sensory: od 60 km wzwyż, też wiązką.
 const RADAR_BLISKI_KM = 12, RADAR_KM = 60, TEMPO_SKANU_S = 20;
+// TIE bez sensorów dalekiego zasięgu (dane/maszyny.py BEZ_SENSOROW): własny radar 5 km, dalej dane z radaru okrętu matki.
+const BEZ_SENSOROW = ['TIE_LN', 'TIE_IN', 'TIE_SA'], RADAR_WLASNY_KM = 5;
 const kosztSensorow = (km) => Math.round(0.245 * (km / 1000) ** 1.618 * 100) / 100; // jak bitwa_koszt_sensorow()
 const ZASIEG_OGNIA_KM = 3;
 const WLASNY = '#9fb4c8', OBCY = '#ff6b55';
@@ -585,7 +587,9 @@ function kluczPulpit(s, st, akcje, k, naglowekKlik) {
       klik: () => { st.skalaKlucza = skale[(skale.indexOf(st.skalaKlucza) + 1) % skale.length]; st.zoom.klucz = 1; akcje.odswiez(); },
       ekran: () => powiekszany(st, akcje, 'klucz', (z) => ekranPlot(s, st, { zasieg: st.skalaKlucza / z, srodek,
         pierscienie: [st.skalaKlucza / 5, st.skalaKlucza / 2, st.skalaKlucza].map((r) => zaokr(r / z)), prognozy: true,
-        obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie' && x.id !== k.id), ...s.jednostki, srodek] })) },
+        obiekty: [...[...s.klucze.filter((x) => x.stan === 'w_locie' && x.id !== k.id), ...s.jednostki.filter((x) => x.stan !== 'oczekuje')]
+          .filter((o) => !BEZ_SENSOROW.includes(k.typ) || o.strona === k.strona || odl(o, srodek) <= RADAR_WLASNY_KM
+            || (j.stan === 'w_bitwie' && odl(o, j) <= RADAR_KM)), srodek] })) },
     'odczyt: Hz klucza (baza / bieżący) · zmiany w cyklu': { etykieta: `Hz ${k.hz} · ${k.v ? `${k.v} km/s` : '—'}` },
     'START (gdy gotowy) · ATAK (w locie)': { etykieta: k.stan === 'hangar' ? 'START' : 'ATAK', klik: () => doKlucza(akcje, k, k.stan === 'hangar' ? 'start' : 'atak', 'Klucz') },
   };

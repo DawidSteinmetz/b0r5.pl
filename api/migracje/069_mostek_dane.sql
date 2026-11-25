@@ -102,14 +102,14 @@ WHERE profil_klasy IS NULL AND typ IN ('statek', 'jednostka') AND klasa LIKE 'MC
 
 -- Typy maszyn
 INSERT INTO typy_maszyn (kod, nazwa, strona, rola, hz_bazowe, oslona_hz, predkosc_km_s, przekroj_m2, energia_strzalu_j, ladowanie_tiki, opis) VALUES
-  ('TIE_LN', 'TIE/ln', 'Imperium', 'myśliwiec liniowy', 600, 0, 1.05, 40, 6e+17, 1, 'tani, liczny, bez osłon'),
-  ('TIE_IN', 'TIE/in Interceptor', 'Imperium', 'myśliwiec przechwytujący', 900, 0, 1.25, 35, 8e+17, 1, 'najszybszy TIE, bez osłon'),
-  ('TIE_SA', 'TIE/sa Bomber', 'Imperium', 'bombowiec', 1500, 0, 0.8, 45, 3e+18, 3, 'bomby przeciw okrętom'),
-  ('LAMBDA', 'Lambda T-4a', 'Imperium', 'prom', 300, 600, 0.85, 120, 2e+17, 2, 'prom pokładowy, słabe uzbrojenie'),
-  ('X_WING', 'T-65 X-wing', 'Rebelia', 'myśliwiec uniwersalny', 1200, 900, 1, 30, 1e+18, 1, 'osłony, torpedy protonowe'),
-  ('Y_WING', 'BTL Y-wing', 'Rebelia', 'myśliwiec-bombowiec', 1600, 1200, 0.8, 25, 1.5e+18, 2, 'działko jonowe, torpedy'),
-  ('A_WING', 'RZ-1 A-wing', 'Rebelia', 'myśliwiec przechwytujący', 800, 600, 1.3, 12, 6e+17, 1, 'najszybszy, mały przekrój'),
-  ('B_WING', 'A/SF-01 B-wing', 'Rebelia', 'ciężki myśliwiec szturmowy', 2400, 1500, 0.85, 35, 3e+18, 3, 'przebija osłony 1800 Hz')
+  ('TIE_LN', 'TIE/ln', 'Imperium', 'myśliwiec liniowy', 600, 0, 0.333, 40, 6e+17, 1, 'tani, liczny, bez osłon'),
+  ('TIE_IN', 'TIE/in Interceptor', 'Imperium', 'myśliwiec przechwytujący', 900, 0, 0.347, 35, 8e+17, 1, 'najszybszy TIE, bez osłon'),
+  ('TIE_SA', 'TIE/sa Bomber', 'Imperium', 'bombowiec', 1500, 0, 0.236, 45, 3e+18, 3, 'bomby przeciw okrętom'),
+  ('LAMBDA', 'Lambda T-4a', 'Imperium', 'prom', 300, 600, 0.236, 120, 2e+17, 2, 'prom pokładowy, słabe uzbrojenie'),
+  ('X_WING', 'T-65 X-wing', 'Rebelia', 'myśliwiec uniwersalny', 1200, 900, 0.292, 30, 1e+18, 1, 'osłony, torpedy protonowe'),
+  ('Y_WING', 'BTL Y-wing', 'Rebelia', 'myśliwiec-bombowiec', 1600, 1200, 0.278, 25, 1.5e+18, 2, 'działko jonowe, torpedy'),
+  ('A_WING', 'RZ-1 A-wing', 'Rebelia', 'myśliwiec przechwytujący', 800, 600, 0.361, 12, 6e+17, 1, 'najszybszy, mały przekrój'),
+  ('B_WING', 'A/SF-01 B-wing', 'Rebelia', 'ciężki myśliwiec szturmowy', 2400, 1500, 0.264, 35, 3e+18, 3, 'przebija osłony 1800 Hz')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), strona = VALUES(strona), rola = VALUES(rola), hz_bazowe = VALUES(hz_bazowe), oslona_hz = VALUES(oslona_hz), predkosc_km_s = VALUES(predkosc_km_s), przekroj_m2 = VALUES(przekroj_m2), energia_strzalu_j = VALUES(energia_strzalu_j), ladowanie_tiki = VALUES(ladowanie_tiki), opis = VALUES(opis);
 
 -- Czas wykonania rozkazów
@@ -157,7 +157,7 @@ ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), grupa = VALUES(grupa), przygotowa
 -- Scenariusze
 -- Atak na Walako
 INSERT INTO bitwy_scenariusze (kod, nazwa, odprawa, opis_mg, okno_s, pole_km, zwyciestwo, porazka, status) VALUES
-  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s (pasmo 40 km po ok. 4 min od wyjścia). SI (Calrissian): MC80 staje ok. 10 km od Walako burtą o mniej obciążonych osłonach i obraca się, gdy gracze przeciążą jedną stronę; poniżej 35% kadłuba odchodzi i wycofuje się za 60 km. Y-wingi i B-wing wybierają nalot z torpedami tylko wtedy, gdy torpedy (Hz ×1,5) przebiją osłony Walako — inaczej walczą z TIE. Klucze z TIE na ogonie robią uniki (split-S, beczki, spirala asa). Wariant: dowodzenie radus (nalot zawsze, dystans 6 km, odwrót przy 15%) albo ackbar (18 km, 55%, bombowce chronią MC80, póki w pobliżu są TIE). Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
+  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,25 km/s (pasmo 40 km po ok. 4 min od wyjścia). SI (Calrissian): MC80 staje ok. 10 km od Walako burtą o mniej obciążonych osłonach i obraca się, gdy gracze przeciążą jedną stronę; poniżej 35% kadłuba odchodzi i wycofuje się za 60 km. Y-wingi i B-wing wybierają nalot z torpedami tylko wtedy, gdy torpedy (Hz ×1,5) przebiją osłony Walako — inaczej walczą z TIE. Klucze z TIE na ogonie robią uniki (split-S, beczki, spirala asa). Wariant: dowodzenie radus (nalot zawsze, dystans 6 km, odwrót przy 15%) albo ackbar (18 km, 55%, bombowce chronią MC80, póki w pobliżu są TIE). Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), odprawa = VALUES(odprawa), opis_mg = VALUES(opis_mg), okno_s = VALUES(okno_s), pole_km = VALUES(pole_km), zwyciestwo = VALUES(zwyciestwo), porazka = VALUES(porazka), status = VALUES(status);
 
 DELETE FROM bitwy_scenariusze_wyzwalacze WHERE scenariusz_kod = 'walako_atak';
@@ -169,7 +169,7 @@ INSERT INTO bitwy_scenariusze_strony (scenariusz_kod, strona, kolor, dowodzenie,
 
 INSERT INTO bitwy_scenariusze_jednostki (scenariusz_kod, nr, strona, profil_kod, nazwa, z_mapy, x_km, y_km, kurs_deg, predkosc_km_s, kadlub, wejscie_s, wejscie_rozrzut_s) VALUES
   ('walako_atak', 1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-  ('walako_atak', 2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20);
+  ('walako_atak', 2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.25, 100, 120, 20);
 
 INSERT INTO bitwy_scenariusze_klucze (scenariusz_kod, fala, strona, jednostka_nr, typ_maszyny, liczba_kluczy, start_s, start_rozrzut_s, x_km, y_km, rozkaz) VALUES
   ('walako_atak', 1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, NULL, NULL, 'ochrona'),

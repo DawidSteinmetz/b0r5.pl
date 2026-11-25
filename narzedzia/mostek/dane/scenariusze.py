@@ -14,7 +14,7 @@ SCENARIUSZE = [
         'opis_mg': 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą '
                    'zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — '
                    'załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, '
-                   'klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s '
+                   'klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,25 km/s '
                    '(pasmo 40 km po ok. 4 min od wyjścia). SI (Calrissian): MC80 staje ok. 10 km od Walako burtą o mniej obciążonych '
                    'osłonach i obraca się, gdy gracze przeciążą jedną stronę; poniżej 35% kadłuba odchodzi i wycofuje się '
                    'za 60 km. Y-wingi i B-wing wybierają nalot z torpedami tylko wtedy, gdy torpedy (Hz ×1,5) przebiją '
@@ -33,7 +33,7 @@ SCENARIUSZE = [
         # nr, strona, profil, nazwa, z_mapy, x, y, kurs, prędkość, kadłub, wejście, rozrzut wejścia
         'jednostki': [
             (1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20),
+            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.25, 100, 120, 20),
         ],
         # fala, strona, jednostka_nr, typ, liczba kluczy, start, rozrzut, x, y, rozkaz
         'klucze': [

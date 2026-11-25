@@ -7,19 +7,28 @@ Hz bazowe dobrane tak, by rola maszyny wynikała z filtra osłon (MECHANIKA 3.2)
   i zmusza ISD do 3600 Hz (×8 poboru, ×27 zużycia);
 - TIE nie mają osłon (oslona_hz 0) — każdy strzał w maszynę to trafienie kadłuba.
 Energia strzału: rząd działa jonowego NK-7 (10¹⁸ J); bombowce więcej. Przekrój A — czołowy, do wzoru celności 4.3.
+Prędkość: maks. prędkość w atmosferze z Wookieepedii (Legends) w km/s — X-wing 1050 km/h, TIE/ln 1200, TIE/sa 850,
+Lambda 850, Y-wing 1000, A-wing 1300, B-wing 950; TIE/in (brak w infoboksie) 1250 [?] — 110 MGLT wobec 100 TIE/ln.
+Sensory: TIE nie mają własnego radaru dalekiego zasięgu (BEZ_SENSOROW) — widzą tylko w promieniu radaru krótkiego
+zasięgu, dalej korzystają z danych okrętu matki (jego radar, 60 km). Maszyny Rebelii mają własne sensory dalekie.
 """
 
 # kod, nazwa, strona, rola, hz_bazowe, oslona_hz, predkosc_km_s, przekroj_m2, energia_strzalu_j, ladowanie_tiki, opis
 MASZYNY = [
-    ('TIE_LN', 'TIE/ln', 'Imperium', 'myśliwiec liniowy', 600, 0, 1.05, 40, 6e17, 1, 'tani, liczny, bez osłon'),
-    ('TIE_IN', 'TIE/in Interceptor', 'Imperium', 'myśliwiec przechwytujący', 900, 0, 1.25, 35, 8e17, 1, 'najszybszy TIE, bez osłon'),
-    ('TIE_SA', 'TIE/sa Bomber', 'Imperium', 'bombowiec', 1500, 0, 0.80, 45, 3e18, 3, 'bomby przeciw okrętom'),
-    ('LAMBDA', 'Lambda T-4a', 'Imperium', 'prom', 300, 600, 0.85, 120, 2e17, 2, 'prom pokładowy, słabe uzbrojenie'),
-    ('X_WING', 'T-65 X-wing', 'Rebelia', 'myśliwiec uniwersalny', 1200, 900, 1.00, 30, 1e18, 1, 'osłony, torpedy protonowe'),
-    ('Y_WING', 'BTL Y-wing', 'Rebelia', 'myśliwiec-bombowiec', 1600, 1200, 0.80, 25, 1.5e18, 2, 'działko jonowe, torpedy'),
-    ('A_WING', 'RZ-1 A-wing', 'Rebelia', 'myśliwiec przechwytujący', 800, 600, 1.30, 12, 6e17, 1, 'najszybszy, mały przekrój'),
-    ('B_WING', 'A/SF-01 B-wing', 'Rebelia', 'ciężki myśliwiec szturmowy', 2400, 1500, 0.85, 35, 3e18, 3, 'przebija osłony 1800 Hz'),
+    ('TIE_LN', 'TIE/ln', 'Imperium', 'myśliwiec liniowy', 600, 0, 0.333, 40, 6e17, 1, 'tani, liczny, bez osłon'),
+    ('TIE_IN', 'TIE/in Interceptor', 'Imperium', 'myśliwiec przechwytujący', 900, 0, 0.347, 35, 8e17, 1, 'najszybszy TIE, bez osłon'),
+    ('TIE_SA', 'TIE/sa Bomber', 'Imperium', 'bombowiec', 1500, 0, 0.236, 45, 3e18, 3, 'bomby przeciw okrętom'),
+    ('LAMBDA', 'Lambda T-4a', 'Imperium', 'prom', 300, 600, 0.236, 120, 2e17, 2, 'prom pokładowy, słabe uzbrojenie'),
+    ('X_WING', 'T-65 X-wing', 'Rebelia', 'myśliwiec uniwersalny', 1200, 900, 0.292, 30, 1e18, 1, 'osłony, torpedy protonowe'),
+    ('Y_WING', 'BTL Y-wing', 'Rebelia', 'myśliwiec-bombowiec', 1600, 1200, 0.278, 25, 1.5e18, 2, 'działko jonowe, torpedy'),
+    ('A_WING', 'RZ-1 A-wing', 'Rebelia', 'myśliwiec przechwytujący', 800, 600, 0.361, 12, 6e17, 1, 'najszybszy, mały przekrój'),
+    ('B_WING', 'A/SF-01 B-wing', 'Rebelia', 'ciężki myśliwiec szturmowy', 2400, 1500, 0.264, 35, 3e18, 3, 'przebija osłony 1800 Hz'),
 ]
+
+# Maszyny bez własnych sensorów dalekiego zasięgu: widzą w promieniu RADAR_WLASNY_KM, dalej — dane okrętu matki.
+BEZ_SENSOROW = ('TIE_LN', 'TIE_IN', 'TIE_SA')
+RADAR_WLASNY_KM = 5.0   # [R] radar krótkiego zasięgu TIE
+RADAR_MATKI_KM = 60.0   # radar okrętu matki (PULPITY 1c: 12 km na bieżąco, 12–60 km echo wiązki)
 
 # Walka kluczy (kinematyka i broń) — [R] do strojenia: zwrot (°/s, as ×1,25), zasięg ognia do maszyn (km), stożek ognia
 # (± ° od dziobu maszyny), rozrzut θ (mrad) do wzoru celności 4.3: p = 1 − exp(−A / (2π σ²)), σ = R · θ_eff.

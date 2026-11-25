@@ -246,6 +246,8 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   obciążona do wroga, odwrót i wycofanie), klucze SI reagują na graczy (uniki z ogonem wroga, nalot albo walka zależnie
   od Hz osłon graczy, torpedy). Nowy rozkaz klucza `nalot` i figura `torpedy`. Szablon nowych scenariuszy dla innych
   instancji: [PROMPT_SCENARIUSZ.md](PROMPT_SCENARIUSZ.md).
+- TIE bez radaru dalekiego zasięgu (radar 5 km + dane okrętu matki), prędkości maszyn z Wookieepedii (ok. 3× wolniej),
+  MC80 w „Ataku na Walako” 0,25 km/s (MECHANIKA 11.2; migracja 069 odświeżona).
 - Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

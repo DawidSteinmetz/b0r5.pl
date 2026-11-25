@@ -371,8 +371,13 @@ szary — ograniczenia.
 | 2 · tekst | etykiety, wartości, statusy | SVG `*-teksty` + UI; przełącznik czcionki (podstawowa / Aurebesh) zmienia całą warstwę |
 | 3 · dane na żywo | siatka żył, temperatury, moc, radar | Canvas/DOM z aktualnego stanu SQL |
 
-Geometria (pliki gniazd) [U]: viewBox 1600×900, `preserveAspectRatio xMidYMid slice`, siatka 13×9 zaczyna się
-w (202, 112), kolumna 92 px, wiersz 74 px — razem 1196×666 w środku kadru 16:9. Każde gniazdo ma id, etykietę, typ,
+Geometria [U, 25.11.2026]: siatka 13×9 **kwadratowych** komórek (arkusz: 2,8 × 2,8 cm), proporcje 1,44 — między
+tabletem 4:3 a laptopem 16:10. Duże pulpity są dla komputerów i tabletów; telefony obsługują tylko klucze myśliwców.
+Ekran 60×60 lampek (siatka żył) = blok 3×3 komórek: osłony (generator lewy i prawy), turbolasery (wybrana bateria
+lewa i prawa), reaktory (reaktor główny). Kolory i znaczenie jak w pierwszych pulpitach; każdy pulpit ma własną
+kompozycję, wspólne są: szare suwaki zakresu w kolumnach 1 i 13 (wiersze 1–7) i symetria burt.
+Pliki gniazd SVG z 24.11 (viewBox 1600×900, siatka od (202, 112), komórka 92×74 px) są sprzed przejścia na kwadraty
+— do przeliczenia (np. komórka 86×86 px, siatka 1118×774 w kadrze 1600×900). Każde gniazdo ma id, etykietę, typ,
 wiersz/kolumnę i prostokąt (suwaki: także tor). SVG są gotowe dla Osłon, Turbolaserów, Silników i Reaktorów
 (w Downloads; w repo leżą w `assets/wnetrza/`, niezapisane).
 

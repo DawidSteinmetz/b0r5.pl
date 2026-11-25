@@ -18,14 +18,15 @@
 export const GWIAZDY_WERSJA = 1;
 const ZIARNO = 0x484c4b31; // „HLK1”
 
-// Siatka galaktyki jak na mapach astronawigacyjnych: kolumny A–Z (1500 pc), wiersze 1–24 (1800 pc) od północy.
-// Coruscant (0, 0) wypada w L-9. Kwadrat siatki dzieli się na 5 × 6 kafli po 300 pc (numery 01–30).
-const X0 = -17250, Y0 = 15300, KOL_PC = 1500, WIER_PC = 1800, KAFEL = 300;
-const TX = 26 * (KOL_PC / KAFEL), TY = 24 * (WIER_PC / KAFEL); // 130 × 144 kafli
+// Siatka galaktyki jak na mapach astronawigacyjnych: kolumny A–Z (2400 pc), wiersze 1–24 (3000 pc) od północy.
+// Siatka obejmuje cały dysk z zapasem; Coruscant (0, 0) wypada w L-9. Kwadrat siatki dzieli się na 8 × 10 kafli po 300 pc (numery 01–80).
+const X0 = -27000, Y0 = 26700, KOL_PC = 2400, WIER_PC = 3000, KAFEL = 300;
+const TX = 26 * (KOL_PC / KAFEL), TY = 24 * (WIER_PC / KAFEL); // 208 × 240 kafli
 const KAF_W_KOL = KOL_PC / KAFEL, KAF_W_WIER = WIER_PC / KAFEL;
+export const SIATKA = { X0, Y0, KAFEL, TX, TY };
 
 // Normalizacja: po regule odstępu zostaje ok. 3 200 000 gwiazd (policzone raz, wpisane na stałe).
-const K = 1202.0870882602437;
+const K = 1312.4836539999035;
 export const ODSTEP_PC = 0.5;       // bazowy minimalny odstęp między układami (ok. 1,6 lś)
 const UDZIAL_PODWOJNYCH = 0.3;     // ok. 30% układów to gwiazdy podwójne
 const KM_NA_AU = 149597870.7;
@@ -52,15 +53,80 @@ function szum(x, y) {
 }
 
 // Gęstość (bez jednostek): zgrubienie Głębokiego Jądra, dysk wykładniczy z dwoma ramionami spiralnymi, skupiska, brzeg.
+const EX = 1500, EY = -3000, EA = 23250, EB = 18600, E_COS = Math.cos(120 * Math.PI / 180), E_SIN = Math.sin(120 * Math.PI / 180);
+// Przestrzeń znana: komórki 1000 pc z planetami bazy (9) i ich sąsiedztwo (4–5), wypieczone raz z mapy
+// (wersja 1 generatora). Daje minimum gwiazd wokół każdej znanej planety, także tam, gdzie ramiona już wygasły.
+// Dodanie planety później NIE zmienia tej tablicy (inaczej przesunęłyby się gwiazdy).
+const ZNANE_MIN = 0.02;
+const ZX0 = -15000, ZY0 = 17000, ZKOM = 1000;
+const ZNANE = [
+  '04540000000000000000000000000000000000',
+  '05950000000000000000000000000000000000',
+  '04540000000000454000000000000000000000',
+  '00000000000000595454045554554000000000',
+  '00000000000045595595059995995000000000',
+  '00000000004559599595459559595540000000',
+  '00000000005959999599595559955950000000',
+  '00000000045599995955999999955540000000',
+  '00000000059599999599999999999540000000',
+  '00000000045599999999999999995950000000',
+  '00000000455599999999999999995540000000',
+  '00000000599999999999999999999950454000',
+  '00000004599999999999999999999954595000',
+  '00000005959999999999999999999995595000',
+  '00000005995599999999999999999995454000',
+  '00000455954599999999999999999554000000',
+  '00000599545999999999999959999555400000',
+  '00000459504599999999999999999999500000',
+  '45400059500459999999999999999995400000',
+  '59500059500459999999999999999955400000',
+  '45445445445599999999999999999959500000',
+  '00459500459599999999999999999955404540',
+  '00595400599599999999999999999554005950',
+  '00454004555599999999995995999595005950',
+  '00000005999999999999999599999954004540',
+  '00004545599595999999999999995554000000',
+  '00045959599999999999999999999595000000',
+  '00059545999999999999999999995454000000',
+  '00045404599999999999999599995540000000',
+  '00045545459999999999999959959950000000',
+  '00059959599999999995999595995540000000',
+  '00045599599999999999999559995000000000',
+  '00000455599999999999995559554000000000',
+  '00000005999999995995595999500000000000',
+  '00000005959999959954455955400000000000',
+  '00000454559999595955595950000000000000',
+  '00000595045555999999595540000000000000',
+  '00000454000059999999554000000000000000',
+  '00000000000045555555400000000000000000',
+  '00000000000000595540000000000000000000',
+  '00000000000000455950000000000000000000',
+  '00000000000000059950000000000000000000',
+  '00000000000000045540000000000000000000',
+  '00000000000000000000000000000000000000',
+];
+function znane(x, y) {
+  const gx = (x - ZX0) / ZKOM - 0.5, gy = (ZY0 - y) / ZKOM - 0.5;
+  const ix = Math.floor(gx), iy = Math.floor(gy), fx = gx - ix, fy = gy - iy;
+  const w = (i, j) => (j >= 0 && j < ZNANE.length && i >= 0 && i < ZNANE[0].length ? (ZNANE[j].charCodeAt(i) - 48) / 9 : 0);
+  const g = w(ix, iy) + (w(ix + 1, iy) - w(ix, iy)) * fx, d = w(ix, iy + 1) + (w(ix + 1, iy + 1) - w(ix, iy + 1)) * fx;
+  return g + (d - g) * fy;
+}
 const CX = 600, CY = 300, TAN_SKRETU = Math.tan(16 * Math.PI / 180);
 export function gestosc(x, y) {
   const dx = x - CX, dy = y - CY, r = Math.hypot(dx, dy);
-  const zgrubienie = 6 * Math.exp(-((r / 1800) ** 2));
+  const zgrubienie = 4 * Math.exp(-((r / 1800) ** 2));
   const faza = 2 * (Math.atan2(dy, dx) - Math.log(Math.max(r, 500) / 500) / TAN_SKRETU);
-  const ramie = ((1 + Math.cos(faza)) / 2) ** 2;
-  const dysk = Math.exp(-r / 6500) * (0.35 + 1.3 * ramie) * (0.6 + 0.8 * szum(x, y));
-  const brzeg = r > 21000 ? Math.exp(-(((r - 21000) / 1500) ** 2)) : 1;
-  return (zgrubienie + dysk) * brzeg;
+  // Ramiona coraz węższe ku obrzeżom, przestrzeń między nimi wygasa szybciej niż same ramiona.
+  const ramie = ((1 + Math.cos(faza)) / 2) ** (2 + r / 9000);
+  const miedzy = 0.35 * Math.exp(-r / 9000);
+  const dysk = Math.exp(-r / 9000) * (miedzy + 1.3 * ramie) * (0.6 + 0.8 * szum(x, y));
+  // Brzeg bez krawędzi: łagodne wygaszanie od elipsy znanych planet (najmniejszej, w której mieszczą się wszystkie)
+  // i od promienia ok. 17 kpc — gwiazdy rzedną stopniowo, a przy granicy siatki praktycznie ich już nie ma.
+  const ex = x - EX, ey = y - EY;
+  const q = Math.hypot((ex * E_COS + ey * E_SIN) / EA, (ey * E_COS - ex * E_SIN) / EB);
+  const brzeg = (q > 0.75 ? Math.exp(-(((q - 0.75) / 0.25) ** 2)) : 1) * (r > 17000 ? Math.exp(-(((r - 17000) / 6000) ** 2)) : 1);
+  return (zgrubienie + dysk) * brzeg + ZNANE_MIN * znane(x, y);
 }
 
 const lambdaKafla = (tx, ty) => gestosc(X0 + (tx + 0.5) * KAFEL, Y0 - (ty + 0.5) * KAFEL);
@@ -176,19 +242,57 @@ export function oznaczenie(s) {
   return `ISK ${kol}${wiersz}-${String(kafel).padStart(2, '0')}·${String(s.i).padStart(4, '0')}${s.towarzysz ? ' AB' : ''}`;
 }
 
+// Szum z daleka: próbka każdego kafla wprost do bufora pikseli (bez obiektów i tablic na punkt — płynne
+// przesuwanie mapy), potem jedno drawImage. Pokrywające się punkty rozjaśniają piksel.
+let szumPlotno = null, szumObraz = null, szum32 = null;
+const KOLORY32 = KLASY.map((k) => { const n = parseInt(k[2].slice(1), 16); return ((150 << 24) | ((n & 255) << 16) | (n & 0xff00) | (n >> 16)) >>> 0; });
+function klasaIdx(h) { const u = u01(h); let k = 0; while (u >= PROGI[k]) k++; return k; }
+function rysujSzum(g, v, tx0, tx1, ty0, ty1, c) {
+  const W = Math.max(1, Math.ceil(v.szer)), H = Math.max(1, Math.ceil(v.wys));
+  if (!szumPlotno || szumPlotno.width !== W || szumPlotno.height !== H) {
+    szumPlotno = document.createElement('canvas'); szumPlotno.width = W; szumPlotno.height = H;
+    szumObraz = szumPlotno.getContext('2d').createImageData(W, H);
+    szum32 = new Uint32Array(szumObraz.data.buffer);
+  }
+  szum32.fill(0);
+  // Z daleka przekształcenie jest liniowe: ekran = a + x·kx, b + y·ky.
+  const [a0, b0] = v.naEkran(0, 0), [a1] = v.naEkran(1, 0), [, b1] = v.naEkran(0, 1);
+  const kx = a1 - a0, ky = b1 - b0;
+  for (let ty = ty0; ty <= ty1; ty++) {
+    for (let tx = tx0; tx <= tx1; tx++) {
+      const n = liczbaWKaflu(tx, ty);
+      if (!n) continue;
+      const e = Math.min(n, n ** 0.7 * c);
+      const k = Math.floor(e) + (u01(hash32(tx, ty, -3, 0)) < e - Math.floor(e) ? 1 : 0);
+      const xr = X0 + tx * KAFEL, yr = Y0 - ty * KAFEL;
+      for (let i = 0; i < k; i++) {
+        const px = Math.round(a0 + (xr + u01(hash32(tx, ty, i, 1)) * KAFEL) * kx);
+        const py = Math.round(b0 + (yr - u01(hash32(tx, ty, i, 2)) * KAFEL) * ky);
+        if (px < 0 || py < 0 || px >= W || py >= H) continue;
+        const j = py * W + px, byl = szum32[j];
+        szum32[j] = byl ? ((Math.min(255, (byl >>> 24) + 60) << 24) | (byl & 0xffffff)) >>> 0 : KOLORY32[klasaIdx(hash32(tx, ty, i, 3))];
+      }
+    }
+  }
+  szumPlotno.getContext('2d').putImageData(szumObraz, 0, 0);
+  g.drawImage(szumPlotno, 0, 0, W, H);
+}
+
 // Rysowanie jako szum tła. v: { naMape, naEkran, skala (px/pc), szer, wys, napis(g, tekst, x, y), kroj }.
 // Przy oddaleniu rysujemy deterministyczną próbkę każdego kafla (pierwsze k gwiazd), najwyżej LIMIT punktów.
-const LIMIT = 30000, PODPISY = 60, KM_NA_PC = 30856775814913.7;
+const LIMIT = 50000, PODPISY = 60, KM_NA_PC = 30856775814913.7;
 export function rysujGwiazdyTla(g, v) {
   const [ax, ay] = v.naMape(0, 0), [bx, by] = v.naMape(v.szer, v.wys);
   const tx0 = Math.max(0, Math.floor((Math.min(ax, bx) - X0) / KAFEL)), tx1 = Math.min(TX - 1, Math.floor((Math.max(ax, bx) - X0) / KAFEL));
   const ty0 = Math.max(0, Math.floor((Y0 - Math.max(ay, by)) / KAFEL)), ty1 = Math.min(TY - 1, Math.floor((Y0 - Math.min(ay, by)) / KAFEL));
   if (tx0 > tx1 || ty0 > ty1) return;
   // Udział kafla w ekranie (dla kafli na brzegu), żeby próbka nie zależała od tego, co poza ekranem.
-  let suma = 0;
-  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) suma += liczbaWKaflu(tx, ty);
+  // Próbka z daleka rośnie wolniej niż liczba gwiazd (n^0,7), żeby rzadkie obrzeża nie znikały przy Jądrze.
+  let suma = 0, sumaW = 0;
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) { const n = liczbaWKaflu(tx, ty); suma += n; sumaW += n ** 0.7; }
   if (!suma) return;
-  const f = Math.min(1, LIMIT / suma);
+  const f = Math.min(1, LIMIT / suma), c = LIMIT / sumaW;
+  if (f < 1) { rysujSzum(g, v, tx0, tx1, ty0, ty1, c); return; }
   const kmNaPx = KM_NA_PC / v.skala;
   // Z daleka (próbka) reguła odstępu jest niewidoczna i jej nie liczymy; przy pełnym widoku pomijamy odrzuconych.
   const wgKoloru = new Map(), widoczne = [];
@@ -199,7 +303,7 @@ export function rysujGwiazdyTla(g, v) {
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
       const n = liczbaWKaflu(tx, ty);
-      const k = f >= 1 ? n : Math.round(n * f);
+      let k = n;
       const zach = f >= 1 && n ? zachowane(tx, ty) : null;
       for (let i = 0; i < k; i++) {
         if (zach && !zach[i]) continue;

@@ -86,12 +86,14 @@ kliknięcie ─► przygotowanie (cast) ─► działanie (czas trwania) ─► 
   reagowanie na początek jego figury albo przewidywanie.
 - **Kolejność w tiku**: rozkazy przypisane do tiku według czasu serwera w chwili odebrania; w obrębie tiku — według
   milisekund. Szybsza reakcja wygrywa remis.
-- **Liczy się tylko to, co dotarło na serwer** [U, 25.11.2026]. Pasek przygotowania rusza w przeglądarce od razu po
-  kliknięciu, ale rozkaz istnieje dopiero od chwili odebrania przez serwer. Opóźnienie albo utrata połączenia to w świecie
-  gry **obiektywne zakłócenie procesu** (zakłócenia wroga, drobna awaria, przeciążenie łącza) — nie odtwarzamy
-  rozkazów wstecz i nie wyrównujemy rozjechanych procesów. Konsola po potwierdzeniu dociąga pasek do czasu serwera
-  (opóźniony start = „proces zakłócony”); rozkaz, który nie dotarł, kończy się komunikatem „zakłócenie — rozkaz nie
-  wykonany” i trzeba go wydać ponownie.
+- **Łącze gry = łącze na okręcie** [U, 25.11.2026]. Serwer gry to w świecie gry komputer centralny analizujący
+  sytuację bitwy; przeglądarka gracza to konsola. Kłopoty techniczne między przeglądarką a serwerem są w grze kłopotami
+  między konsolą a komputerem centralnym: jeśli serwer za późno odbierze rozkaz uniku, to system za późno go wysłał
+  albo klucz za późno go odebrał. Rozkaz istnieje od chwili odebrania przez serwer i od niej liczy się jego czas
+  wykonania — jest **naturalnie opóźniony**. Nie wracamy do rozsynchronizowanych procesów i nie wyrównujemy niczego
+  wstecz. Pasek przygotowania rusza na konsoli od razu po kliknięciu; po potwierdzeniu dociąga się do czasu serwera.
+  Gdy łącze stoi dłużej, konsola ponawia wysyłkę (ten sam rozkaz, przyjęty raz) i pokazuje „brak łączności
+  z komputerem centralnym”; rozkaz liczy się dopiero, gdy dotrze.
 
 Czasy robocze [R] (sekundy czasu gry; c — przygotowanie, d — działanie, o — odnowienie):
 

@@ -195,3 +195,64 @@ UKLADY['Myśliwce'] = suwaki('suwak: maksymalna liczba kluczy do poderwania', 's
     ('W', 7, 7, 'wezwij załogę i pilotów'),
     ('W', 7, 9, 'START'),
 ]
+
+# Nawigacja: duży ekran 7×7 na samym środku (sylwetka ISD zawsze w centrum, w skali; okręgi odległości w skali
+# setek km), lewa strona — skręt w lewo i przesuw w lewo, prawa — w prawo; pod ekranem suwak ciągu głównego
+# między „pełne hamowanie” i „cała naprzód”.
+UKLADY['Nawigacja'] = suwaki('suwak: maksymalna prędkość kątowa skrętu w lewo', 'suwak: minimalna prędkość kątowa skrętu w lewo',
+                             'suwak: maksymalna prędkość kątowa skrętu w prawo', 'suwak: minimalna prędkość kątowa skrętu w prawo') + [
+    ('R', 2, 1, 'wzmocnij skręt w lewo'), ('R', 12, 1, 'wzmocnij skręt w prawo'),
+    ('Y', 3, 1, 'suwak: moc silników manewrowych lewej burty'), ('Y', 11, 1, 'suwak: moc silników manewrowych prawej burty'),
+    ('W', 4, 1, 'przesuw w lewo (bez zmiany zwrotu)'), ('W', 10, 1, 'przesuw w prawo (bez zmiany zwrotu)'),
+    ('W', 5, 1, 'skala ekranu: 250 km'), ('W', 7, 1, 'skala ekranu: 500 km'), ('W', 9, 1, 'skala ekranu: 1000 km'),
+    ('G', 6, 1, 'synchronizacja z sensorami (kontakty)'), ('G', 8, 1, 'synchronizacja z radarem (tory jednostek)'),
+    ('Y', 2, 2, 'suwak: skręt w lewo (różnica ciągu lewy − prawy)', 1, 3), ('Y', 12, 2, 'suwak: skręt w prawo (różnica ciągu prawy − lewy)', 1, 3),
+    ('Y', 3, 2, 'suwak: kąt dysz manewrowych lewej burty (przesuw pod skosem)', 1, 2),
+    ('Y', 11, 2, 'suwak: kąt dysz manewrowych prawej burty (przesuw pod skosem)', 1, 2),
+    ('B', 4, 2, 'EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · '
+                'wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy', 7, 7),
+    ('B', 3, 4, 'odczyt: prędkość kątowa'), ('B', 11, 4, 'odczyt: przeciążenie'),
+    ('W', 2, 5, 'zwrot o 90° w lewo'), ('W', 12, 5, 'zwrot o 90° w prawo'),
+    ('W', 3, 5, 'trym przechylenia w lewo'), ('W', 11, 5, 'trym przechylenia w prawo'),
+    ('G', 2, 6, 'synchronizacja z konsolą silników (ciąg lewej burty)'), ('G', 12, 6, 'synchronizacja z konsolą silników (ciąg prawej burty)'),
+    ('B', 3, 6, 'odczyt: wektor ruchu (kurs, prędkość)'), ('B', 11, 6, 'odczyt: zwrot dziobu'),
+    ('W', 2, 7, 'wybierz cel / punkt nawigacyjny'), ('W', 12, 7, 'kurs na wybrany cel'),
+    ('W', 3, 7, 'kurs przechwycenia'), ('W', 11, 7, 'kurs odejścia'),
+    ('G', 2, 8, 'synchronizacja z hipernapędem (punkt skoku)'), ('G', 12, 8, 'synchronizacja z grawitacją (Anchor / Lock)'),
+    ('B', 3, 8, 'odczyt: odległość do celu'), ('B', 11, 8, 'odczyt: czas do celu (ETA)'),
+    ('W', 2, 9, 'wyrównaj kurs (stabilizacja zwrotu)'), ('W', 12, 9, 'równaj ciąg z mocą reaktora'),
+    ('R', 3, 9, 'wzmocnij hamowanie'), ('R', 11, 9, 'wzmocnij ciąg główny'),
+    ('W', 4, 9, 'PEŁNE HAMOWANIE'), ('W', 10, 9, 'CAŁA NAPRZÓD'),
+    ('Y', 5, 9, 'suwak: ciąg główny (prędkość zadana)', 5, 1),
+]
+
+# Radar: obraz sytuacji na polu bitwy, nie sterowanie. Ekran 5×5 na środku (sylwetka ISD w centrum, okręgi w skali
+# pasm walki: 10 / 40 / 100 km) otoczony ramką przycisków jak luneta: filtry kontaktów po bokach, sektory i skale
+# nad i pod ekranem; na zewnątrz listy zagrożeń każdej burty.
+UKLADY['Radar'] = suwaki('suwak: maksymalny zasięg radaru', 'suwak: minimalny zasięg (tłumienie bliskich ech)',
+                         'suwak: maksymalna czułość odbiornika', 'suwak: minimalna czułość (próg szumu)') + [
+    ('R', 2, 1, 'wzmocnij nadajnik (zasięg)'), ('R', 12, 1, 'wzmocnij odbiornik (czułość)'),
+    ('Y', 3, 1, 'suwak: moc nadajnika'), ('Y', 11, 1, 'suwak: wzmocnienie odbiornika'),
+    ('G', 6, 1, 'synchronizacja z sensorami (dane skanu, Hz celów)'), ('G', 8, 1, 'synchronizacja z nawigacją (kurs i prędkość własna)'),
+    ('Y', 7, 1, 'suwak: tempo omiatania'),
+    ('W', 5, 2, 'sektor dziobowy lewej burty'), ('W', 6, 2, 'skala: 10 km'), ('W', 7, 2, 'skala: 40 km'),
+    ('W', 8, 2, 'skala: 100 km'), ('W', 9, 2, 'sektor dziobowy prawej burty'),
+    ('B', 2, 2, 'odczyt: kontakty obce'), ('B', 12, 2, 'odczyt: kontakty własne'),
+    ('Y', 3, 2, 'suwak: próg alarmu zbliżenia'), ('Y', 11, 2, 'suwak: próg alarmu kursu kolizyjnego'),
+    ('B', 5, 3, 'EKRAN RADARU · sylwetka ISD zawsze w środku · okręgi odległości 10 / 40 / 100 km · wiązka omiatania · '
+                'kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski', 5, 5),
+    ('W', 4, 3, 'filtr: własne'), ('W', 10, 3, 'filtr: obce'),
+    ('B', 2, 3, 'LISTA ZAGROŻEŃ LEWEJ BURTY · namiar, odległość, czas do zasięgu ognia', 2, 4),
+    ('B', 11, 3, 'LISTA ZAGROŻEŃ PRAWEJ BURTY · namiar, odległość, czas do zasięgu ognia', 2, 4),
+    ('W', 4, 4, 'filtr: klucze myśliwców'), ('W', 10, 4, 'filtr: okręty'),
+    ('W', 4, 5, 'filtr: pociski i bolty'), ('W', 10, 5, 'filtr: nieznane'),
+    ('G', 4, 6, 'synchronizacja IFF z konsolą myśliwców'), ('G', 10, 6, 'synchronizacja z kontrolą ognia (przydział celów)'),
+    ('W', 4, 7, 'oznacz kontakt'), ('W', 10, 7, 'śledź kontakt (tor)'),
+    ('W', 2, 7, 'tryb bierny (nasłuch)'), ('W', 12, 7, 'tryb aktywny (emisja)'),
+    ('G', 3, 7, 'wyślij namiar zagrożenia do osłon'), ('G', 11, 7, 'wyślij namiar zagrożenia do turbolaserów'),
+    ('W', 5, 8, 'sektor rufowy lewej burty'), ('W', 6, 8, 'pokaż tory'), ('W', 7, 8, 'ALARM ZBLIŻENIA'),
+    ('W', 8, 8, 'pokaż prognozy torów'), ('W', 9, 8, 'sektor rufowy prawej burty'),
+    ('R', 2, 8, 'wzmocnij tłumienie zakłóceń'), ('R', 12, 8, 'wzmocnij rozdzielczość obrazu'),
+    ('W', 2, 9, 'kasuj ślady'), ('W', 12, 9, 'zamroź obraz'),
+    ('W', 5, 9, 'zakłócenia: tłumienie'), ('W', 7, 9, 'wyrównaj obraz (filtr szumu)'), ('W', 9, 9, 'zakłócenia: wskaż źródło'),
+]

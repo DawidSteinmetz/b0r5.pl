@@ -301,7 +301,7 @@ kątowa, czas od 0 do maks. obrotu), a ciąg jako ułamek maksimum zależny od p
 
 **Konsola nawigacji** [U koncepcja]: duży ekran z kręgami odległości (np. 250 / 500 / 1000 km) i sylwetką okrętu
 w skali, suwak skrętu w lewo po lewej, w prawo po prawej, „cała naprzód”, „pełne hamowanie”, kąt i moc silników
-manewrowych (przesuw pod skosem). Arkusz „Nawigacja” nie powstał.
+manewrowych (przesuw pod skosem). Układ ISD: pulpit „Nawigacja” w `uklady/isd_i.py` (ekran 7×7 na środku).
 
 ---
 

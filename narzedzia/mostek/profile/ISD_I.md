@@ -51,9 +51,17 @@ baterię przy 3600 Hz.
 ## Pulpity
 
 18 stanowisk w dwóch dołkach (9 + 9). Gotowe układy (siatka 13×9, w `uklady/isd_i.py`): Osłony, Turbolasery,
-Silniki, Reaktory, Kontrola ognia, Sensory, Grawitacja, Myśliwce. SVG + gniazda (stara siatka 92×74, do
+Silniki, Reaktory, Kontrola ognia, Sensory, Grawitacja, Myśliwce, Nawigacja, Radar. SVG + gniazda (stara siatka 92×74, do
 przeliczenia): Osłony, Turbolasery, Silniki, Reaktory.
-Brakuje [U z audytu]: Nawigacja i hipernapęd, Działa jonowe (osobno od turbolaserów — inna mechanika), Hangar
+Nawigacja i Radar mają ten sam środek (sylwetka ISD zawsze w centrum ekranu, w skali, z okręgami odległości),
+ale inną funkcję i kompozycję:
+- **Nawigacja** — sterowanie ruchem: ekran 7×7, okręgi 250 / 500 / 1000 km, wektor ruchu osobno od zwrotu dziobu;
+  po bokach skręt i przesuw każdej burty, pod ekranem suwak ciągu głównego między „pełne hamowanie” i „cała naprzód”.
+- **Radar** — obraz pola bitwy: ekran 5×5 w ramce przycisków (filtry kontaktów po bokach, sektory i skale nad i pod),
+  okręgi w skali pasm walki 10 / 40 / 100 km, IFF, tory i prognozy torów; na zewnątrz listy zagrożeń każdej burty.
+  Różnica wobec Sensorów: Sensory sterują skanem i mierzą Hz, Radar pokazuje i śledzi to, co wykryto.
+
+Brakuje [U z audytu]: hipernapęd, Działa jonowe (osobno od turbolaserów — inna mechanika), Hangar
 i lotnictwo (straty, powroty), Uszkodzenia i naprawy, Centrum taktyczne (mapa sytuacyjna, cele, prognozy torów).
 
 ## Scenariusz wzorcowy: atak na Walako (wyjście ze skoku 100 km)

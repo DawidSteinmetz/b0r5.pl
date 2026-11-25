@@ -274,12 +274,13 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
       const k = rad(o.kurs || 0);
       e.append(svg('line', { x1: x, y1: y, x2: px(o.x + o.v * 30 * Math.sin(k)), y2: py(o.y + o.v * 30 * Math.cos(k)), stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
     }
-    // Ruch między odczytami (co 1 s): kontakt przesuwa się płynnie po swoim kursie, zamiast skakać.
+    // Ruch między odczytami: kontakt leci dalej po swoim kursie (przewidywanie do 10 s), aż kolejny odczyt z serwera
+    // przerysuje go w prawdziwej pozycji — nie staje, gdy odpowiedź spóźnia się o kilka sekund.
     const ruch = svg('g');
     if (o.v && o !== srodek && !o.statyczny) {
-      const k = rad(o.kurs || 0);
+      const k = rad(o.kurs || 0), PRZOD_S = 10;
       ruch.append(svg('animateTransform', { attributeName: 'transform', type: 'translate', from: '0 0',
-        to: `${(o.v * Math.sin(k) * sk).toFixed(3)} ${(-o.v * Math.cos(k) * sk).toFixed(3)}`, dur: '1s', fill: 'freeze' }));
+        to: `${(o.v * PRZOD_S * Math.sin(k) * sk).toFixed(3)} ${(-o.v * PRZOD_S * Math.cos(k) * sk).toFixed(3)}`, dur: `${PRZOD_S}s`, fill: 'freeze' }));
     }
     // Poświata echa: pełna jasność, gdy wiązka przechodzi nad kontaktem, potem zanik do następnego obrotu.
     if (o !== srodek && o.statyczny) {

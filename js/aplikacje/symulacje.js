@@ -32,7 +32,7 @@ export default {
     const panel = (tytul, ...zawartosc) => h('div.panel', h('h2', tytul), ...zawartosc);
     const para = (etykieta, wartosc) => h('tr', h('td.slaby', { style: 'width:120px;white-space:nowrap' }, etykieta), h('td', wartosc));
     const blad = (e) => h('div.komunikat.blad', e.message || String(e));
-    const zatrzymaj = () => { if (zegar) clearInterval(zegar); zegar = null; };
+    const zatrzymaj = () => { if (zegar) clearTimeout(zegar); zegar = null; };
 
     // ------------------------------------------------------------------ lista
     async function lista() {
@@ -332,19 +332,31 @@ export default {
           : h('div.slaby.maly-tekst', 'Jeszcze nic się nie wydarzyło.')));
       }
 
+      // Odpytywanie bez nakładania: następne zapytanie dopiero po odpowiedzi (co ok. 1 s); błąd sieci — ponowienie po 3 s.
+      let wToku = false;
       async function odswiez() {
-        if (koniec) return;
+        if (koniec || wToku) return;
+        wToku = true;
+        const t0 = Date.now();
+        let nastepne = 1000;
         try {
           const { stan } = await api('bitwa_stan', undefined, { id });
           rysuj(stan);
-          if (['zakonczona', 'anulowana'].includes(stan.status)) zatrzymaj();
-        } catch (e) { wyczysc(komunikat).append(blad(e)); zatrzymaj(); }
+          if (['zakonczona', 'anulowana'].includes(stan.status)) nastepne = null;
+          else if (komunikat.querySelector('.blad-sieci')) wyczysc(komunikat);
+        } catch (e) {
+          if (e.kod === 403 || e.kod === 404) { wyczysc(komunikat).append(blad(e)); nastepne = null; }
+          else { wyczysc(komunikat).append(h('div.komunikat.blad.blad-sieci', `${e.message} Ponawiam…`)); nastepne = 3000; }
+        } finally {
+          wToku = false;
+        }
+        zatrzymaj();
+        if (nastepne !== null && !koniec) zegar = setTimeout(odswiez, Math.max(0, nastepne - (Date.now() - t0)));
       }
 
       przeglad.append(stanowiskaEl, panel('RADAR', radar), okrety, klucze, zdarzenia);
       wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, przeglad, wynikXp);
       odswiez();
-      zegar = setInterval(odswiez, 1000);
     }
 
     w.append(tresc);

@@ -706,6 +706,9 @@ function obsluz_bitwa(string $akcja, bool $post): void
         'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
+    // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle
+    // z rozkazami (PHP inaczej szereguje wszystkie zapytania jednej przeglądarki).
+    if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
     if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna()]);
     if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
     if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);

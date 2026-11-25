@@ -274,6 +274,9 @@ function bitwa_silnik_gotowy(): bool
             polaczenie_bazy()->query('SELECT ranga, ladunek, ai FROM bitwy_klucze LIMIT 0');
             polaczenie_bazy()->query('SELECT kanal FROM bitwy_rozkazy LIMIT 0');
             polaczenie_bazy()->query('SELECT tasma_tik FROM bitwy_jednostki LIMIT 0');
+            polaczenie_bazy()->query('SELECT oslona_pkt, kurs_zadany FROM bitwy_klucze LIMIT 0');
+            polaczenie_bazy()->query('SELECT zwrot_deg_s FROM typy_maszyn LIMIT 0');
+            polaczenie_bazy()->query('SELECT nr FROM profile_klas_uzbrojenie LIMIT 0');
             $jest = true;
         }
         catch (Throwable $e) { $jest = false; }
@@ -478,7 +481,8 @@ function bitwa_wczytaj_stan(array $b): array
         $S['klucze'][] = ['id' => (int) $r['id'], 'strona' => $r['strona'], 'nr' => (int) $r['numer'], 'typ' => $r['typ_maszyny'], 'maszyny' => (int) $r['maszyny'],
             'ranga' => $r['ranga'], 'moc' => (float) $r['moc'], 'stan' => $r['stan'], 'start' => $r['start_tik'] !== null ? (int) $r['start_tik'] : null, 'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'],
             'kurs' => (float) $r['kurs_deg'], 'rozkaz' => $r['rozkaz'], 'macierzysta' => $r['macierzysta_id'] !== null ? ($nrJednostki[(int) $r['macierzysta_id']] ?? null) : null,
-            'ladunek' => (int) $r['ladunek'], 'akcje' => (int) $r['akcje'], 'ai' => (bool) (int) $r['ai']];
+            'ladunek' => (int) $r['ladunek'], 'akcje' => (int) $r['akcje'], 'ai' => (bool) (int) $r['ai'],
+            'oslona_pkt' => (float) ($r['oslona_pkt'] ?? 0), 'kurs_zadany' => isset($r['kurs_zadany']) ? (float) $r['kurs_zadany'] : null];
     }
     // Rozkazy potrzebne silnikowi: w przygotowaniu i działające, z bieżącego cyklu (limit zmian) i w odnowieniu.
     $q = $db->prepare("SELECT * FROM bitwy_rozkazy WHERE bitwa_id=? AND (stan IN ('przygotowanie','dziala') OR tik >= ? OR odnowienie_do_tik > ?) ORDER BY id");
@@ -516,9 +520,10 @@ function bitwa_zapisz_stan(array $S): void
         }
         foreach ($j['sekcje'] as $sek => $v) $updS->execute([$v, $j['id'], $sek]);
     }
-    $updK = $db->prepare('UPDATE bitwy_klucze SET stan=?, start_tik=?, rozkaz=?, x_km=?, y_km=?, kurs_deg=?, ladunek=?, akcje=?, figura=? WHERE id=?');
+    $updK = $db->prepare('UPDATE bitwy_klucze SET stan=?, maszyny=?, start_tik=?, rozkaz=?, x_km=?, y_km=?, kurs_deg=?, ladunek=?, akcje=?, figura=?, oslona_pkt=?, kurs_zadany=? WHERE id=?');
     foreach ($S['klucze'] as $k) {
-        $updK->execute([$k['stan'], $k['start'], $k['rozkaz'], $k['x'], $k['y'], $k['kurs'], $k['ladunek'], $k['akcje'], bitwa_figura($S, bitwa_kanal_klucza($k)), $k['id']]);
+        $updK->execute([$k['stan'], max(0, $k['maszyny']), $k['start'], $k['rozkaz'], $k['x'], $k['y'], $k['kurs'], $k['ladunek'], $k['akcje'],
+            bitwa_figura($S, bitwa_kanal_klucza($k)), $k['oslona_pkt'], $k['kurs_zadany'], $k['id']]);
     }
     $insR = $db->prepare('INSERT INTO bitwy_rozkazy (bitwa_id, uid, odebrano_utc, tik, kanal, czas_s, ranga, login, ai, bitwa_jednostka_id, bitwa_klucz_id,
         pulpit, system_kod, rozkaz_kod, wartosc_po, przyczyna, stan, dziala_od_tik, dziala_do_tik, odnowienie_do_tik) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -715,7 +720,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
     if (in_array($akcja, ['bitwa_test', 'bitwa_xp_zatwierdz'], true) && !bitwa_mg($u)) blad('Tylko dla MG.', 403);
     $db = polaczenie_bazy();
     $w = $post ? wejscie() : [];
-    $silnik = static function () { if (!bitwa_silnik_gotowy()) blad('Symulacje wymagają migracji 070 i 072.'); };
+    $silnik = static function () { if (!bitwa_silnik_gotowy()) blad('Symulacje wymagają migracji 070, 072, 074 i 075.'); };
     switch ($akcja) {
         case 'bitwa_test':
             $wyniki = bitwa_test();

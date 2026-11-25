@@ -8,6 +8,7 @@ Element: [typ, kolumna, wiersz, tekst, szerokość, wysokość, (tekst_min dla s
 import json, os
 from siatka import FORMATY, KOLORY
 from uklady import KLASY, uklady, format_pulpitu
+from dane.uzbrojenie import UZBROJENIE
 
 TU = os.path.dirname(os.path.abspath(__file__))
 CEL = os.path.join(TU, '..', '..', 'js', 'aplikacje', 'pulpity_uklady.js')
@@ -27,7 +28,9 @@ def eksport():
           '// Typy: S suwak zakresu, R wzmocnij, Y suwak, G synchronizacja, B urządzenie / ekran, W polecenie.\n\n'
           f'export const KOLORY = {json.dumps(KOLORY, ensure_ascii=False)};\n'
           f'export const FORMATY = {json.dumps(formaty, ensure_ascii=False)};\n'
-          f'export const UKLADY = {json.dumps(dane, ensure_ascii=False, indent=1)};\n')
+          f'export const UKLADY = {json.dumps(dane, ensure_ascii=False, indent=1)};\n'
+          '// Uzbrojenie na kadłubie (dane/uzbrojenie.py): [nr, rodzaj, x, y, łuk środek, łuk połowa, zasięg km, θ mrad, Hz].\n'
+          f'export const UZBROJENIE = {json.dumps(UZBROJENIE, ensure_ascii=False)};\n')
     with open(CEL, 'w', encoding='utf-8', newline='\n') as f:
         f.write(js)
     print(f'zapisano js/aplikacje/pulpity_uklady.js: {sum(len(v) for v in dane.values())} pulpitów, {len(js)} znaków')

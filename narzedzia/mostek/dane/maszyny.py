@@ -20,3 +20,17 @@ MASZYNY = [
     ('A_WING', 'RZ-1 A-wing', 'Rebelia', 'myśliwiec przechwytujący', 800, 600, 1.30, 12, 6e17, 1, 'najszybszy, mały przekrój'),
     ('B_WING', 'A/SF-01 B-wing', 'Rebelia', 'ciężki myśliwiec szturmowy', 2400, 1500, 0.85, 35, 3e18, 3, 'przebija osłony 1800 Hz'),
 ]
+
+# Walka kluczy (kinematyka i broń) — [R] do strojenia: zwrot (°/s, as ×1,25), zasięg ognia do maszyn (km), stożek ognia
+# (± ° od dziobu maszyny), rozrzut θ (mrad) do wzoru celności 4.3: p = 1 − exp(−A / (2π σ²)), σ = R · θ_eff.
+# kod: (zwrot_deg_s, zasieg_ognia_km, stozek_deg, theta_mrad)
+WALKA = {
+    'TIE_LN': (30, 1.5, 15, 4.0),
+    'TIE_IN': (40, 1.5, 15, 3.5),
+    'TIE_SA': (18, 1.2, 10, 5.0),
+    'LAMBDA': (10, 1.0, 20, 6.0),
+    'X_WING': (28, 1.6, 15, 3.5),
+    'Y_WING': (18, 1.4, 15, 4.5),
+    'A_WING': (45, 1.5, 15, 4.0),
+    'B_WING': (20, 1.6, 15, 4.0),
+}

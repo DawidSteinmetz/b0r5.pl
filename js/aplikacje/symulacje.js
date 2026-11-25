@@ -264,6 +264,7 @@ export default {
       }
 
       function rysuj(s) {
+        s._odebrano = Date.now(); // chwila odczytu — konsole przewidują ruch od niej
         ostatni = s;
         zapiszSlady(stanKonsol, s);
         const st = s.stanowiska || { pelny: true, moje: [] };

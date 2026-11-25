@@ -238,7 +238,10 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   Kontrola ognia; powiększanie ekranów. Radar 12 km na bieżąco / 12–60 km echo wiązki, sensory od 60 km z mocą
   i zasięgiem (migracja 073), zmarszczki nadprzestrzeni (silnik: jednostki „oczekuje” do wyjścia ze skoku). Brakuje w silniku: ruch okrętu (Silniki, Nawigacja), broń okrętu
   (Turbolasery, Kontrola ognia), walka klucz na klucz, energia i ciepło reaktora, grawitacja.
-- Ograniczenia: myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
+- Walka kluczy i obrona punktowa (25.11.2026, MECHANIKA 5.1; migracje 074 i 075): skręt z prędkością kątową,
+  cele z rozkazu, ogień w stożku z celnością zależną od geometrii (ogon ×0,5), osłony maszyn, straty maszyn,
+  60 działek PD ISD z pozycją i łukiem z rysunku użytkownika. Ogień turbolaserów i jonów okrętów — następny krok.
+- Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 
 **Stan (25.11.2026): E0 gotowe w repo, niezaimportowane.**

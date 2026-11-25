@@ -341,6 +341,30 @@ Przebicie dla MC80 (N = 2187): baza > 1750 (zwykły), > 1640 (as).
 
 ---
 
+### 5.1 Walka kluczy i obrona punktowa (silnik, 25.11.2026) [R]
+
+Klucz ma pozycję, kurs i prędkość w każdym tiku; od geometrii zależy, który manewr działa.
+
+- **Skręt**: kurs zmienia się najwyżej o prędkość kątową typu maszyny na tik (TIE/ln 30°/s, TIE/in 40, X-wing 28,
+  Y-wing 18, A-wing 45, B-wing 20; as ×1,25). Figury kursu ustawiają kurs zadany (prosto 0°, łagodnie ±30°, ostro
+  ±90°, pętla i split-S 180°); rozkaz klucza przywraca pościg za celem.
+- **Cel klucza** z rozkazu: atak — klucze wroga w 12 km, inaczej najbliższy okręt; ochrona / patrol — klucze wroga
+  w 8 / 15 km od okrętu matki, inaczej krąg 3 / 8 km wokół niego; skan — okręt; powrót — okręt matka. Pościg: 0,3 km
+  za celem.
+- **Ogień do kluczy**: gdy cel jest w zasięgu broni (ok. 1,5 km) i w stożku przed dziobem (±15°). Każda maszyna
+  strzela; celność ze wzoru 4.3, rozrzut θ_eff = θ_broni × geometria × figury, gdzie geometria = 0,5 + 2·|sin(Δkurs)|:
+  **na ogonie** (te same wektory) ×0,5 — „cel na widelcu”, większość strzałów celna; w przecięciu (90°) ×2,5.
+- **Ogień do okrętu**: 3 km, stożek ±30°, energia przez filtr osłon okrętu (rozdz. 3).
+- **Trafienie maszyny**: osłona maszyny przepuszcza 1 − osłona/Hz broni (TIE bez osłon — wszystko), zatrzymane
+  trafienie nasyca osłonę (+0,25 × zatrzymana część, regeneracja 0,01/tik); maszyna ginie z prawdopodobieństwem
+  przepuszczone + zatrzymane × nasycenie. Klucz 4 → 0 maszyn, potem „stracony”.
+- **Obrona punktowa okrętu**: działka mają położenie na kadłubie, łuk ostrzału i zasięg (ISD: 60 działek po 30 na
+  burtę wzdłuż klina, zasięg 5 km, łuk ±90° na zewnątrz burty, θ 8 mrad, 1500 Hz — dane/uzbrojenie.py, rysunek ISD).
+  Każde strzela raz na tik w najbliższy klucz w swoim łuku — pokrycie wynika z geometrii (np. przy samym dziobie
+  i za rufą mniej działek).
+- Turbolasery i baterie jonowe mają już pozycje, łuki i zasięgi (ISD: 4 + 4 baterie, łuk burtowy ±80°, 40 km;
+  2 wieże jonowe na grzbiecie, 20 km) — ogień okrętów to kolejny etap.
+
 ## 6. Ruch okrętu i silniki
 
 **Zasada ruchu** [U — z ustaleń użytkownika]:

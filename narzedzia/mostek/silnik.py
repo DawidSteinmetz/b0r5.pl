@@ -9,12 +9,17 @@ daje ten sam przebieg — w Pythonie i w PHP (losowość z crc32, jak PHP crc32(
 import math, sys, zlib
 from mechanika import stopnie_natywne, stopien_w_gore, moc_zyly, pojemnosc, filtr
 from profile_klas import PROFILE, WSPOLNE
-from dane.maszyny import MASZYNY
+from dane.maszyny import MASZYNY, WALKA
+from dane.uzbrojenie import UZBROJENIE
 from dane.rozkazy import ROZKAZY
 from dane.scenariusze import SCENARIUSZE
 
 CYKL = WSPOLNE['cykl_tiki']
 MASZ = {m[0]: dict(zip(['kod', 'nazwa', 'strona', 'rola', 'hz', 'oslona_hz', 'v', 'przekroj', 'energia', 'ladowanie', 'opis'], m)) for m in MASZYNY}
+for _kod, (_zw, _zas, _st, _th) in WALKA.items():
+    MASZ[_kod].update({'zwrot': _zw, 'zasieg': _zas, 'stozek': _st, 'theta': _th})
+# Obrona punktowa okrętów: działka (nr, x, y, łuk — środek i połowa, zasięg km, θ mrad, Hz) z dane/uzbrojenie.py
+PD = {kod: [(u[0], u[2], u[3], u[4], u[5], u[6], u[7], u[8]) for u in lista if u[1] == 'pd'] for kod, lista in UZBROJENIE.items()}
 ROZK = {r[0]: dict(zip(['kod', 'nazwa', 'grupa', 'c', 'd', 'o', 'theta', 'theta_wl', 'v', 'ogien_wyl', 'ranga', 'skraca', 'opis'], r)) for r in ROZKAZY}
 RANGI = {'kadet': 0, 'standard': 1, 'as': 2}
 
@@ -26,7 +31,16 @@ STALE = {
     'dystans_ataku_km': 2.0,        # [R] klucz podchodzi do celu na tyle i krąży
     'zasieg_sensorow_km': 200.0,    # [R] pomiar Hz kluczy przez sensory (tryb automatyczny osłon, konsola Sensory)
     'dystans_walki_km': 10.0,       # [R] okręt AI zatrzymuje się w paśmie wymiany ognia (MECHANIKA 4.2) od wrogiego okrętu
-    'tasma_s': 60,                  # [U] taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
+    'tasma_s': 60,                  # [U]
+    'zasieg_walki_atak_km': 12.0,   # [R] klucz z rozkazem atak szuka kluczy wroga w tym promieniu od siebie
+    'zasieg_walki_ochrona_km': 8.0, # [R] ochrona: kluczy wroga w tym promieniu od okrętu matki
+    'zasieg_walki_patrol_km': 15.0, # [R] patrol: jw.
+    'ogon_km': 0.3,                 # [R] pościg: klucz trzyma się tyle za celem
+    'stozek_okret_deg': 30.0,       # [R] stożek ognia klucza do okrętu
+    'zwrot_as': 1.25,               # [R] as skręca szybciej
+    'oslona_nasycenie': 0.25,       # [R] trafienie zatrzymane przez osłonę maszyny nasyca ją o tyle × (1 − przepuszczone)
+    'oslona_regen': 0.01,           # [R] osłona maszyny odzyskuje tyle na tik
+    'p_min': 0.01, 'p_maks': 0.95,  # [R] granice celności na strzał (MECHANIKA 4.3) taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
     'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
     'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
     'promien_skanu_km': 10.0,       # [R] skan: krąży przy celu poza zasięgiem jego ognia
@@ -187,7 +201,7 @@ def utworz(scenariusz_kod, ziarno):
                                    'stan': 'hangar', 'start': start + rozrzut(ziarno, start_r, 'k', strona, nr),
                                    'x': float(x if x is not None else mac['x']), 'y': float(y if y is not None else mac['y']),
                                    'kurs': 0.0, 'rozkaz': rozkaz, 'macierzysta': jedn_nr, 'ladunek': 0, 'akcje': 0,
-                                   'ai': st[2] != 'gracze'})
+                                   'ai': st[2] != 'gracze', 'oslona_pkt': 0.0, 'kurs_zadany': None})
     tasmociag(stan)
     return stan
 
@@ -217,17 +231,105 @@ def macierzysta(stan, k):
     return next((j for j in stan['jednostki'] if j['nr'] == k['macierzysta'] and j['stan'] == 'w_bitwie'), None)
 
 
+def norm180(a):
+    """Kąt do przedziału [−180, 180) — w PHP fmod z poprawką znaku, jak Python %."""
+    return (a + 180) % 360 - 180
+
+
+def namiar(a, b):
+    return stopnie(math.atan2(b['x'] - a['x'], b['y'] - a['y']))
+
+
+def najblizszy(lista, ref, r_max):
+    """Najbliższy obiekt do ref w promieniu r_max (przy remisie pierwszy)."""
+    naj, dn = None, None
+    for o in lista:
+        d = odleglosc(ref, o)
+        if d <= r_max and (dn is None or d < dn): naj, dn = o, d
+    return naj
+
+
+def wrogie_klucze(stan, strona):
+    return [x for x in stan['klucze'] if x['strona'] != strona and x['stan'] == 'w_locie']
+
+
 def cel_klucza(stan, k):
-    """Dokąd leci klucz i w jakim promieniu krąży — z rozkazu: atak (najbliższy wróg, 2 km), skan (10 km), powrót
-    (okręt matka, lądowanie), ochrona i patrol (okręt matka, 3 / 8 km). Klucz bez okrętu matki atakuje."""
+    """Cel klucza z rozkazu → (cel, promień km, rodzaj): atak — klucze wroga w 12 km, inaczej najbliższy okręt (2 km);
+    skan — okręt (10 km); ochrona / patrol — klucze wroga w 8 / 15 km od okrętu matki, inaczej krąg 3 / 8 km wokół
+    niego; powrót — okręt matka (lądowanie). Pościg za kluczem: 0,3 km za celem. Klucz bez okrętu matki atakuje."""
     mac = macierzysta(stan, k)
-    wrogie = wrogowie(stan, k['strona'])
     r = k['rozkaz']
-    if (r in ('atak', 'skan') or mac is None) and wrogie:
-        return min(wrogie, key=lambda j: odleglosc(k, j)), STALE['promien_skanu_km'] if r == 'skan' else STALE['dystans_ataku_km']
-    if mac is None: return None, 0.0
-    if r == 'powrot': return mac, 0.0
-    return mac, STALE['promien_patrolu_km'] if r == 'patrol' else STALE['promien_ochrony_km']
+    if r == 'powrot' and mac is not None: return mac, 0.0, 'powrot'
+    if r == 'atak' or mac is None:
+        kt = najblizszy(wrogie_klucze(stan, k['strona']), k, STALE['zasieg_walki_atak_km'])
+        if kt is not None: return kt, STALE['ogon_km'], 'klucz'
+        wj = wrogowie(stan, k['strona'])
+        if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
+        return None, 0.0, None
+    if r == 'skan':
+        wj = wrogowie(stan, k['strona'])
+        if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['promien_skanu_km'], 'okret'
+    zasieg = STALE['zasieg_walki_patrol_km'] if r == 'patrol' else STALE['zasieg_walki_ochrona_km']
+    kt = najblizszy(wrogie_klucze(stan, k['strona']), mac, zasieg)
+    if kt is not None: return kt, STALE['ogon_km'], 'klucz'
+    return mac, STALE['promien_patrolu_km'] if r == 'patrol' else STALE['promien_ochrony_km'], 'macierzysta'
+
+
+def celnosc(theta_rad, r_km, przekroj):
+    """MECHANIKA 4.3: p = 1 − exp(−A / (2π σ²)), σ = R · θ_eff, w granicach p_min … p_maks."""
+    sigma = max(0.05, r_km) * 1000 * theta_rad
+    return min(STALE['p_maks'], max(STALE['p_min'], 1 - math.exp(-przekroj / (2 * math.pi * sigma * sigma))))
+
+
+def traf_maszyne(stan, tik, t, hz, kan, i, sprawca):
+    """Trafienie maszyny klucza t bronią o Hz: osłona maszyny przepuszcza 1 − osłona/Hz (TIE bez osłon — wszystko),
+    zatrzymane trafienia nasycają osłonę; maszyna ginie z prawdopodobieństwem przepuszczone + zatrzymane · nasycenie."""
+    osl = MASZ[t['typ']]['oslona_hz']
+    frac = 1.0 if osl == 0 else max(0.0, 1 - osl / hz)
+    if frac < 1: t['oslona_pkt'] = min(1.0, t['oslona_pkt'] + STALE['oslona_nasycenie'] * (1 - frac))
+    if los(stan['ziarno'], tik, 'zniszcz', kan, i) < frac + (1 - frac) * t['oslona_pkt']:
+        t['maszyny'] -= 1
+        stan['zdarzenia'].append((tik, 'zestrzelenie', sprawca, t['strona'], t['nr'], t['maszyny']))
+        if t['maszyny'] <= 0:
+            t['stan'] = 'stracony'
+            stan['zdarzenia'].append((tik, 'klucz_stracony', t['strona'], t['nr'], t['typ']))
+
+
+def strzal_w_klucz(stan, tik, k, t):
+    """Salwa klucza k w klucz t: każda maszyna strzela; rozrzut zależy od geometrii — na ogonie (zgodne kursy) ×0,5,
+    w przecięciu (90°) ×2,5 — i od figur obu kluczy (unik celu, celność własna)."""
+    m, mt = MASZ[k['typ']], MASZ[t['typ']]
+    ft, fk = figura(stan, kanal_klucza(t)), figura(stan, kanal_klucza(k))
+    geom = 0.5 + 2 * abs(math.sin(radiany(t['kurs'] - k['kurs'])))
+    theta = m['theta'] / 1000 * geom * (ROZK[ft]['theta'] if ft and ROZK[ft]['theta'] else 1) * (ROZK[fk]['theta_wl'] if fk and ROZK[fk]['theta_wl'] else 1)
+    p = celnosc(theta, odleglosc(k, t), mt['przekroj'])
+    kan = kanal_klucza(k)
+    for i in range(k['maszyny']):
+        if t['maszyny'] <= 0: break
+        if los(stan['ziarno'], tik, 'strzal', kan, i) < p:
+            traf_maszyne(stan, tik, t, hz_klucza(k), kan, i, f'{k["strona"]} {k["nr"]}')
+
+
+def obrona_punktowa(stan, tik, j):
+    """Działka obrony punktowej okrętu (pozycje i łuki z dane/uzbrojenie.py): każde strzela raz na tik do najbliższego
+    klucza wroga w swoim zasięgu i łuku (łuk liczony od położenia działka, względem dziobu okrętu)."""
+    dl = PROFILE[j['profil']]['dlugosc_m'] / 1000
+    s, c = math.sin(radiany(j['kurs'])), math.cos(radiany(j['kurs']))
+    for nr, x, y, luk_s, luk_p, zasieg, theta, hz in PD.get(j['profil'], []):
+        gx, gy = j['x'] + s * (-y) * dl + c * x * dl, j['y'] + c * (-y) * dl - s * x * dl
+        dzialko = {'x': gx, 'y': gy}
+        cel, dn = None, None
+        for t in wrogie_klucze(stan, j['strona']):
+            d = odleglosc(dzialko, t)
+            if d > zasieg or (dn is not None and d >= dn): continue
+            if abs(norm180(norm180(namiar(dzialko, t) - j['kurs']) - luk_s)) > luk_p: continue
+            cel, dn = t, d
+        if cel is None: continue
+        ft = figura(stan, kanal_klucza(cel))
+        p = celnosc(theta / 1000 * (ROZK[ft]['theta'] if ft and ROZK[ft]['theta'] else 1), dn, MASZ[cel['typ']]['przekroj'])
+        kan = f'pd:{j["nr"]}:{nr}'
+        if los(stan['ziarno'], tik, 'pd', kan) < p:
+            traf_maszyne(stan, tik, cel, hz, kan, 0, f'{j["nazwa"]} PD')
 
 
 def wrogowie(stan, strona):
@@ -307,9 +409,8 @@ def ai_oslony(stan, tik, j):
 def ai_klucza(stan, tik, k):
     """Prosta AI klucza (dowodzenie stron AI i klucze bez gracza): podejście do celu; w zasięgu ognia wroga — unik
     (beczka albo zygzak), potem przelot. Rozkazy przez przyjmij_rozkaz — z tym samym czasem wykonania co gracze."""
-    cele = wrogowie(stan, k['strona'])
-    if not cele: return
-    cel = min(cele, key=lambda j: odleglosc(k, j))
+    cel, _, rodzaj = cel_klucza(stan, k)
+    if cel is None or rodzaj not in ('klucz', 'okret'): return
     d = odleglosc(k, cel)
     kan = kanal_klucza(k)
     fig = figura(stan, kan)
@@ -318,8 +419,12 @@ def ai_klucza(stan, tik, k):
     if d < 8 and fig not in ('beczka_l', 'beczka_p', 'zygzak', 'przelot') and los(stan['ziarno'], tik, 'ai', kan) < 0.15:
         kod = 'beczka_l' if los(stan['ziarno'], tik, 'ai2', kan) < 0.5 else 'zygzak'
         przyjmij_rozkaz(stan, kan, kod, tik, k['ranga'], k)
-    elif d < STALE['zasieg_ognia_klucza_km'] and fig != 'przelot' and los(stan['ziarno'], tik, 'ai3', kan) < 0.2:
+    elif rodzaj == 'okret' and d < STALE['zasieg_ognia_klucza_km'] and fig != 'przelot' and los(stan['ziarno'], tik, 'ai3', kan) < 0.2:
         przyjmij_rozkaz(stan, kan, 'przelot', tik, k['ranga'], k)
+
+
+# Figury kursu: zmiana kursu zadanego (°); klucz skręca do niego z własną prędkością kątową, aż do kolejnego rozkazu.
+ZMIANA_KURSU = {'prosto': 0, 'lagodnie_l': -30, 'lagodnie_p': 30, 'ostro_l': -90, 'ostro_p': 90, 'petla': 180, 'split_s': 180}
 
 
 def krok(stan):
@@ -341,7 +446,10 @@ def krok(stan):
                         stan['tasma'][m] = k['start']
                 else:
                     k['rozkaz'] = w['kod']
+                    k['kurs_zadany'] = None
                     if w['kod'] == 'powrot' and k['stan'] == 'w_locie': k['stan'] = 'powrot'
+            elif w['kod'] in ZMIANA_KURSU:
+                k['kurs_zadany'] = k['kurs'] + ZMIANA_KURSU[w['kod']]
         if w['kod'].startswith('przestrojenie'):
             nr, gk = w['kanal'].split(':')
             j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
@@ -358,8 +466,10 @@ def krok(stan):
             stan['zdarzenia'].append((tik, 'start', k['strona'], k['nr'], k['typ']))
         if k['stan'] not in ('w_locie', 'powrot'): continue
         fig = figura(stan, kanal_klucza(k))
-        v = MASZ[k['typ']]['v'] * (ROZK[fig]['v'] if fig and ROZK[fig]['v'] else 1)
-        cel, promien = cel_klucza(stan, k)
+        m = MASZ[k['typ']]
+        v = m['v'] * (ROZK[fig]['v'] if fig and ROZK[fig]['v'] else 1)
+        cel, promien, rodzaj = cel_klucza(stan, k)
+        chce = k['kurs']
         if cel is not None:
             d = odleglosc(k, cel)
             if k['stan'] == 'powrot' and d <= STALE['ladowanie_km']:
@@ -367,9 +477,10 @@ def krok(stan):
                 k['x'], k['y'] = cel['x'], cel['y']
                 stan['zdarzenia'].append((tik, 'ladowanie', k['strona'], k['nr'], k['typ']))
                 continue
-            kurs_do = stopnie(math.atan2(cel['x'] - k['x'], cel['y'] - k['y']))
-            k['kurs'] = kurs_do if d > promien else kurs_do + 90   # krążenie przy celu
-        if fig in ('petla', 'split_s'): k['kurs'] += 180 / max(1, ROZK[fig]['d'])
+            chce = namiar(k, cel) if d > promien else namiar(k, cel) + 90   # krążenie przy celu
+        if k['kurs_zadany'] is not None and k['stan'] == 'w_locie': chce = k['kurs_zadany']
+        zwrot = m['zwrot'] * (STALE['zwrot_as'] if k['ranga'] == 'as' else 1)
+        k['kurs'] = norm180(k['kurs'] + max(-zwrot, min(zwrot, norm180(chce - k['kurs']))))
         k['x'] += v * math.sin(radiany(k['kurs']))
         k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
@@ -386,12 +497,21 @@ def krok(stan):
         k['ladunek'] += 1
         m = MASZ[k['typ']]
         if k['ladunek'] < m['ladowanie']: continue
-        cele = [j for j in wrogowie(stan, k['strona']) if odleglosc(k, j) <= STALE['zasieg_ognia_klucza_km']]
-        if not cele: continue
-        k['ladunek'] = 0
-        cel = cele[0]
-        gen = generator_od_strony(cel, k['x'], k['y'])
-        trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'], hz_klucza(k), f'{k["strona"]} {k["nr"]}', kanal_klucza(k))
+        cel, _, rodzaj = cel_klucza(stan, k)
+        if cel is None: continue
+        d = odleglosc(k, cel)
+        odchyl = abs(norm180(namiar(k, cel) - k['kurs']))
+        if rodzaj == 'klucz' and d <= m['zasieg'] and odchyl <= m['stozek']:
+            k['ladunek'] = 0
+            strzal_w_klucz(stan, tik, k, cel)
+        elif rodzaj == 'okret' and d <= STALE['zasieg_ognia_klucza_km'] and odchyl <= STALE['stozek_okret_deg']:
+            k['ladunek'] = 0
+            gen = generator_od_strony(cel, k['x'], k['y'])
+            trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'], hz_klucza(k), f'{k["strona"]} {k["nr"]}', kanal_klucza(k))
+    for j in stan['jednostki']:
+        if j['stan'] == 'w_bitwie': obrona_punktowa(stan, tik, j)
+    for k in stan['klucze']:
+        if k['oslona_pkt'] > 0: k['oslona_pkt'] = max(0.0, k['oslona_pkt'] - STALE['oslona_regen'])
     # osłony: odpływ obciążenia, AI osłon
     for j in stan['jednostki']:
         for g in j['generatory']:

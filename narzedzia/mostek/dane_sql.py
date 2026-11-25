@@ -10,7 +10,8 @@ Migracja jest powtarzalna: słowniki przez ON DUPLICATE KEY UPDATE, elementy sce
 """
 import os, re, sys
 from profile_klas import PROFILE, WSPOLNE
-from dane.maszyny import MASZYNY
+from dane.maszyny import MASZYNY, WALKA
+from dane.uzbrojenie import UZBROJENIE
 from dane.rozkazy import ROZKAZY
 from dane.scenariusze import SCENARIUSZE
 
@@ -18,15 +19,20 @@ TU = os.path.dirname(os.path.abspath(__file__))
 MIGRACJE = os.path.join(TU, '..', '..', 'api', 'migracje')
 SCHEMAT = os.path.join(MIGRACJE, '068_bitwy_symulacje.sql')
 CEL = os.path.join(MIGRACJE, '069_mostek_dane.sql')
+CEL_WALKA = os.path.join(MIGRACJE, '075_mostek_dane_walka.sql')
+SCHEMAT_WALKA = os.path.join(MIGRACJE, '074_bitwy_walka_kluczy.sql')
 BLEDY = []
 
 
 def kolumny_tabel():
-    sql = open(SCHEMAT, encoding='utf-8').read()
     wynik = {}
-    for nazwa, cialo in re.findall(r'CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\) ENGINE', sql, re.S):
-        wynik[nazwa] = [m.group(1) for m in re.finditer(r'^\s+(\w+) [A-Z]', cialo, re.M)
-                        if m.group(1) not in ('PRIMARY', 'UNIQUE', 'KEY', 'FOREIGN', 'CONSTRAINT', 'CHECK')]
+    for plik in (SCHEMAT, SCHEMAT_WALKA):
+        sql = open(plik, encoding='utf-8').read()
+        for nazwa, cialo in re.findall(r'CREATE TABLE IF NOT EXISTS (\w+) \((.*?)\n\) ENGINE', sql, re.S):
+            wynik[nazwa] = [m.group(1) for m in re.finditer(r'^\s+(\w+) [A-Z]', cialo, re.M)
+                            if m.group(1) not in ('PRIMARY', 'UNIQUE', 'KEY', 'FOREIGN', 'CONSTRAINT', 'CHECK')]
+        for nazwa, cialo in re.findall(r'ALTER TABLE (\w+)(.*?);', sql, re.S):
+            wynik.setdefault(nazwa, []).extend(re.findall(r'ADD COLUMN (\w+)', cialo))
     return wynik
 
 
@@ -168,6 +174,28 @@ def scenariusze():
     return '\n'.join(out)
 
 
+def walka():
+    """Migracja 075: kinematyka i broń maszyn (typy_maszyn), uzbrojenie okrętów na kadłubie (profile_klas_uzbrojenie)."""
+    for kod in WALKA:
+        if kod not in {m[0] for m in MASZYNY}: BLEDY.append(f'WALKA: nieznany typ {kod}')
+    upd = ''.join(f"UPDATE typy_maszyn SET zwrot_deg_s = {v(zw)}, zasieg_ognia_km = {v(za)}, stozek_deg = {v(st)}, theta_mrad = {v(th)} WHERE kod = {v(kod)};\n"
+                  for kod, (zw, za, st, th) in WALKA.items())
+    for kol_t in ('zwrot_deg_s', 'zasieg_ognia_km', 'stozek_deg', 'theta_mrad'):
+        if kol_t not in KOLUMNY.get('typy_maszyn', []): BLEDY.append(f'typy_maszyn: brak kolumny {kol_t} w 074')
+    kol = ['profil_kod', 'nr', 'rodzaj', 'x', 'y', 'luk_srodek_deg', 'luk_pol_deg', 'zasieg_km', 'theta_mrad', 'hz']
+    wiersze = [(kod,) + tuple(u) for kod, lista in UZBROJENIE.items() for u in lista]
+    for kod in UZBROJENIE:
+        if kod not in PROFILE: BLEDY.append(f'UZBROJENIE: nieznany profil {kod}')
+    kody = ', '.join(v(k) for k in UZBROJENIE)
+    naglowek = ('-- Dane walki kluczy i obrony punktowej (generowane: python narzedzia/mostek/dane_sql.py — nie edytuj).\n'
+                '-- Kinematyka i broń maszyn (dane/maszyny.py WALKA), uzbrojenie okrętów na kadłubie (dane/uzbrojenie.py).\n'
+                '-- Wymaga migracji 074. Powtarzalna.\n\nUSE hololink;\nSET NAMES utf8mb4;\n\n')
+    return (naglowek + '-- Typy maszyn: walka\n' + upd + f'\nDELETE FROM profile_klas_uzbrojenie WHERE profil_kod IN ({kody});\n'
+            + insert('profile_klas_uzbrojenie', kol, wiersze, False)
+            + "\nINSERT INTO schema_migracje (wersja, opis)\nVALUES ('v075-mostek-dane-walka', 'Dane walki: kinematyka i broń maszyn, uzbrojenie okrętów na kadłubie')\n"
+            + "ON DUPLICATE KEY UPDATE opis = VALUES(opis);\n")
+
+
 def zbuduj():
     naglowek = ('-- Dane mechaniki walki: stałe, profile klas (ISD_I, MC80, ZBIEG), typy maszyn, czas wykonania rozkazów,\n'
                 '-- scenariusze bitew (Atak na Walako, Szkolenie: klucze rebelii nad Walako).\n'
@@ -198,6 +226,10 @@ if __name__ == '__main__':
         print('BŁĘDY:'); [print('  ' + b) for b in BLEDY]; sys.exit(1)
     if '--sprawdz' in sys.argv:
         print('dane spójne'); sys.exit(0)
-    with open(CEL, 'w', encoding='utf-8', newline='\n') as f:
-        f.write(sql)
-    print(f'zapisano {os.path.relpath(CEL, TU)}: {sql.count("INSERT INTO")} instrukcji INSERT, {len(sql)} znaków')
+    sql2 = walka()
+    if BLEDY:
+        print('BŁĘDY:'); [print('  ' + b) for b in BLEDY]; sys.exit(1)
+    for cel, tresc in ((CEL, sql), (CEL_WALKA, sql2)):
+        with open(cel, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(tresc)
+        print(f'zapisano {os.path.relpath(cel, TU)}: {tresc.count("INSERT INTO")} instrukcji INSERT, {len(tresc)} znaków')

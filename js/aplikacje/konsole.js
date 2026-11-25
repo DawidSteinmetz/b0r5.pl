@@ -5,7 +5,7 @@
 // Mechanika: Radar i Sensory; pozostałe pulpity klasy rysują się w całości, bez podpiętych elementów.
 
 import { h } from '../rdzen/narzedzia.js';
-import { UKLADY, KOLORY, FORMATY } from './pulpity_uklady.js';
+import { UKLADY, KOLORY, FORMATY, UZBROJENIE } from './pulpity_uklady.js';
 
 // Pulpity z mechaniką (pozostałe rysują się z samym układem). Kolejność = kolejność zakładek.
 export const KONSOLE = ['Radar', 'Sensory', 'Osłony', 'Reaktory', 'Myśliwce', 'Nawigacja', 'Kontrola ognia', 'Klucz', 'Eskadra'];
@@ -43,8 +43,6 @@ const SYLWETKI = {
       ['path', { d: 'M-0.11 0.06 L0.11 0.06 L0.14 0.44 L0.075 0.47 L-0.075 0.47 L-0.14 0.44 Z', 'fill-opacity': 0.35, fill: '#fff' }],
       ['path', { d: 'M-0.05 -0.12 L0.05 -0.12 L0.08 0.06 L-0.08 0.06 Z', 'fill-opacity': 0.25, fill: '#fff' }],
       ['rect', { x: -0.08, y: 0.38, width: 0.16, height: 0.06, 'fill-opacity': 0.55, fill: '#fff' }],
-      ['circle', { cx: -0.075, cy: 0.41, r: 0.022, fill: '#fff', 'fill-opacity': 0.8 }],
-      ['circle', { cx: 0.075, cy: 0.41, r: 0.022, fill: '#fff', 'fill-opacity': 0.8 }],
       ['path', { d: 'M0 -0.46 L0 -0.12', stroke: '#000', 'stroke-opacity': 0.35, 'stroke-width': 0.012, fill: 'none' }],
       ['path', { d: 'M0.29 0.41 L0 0.3 L-0.29 0.41', stroke: '#000', 'stroke-opacity': 0.3, 'stroke-width': 0.01, fill: 'none' }],
     ],
@@ -69,6 +67,26 @@ export function sylwetka(profil, kolor, rozmiar) {
   if (!s) { g.append(svg('path', { d: 'M0 -0.5 L0.3 0.5 L-0.3 0.5Z', fill: kolor })); return g; }
   g.append(svg('path', { d: s.obrys, fill: kolor, 'fill-opacity': 0.9, stroke: '#000', 'stroke-width': 0.01 }));
   for (const [tag, at] of s.detale) g.append(svg(tag, at));
+  if (rozmiar >= 60) g.append(rozstawienie(profil, rozmiar));
+  return g;
+}
+
+// Rozstawienie uzbrojenia i urządzeń na kadłubie (dane/uzbrojenie.py, rysunek ISD): turbolasery i obrona punktowa —
+// czerwone, jony — niebieskie, generatory osłon — żółte, radar i sensory — brązowe, silniki — białe.
+const KOLOR_PUNKTU = { turbolaser: '#ff2020', pd: '#ff2020', jon: '#2848ff', oslona: '#ffe000', sensory: '#8b4513', silnik: '#ffffff' };
+const PROMIEN_PUNKTU = { turbolaser: 0.018, pd: 0.005, jon: 0.012, oslona: 0.02, sensory: 0.015, silnik: 0.015 };
+function rozstawienie(profil, rozmiar) {
+  const g = svg('g');
+  const punkty = UZBROJENIE[profil] || [];
+  // obrona punktowa: linia wzdłuż burt (kropki działek dopiero przy dużym przybliżeniu)
+  for (const strona of [-1, 1]) {
+    const pd = punkty.filter((u) => u[1] === 'pd' && Math.sign(u[2]) === strona);
+    if (pd.length > 1) g.append(svg('polyline', { points: pd.map((u) => `${u[2]},${u[3]}`).join(' '), fill: 'none', stroke: KOLOR_PUNKTU.pd, 'stroke-width': 0.006 }));
+  }
+  for (const [, rodzaj, x, y] of punkty) {
+    if (rodzaj === 'pd' && rozmiar < 250) continue;
+    g.append(svg('circle', { cx: x, cy: y, r: PROMIEN_PUNKTU[rodzaj], fill: KOLOR_PUNKTU[rodzaj], stroke: '#000', 'stroke-width': 0.003 }));
+  }
   return g;
 }
 
@@ -256,7 +274,10 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   for (const o of obiekty || []) {
     const swoj = o.strona === strona;
     const kolor = swoj ? WLASNY : OBCY;
-    const x = px(o.x), y = py(o.y);
+    // Przerysowanie bez nowego odczytu (kliknięcie, kółko): kontakt startuje z pozycji przewidzianej na teraz, nie cofa się.
+    const dt = o.v && o !== srodek && !o.statyczny && s._odebrano ? Math.min(10, (Date.now() - s._odebrano) / 1000) : 0;
+    const kk = rad(o.kurs || 0);
+    const x = px(o.x + o.v * dt * Math.sin(kk)), y = py(o.y + o.v * dt * Math.cos(kk));
     if (x < -10 || y < -10 || x > 2 * P + 10 || y > 2 * P + 10) continue;
     const klucz = 'nr' in o;
     if (tory && !o.statyczny) {

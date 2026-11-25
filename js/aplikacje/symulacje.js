@@ -5,6 +5,7 @@
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
+import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady } from './konsole.js';
 
 const DOWODZENIE = { gracze: 'gracze', radus: 'AI: Radus (agresywny)', ackbar: 'AI: Ackbar (defensywny)', calrissian: 'AI: Calrissian (zrównoważony)' };
 const STATUS = { przygotowanie: 'w przygotowaniu', aktywna: 'trwa', zakonczona: 'zakończona', anulowana: 'anulowana' };
@@ -128,6 +129,31 @@ export default {
       const zdarzenia = h('div');
       const wynikXp = h('div');
       let ostatni = null;
+      // Widoki: przegląd albo konsola mostka (Radar, Sensory…). Docelowo gracz dostaje tylko przypisane mu pulpity.
+      let widok = 'przeglad';
+      const stanKonsol = nowyStanKonsol();
+      const zakladki = h('div.zakladki');
+      const konsolaEl = h('div', { hidden: true, style: 'margin:10px 0' });
+      const przeglad = h('div');
+      const akcjeKonsoli = {
+        odswiez: () => rysujKonsole(),
+        rozkaz: (dane) => rozkaz(dane),
+        komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat.blad', tekst)),
+      };
+      function rysujKonsole() {
+        if (widok === 'przeglad' || !ostatni) return;
+        wyczysc(konsolaEl).append(konsola(widok, ostatni, stanKonsol, akcjeKonsoli));
+      }
+      function rysujZakladki() {
+        wyczysc(zakladki).append(...[['przeglad', 'Przegląd'], ...KONSOLE.map((k) => [k, k])].map(([k, n]) =>
+          h('button' + (k === widok ? '.aktywna' : ''), { onclick: () => {
+            widok = k;
+            przeglad.hidden = k !== 'przeglad';
+            konsolaEl.hidden = k === 'przeglad';
+            rysujZakladki();
+            rysujKonsole();
+          } }, n)));
+      }
 
       const rozkaz = async (dane) => {
         try {
@@ -181,6 +207,8 @@ export default {
 
       function rysuj(s) {
         ostatni = s;
+        zapiszSlady(stanKonsol, s);
+        rysujKonsole();
         const trwa = s.status === 'aktywna' && !s.pauza;
         wyczysc(naglowek).append(panel(s.nazwa,
           h('table.tabela',
@@ -251,7 +279,9 @@ export default {
         } catch (e) { wyczysc(komunikat).append(blad(e)); zatrzymaj(); }
       }
 
-      wyczysc(tresc).append(naglowek, komunikat, panel('RADAR', radar), okrety, klucze, zdarzenia, wynikXp);
+      przeglad.append(panel('RADAR', radar), okrety, klucze, zdarzenia);
+      rysujZakladki();
+      wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, przeglad, wynikXp);
       odswiez();
       zegar = setInterval(odswiez, 1000);
     }

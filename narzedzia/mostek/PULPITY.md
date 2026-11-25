@@ -63,6 +63,23 @@ klucza, a w hangarze lampa pokazuje **czas do wyjścia z hangaru** (mm:ss, z ta�
 
 Gracz nie widzi tików (MECHANIKA.md, zasada 4): odliczanie to czas gry w minutach i sekundach.
 
+## 1c. Konsole w grze [U, 25.11.2026]
+
+Konsola w symulacji (aplikacja Symulacje → zakładka z nazwą pulpitu) to ten sam układ co arkusz i wydruk:
+`python pulpity_js.py` eksportuje `uklady/` do `js/aplikacje/pulpity_uklady.js`, a `js/aplikacje/konsole.js` rysuje
+siatkę 13×9 i podpina elementy pod stan bitwy **po tekście elementu** (zmiana tekstu w układzie = zmiana powiązania).
+Element bez mechaniki jest przygaszony (dymek „bez mechaniki”), włączony przełącznik ma ramkę w kolorze akcentu.
+Docelowo gracz widzi tylko pulpity przypisane mu w `bitwy_stanowiska`.
+
+- **Radar** — ekran (okręt w środku, okręgi ¼, ½ i całość skali, wiązka omiatania, kontakty swój/obcy, tory, prognozy
+  30 s, Hz celów przy synchronizacji z sensorami), skale 10 / 40 / 100 km, sektory, filtry, listy zagrożeń burt
+  (namiar od dziobu, odległość, czas do zasięgu ognia), alarm zbliżenia z progiem, oznacz / śledź kontakt, kasuj ślady,
+  zamroź obraz, „wyślij namiar zagrożenia do osłon” — każda burta: preset Hz (3 s) do stopnia ≥ Hz zagrożeń tej burty.
+- **Sensory** — ekran skanu 60 km (Hz celów w zasięgu 30 km — jak pomiar automatycznych osłon), widmo Hz grup celów
+  z liniami Hz osłon, wybór grupy, „wyślij Hz celu do konsoli osłon” (preset obu generatorów), SKANUJ, filtr kontaktów.
+- Pomiar Hz jest na razie natychmiastowy w zasięgu 30 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
+  kolejny etap).
+
 ## 2. Format danych układu
 
 Element: `(typ, kolumna, wiersz, tekst[, szerokość, wysokość])`, kolumny i wiersze od 1.

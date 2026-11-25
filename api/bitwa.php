@@ -505,6 +505,7 @@ function bitwa_widok(array $b, array $S): array
         foreach ($j['sekcje'] as $sek => $v) $kadlub += $v * ($p['kadlub'][$sek] ?? 0);
         $c = bitwa_pojemnosc($p);
         $jednostki[] = ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
+            'kurs' => round($j['kurs'], 2), 'v' => $j['v'],
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
             'generatory' => array_map(static fn($g) => ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
@@ -522,7 +523,8 @@ function bitwa_widok(array $b, array $S): array
             }
         }
         $fig = bitwa_figura($S, $kan);
-        $klucze[] = ['id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
+        $vKl = $sl['maszyny'][$k['typ']]['v'] * ($fig && $prof[$fig]['predkosc_mn'] !== null ? (float) $prof[$fig]['predkosc_mn'] : 1);
+        $klucze[] = ['hz' => (int) round(bitwa_hz_klucza($k)), 'kurs' => round($k['kurs'], 2), 'v' => round($vKl, 3), 'theta' => $fig && $prof[$fig]['theta_mn'] !== null ? (float) $prof[$fig]['theta_mn'] : 1.0,'id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
             'maszyny' => $k['maszyny'], 'stan' => $k['stan'], 'ranga' => $k['ranga'], 'ai' => $k['ai'], 'akcje' => $k['akcje'],
             'x' => round($k['x'], 3), 'y' => round($k['y'], 3), 'figura' => $fig ? $prof[$fig]['nazwa'] : null, 'przygotowanie' => $przyg,
             'rozkaz' => $k['rozkaz'], 'rozkaz_nazwa' => $prof[$k['rozkaz']]['nazwa'] ?? $k['rozkaz'],
@@ -692,9 +694,12 @@ function obsluz_bitwa(string $akcja, bool $post): void
                         if ($kod === 'auto') { $S['jednostki'][$ji]['generatory'][$gi]['auto'] = true; return ['ok' => true]; }
                         $hz = (int) ($w['hz'] ?? 0);
                         if ($hz < 1 || $g['zyly']['n'] % $hz !== 0) return ['odmowa' => 'To nie jest stopień natywny generatora.'];
+                        // ręcznie z pulpitu osłon (12 s) albo preset z sensorów / radaru („wyślij Hz do osłon”, 3 s)
+                        $kodP = in_array($kod, ['przestrojenie_reczne', 'przestrojenie_preset'], true) ? $kod : 'przestrojenie_reczne';
+                        $pulpit = mb_substr((string) ($w['pulpit'] ?? 'Osłony'), 0, 40);
                         $S['jednostki'][$ji]['generatory'][$gi]['auto'] = false;
                         $S['jednostki'][$ji]['generatory'][$gi]['hz_zadane'] = $hz;
-                        $r = bitwa_przyjmij($S, "{$j['nr']}:{$g['kod']}", 'przestrojenie_reczne', $czas, 'standard', null, $meta + ['wartosc' => (string) $hz, 'pulpit' => 'Osłony']);
+                        $r = bitwa_przyjmij($S, "{$j['nr']}:{$g['kod']}", $kodP, $czas, 'standard', null, $meta + ['wartosc' => (string) $hz, 'pulpit' => $pulpit]);
                         return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
                     }
                 }

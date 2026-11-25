@@ -16,6 +16,7 @@ Wszystko o pulpitach mostka (konsolach okrętów) w jednym miejscu.
 | [silnik.py](silnik.py) | silnik wzorcowy bitwy (Python): zegar, losowość z ziarna, rozkazy z czasem wykonania, osłony z żyłami, ogień kluczy, kadłub, XP; `python silnik.py walako_klucze 1` rozgrywa scenariusz bez graczy |
 | [test_silnik.py](test_silnik.py) | testy silnika; `--php` zapisuje wektory `api/bitwa_wektory.php` dla portu PHP (`api/bitwa.php`, akcja `bitwa_test`) |
 | [dane_sql.py](dane_sql.py) | generator migracji `api/migracje/069_mostek_dane.sql` z profili i `dane/` (z kontrolą spójności) |
+| [pulpity_js.py](pulpity_js.py) | eksport układów do `js/aplikacje/pulpity_uklady.js` — konsole w grze rysowane z tych samych danych co arkusz i wydruk |
 | [pulpity_ods.py](pulpity_ods.py) | generator arkusza ODS |
 | [pulpity_podglad.py](pulpity_podglad.py) | generator podglądu HTML |
 | [ods_model.py](ods_model.py) | odczyt arkusza ODS (komórki, kolory, scalenia) — do porównań z arkuszem użytkownika |
@@ -27,6 +28,7 @@ Z katalogu `narzedzia/mostek` (Python 3, bez dodatkowych pakietów):
 ```
 python mechanika.py
 python dane_sql.py [--sprawdz]
+python pulpity_js.py
 python pulpity_ods.py ISD_I pulpity_isd.ods --zrodlo ../../Pulpity_ISD_2_uklad_konsol.ods
 python pulpity_ods.py ISD_I pulpity_isd.ods
 python pulpity_podglad.py ISD_I podglad.html [Osłony Reaktory ...]

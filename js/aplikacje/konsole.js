@@ -180,9 +180,29 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     const a0 = rad((srodek.kurs || 0) + sektor[0]), a1 = rad((srodek.kurs || 0) + sektor[1]), R = zasieg * sk;
     e.append(svg('path', { d: `M${P} ${P} L${P + R * Math.sin(a0)} ${P - R * Math.cos(a0)} A${R} ${R} 0 0 1 ${P + R * Math.sin(a1)} ${P - R * Math.cos(a1)}Z`, fill: 'rgba(255,255,153,.12)' }));
   }
-  // wiązka omiatania (położenie z zegara, obrót co st.tempo s)
-  const kat = rad(((Date.now() / 1000) % st.tempo) / st.tempo * 360);
-  e.append(svg('line', { x1: P, y1: P, x2: P + zasieg * sk * Math.sin(kat), y2: P - zasieg * sk * Math.cos(kat), stroke: 'rgba(77,226,201,.5)', 'stroke-width': 2 }));
+  // Wiązka omiatania: obraca się płynnie (animacja SVG; faza z zegara, więc przerysowanie co sekundę jej nie przerywa),
+  // za nią rozmyta smuga zanikającej poświaty. Kontakty rozbłyskują, gdy wiązka nad nimi przechodzi, i przygasają.
+  const katDeg = (((Date.now() / 1000) % st.tempo) / st.tempo) * 360;
+  const R = zasieg * sk;
+  const idRozmycia = 'rozmycie' + Math.random().toString(36).slice(2, 9);
+  const filtr = svg('filter', { id: idRozmycia, x: '-20%', y: '-20%', width: '140%', height: '140%' });
+  filtr.append(svg('feGaussianBlur', { stdDeviation: 2.2 }));
+  const defs = svg('defs');
+  defs.append(filtr);
+  e.append(defs);
+  const wiazka = svg('g');
+  const smuga = svg('g', { filter: `url(#${idRozmycia})` });
+  const PLASTRY = 20, KROK = 3; // 20 plastrów po 3° = 60° poświaty za wiązką
+  for (let i = PLASTRY - 1; i >= 0; i--) {
+    const a0 = rad(-(i + 1) * KROK), a1 = rad(-i * KROK);
+    smuga.append(svg('path', { d: `M${P} ${P} L${P + R * Math.sin(a0)} ${P - R * Math.cos(a0)} A${R} ${R} 0 0 1 ${P + R * Math.sin(a1)} ${P - R * Math.cos(a1)}Z`,
+      fill: '#4de2c9', 'fill-opacity': (0.26 * (1 - i / PLASTRY) ** 2).toFixed(3) }));
+  }
+  wiazka.append(smuga, svg('line', { x1: P, y1: P, x2: P, y2: P - R, stroke: 'rgba(160,255,240,.9)', 'stroke-width': 2, filter: `url(#${idRozmycia})` }),
+    svg('line', { x1: P, y1: P, x2: P, y2: P - R, stroke: 'rgba(160,255,240,.9)', 'stroke-width': 1 }));
+  wiazka.append(svg('animateTransform', { attributeName: 'transform', type: 'rotate', from: `${katDeg} ${P} ${P}`, to: `${katDeg + 360} ${P} ${P}`,
+    dur: `${st.tempo}s`, repeatCount: 'indefinite' }));
+  e.append(wiazka);
   const strona = srodek.strona;
   for (const o of obiekty || []) {
     const swoj = o.strona === strona;
@@ -191,21 +211,42 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     if (x < -10 || y < -10 || x > 2 * P + 10 || y > 2 * P + 10) continue;
     const klucz = 'nr' in o;
     if (tory) {
-      const sl = st.slady.get((klucz ? 'k' : 'j') + o.id) || [];
-      if (sl.length > 1) e.append(svg('polyline', { points: sl.map(([sx, sy]) => `${px(sx)},${py(sy)}`).join(' '), fill: 'none', stroke: kolor, 'stroke-opacity': 0.35, 'stroke-width': 1 }));
+      // Zanikający, rozmyty ogon za kontaktem: ostatnie odczyty, im starszy odcinek, tym słabszy i cieńszy.
+      const sl = (st.slady.get((klucz ? 'k' : 'j') + o.id) || []).slice(-16);
+      const ogon = svg('g', { filter: `url(#${idRozmycia})` });
+      for (let i = 1; i < sl.length; i++) {
+        const f = i / (sl.length - 1);
+        ogon.append(svg('line', { x1: px(sl[i - 1][0]), y1: py(sl[i - 1][1]), x2: px(sl[i][0]), y2: py(sl[i][1]), stroke: kolor,
+          'stroke-opacity': (0.55 * f).toFixed(3), 'stroke-width': (1 + 2.5 * f).toFixed(2), 'stroke-linecap': 'round' }));
+      }
+      if (sl.length > 1) e.append(ogon);
     }
     if (prognozy && o.v) {
       const k = rad(o.kurs || 0);
       e.append(svg('line', { x1: x, y1: y, x2: px(o.x + o.v * 30 * Math.sin(k)), y2: py(o.y + o.v * 30 * Math.cos(k)), stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
     }
+    // Ruch między odczytami (co 1 s): kontakt przesuwa się płynnie po swoim kursie, zamiast skakać.
+    const ruch = svg('g');
+    if (o.v && o !== srodek) {
+      const k = rad(o.kurs || 0);
+      ruch.append(svg('animateTransform', { attributeName: 'transform', type: 'translate', from: '0 0',
+        to: `${(o.v * Math.sin(k) * sk).toFixed(3)} ${(-o.v * Math.cos(k) * sk).toFixed(3)}`, dur: '1s', fill: 'freeze' }));
+    }
+    // Poświata: pełna jasność, gdy wiązka przechodzi nad kontaktem, potem zanik do następnego obrotu.
+    if (o !== srodek) {
+      const namiar = ((Math.atan2(x - P, P - y) * 180) / Math.PI + 360) % 360;
+      const odPrzejscia = (((katDeg - namiar) % 360) + 360) % 360 / 360 * st.tempo;
+      ruch.append(svg('animate', { attributeName: 'opacity', values: '1;0.3', keyTimes: '0;1', dur: `${st.tempo}s`, begin: `-${odPrzejscia.toFixed(2)}s`, repeatCount: 'indefinite' }));
+    }
     const g = svg('g', { transform: `translate(${x} ${y}) rotate(${o.kurs || 0})`, style: wybierz ? 'cursor:pointer' : '' });
     if (klucz) g.append(svg('path', { d: 'M0 -6 L5 5 L-5 5Z', fill: kolor }));
     else g.append(sylwetka(o.profil, kolor, Math.max(o === srodek ? 34 : 22, (o.dlugosc_km || 1) * sk)));
     if (wybierz) g.addEventListener('click', (ev) => { ev.stopPropagation(); wybierz(o); });
-    e.append(g);
+    ruch.append(g);
     const id = (klucz ? 'k' : 'j') + o.id;
-    if (st.oznaczony === id || st.sledzony === id) e.append(svg('circle', { cx: x, cy: y, r: 12, fill: 'none', stroke: st.sledzony === id ? '#ffff99' : '#fff', 'stroke-width': 1.5 }));
-    if (hz && klucz && !swoj) e.append(svg('text', { x: x + 8, y: y - 6, fill: '#ffd7a0', 'font-size': 11 }, o.hzZnane ? `${o.hz} Hz` : '? Hz'));
+    if (st.oznaczony === id || st.sledzony === id) ruch.append(svg('circle', { cx: x, cy: y, r: 12, fill: 'none', stroke: st.sledzony === id ? '#ffff99' : '#fff', 'stroke-width': 1.5 }));
+    if (hz && klucz && !swoj) ruch.append(svg('text', { x: x + 8, y: y - 6, fill: '#ffd7a0', 'font-size': 11 }, o.hzZnane ? `${o.hz} Hz` : '? Hz'));
+    e.append(ruch);
   }
   return e;
 }

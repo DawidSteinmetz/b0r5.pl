@@ -103,6 +103,10 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   czeka na model ruchu okrętu w silniku). **Kontrola ognia** — ekran celu (ogień okrętu — kolejny etap).
 - **Powiększanie** każdego ekranu sytuacyjnego: przyciski + i − w rogu oraz kółko myszy (×1/8 … ×64) — przy małych
   odległościach (krążownik blisko) liczy się każdy kilometr.
+- **Ekrany na żywo**: wiązka omiatania obraca się płynnie (animacja SVG, faza z zegara — odświeżanie stanu co 1 s
+  jej nie przerywa), za nią rozmyta smuga poświaty (60°); kontakt rozbłyskuje, gdy wiązka nad nim przechodzi,
+  i przygasa do następnego obrotu; między odczytami kontakty przesuwają się płynnie po kursie; tory to rozmyte,
+  zanikające ogony (ostatnie 16 odczytów).
 - Bez mechaniki w silniku: Turbolasery, Silniki, Grawitacja i przygaszone elementy pozostałych pulpitów.
 - Pomiar Hz jest na razie natychmiastowy w zasięgu 200 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
   kolejny etap).

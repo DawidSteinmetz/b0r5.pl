@@ -196,12 +196,17 @@ function bitwa_upowazniony(array $u): bool
     try { return (bool) bitwa_okrety_konta($u); } catch (Throwable $e) { return false; }
 }
 
-// Migracja 070 (stan silnika) — bez niej scenariusze i test działają, symulacje nie.
+// Migracje 070 i 072 (stan silnika, taśmociąg) — bez niej scenariusze i test działają, symulacje nie.
 function bitwa_silnik_gotowy(): bool
 {
     static $jest = null;
     if ($jest === null) {
-        try { polaczenie_bazy()->query('SELECT ranga, ladunek, ai FROM bitwy_klucze LIMIT 0'); polaczenie_bazy()->query('SELECT kanal FROM bitwy_rozkazy LIMIT 0'); $jest = true; }
+        try {
+            polaczenie_bazy()->query('SELECT ranga, ladunek, ai FROM bitwy_klucze LIMIT 0');
+            polaczenie_bazy()->query('SELECT kanal FROM bitwy_rozkazy LIMIT 0');
+            polaczenie_bazy()->query('SELECT tasma_tik FROM bitwy_jednostki LIMIT 0');
+            $jest = true;
+        }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
@@ -316,15 +321,15 @@ function bitwa_utworz(array $u, string $scenariusz, ?int $obiektId): int
             VALUES (?, ?, 'symulacja', ?, ?, 'przygotowanie', NULL, ?, ?)")
             ->execute(['sym-' . bin2hex(random_bytes(6)), 'Symulacja: ' . $sc['nazwa'], $scenariusz, $ziarno, (string) ($u['login'] ?? ''), $sc['odprawa']]);
         $id = (int) $db->lastInsertId();
-        $insJ = $db->prepare('INSERT INTO bitwy_jednostki (bitwa_id, obiekt_id, profil_kod, nazwa, strona, scenariusz_nr, stan, wejscie_tik, x_km, y_km,
-            vx_km_s, vy_km_s, v_km_s, zwrot_deg, kadlub_start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,100)');
+        $insJ = $db->prepare('INSERT INTO bitwy_jednostki (bitwa_id, obiekt_id, profil_kod, nazwa, strona, scenariusz_nr, stan, wejscie_tik, tasma_tik, x_km, y_km,
+            vx_km_s, vy_km_s, v_km_s, zwrot_deg, kadlub_start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,100)');
         $insS = $db->prepare('INSERT INTO bitwy_sekcje (bitwa_jednostka_id, sekcja, integralnosc) VALUES (?,?,?)');
         $insG = $db->prepare("INSERT INTO bitwy_systemy (bitwa_jednostka_id, kod, stan, hz_zadane, hz_osiagane, hz_min, hz_max, auto) VALUES (?,?,'gotowy',?,?,?,?,1)");
         $insZ = $db->prepare('INSERT INTO bitwy_zyly (system_id, liczba, martwe, temperatury) VALUES (?,?,?,?)');
         $idJednostki = [];
         foreach ($S['jednostki'] as $j) {
             $rad = bitwa_radiany($j['kurs']);
-            $insJ->execute([$id, $j['obiekt_id'], $j['profil'], $j['nazwa'], $j['strona'], $j['nr'], $j['stan'], $j['wejscie'], $j['x'], $j['y'],
+            $insJ->execute([$id, $j['obiekt_id'], $j['profil'], $j['nazwa'], $j['strona'], $j['nr'], $j['stan'], $j['wejscie'], $S['tasma'][$j['nr']] ?? null, $j['x'], $j['y'],
                 $j['v'] * sin($rad), $j['v'] * cos($rad), $j['v'], $j['kurs']]);
             $jid = (int) $db->lastInsertId();
             $idJednostki[$j['nr']] = $jid;
@@ -359,7 +364,7 @@ function bitwa_wczytaj_stan(array $b): array
     $db = polaczenie_bazy();
     $id = (int) $b['id'];
     $tik = (int) $b['tik_policzony'];
-    $S = ['id' => $id, 'ziarno' => (int) $b['ziarno'], 'tik' => $tik, 'rozkazy' => [], 'po_kanale' => [], 'aktywne' => [], 'zdarzenia' => [], 'jednostki' => [], 'klucze' => []];
+    $S = ['id' => $id, 'ziarno' => (int) $b['ziarno'], 'tik' => $tik, 'rozkazy' => [], 'po_kanale' => [], 'aktywne' => [], 'zdarzenia' => [], 'jednostki' => [], 'klucze' => [], 'tasma' => []];
     $nrJednostki = [];
     $q = $db->prepare('SELECT * FROM bitwy_jednostki WHERE bitwa_id=? ORDER BY id');
     $q->execute([$id]);
@@ -381,6 +386,7 @@ function bitwa_wczytaj_stan(array $b): array
         foreach ($qs->fetchAll(PDO::FETCH_ASSOC) as $s) $sek[$s['sekcja']] = (float) $s['integralnosc'];
         ksort($sek, SORT_STRING);
         $nrJednostki[$jid] = (int) $r['scenariusz_nr'];
+        if ($r['tasma_tik'] !== null) $S['tasma'][(int) $r['scenariusz_nr']] = (int) $r['tasma_tik'];
         $S['jednostki'][] = ['id' => $jid, 'nr' => (int) $r['scenariusz_nr'], 'strona' => $r['strona'], 'profil' => $r['profil_kod'], 'nazwa' => $r['nazwa'],
             'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'], 'kurs' => (float) $r['zwrot_deg'], 'v' => (float) $r['v_km_s'],
             'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id']];
@@ -391,7 +397,7 @@ function bitwa_wczytaj_stan(array $b): array
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
         $indeksKlucza[(int) $r['id']] = count($S['klucze']);
         $S['klucze'][] = ['id' => (int) $r['id'], 'strona' => $r['strona'], 'nr' => (int) $r['numer'], 'typ' => $r['typ_maszyny'], 'maszyny' => (int) $r['maszyny'],
-            'ranga' => $r['ranga'], 'moc' => (float) $r['moc'], 'stan' => $r['stan'], 'start' => (int) $r['start_tik'], 'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'],
+            'ranga' => $r['ranga'], 'moc' => (float) $r['moc'], 'stan' => $r['stan'], 'start' => $r['start_tik'] !== null ? (int) $r['start_tik'] : null, 'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'],
             'kurs' => (float) $r['kurs_deg'], 'rozkaz' => $r['rozkaz'], 'macierzysta' => $r['macierzysta_id'] !== null ? ($nrJednostki[(int) $r['macierzysta_id']] ?? null) : null,
             'ladunek' => (int) $r['ladunek'], 'akcje' => (int) $r['akcje'], 'ai' => (bool) (int) $r['ai']];
     }
@@ -415,23 +421,23 @@ function bitwa_zapisz_stan(array $S): void
 {
     $db = polaczenie_bazy();
     $id = $S['id'];
-    $updJ = $db->prepare('UPDATE bitwy_jednostki SET x_km=?, y_km=?, zwrot_deg=?, v_km_s=?, stan=? WHERE id=?');
+    $updJ = $db->prepare('UPDATE bitwy_jednostki SET x_km=?, y_km=?, zwrot_deg=?, v_km_s=?, stan=?, tasma_tik=? WHERE id=?');
     $updG = $db->prepare('UPDATE bitwy_systemy SET hz_zadane=?, hz_osiagane=?, auto=?, obciazenie_j=?, rykoszet_j=? WHERE id=?');
     $updZ = $db->prepare('UPDATE bitwy_zyly SET martwe=?, temperatury=? WHERE system_id=?');
     $updS = $db->prepare('UPDATE bitwy_sekcje SET integralnosc=? WHERE bitwa_jednostka_id=? AND sekcja=?');
     $idJednostki = [];
     foreach ($S['jednostki'] as $j) {
         $idJednostki[$j['nr']] = $j['id'];
-        $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $j['id']]);
+        $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $S['tasma'][$j['nr']] ?? null, $j['id']]);
         foreach ($j['generatory'] as $g) {
             $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
             if ($g['zyly']['martwe'] !== $g['zyly_org']) $updZ->execute([$g['zyly']['martwe'], $g['zyly']['temperatury'], $g['id']]);
         }
         foreach ($j['sekcje'] as $sek => $v) $updS->execute([$v, $j['id'], $sek]);
     }
-    $updK = $db->prepare('UPDATE bitwy_klucze SET stan=?, x_km=?, y_km=?, kurs_deg=?, ladunek=?, akcje=?, figura=? WHERE id=?');
+    $updK = $db->prepare('UPDATE bitwy_klucze SET stan=?, start_tik=?, rozkaz=?, x_km=?, y_km=?, kurs_deg=?, ladunek=?, akcje=?, figura=? WHERE id=?');
     foreach ($S['klucze'] as $k) {
-        $updK->execute([$k['stan'], $k['x'], $k['y'], $k['kurs'], $k['ladunek'], $k['akcje'], bitwa_figura($S, bitwa_kanal_klucza($k)), $k['id']]);
+        $updK->execute([$k['stan'], $k['start'], $k['rozkaz'], $k['x'], $k['y'], $k['kurs'], $k['ladunek'], $k['akcje'], bitwa_figura($S, bitwa_kanal_klucza($k)), $k['id']]);
     }
     $insR = $db->prepare('INSERT INTO bitwy_rozkazy (bitwa_id, uid, odebrano_utc, tik, kanal, czas_s, ranga, login, ai, bitwa_jednostka_id, bitwa_klucz_id,
         pulpit, system_kod, rozkaz_kod, wartosc_po, przyczyna, stan, dziala_od_tik, dziala_do_tik, odnowienie_do_tik) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -509,21 +515,24 @@ function bitwa_widok(array $b, array $S): array
     foreach ($S['klucze'] as $k) {
         $kan = bitwa_kanal_klucza($k);
         $przyg = null;
-        foreach (array_reverse($S['po_kanale'][$kan] ?? []) as $i) {
-            $w = $S['rozkazy'][$i];
-            if ($w['stan'] === 'przygotowanie') { $przyg = ['kod' => $w['kod'], 'nazwa' => $prof[$w['kod']]['nazwa'], 'dziala_za_s' => round(max(0, $w['dziala_od'] - $czas), 1)]; break; }
+        foreach ([$kan, bitwa_kanal_rozkazu($k)] as $kanal) {
+            foreach (array_reverse($S['po_kanale'][$kanal] ?? []) as $i) {
+                $w = $S['rozkazy'][$i];
+                if ($w['stan'] === 'przygotowanie') { $przyg = ['kod' => $w['kod'], 'nazwa' => $prof[$w['kod']]['nazwa'], 'dziala_za_s' => round(max(0, $w['dziala_od'] - $czas), 1)]; break 2; }
+            }
         }
         $fig = bitwa_figura($S, $kan);
         $klucze[] = ['id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
             'maszyny' => $k['maszyny'], 'stan' => $k['stan'], 'ranga' => $k['ranga'], 'ai' => $k['ai'], 'akcje' => $k['akcje'],
             'x' => round($k['x'], 3), 'y' => round($k['y'], 3), 'figura' => $fig ? $prof[$fig]['nazwa'] : null, 'przygotowanie' => $przyg,
-            'start_za_s' => $k['stan'] === 'hangar' ? round(max(0, $k['start'] - $czas), 1) : null];
+            'rozkaz' => $k['rozkaz'], 'rozkaz_nazwa' => $prof[$k['rozkaz']]['nazwa'] ?? $k['rozkaz'],
+            'start_za_s' => $k['stan'] === 'hangar' && $k['start'] !== null ? round(max(0, $k['start'] - $czas), 1) : null];
     }
     $q = $db->prepare('SELECT tik, rodzaj, opis FROM bitwy_zdarzenia WHERE bitwa_id=? ORDER BY id DESC LIMIT 25');
     $q->execute([(int) $b['id']]);
     $figury = [];
     foreach ($prof as $kod => $r) {
-        if (in_array($r['grupa'], ['okret'], true)) continue;
+        if ($r['grupa'] === 'okret') continue;
         $figury[] = ['kod' => $kod, 'nazwa' => $r['nazwa'], 'grupa' => $r['grupa'], 'ranga_min' => $r['ranga_min'], 'przygotowanie_s' => (float) $r['przygotowanie_s']];
     }
     return ['id' => (int) $b['id'], 'nazwa' => $b['nazwa'], 'status' => $b['status'], 'pauza' => $b['pauza_od_utc'] !== null, 'czas_s' => round($czas, 2),
@@ -573,7 +582,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
     if (in_array($akcja, ['bitwa_test', 'bitwa_xp_zatwierdz'], true) && !bitwa_mg($u)) blad('Tylko dla MG.', 403);
     $db = polaczenie_bazy();
     $w = $post ? wejscie() : [];
-    $silnik = static function () { if (!bitwa_silnik_gotowy()) blad('Symulacje wymagają migracji 070.'); };
+    $silnik = static function () { if (!bitwa_silnik_gotowy()) blad('Symulacje wymagają migracji 070 i 072.'); };
     switch ($akcja) {
         case 'bitwa_test':
             $wyniki = bitwa_test();
@@ -664,8 +673,15 @@ function obsluz_bitwa(string $akcja, bool $post): void
                     foreach ($S['klucze'] as $ki => $k) {
                         if ($k['id'] !== (int) $w['klucz_id']) continue;
                         if ($k['ai']) return ['odmowa' => 'Ten klucz prowadzi AI strony przeciwnej.'];
-                        if ($k['stan'] !== 'w_locie') return ['odmowa' => $k['stan'] === 'hangar' ? 'Klucz jest jeszcze w hangarze.' : 'Klucz nie jest w locie.'];
-                        $r = bitwa_przyjmij($S, bitwa_kanal_klucza($k), $kod, $czas, $k['ranga'], $ki, $meta);
+                        $grupa = bitwa_rozkazy_profile()[$kod]['grupa'] ?? null;
+                        if ($grupa === null || $grupa === 'okret') return ['odmowa' => 'To nie jest rozkaz dla klucza.'];
+                        if ($kod === 'start') {
+                            if ($k['stan'] !== 'hangar' || $k['start'] !== null) return ['odmowa' => 'Start tylko dla klucza w hangarze, który nie czeka już na taśmociągu.'];
+                        } elseif ($k['stan'] !== 'w_locie' && !($grupa === 'rozkaz_klucza' && $k['stan'] === 'powrot')) {
+                            return ['odmowa' => $k['stan'] === 'hangar' ? 'Klucz jest w hangarze — najpierw Start.' : 'Klucz nie jest w locie.'];
+                        }
+                        $kanal = $grupa === 'rozkaz_klucza' ? bitwa_kanal_rozkazu($k) : bitwa_kanal_klucza($k);
+                        $r = bitwa_przyjmij($S, $kanal, $kod, $czas, $k['ranga'], $ki, $meta);
                         return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
                     }
                     return ['odmowa' => 'Nie ma takiego klucza.'];

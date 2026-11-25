@@ -227,6 +227,9 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   kadłub i osłony, klucze z lampą stanu i odliczaniem startu, przygotowanie rozkazu, zdarzenia), XP po zakończeniu.
 - Migracja 070: pozycje, kąty i integralność sekcji jako DOUBLE (zaokrąglanie przy zapisie zmieniałoby przebieg
   zależnie od częstości odświeżania), ranga / ładunek / akcje / AI klucza, tryb auto osłon, kanał rozkazu.
+- Taśmociąg i rozkazy klucza (25.11.2026, migracja 072): z jednego okrętu najwyżej 1 klucz na minutę (kolejka
+  `bitwy_jednostki.tasma_tik`); klucze graczy domyślnie „ochrona” — krążą 3 km od okrętu matki; rozkazy klucza (ochrona,
+  patrol 8 km, atak, skan 10 km, powrót z lądowaniem, start z hangaru) mają własny kanał i czas wykonania, osobno od figur.
 - Ograniczenia: myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

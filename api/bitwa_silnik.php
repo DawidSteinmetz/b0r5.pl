@@ -14,6 +14,11 @@ const BITWA_STALE = [
     'promien_trafienia' => 7,
     'zasieg_ognia_klucza_km' => 3.0,
     'dystans_ataku_km' => 2.0,
+    'tasma_s' => 60,
+    'promien_ochrony_km' => 3.0,
+    'promien_patrolu_km' => 8.0,
+    'promien_skanu_km' => 10.0,
+    'ladowanie_km' => 0.5,
     'kadlub_j' => ['ISD_I' => 5e23, 'MC80' => 4e23, 'ZBIEG' => 2e21],
     'xp_akcja' => 0.5,
     'xp_mnoznik' => ['as' => 0.5, 'standard' => 1.0, 'kadet' => 1.5],
@@ -194,12 +199,55 @@ function bitwa_stan_ze_scenariusza(array $sc, int $ziarno): array
                 'ai' => $st['dowodzenie'] !== 'gracze'];
         }
     }
+    bitwa_tasmociag($S);
     return $S;
 }
 
+// Taśmociąg okrętu: klucze z jednego okrętu startują w kolejności planu, co najmniej tasma_s sekund po sobie.
+function bitwa_tasmociag(array &$S): void
+{
+    $S['tasma'] = [];
+    $kol = [];
+    foreach ($S['klucze'] as $i => $k) if ($k['macierzysta'] !== null && $k['start'] !== null) $kol[] = $i;
+    $kl = $S['klucze'];
+    usort($kol, static fn($a, $b) => ($kl[$a]['start'] <=> $kl[$b]['start']) ?: ($a <=> $b));
+    foreach ($kol as $i) {
+        $m = $S['klucze'][$i]['macierzysta'];
+        if (isset($S['tasma'][$m])) $S['klucze'][$i]['start'] = max($S['klucze'][$i]['start'], $S['tasma'][$m] + BITWA_STALE['tasma_s']);
+        $S['tasma'][$m] = $S['klucze'][$i]['start'];
+    }
+}
+
+// Kanał figur klucza (manewry).
 function bitwa_kanal_klucza(array $k): string
 {
     return "klucz:{$k['strona']}:{$k['nr']}";
+}
+
+// Kanał rozkazów klucza (ochrona, patrol, atak, skan, powrót, start) — osobny od figur.
+function bitwa_kanal_rozkazu(array $k): string
+{
+    return "rozkaz:{$k['strona']}:{$k['nr']}";
+}
+
+function bitwa_macierzysta(array $S, array $k): ?int
+{
+    foreach ($S['jednostki'] as $i => $j) if ($j['nr'] === $k['macierzysta'] && $j['stan'] === 'w_bitwie') return $i;
+    return null;
+}
+
+// Dokąd leci klucz i w jakim promieniu krąży (jak silnik.py cel_klucza): [indeks jednostki|null, promień km].
+function bitwa_cel_klucza(array $S, array $k): array
+{
+    $mac = bitwa_macierzysta($S, $k);
+    $wrogie = bitwa_wrogowie($S, $k['strona']);
+    $r = $k['rozkaz'];
+    if ((in_array($r, ['atak', 'skan'], true) || $mac === null) && $wrogie) {
+        return [bitwa_najblizsza($S, $k, $wrogie), $r === 'skan' ? BITWA_STALE['promien_skanu_km'] : BITWA_STALE['dystans_ataku_km']];
+    }
+    if ($mac === null) return [null, 0.0];
+    if ($r === 'powrot') return [$mac, 0.0];
+    return [$mac, $r === 'patrol' ? BITWA_STALE['promien_patrolu_km'] : BITWA_STALE['promien_ochrony_km']];
 }
 
 // Indeksy jednostek wroga w bitwie (kolejność jak w stanie).
@@ -333,7 +381,22 @@ function bitwa_krok(array &$S): void
     $masz = bitwa_slowniki()['maszyny'];
     foreach (bitwa_aktywuj($S, $tik) as $i) {
         $w = $S['rozkazy'][$i];
-        if ($w['ki'] !== null) $S['klucze'][$w['ki']]['akcje']++;
+        if ($w['ki'] !== null) {
+            $ki = $w['ki'];
+            $S['klucze'][$ki]['akcje']++;
+            if ($prof[$w['kod']]['grupa'] === 'rozkaz_klucza') {
+                if ($w['kod'] === 'start') {
+                    if ($S['klucze'][$ki]['stan'] === 'hangar' && $S['klucze'][$ki]['start'] === null) {
+                        $m = $S['klucze'][$ki]['macierzysta'];
+                        $S['klucze'][$ki]['start'] = max($tik, ($S['tasma'][$m] ?? -1000000000) + BITWA_STALE['tasma_s']);
+                        $S['tasma'][$m] = $S['klucze'][$ki]['start'];
+                    }
+                } else {
+                    $S['klucze'][$ki]['rozkaz'] = $w['kod'];
+                    if ($w['kod'] === 'powrot' && $S['klucze'][$ki]['stan'] === 'w_locie') $S['klucze'][$ki]['stan'] = 'powrot';
+                }
+            }
+        }
         if (str_starts_with($w['kod'], 'przestrojenie')) {
             [$nr, $gk] = explode(':', $w['kanal'], 2);
             foreach ($S['jednostki'] as $ji => $j) {
@@ -349,19 +412,31 @@ function bitwa_krok(array &$S): void
     }
     // ruch
     foreach ($S['klucze'] as $ki => $k) {
-        if ($k['stan'] === 'hangar' && $tik >= $k['start']) {
+        if ($k['stan'] === 'hangar' && $k['start'] !== null && $tik >= $k['start']) {
             $k['stan'] = 'w_locie';
+            if ($k['rozkaz'] === 'powrot') $k['rozkaz'] = 'ochrona';
+            $mac = bitwa_macierzysta($S, $k);
+            if ($mac !== null) { $k['x'] = $S['jednostki'][$mac]['x']; $k['y'] = $S['jednostki'][$mac]['y']; }
             $S['zdarzenia'][] = ['tik' => $tik, 'rodzaj' => 'start', 'opis' => "{$k['strona']}: klucz {$k['nr']} ({$k['typ']}) startuje", 'wartosc' => null];
         }
-        if ($k['stan'] !== 'w_locie') { $S['klucze'][$ki] = $k; continue; }
-        $cele = bitwa_wrogowie($S, $k['strona']);
+        if ($k['stan'] !== 'w_locie' && $k['stan'] !== 'powrot') { $S['klucze'][$ki] = $k; continue; }
         $fig = bitwa_figura($S, bitwa_kanal_klucza($k));
         $v = $masz[$k['typ']]['v'] * ($fig && $prof[$fig]['predkosc_mn'] !== null ? (float) $prof[$fig]['predkosc_mn'] : 1);
-        if ($cele) {
-            $cel = $S['jednostki'][bitwa_najblizsza($S, $k, $cele)];
+        [$celI, $promien] = bitwa_cel_klucza($S, $k);
+        if ($celI !== null) {
+            $cel = $S['jednostki'][$celI];
             $d = bitwa_odleglosc($k, $cel);
+            if ($k['stan'] === 'powrot' && $d <= BITWA_STALE['ladowanie_km']) {
+                $k['stan'] = 'hangar';
+                $k['start'] = null;
+                $k['x'] = $cel['x'];
+                $k['y'] = $cel['y'];
+                $S['zdarzenia'][] = ['tik' => $tik, 'rodzaj' => 'ladowanie', 'opis' => "{$k['strona']}: klucz {$k['nr']} ({$k['typ']}) ląduje w hangarze", 'wartosc' => null];
+                $S['klucze'][$ki] = $k;
+                continue;
+            }
             $kursDo = bitwa_stopnie_kat(atan2($cel['x'] - $k['x'], $cel['y'] - $k['y']));
-            $k['kurs'] = $d > BITWA_STALE['dystans_ataku_km'] ? $kursDo : $kursDo + 90;
+            $k['kurs'] = $d > $promien ? $kursDo : $kursDo + 90;
         }
         if ($fig === 'petla' || $fig === 'split_s') $k['kurs'] += 180 / max(1, (int) $prof[$fig]['dzialanie_s']);
         $k['x'] += $v * sin(bitwa_radiany($k['kurs']));

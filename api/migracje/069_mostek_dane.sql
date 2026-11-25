@@ -171,8 +171,8 @@ INSERT INTO bitwy_scenariusze_jednostki (scenariusz_kod, nr, strona, profil_kod,
 
 INSERT INTO bitwy_scenariusze_klucze (scenariusz_kod, fala, strona, jednostka_nr, typ_maszyny, liczba_kluczy, start_s, start_rozrzut_s, x_km, y_km, rozkaz) VALUES
   ('walako_atak', 1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, NULL, NULL, 'ochrona'),
-  ('walako_atak', 2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, NULL, NULL, 'atak'),
-  ('walako_atak', 3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, NULL, NULL, 'atak'),
+  ('walako_atak', 2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, NULL, NULL, 'ochrona'),
+  ('walako_atak', 3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, NULL, NULL, 'ochrona'),
   ('walako_atak', 1, 'Rebelia', 2, 'X_WING', 5, 0, 10, NULL, NULL, 'atak'),
   ('walako_atak', 1, 'Rebelia', 2, 'Y_WING', 2, 0, 10, NULL, NULL, 'atak'),
   ('walako_atak', 1, 'Rebelia', 2, 'A_WING', 1, 0, 10, NULL, NULL, 'atak'),
@@ -200,7 +200,7 @@ INSERT INTO bitwy_scenariusze_jednostki (scenariusz_kod, nr, strona, profil_kod,
 
 INSERT INTO bitwy_scenariusze_klucze (scenariusz_kod, fala, strona, jednostka_nr, typ_maszyny, liczba_kluczy, start_s, start_rozrzut_s, x_km, y_km, rozkaz) VALUES
   ('walako_klucze', 1, 'Imperium', 1, 'TIE_LN', 4, 0, 20, NULL, NULL, 'ochrona'),
-  ('walako_klucze', 2, 'Imperium', 1, 'TIE_IN', 5, 60, 60, NULL, NULL, 'atak'),
+  ('walako_klucze', 2, 'Imperium', 1, 'TIE_IN', 5, 60, 60, NULL, NULL, 'ochrona'),
   ('walako_klucze', 1, 'Rebelia', NULL, 'X_WING', 6, 0, 15, 0, 60, 'atak'),
   ('walako_klucze', 1, 'Rebelia', NULL, 'Y_WING', 2, 0, 15, 10, 60, 'atak'),
   ('walako_klucze', 1, 'Rebelia', NULL, 'B_WING', 1, 30, 30, -10, 60, 'atak');

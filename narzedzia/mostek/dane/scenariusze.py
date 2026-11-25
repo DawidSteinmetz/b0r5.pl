@@ -33,8 +33,8 @@ SCENARIUSZE = [
         # fala, strona, jednostka_nr, typ, liczba kluczy, start, rozrzut, x, y, rozkaz
         'klucze': [
             (1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, None, None, 'ochrona'),
-            (2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, None, None, 'atak'),
-            (3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, None, None, 'atak'),
+            (2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, None, None, 'ochrona'),
+            (3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, None, None, 'ochrona'),
             (1, 'Rebelia', 2, 'X_WING', 5, 0, 10, None, None, 'atak'),
             (1, 'Rebelia', 2, 'Y_WING', 2, 0, 10, None, None, 'atak'),
             (1, 'Rebelia', 2, 'A_WING', 1, 0, 10, None, None, 'atak'),
@@ -67,7 +67,7 @@ SCENARIUSZE = [
         ],
         'klucze': [
             (1, 'Imperium', 1, 'TIE_LN', 4, 0, 20, None, None, 'ochrona'),
-            (2, 'Imperium', 1, 'TIE_IN', 5, 60, 60, None, None, 'atak'),
+            (2, 'Imperium', 1, 'TIE_IN', 5, 60, 60, None, None, 'ochrona'),
             (1, 'Rebelia', None, 'X_WING', 6, 0, 15, 0, 60, 'atak'),
             (1, 'Rebelia', None, 'Y_WING', 2, 0, 15, 10, 60, 'atak'),
             (1, 'Rebelia', None, 'B_WING', 1, 30, 30, -10, 60, 'atak'),

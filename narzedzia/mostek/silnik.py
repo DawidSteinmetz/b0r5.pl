@@ -24,6 +24,11 @@ STALE = {
     'promien_trafienia': 7,         # [R] promień (w żyłach siatki) rozkładu uszkodzeń trafienia (turbolaser 7)
     'zasieg_ognia_klucza_km': 3.0,  # [R]
     'dystans_ataku_km': 2.0,        # [R] klucz podchodzi do celu na tyle i krąży
+    'tasma_s': 60,                  # [U] taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
+    'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
+    'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
+    'promien_skanu_km': 10.0,       # [R] skan: krąży przy celu poza zasięgiem jego ognia
+    'ladowanie_km': 0.5,            # [R] powrót: klucz ląduje w hangarze bliżej niż tyle
     'skret_lagodny': 3.0, 'skret_ostry': 9.0, 'skret_zawrot': 30.0,  # [R] °/tik
     'kadlub_j': {'ISD_I': 5e23, 'MC80': 4e23, 'ZBIEG': 2e21},          # [?] odporność całego kadłuba (100% wszystkich sekcji)
     'xp_akcja': 0.5,                # [U]
@@ -178,11 +183,46 @@ def utworz(scenariusz_kod, ziarno):
                                    'x': float(x if x is not None else mac['x']), 'y': float(y if y is not None else mac['y']),
                                    'kurs': 0.0, 'rozkaz': rozkaz, 'macierzysta': jedn_nr, 'ladunek': 0, 'akcje': 0,
                                    'ai': st[2] != 'gracze'})
+    tasmociag(stan)
     return stan
 
 
+def tasmociag(stan):
+    """Taśmociąg okrętu: klucze z jednego okrętu startują w kolejności planu, co najmniej tasma_s sekund po sobie."""
+    stan['tasma'] = {}
+    for k in sorted((k for k in stan['klucze'] if k['macierzysta'] is not None and k['start'] is not None),
+                    key=lambda k: (k['start'], stan['klucze'].index(k))):
+        m = k['macierzysta']
+        if m in stan['tasma']:
+            k['start'] = max(k['start'], stan['tasma'][m] + STALE['tasma_s'])
+        stan['tasma'][m] = k['start']
+
+
 def kanal_klucza(k):
+    """Kanał figur klucza (manewry)."""
     return f'klucz:{k["strona"]}:{k["nr"]}'
+
+
+def kanal_rozkazu(k):
+    """Kanał rozkazów klucza (ochrona, patrol, atak, skan, powrót, start) — osobny od figur."""
+    return f'rozkaz:{k["strona"]}:{k["nr"]}'
+
+
+def macierzysta(stan, k):
+    return next((j for j in stan['jednostki'] if j['nr'] == k['macierzysta'] and j['stan'] == 'w_bitwie'), None)
+
+
+def cel_klucza(stan, k):
+    """Dokąd leci klucz i w jakim promieniu krąży — z rozkazu: atak (najbliższy wróg, 2 km), skan (10 km), powrót
+    (okręt matka, lądowanie), ochrona i patrol (okręt matka, 3 / 8 km). Klucz bez okrętu matki atakuje."""
+    mac = macierzysta(stan, k)
+    wrogie = wrogowie(stan, k['strona'])
+    r = k['rozkaz']
+    if (r in ('atak', 'skan') or mac is None) and wrogie:
+        return min(wrogie, key=lambda j: odleglosc(k, j)), STALE['promien_skanu_km'] if r == 'skan' else STALE['dystans_ataku_km']
+    if mac is None: return None, 0.0
+    if r == 'powrot': return mac, 0.0
+    return mac, STALE['promien_patrolu_km'] if r == 'patrol' else STALE['promien_ochrony_km']
 
 
 def wrogowie(stan, strona):
@@ -281,8 +321,18 @@ def krok(stan):
     """Jeden tik: rozkazy → ruch → ogień → straty → zdarzenia (MECHANIKA 1)."""
     tik = stan['tik']
     for w in aktywuj_rozkazy(stan, tik):
-        if w['klucz'] is not None:                       # akcja NPC: figura zaczęła działać → XP (W7)
-            w['klucz']['akcje'] += 1
+        if w['klucz'] is not None:                       # akcja NPC: figura lub rozkaz zaczął działać → XP (W7)
+            k = w['klucz']
+            k['akcje'] += 1
+            if ROZK[w['kod']]['grupa'] == 'rozkaz_klucza':
+                if w['kod'] == 'start':
+                    if k['stan'] == 'hangar' and k['start'] is None:
+                        m = k['macierzysta']
+                        k['start'] = max(tik, stan['tasma'].get(m, -10 ** 9) + STALE['tasma_s'])
+                        stan['tasma'][m] = k['start']
+                else:
+                    k['rozkaz'] = w['kod']
+                    if w['kod'] == 'powrot' and k['stan'] == 'w_locie': k['stan'] = 'powrot'
         if w['kod'].startswith('przestrojenie'):
             nr, gk = w['kanal'].split(':')
             j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
@@ -291,18 +341,25 @@ def krok(stan):
             stan['zdarzenia'].append((tik, 'przestrojenie', j['nazwa'], gk, g['hz_zadane']))
     # ruch
     for k in stan['klucze']:
-        if k['stan'] == 'hangar' and tik >= k['start']:
+        if k['stan'] == 'hangar' and k['start'] is not None and tik >= k['start']:
             k['stan'] = 'w_locie'
+            if k['rozkaz'] == 'powrot': k['rozkaz'] = 'ochrona'
+            mac = macierzysta(stan, k)
+            if mac: k['x'], k['y'] = mac['x'], mac['y']
             stan['zdarzenia'].append((tik, 'start', k['strona'], k['nr'], k['typ']))
-        if k['stan'] != 'w_locie': continue
-        cele = wrogowie(stan, k['strona'])
+        if k['stan'] not in ('w_locie', 'powrot'): continue
         fig = figura(stan, kanal_klucza(k))
         v = MASZ[k['typ']]['v'] * (ROZK[fig]['v'] if fig and ROZK[fig]['v'] else 1)
-        if cele:
-            cel = min(cele, key=lambda j: odleglosc(k, j))
+        cel, promien = cel_klucza(stan, k)
+        if cel is not None:
             d = odleglosc(k, cel)
+            if k['stan'] == 'powrot' and d <= STALE['ladowanie_km']:
+                k['stan'], k['start'] = 'hangar', None
+                k['x'], k['y'] = cel['x'], cel['y']
+                stan['zdarzenia'].append((tik, 'ladowanie', k['strona'], k['nr'], k['typ']))
+                continue
             kurs_do = stopnie(math.atan2(cel['x'] - k['x'], cel['y'] - k['y']))
-            k['kurs'] = kurs_do if d > STALE['dystans_ataku_km'] else kurs_do + 90   # krążenie przy celu
+            k['kurs'] = kurs_do if d > promien else kurs_do + 90   # krążenie przy celu
         if fig in ('petla', 'split_s'): k['kurs'] += 180 / max(1, ROZK[fig]['d'])
         k['x'] += v * math.sin(radiany(k['kurs']))
         k['y'] += v * math.cos(radiany(k['kurs']))

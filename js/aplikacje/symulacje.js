@@ -53,7 +53,7 @@ export default {
           h('p.maly-tekst', 'Instancje bitew na symulatorach pokładowych. Uszkodzenia jednostek nie zostają po symulacji; '
             + 'piloci z pokładu dostają 0,5 XP za każdą akcję (as ×0,5, kadet ×1,5) po zatwierdzeniu przez MG.'),
           h('table.tabela', para('Twoje okręty', okrety.length ? h('div', okrety.map((o) => h('div', `${o.nazwa} · ${o.profil_klasy}`))) : 'brak')),
-          dane.silnik ? null : h('div.komunikat', 'Prowadzenie symulacji wymaga migracji 070.')),
+          dane.silnik ? null : h('div.komunikat', 'Prowadzenie symulacji wymaga migracji 070 i 072.')),
         sym.length ? panel('TWOJE SYMULACJE', h('table.tabela', sym.map((s) => h('tr',
           h('td', h('div', s.nazwa), h('div.slaby.maly-tekst', `${STATUS[s.status] || s.status}${s.pauza ? ' · pauza' : ''} · ${mmss(s.czas_s)} z ${mmss(s.okno_s)}`)),
           h('td', { style: 'text-align:right' }, h('button.przycisk.drugi.maly', { onclick: () => otworzSymulacje(s.id) }, 'Otwórz')))))) : null,
@@ -88,7 +88,7 @@ export default {
           para('Porażka', s.porazka),
           para('Status', s.status === 'gotowy' ? 'gotowy' : 'roboczy — liczby do strojenia')),
         dane.silnik && (!potrzebne.length || pasujace.length) ? [wybor, utworz] : h('div.slaby.maly-tekst', { style: 'margin-top:10px' },
-          dane.silnik ? `Potrzebny okręt klasy ${potrzebne.join(', ')}, którym dowodzisz.` : 'Uruchamianie po migracji 070.'),
+          dane.silnik ? `Potrzebny okręt klasy ${potrzebne.join(', ')}, którym dowodzisz.` : 'Uruchamianie po migracjach 070 i 072.'),
         komunikat);
     }
 
@@ -118,6 +118,7 @@ export default {
       ctx.ustawWstecz?.(() => { lista(); return true; });
       // Elementy sterujące tworzone raz (wybór figury i Hz nie gubi się przy odświeżaniu co sekundę).
       const wyborFigury = h('select', { style: 'width:100%;min-height:36px' });
+      const wyborRozkazu = h('select', { style: 'width:100%;min-height:36px' });
       const wyborHz = h('select', { style: 'min-height:32px' });
       const komunikat = h('div');
       const naglowek = h('div');
@@ -212,21 +213,29 @@ export default {
         if (!wyborFigury.options.length) {
           wyborFigury.append(...s.figury.filter((f) => f.grupa !== 'rozkaz_klucza').map((f) =>
             h('option', { value: f.kod }, `${f.nazwa} (${f.przygotowanie_s} s${f.ranga_min === 'as' ? ', tylko as' : ''})`)));
+          wyborRozkazu.append(...s.figury.filter((f) => f.grupa === 'rozkaz_klucza' && f.kod !== 'start').map((f) =>
+            h('option', { value: f.kod, selected: f.kod === 'ochrona' }, `${f.nazwa} (${f.przygotowanie_s} s)`)));
         }
         const graczy = s.klucze.filter((k) => !k.ai);
         const wiersz = (k) => {
           const [tlo, kolor, opis] = LAMPA[k.stan] || LAMPA.hangar;
           const lampa = h('span', { style: `display:inline-block;min-width:74px;text-align:center;padding:3px 6px;border-radius:3px;background:${tlo};color:${kolor};font-size:12px` },
             k.stan === 'hangar' && k.start_za_s != null ? `start ${mmss(k.start_za_s)}` : opis);
+          const moje = !k.ai && trwa;
+          const przyciski = [];
+          if (moje && ['w_locie', 'powrot'].includes(k.stan)) przyciski.push(h('button.przycisk.drugi.maly', { onclick: () => rozkaz({ klucz_id: k.id, kod: wyborRozkazu.value }) }, 'Rozkaz'));
+          if (moje && k.stan === 'w_locie') przyciski.push(h('button.przycisk.drugi.maly', { onclick: () => rozkaz({ klucz_id: k.id, kod: wyborFigury.value }) }, 'Figura'));
+          if (moje && k.stan === 'hangar' && k.start_za_s == null) przyciski.push(h('button.przycisk.drugi.maly', { onclick: () => rozkaz({ klucz_id: k.id, kod: 'start' }) }, 'Start'));
           return h('tr',
             h('td', lampa),
-            h('td', h('div', `${k.strona} ${k.nr} · ${k.maszyna}`), h('div.slaby.maly-tekst', `${RANGA[k.ranga] || k.ranga} · akcje ${k.akcje}`
+            h('td', h('div', `${k.strona} ${k.nr} · ${k.maszyna}`), h('div.slaby.maly-tekst', `${RANGA[k.ranga] || k.ranga} · ${k.rozkaz_nazwa || k.rozkaz} · akcje ${k.akcje}`
               + (k.figura ? ` · ${k.figura}` : '') + (k.przygotowanie ? ` · przygotowanie: ${k.przygotowanie.nazwa} za ${k.przygotowanie.dziala_za_s} s` : ''))),
-            h('td', { style: 'text-align:right' }, !k.ai && trwa && k.stan === 'w_locie'
-              ? h('button.przycisk.drugi.maly', { onclick: () => rozkaz({ klucz_id: k.id, kod: wyborFigury.value }) }, 'Wydaj') : null));
+            h('td', { style: 'text-align:right;white-space:nowrap' }, h('div', { style: 'display:flex;gap:4px;justify-content:flex-end' }, przyciski)));
         };
         wyczysc(klucze).append(panel('KLUCZE',
-          graczy.length && trwa ? h('div', { style: 'margin-bottom:8px' }, h('div.slaby.maly-tekst', 'Figura dla klucza (przycisk „Wydaj” przy kluczu):'), wyborFigury) : null,
+          graczy.length && trwa ? h('div', { style: 'display:grid;gap:6px;margin-bottom:8px' },
+            h('div.slaby.maly-tekst', 'Rozkaz dla klucza (przycisk „Rozkaz”): domyślnie ochrona — klucz trzyma się okrętu matki.'), wyborRozkazu,
+            h('div.slaby.maly-tekst', 'Figura dla klucza w locie (przycisk „Figura”):'), wyborFigury) : null,
           h('table.tabela', s.klucze.map(wiersz))));
         wyczysc(zdarzenia).append(panel('ZDARZENIA', s.zdarzenia.length
           ? h('table.tabela', s.zdarzenia.map((z) => h('tr', h('td.slaby', { style: 'width:60px' }, mmss(z.tik)), h('td', z.opis))))

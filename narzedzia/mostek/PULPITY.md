@@ -28,7 +28,39 @@ generowane (patrz [README.md](README.md)).
 6. **Ekran żył = blok 3×3 komórek.** ISD: 60×60 lampek (1 lampka = 1 żyła). Dla innych siatek — sposób pokazania
    z profilu klasy (MC80: propozycja w [profile/MC80.md](profile/MC80.md)).
 7. **Urządzenia docelowe:** pulpity są dla komputerów i tabletów. Telefony obsługują tylko klucze myśliwców
-   (tryb listy, panele jak karta jednostki w mapie).
+   (ekrany Klucz i Eskadra, rozdz. 1a).
+
+## 1a. Ekrany telefonu [U, 25.11.2026]
+
+Telefon obsługuje tylko klucze myśliwców. Siatka **5×9** kwadratowych komórek, pionowo; symetria względem kolumny 3;
+bez szarych suwaków zakresu (zabrałyby szerokość ekranu); kolory jak na pulpitach. W danych: `FORMATY = {nazwa: 'telefon'}`
+w pliku układów klasy. Wydruk: A4 pionowo, komórka 28 mm.
+
+- **Klucz** — zbliżenie pojedynczego klucza, wszystko na jednym ekranie: nagłówek ze stanem, ekran jak w radarze
+  (klucz zawsze w środku, okręgi 2 / 10 / 30 km), po bokach skręty, pod spodem figury (manewry) na kursie, moc i rozkazy.
+  Wejście: kliknięcie lampki „Klucz N” na pulpicie Myśliwce (na komputerze — nakładka nad pulpitem, powrót do pulpitu)
+  albo w ekranie Eskadra.
+- **Eskadra** — 3 klucze: ekran ze środkiem eskadry (okręgi 5 / 15 / 40 km), lampki 3 kluczy, szyki i rozkazy.
+  Na pulpicie Myśliwce eskadrę tworzy rząd 3 lampek jednej burty (lewa: eskadry 1–3, prawa: 4–6).
+
+Pulpit Myśliwce zostaje bez zmian.
+
+## 1b. Lampa klucza — stan i odliczanie [U zasada, R kolory]
+
+Lampa „Klucz N” (pulpit Myśliwce, Eskadra, nagłówek ekranu Klucz) to wskaźnik dynamiczny: kolor zmienia się ze stanem
+klucza, a w hangarze lampa pokazuje **czas do wyjścia z hangaru** (mm:ss, z taśmociągu: 1 klucz/min, poza alarmem
++4 min przygotowania). Odcienie zostają w rodzinie niebieskiej (urządzenie), więc nie mylą się z kolorami poleceń.
+
+| Stan | Lampa | Treść |
+|---|---|---|
+| w hangarze, przygotowanie | ciemnoniebieska #2a2a80, biały tekst | „start za mm:ss” (odliczanie) |
+| gotowy do startu | niebieska #6666ff — **zmiana koloru w chwili, gdy licznik dojdzie do 0**, krótkie mignięcie | „gotowy” |
+| w locie | jasnoniebieska #66ccff | liczebność 4/4 … 1/4 |
+| straty | jak w locie + czerwona ramka #ff3333 | liczebność, np. 3/4 |
+| powrót do hangaru | jasnoniebieska, przerywana ramka | „lądowanie za mm:ss” |
+| stracony | szara #999999 | „stracony” (dotknięcie — historia klucza) |
+
+Gracz nie widzi tików (MECHANIKA.md, zasada 4): odliczanie to czas gry w minutach i sekundach.
 
 ## 2. Format danych układu
 

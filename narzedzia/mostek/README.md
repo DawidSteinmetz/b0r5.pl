@@ -10,7 +10,7 @@ Wszystko o pulpitach mostka (konsolach okrętów) w jednym miejscu.
 | [profile_klas.py](profile_klas.py) | profile klas jako dane — jedyne miejsce z liczbami zależnymi od klasy |
 | [mechanika.py](mechanika.py) | wzory wspólne w kodzie; `python mechanika.py` przelicza liczby z dokumentacji dla każdej klasy |
 | [siatka.py](siatka.py) | język pulpitów: stałe siatki, kolory, suwaki zakresu, kontrola nakładania i symetrii |
-| [uklady/](uklady/) | układy pulpitów jako dane, plik na klasę (`isd_i.py` — 8 pulpitów, `mc80.py` — puste) |
+| [uklady/](uklady/) | układy pulpitów jako dane, plik na klasę (`isd_i.py` — 10 pulpitów i 2 ekrany telefonu, `mc80.py` — puste) |
 | [pulpity_ods.py](pulpity_ods.py) | generator arkusza ODS |
 | [pulpity_podglad.py](pulpity_podglad.py) | generator podglądu HTML |
 | [ods_model.py](ods_model.py) | odczyt arkusza ODS (komórki, kolory, scalenia) — do porównań z arkuszem użytkownika |

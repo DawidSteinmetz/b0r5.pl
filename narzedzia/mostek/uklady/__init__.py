@@ -8,3 +8,8 @@ def uklady(klasa):
     if klasa not in KLASY:
         raise SystemExit(f'nieznana klasa {klasa}; dostępne: {", ".join(KLASY)}')
     return importlib.import_module(KLASY[klasa]).UKLADY
+
+
+def format_pulpitu(klasa, nazwa):
+    """'pulpit' (13×9, komputer i tablet) albo 'telefon' (5×9) — z FORMATY modułu klasy, domyślnie 'pulpit'."""
+    return getattr(importlib.import_module(KLASY[klasa]), 'FORMATY', {}).get(nazwa, 'pulpit')

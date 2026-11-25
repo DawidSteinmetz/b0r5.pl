@@ -1,4 +1,4 @@
-"""Arkusz ODS pulpitów klasy z układów (`uklady/`), siatka 13×9 kwadratowych komórek 2,8 cm.
+"""Arkusz ODS pulpitów klasy z układów (`uklady/`), siatka 13×9 (telefon 5×9) kwadratowych komórek 2,8 cm.
 
     python pulpity_ods.py KLASA WYJSCIE.ods [--zrodlo ZRODLO.ods]
 
@@ -7,8 +7,8 @@ a pulpity, których w źródle nie ma, są dopisywane na końcu. Bez źródła p
 Wypisuje liczbę elementów i asymetrie burt; nakładanie lub wyjście poza siatkę przerywa pracę.
 """
 import argparse, html, re, zipfile
-from siatka import KOL, WIER, KOLORY, KOMORKA_CM, sprawdz, wymiary
-from uklady import uklady
+from siatka import FORMATY, KOLORY, KOMORKA_CM, sprawdz, wymiary
+from uklady import uklady, format_pulpitu
 
 STYLE = []
 
@@ -41,8 +41,9 @@ def komorka(styl, tekst='', sk=1, sw=1):
     return f'<table:table-cell{a} office:value-type="string"><text:p>{html.escape(tekst, quote=False)}</text:p></table:table-cell>'
 
 
-def tabela(nazwa, styl_tabeli, elementy):
-    zajete, bledy, asym = sprawdz(elementy)
+def tabela(nazwa, styl_tabeli, elementy, format_='pulpit'):
+    KOL, WIER = FORMATY[format_]
+    zajete, bledy, asym = sprawdz(elementy, KOL, WIER)
     if bledy: raise SystemExit(nazwa + ': ' + '; '.join(bledy))
     poczatki = {(e[1], e[2]): e for e in elementy}
     wiersze = []
@@ -86,7 +87,7 @@ def zbuduj(klasa, wyjscie, zrodlo=None):
         nazwa, atr = html.unescape(m.group(1)), m.group(2)
         if nazwa not in UKLADY: return m.group(0)
         st = re.search(r'table:style-name="([^"]+)"', atr).group(1)
-        xml, asym = tabela(nazwa, st, UKLADY[nazwa])
+        xml, asym = tabela(nazwa, st, UKLADY[nazwa], format_pulpitu(klasa, nazwa))
         raport.append((nazwa, len(UKLADY[nazwa]), asym)); wstawione.add(nazwa)
         return xml
 
@@ -94,7 +95,7 @@ def zbuduj(klasa, wyjscie, zrodlo=None):
         out = ''
         for nazwa in UKLADY:
             if nazwa in wstawione: continue
-            xml, asym = tabela(nazwa, 'pta', UKLADY[nazwa])
+            xml, asym = tabela(nazwa, 'pta', UKLADY[nazwa], format_pulpitu(klasa, nazwa))
             raport.append((nazwa, len(UKLADY[nazwa]), asym)); out += xml
         return out
 

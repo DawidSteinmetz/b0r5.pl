@@ -259,7 +259,7 @@ do tego podpiąć, a nie budować od nowa. Liczba myśliwców i kluczy — z pro
 |---|---|---|---|
 | Klucz | 4 maszyny, jeden symbol na mapie; liczebność 4–1, straty nie usuwają symbolu | [U] | jest (bez strat) |
 | Alarm | normalny 1 klucz gotowy, żółty 4, czerwony wszystkie | [U] | jest (procedura przechwycenia) |
-| Taśmociąg | 1 klucz / min; poza alarmem +4 min przygotowania na klucz | [R] | jest |
+| Taśmociąg | 1 klucz / min; poza alarmem +4 min przygotowania na klucz; lampa klucza odlicza czas do wyjścia z hangaru (PULPITY.md 1b) | [R] | jest |
 | Hz klucza | z hangaru (typ, konfiguracja); odczyt klucza = maksimum z maszyn | [U] | brak |
 | Dryf Hz | Hz = Hz_bazowe · (1 + k · moc), moc 0–1; k = 0,25 zwykły, 1/3 as; klucz z asem liczony jako k = 1/3 | [U] | brak |
 | Przebicie skali N | baza > N/(1+k) przy pełnej mocy na działka przebija osłonę N (ISD 3600: > 2880 zwykły, > 2700 as) | [U, sprawdzone] | — |
@@ -391,7 +391,7 @@ wykryły jego sensory. [U koncepcja, R wagi]
 | 11 | Sensory a dzisiejsze tryby czujników | pasywny = bierny, dalekiego zasięgu / pełna moc = aktywny z różnym J |
 | 12 | Znaczenie czasowników | tabela w PULPITY.md |
 | 13 | Wróg powyżej 3600 Hz | tylko wyjątek fabularny |
-| 14 | Telefon | tylko klucze myśliwców (tryb listy) |
+| 14 | Telefon | tylko klucze myśliwców — ekrany Klucz i Eskadra, siatka 5×9 (ustalone 25.11.2026) |
 | 16 | Sprawność baterii (energia salwy / pobór) | 0,4% zamierzone — reszta to ciepło (rozdz. 4.1) |
 
 Decyzje dotyczące jednej klasy (dawne nr 4 i 15 — ISD; nowe — MC80) są w profilach. Numeracja zachowana z wersji

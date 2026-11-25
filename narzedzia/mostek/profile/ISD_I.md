@@ -51,7 +51,8 @@ baterię przy 3600 Hz.
 ## Pulpity
 
 18 stanowisk w dwóch dołkach (9 + 9). Gotowe układy (siatka 13×9, w `uklady/isd_i.py`): Osłony, Turbolasery,
-Silniki, Reaktory, Kontrola ognia, Sensory, Grawitacja, Myśliwce, Nawigacja, Radar. SVG + gniazda (stara siatka 92×74, do
+Silniki, Reaktory, Kontrola ognia, Sensory, Grawitacja, Myśliwce, Nawigacja, Radar, a na telefon (5×9):
+Klucz (zbliżenie z lampki „Klucz N” na pulpicie Myśliwce) i Eskadra (3 klucze). SVG + gniazda (stara siatka 92×74, do
 przeliczenia): Osłony, Turbolasery, Silniki, Reaktory.
 Nawigacja i Radar mają ten sam środek (sylwetka ISD zawsze w centrum ekranu, w skali, z okręgami odległości),
 ale inną funkcję i kompozycję:

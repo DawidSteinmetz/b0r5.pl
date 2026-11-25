@@ -256,3 +256,45 @@ UKLADY['Radar'] = suwaki('suwak: maksymalny zasięg radaru', 'suwak: minimalny z
     ('W', 2, 9, 'kasuj ślady'), ('W', 12, 9, 'zamroź obraz'),
     ('W', 5, 9, 'zakłócenia: tłumienie'), ('W', 7, 9, 'wyrównaj obraz (filtr szumu)'), ('W', 9, 9, 'zakłócenia: wskaż źródło'),
 ]
+
+# ── Ekrany telefonu (siatka 5×9, pionowo; symetria względem kolumny 3; bez szarych suwaków zakresu) ──────────────
+FORMATY = {'Klucz': 'telefon', 'Eskadra': 'telefon'}
+
+# Klucz: zbliżenie pojedynczego klucza — otwiera się kliknięciem lampki „Klucz N” na pulpicie Myśliwce albo w Eskadrze
+# (na komputerze jako nakładka, na telefonie jako cały ekran). Wszystko w jednym ekranie: nagłówek ze stanem
+# i odliczaniem, ekran jak w radarze (klucz w środku), po bokach skręty, pod spodem figury (manewry) na kursie,
+# moc i rozkazy. Figury z mnożnikiem rozrzutu z MECHANIKA.md; każda zużywa 1 zmianę z limitu na cykl (zwykły 2, as 4).
+UKLADY['Klucz'] = [
+    ('B', 1, 1, 'KLUCZ N · 4/4 maszyn · pilot prowadzący i ranga · stan: w hangarze — start za mm:ss / gotowy / w locie '
+                '(kolor nagłówka = kolor lampy klucza)', 5, 1),
+    ('W', 1, 2, 'łagodnie w lewo'), ('W', 5, 2, 'łagodnie w prawo'),
+    ('B', 2, 2, 'EKRAN KLUCZA · klucz zawsze w środku · okręgi 2 / 10 / 30 km (dotknięcie zmienia skalę) · kurs i wektor · '
+                'cele (dotknij, by wybrać) · okręt macierzysty · inne klucze', 3, 3),
+    ('W', 1, 3, 'ostro w lewo'), ('W', 5, 3, 'ostro w prawo'),
+    ('W', 1, 4, 'rozejście klucza w lewo'), ('W', 5, 4, 'rozejście klucza w prawo'),
+    ('W', 1, 5, 'beczka w lewo (rozrzut ×1,6)'), ('W', 2, 5, 'zygzak (×1,3)'), ('W', 3, 5, 'PROSTO'),
+    ('W', 4, 5, 'burst (×1,5)'), ('W', 5, 5, 'beczka w prawo (×1,6)'),
+    ('W', 1, 6, 'pętla (zawrót górą)'), ('W', 2, 6, 'spirala asa (×2, tylko as)'), ('W', 3, 6, 'zwarcie szyku'),
+    ('W', 4, 6, 'skok cieniowy (×2,5, tylko as)'), ('W', 5, 6, 'split-S (zawrót dołem)'),
+    ('W', 1, 7, 'atak z nurkowania'), ('W', 2, 7, 'nożyce (pojedynek)'), ('W', 3, 7, 'ogon (trzymaj się celu)'),
+    ('W', 4, 7, 'przelot przez cel'), ('W', 5, 7, 'eskorta wskazanej jednostki'),
+    ('Y', 1, 8, 'suwak: moc na działka (podnosi Hz — dryf)'), ('G', 2, 8, 'pobierz Hz celu z sensorów okrętu'),
+    ('B', 3, 8, 'odczyt: Hz klucza (baza / bieżący) · zmiany w cyklu'),
+    ('G', 4, 8, 'IFF z kontrolą ognia okrętu'), ('Y', 5, 8, 'suwak: moc na osłony i silniki'),
+    ('W', 1, 9, 'patrol'), ('W', 2, 9, 'ochrona okrętu'), ('W', 3, 9, 'START (gdy gotowy) · ATAK (w locie)'),
+    ('W', 4, 9, 'skan z bliska'), ('W', 5, 9, 'powrót do hangaru'),
+]
+
+# Eskadra: 3 klucze (na pulpicie Myśliwce eskadrę tworzy rząd 3 lampek jednej burty). Ekran jak w radarze ze środkiem
+# eskadry, pod nim lampki 3 kluczy (stan i odliczanie; dotknięcie = zbliżenie Klucza), szyki i rozkazy eskadry.
+UKLADY['Eskadra'] = [
+    ('B', 1, 1, 'ESKADRA N · klucze 3/3 · dowódca eskadry · alarm: normalny / żółty / czerwony', 5, 1),
+    ('B', 1, 2, 'EKRAN ESKADRY · środek eskadry zawsze w środku · okręgi 5 / 15 / 40 km · 3 klucze z kursami · '
+                'okręt macierzysty · cele i zagrożenia', 5, 5),
+    ('B', 1, 7, 'Klucz 1 · start za mm:ss'), ('G', 2, 7, 'zgraj kursy kluczy 1 i 2'), ('B', 3, 7, 'Klucz 2 · start za mm:ss'),
+    ('G', 4, 7, 'zgraj kursy kluczy 2 i 3'), ('B', 5, 7, 'Klucz 3 · start za mm:ss'),
+    ('W', 1, 8, 'szyk: klin'), ('W', 2, 8, 'szyk: linia'), ('W', 3, 8, 'szyk: kolumna'),
+    ('W', 4, 8, 'szyk: rozproszony'), ('W', 5, 8, 'szyk: parasol nad okrętem'),
+    ('W', 1, 9, 'patrol'), ('W', 2, 9, 'przechwycenie'), ('R', 3, 9, 'ATAK ESKADRY'),
+    ('W', 4, 9, 'eskorta'), ('W', 5, 9, 'powrót eskadry'),
+]

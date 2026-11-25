@@ -24,6 +24,7 @@ STALE = {
     'promien_trafienia': 7,         # [R] promień (w żyłach siatki) rozkładu uszkodzeń trafienia (turbolaser 7)
     'zasieg_ognia_klucza_km': 3.0,  # [R]
     'dystans_ataku_km': 2.0,        # [R] klucz podchodzi do celu na tyle i krąży
+    'zasieg_sensorow_km': 200.0,    # [R] pomiar Hz kluczy przez sensory (tryb automatyczny osłon, konsola Sensory)
     'tasma_s': 60,                  # [U] taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
     'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
     'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
@@ -287,10 +288,10 @@ def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz):
 
 def ai_oslony(stan, tik, j):
     """Tryb automatyczny osłon (3.6): po pomiarze Hz wroga stroi generator do najbliższego stopnia natywnego ≥ Hz lasera
-    w zakresie suwaków MIN/MAX. Pomiar: klucze wroga w zasięgu 30 km (sensory) — maksimum Hz."""
+    w zakresie suwaków MIN/MAX. Pomiar: klucze wroga w zasięgu sensorów (200 km) — maksimum Hz."""
     for gen in j['generatory']:
         if not gen['auto']: continue
-        hz = [hz_klucza(k) for k in stan['klucze'] if k['strona'] != j['strona'] and k['stan'] == 'w_locie' and odleglosc(k, j) < 30]
+        hz = [hz_klucza(k) for k in stan['klucze'] if k['strona'] != j['strona'] and k['stan'] == 'w_locie' and odleglosc(k, j) < STALE['zasieg_sensorow_km']]
         if not hz: continue
         cel = stopien_w_gore(gen['zyly']['n'], max(hz)) or gen['hz_max']
         cel = min(max(cel, gen['hz_min']), gen['hz_max'])

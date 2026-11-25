@@ -69,15 +69,27 @@ Konsola w symulacji (aplikacja Symulacje → zakładka z nazwą pulpitu) to ten 
 `python pulpity_js.py` eksportuje `uklady/` do `js/aplikacje/pulpity_uklady.js`, a `js/aplikacje/konsole.js` rysuje
 siatkę 13×9 i podpina elementy pod stan bitwy **po tekście elementu** (zmiana tekstu w układzie = zmiana powiązania).
 Element bez mechaniki jest przygaszony (dymek „bez mechaniki”), włączony przełącznik ma ramkę w kolorze akcentu.
-Docelowo gracz widzi tylko pulpity przypisane mu w `bitwy_stanowiska`.
+Pulpit to dwie siatki o tej samej geometrii: warstwa kontrolek (kolory, ekrany, kliknięcia) i nad nią **warstwa
+tekstów** w kroju `var(--czcionka)` — przełącznik alfabetu (łaciński / Aurebesh) zmienia naraz wszystkie napisy pulpitu,
+także opisy na ekranach. Każdy pulpit klasy da się otworzyć; bez mechaniki widać sam układ (materiał do nauki).
+
+**Stanowiska** (`bitwy_stanowiska`, panel „STANOWISKA” w przeglądzie symulacji):
+- MG przydziela pulpit dowolnemu graczowi — postać spoza pokładu zostaje teleportowana na mostek okrętu
+  (ten sam zapis pozycji co przestawienie postaci w panelu MG, pomieszczenie „Mostek główny”);
+- kapitan (dowódca floty okrętu) przydziela pulpity graczom obecnym na pokładzie i sam widzi wszystkie pulpity;
+- gracz z przydziałem widzi w symulacji tylko swoje pulpity i wydaje rozkazy tylko z nich; bez przydziału czeka.
+
+**Sylwetki** na ekranach według rzutów z góry: ISD (klin, rufa z dwóch trójkątów do bloku silników, nadbudówka
+z kopułami osłon), MC80 (ostry dziób, wąski kadłub, skrzydła z wklęsłą krawędzią natarcia, odchylone do rufy);
+własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ekranie.
 
 - **Radar** — ekran (okręt w środku, okręgi ¼, ½ i całość skali, wiązka omiatania, kontakty swój/obcy, tory, prognozy
-  30 s, Hz celów przy synchronizacji z sensorami), skale 10 / 40 / 100 km, sektory, filtry, listy zagrożeń burt
+  30 s, Hz celów przy synchronizacji z sensorami), skale 50 / 200 / 1000 km, sektory, filtry, listy zagrożeń burt
   (namiar od dziobu, odległość, czas do zasięgu ognia), alarm zbliżenia z progiem, oznacz / śledź kontakt, kasuj ślady,
   zamroź obraz, „wyślij namiar zagrożenia do osłon” — każda burta: preset Hz (3 s) do stopnia ≥ Hz zagrożeń tej burty.
-- **Sensory** — ekran skanu 60 km (Hz celów w zasięgu 30 km — jak pomiar automatycznych osłon), widmo Hz grup celów
+- **Sensory** — ekran skanu 1000 km (Hz celów w zasięgu sensorów 200 km — jak pomiar automatycznych osłon), widmo Hz grup celów
   z liniami Hz osłon, wybór grupy, „wyślij Hz celu do konsoli osłon” (preset obu generatorów), SKANUJ, filtr kontaktów.
-- Pomiar Hz jest na razie natychmiastowy w zasięgu 30 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
+- Pomiar Hz jest na razie natychmiastowy w zasięgu 200 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
   kolejny etap).
 
 ## 2. Format danych układu

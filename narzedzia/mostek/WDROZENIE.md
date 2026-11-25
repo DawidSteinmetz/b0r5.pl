@@ -231,6 +231,9 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   `bitwy_jednostki.tasma_tik`); klucze graczy domyślnie „ochrona” — krążą 3 km od okrętu matki; rozkazy klucza (ochrona,
   patrol 8 km, atak, skan 10 km, powrót z lądowaniem, start z hangaru) mają własny kanał i czas wykonania, osobno od figur.
 - Konsole Radar i Sensory (25.11.2026): zakładki w symulacji, układ z `pulpity_uklady.js`, opis w PULPITY.md 1c.
+  Zasięg: radar 50 / 200 / 1000 km, pomiar Hz przez sensory (i automatyczne osłony) do 200 km, ekran skanu 1000 km.
+  Stanowiska: przydział przez MG (z teleportem postaci na mostek) i kapitana (załoga na pokładzie), akcje
+  `bitwa_stanowisko`, `bitwa_gracze`; gracz ze stanowiskiem widzi i obsługuje tylko swoje pulpity.
 - Ograniczenia: myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

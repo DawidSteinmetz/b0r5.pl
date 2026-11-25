@@ -14,7 +14,10 @@ declare(strict_types=1);
 // czeka na zatwierdzenie MG; stan świata (kadłuby, maszyny, piloci) się nie zmienia.
 //
 // Akcje: bitwa_dostep, bitwa_scenariusze, bitwa_symulacje, bitwa_stan, bitwa_utworz, bitwa_start, bitwa_pauza,
-// bitwa_rozkaz, bitwa_zakoncz, bitwa_xp_zatwierdz (MG), bitwa_test (MG). Upoważnieni: MG i konta, które mogą dowodzić
+// bitwa_rozkaz, bitwa_zakoncz, bitwa_xp_zatwierdz (MG), bitwa_test (MG), bitwa_stanowisko (MG i kapitan).
+// Stanowiska (bitwy_stanowiska): MG przypisuje dowolnego gracza — jego postać zostaje teleportowana na mostek okrętu;
+// kapitan (dowódca floty okrętu) przypisuje graczy, którzy są na pokładzie, i sam widzi wszystkie pulpity. Gracz
+// z przypisaniem widzi w symulacji tylko swoje pulpity. Upoważnieni: MG i konta, które mogą dowodzić
 // okrętem z profilem klasy (mapa_obiekty.profil_klasy) — ten sam warunek co rozkazy dla kluczy (klucze_moze).
 
 require_once __DIR__ . '/bitwa_wektory.php';
@@ -193,7 +196,56 @@ function bitwa_upowazniony(array $u): bool
 {
     if (($u['rola'] ?? '') === 'mg') return true;
     if (!bitwa_dostepna()) return false;
-    try { return (bool) bitwa_okrety_konta($u); } catch (Throwable $e) { return false; }
+    try {
+        if (bitwa_okrety_konta($u)) return true;
+        if (!bitwa_silnik_gotowy()) return false;
+        $q = polaczenie_bazy()->prepare("SELECT 1 FROM bitwy_stanowiska s JOIN bitwy_jednostki j ON j.id = s.bitwa_jednostka_id
+            JOIN mapa_bitwy b ON b.id = j.bitwa_id WHERE LOWER(s.login) = LOWER(?) AND b.status IN ('przygotowanie','aktywna') LIMIT 1");
+        $q->execute([(string) ($u['login'] ?? '')]);
+        return (bool) $q->fetchColumn();
+    } catch (Throwable $e) { return false; }
+}
+
+// Okręt graczy w symulacji (z mapy) — do niego należą stanowiska.
+function bitwa_okret_graczy(int $bitwaId): ?array
+{
+    $q = polaczenie_bazy()->prepare("SELECT j.id, j.obiekt_id, j.nazwa, j.profil_kod FROM bitwy_jednostki j
+        WHERE j.bitwa_id = ? AND j.obiekt_id IS NOT NULL ORDER BY j.id LIMIT 1");
+    $q->execute([$bitwaId]);
+    return $q->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+// Kapitan okrętu graczy: dowódca jego floty (wskazniki_kapitan).
+function bitwa_kapitan(array $u, ?array $okret): bool
+{
+    return $okret && function_exists('wskazniki_kapitan') && wskazniki_kapitan('okret:' . (int) $okret['obiekt_id'], $u);
+}
+
+// Okręt, na którego pokładzie jest postać konta (0 — nie na okręcie).
+function bitwa_na_pokladzie(array $u): int
+{
+    if (!function_exists('poklad_okret_postaci')) return 0;
+    try { return poklad_okret_postaci($u); } catch (Throwable $e) { return 0; }
+}
+
+// Teleport postaci przez MG na mostek okrętu (ten sam zapis pozycji co przestawienie postaci w panelu MG).
+function bitwa_teleport_na_okret(array $gracz, int $okretId): void
+{
+    $uid = (string) $gracz['id'];
+    $lok = ruch_lokacje();
+    $klucz = 'okret:' . $okretId;
+    if (!isset($lok[$klucz])) blad('Okręt nie ma lokacji na mapie — nie można przenieść postaci.');
+    $poz = ['planeta' => $lok[$klucz]['planeta'] ?? '', 'wspolrzedne' => '', 'miejsce' => $lok[$klucz]['nazwa'] ?? '', 'budynek' => '',
+        'lokacja' => $klucz, 'zmieniono' => teraz_ms()];
+    zmien('karty', function (&$k) use ($uid, $poz) {
+        $k[$uid]['pozycja'] = $poz;
+        unset($k[$uid]['podroz']);
+    });
+    pozycja_sql_zapisz($uid, $poz);
+    if (function_exists('wnetrze_plan_okretu') && ($plan = wnetrze_plan_okretu($okretId))) {
+        $mostek = wnetrze_szukaj(wnetrze_wezly($plan), 'Mostek główny');
+        if ($mostek) wnetrze_zapisz($uid, $okretId, $mostek);
+    }
 }
 
 // Migracje 070 i 072 (stan silnika, taśmociąg) — bez niej scenariusze i test działają, symulacje nie.
@@ -221,6 +273,12 @@ function bitwa_mg(array $u): bool
 function bitwa_moze(array $u, array $b): bool
 {
     if (bitwa_mg($u) || mb_strtolower((string) $b['prowadzacy_login']) === mb_strtolower((string) ($u['login'] ?? ''))) return true;
+    if (bitwa_silnik_gotowy()) {
+        $q = polaczenie_bazy()->prepare('SELECT 1 FROM bitwy_stanowiska s JOIN bitwy_jednostki j ON j.id = s.bitwa_jednostka_id
+            WHERE j.bitwa_id = ? AND LOWER(s.login) = LOWER(?) LIMIT 1');
+        $q->execute([(int) $b['id'], (string) ($u['login'] ?? '')]);
+        if ($q->fetchColumn()) return true;
+    }
     $ids = array_map(static fn($o) => (int) $o['id'], bitwa_okrety_konta($u));
     if (!$ids) return false;
     $q = polaczenie_bazy()->prepare('SELECT obiekt_id FROM bitwy_jednostki WHERE bitwa_id=? AND obiekt_id IS NOT NULL');
@@ -505,7 +563,7 @@ function bitwa_widok(array $b, array $S): array
         foreach ($j['sekcje'] as $sek => $v) $kadlub += $v * ($p['kadlub'][$sek] ?? 0);
         $c = bitwa_pojemnosc($p);
         $jednostki[] = ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
-            'kurs' => round($j['kurs'], 2), 'v' => $j['v'],
+            'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000,
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
             'generatory' => array_map(static fn($g) => ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
@@ -542,6 +600,46 @@ function bitwa_widok(array $b, array $S): array
         'zdarzenia' => $q->fetchAll(PDO::FETCH_ASSOC), 'figury' => $figury];
 }
 
+// Stanowiska symulacji i to, co widzi konto: pełny podgląd (MG, prowadzący, kapitan) albo tylko swoje pulpity.
+function bitwa_stanowiska_widok(array $u, array $b): array
+{
+    $db = polaczenie_bazy();
+    $okret = bitwa_okret_graczy((int) $b['id']);
+    $mg = bitwa_mg($u);
+    $kapitan = bitwa_kapitan($u, $okret);
+    $pelny = $mg || $kapitan || bitwa_prowadzi($u, $b);
+    $login = mb_strtolower((string) ($u['login'] ?? ''));
+    $przypisane = [];
+    if ($okret) {
+        $q = $db->prepare('SELECT pulpit, login FROM bitwy_stanowiska WHERE bitwa_jednostka_id = ? ORDER BY pulpit');
+        $q->execute([(int) $okret['id']]);
+        $przypisane = $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+    $postacie = [];
+    foreach (uzytkownicy() as $x) $postacie[mb_strtolower((string) $x['login'])] = $x;
+    $out = ['okret' => $okret ? ['nazwa' => $okret['nazwa'], 'profil' => $okret['profil_kod']] : null, 'pelny' => $pelny, 'mg' => $mg, 'kapitan' => $kapitan,
+        'moje' => array_values(array_map(static fn($s) => $s['pulpit'], array_filter($przypisane, static fn($s) => mb_strtolower((string) $s['login']) === $login))),
+        'przypisane' => array_map(static fn($s) => ['pulpit' => $s['pulpit'], 'login' => $s['login'],
+            'postac' => $postacie[mb_strtolower((string) $s['login'])]['postac'] ?? $s['login']], $przypisane)];
+    return $out;
+}
+
+// Gracze do przydziału (osobna akcja — sprawdzanie pokładu jest kosztowne): MG — wszyscy (spoza pokładu zostaną
+// teleportowani), kapitan — tylko obecni na pokładzie.
+function bitwa_gracze_do_przydzialu(array $u, array $okret): array
+{
+    $mg = bitwa_mg($u);
+    $gracze = [];
+    foreach (uzytkownicy() as $x) {
+        if (($x['rola'] ?? '') === 'mg') continue;
+        $naPokladzie = bitwa_na_pokladzie($x) === (int) $okret['obiekt_id'];
+        if (!$mg && !$naPokladzie) continue;
+        $gracze[] = ['login' => $x['login'], 'postac' => $x['postac'] ?? $x['login'], 'na_pokladzie' => $naPokladzie];
+    }
+    usort($gracze, static fn($a, $c) => [$c['na_pokladzie'], $a['postac']] <=> [$a['na_pokladzie'], $c['postac']]);
+    return $gracze;
+}
+
 function bitwa_wiersz(int $id): array
 {
     $q = polaczenie_bazy()->prepare("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod WHERE b.id=? AND b.rodzaj='symulacja'");
@@ -575,7 +673,7 @@ function bitwa_policz_xp(int $id): array
 function obsluz_bitwa(string $akcja, bool $post): void
 {
     $akcje = ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze', 'bitwa_symulacje', 'bitwa_stan', 'bitwa_utworz', 'bitwa_start', 'bitwa_pauza',
-        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz'];
+        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna()]);
@@ -622,7 +720,8 @@ function obsluz_bitwa(string $akcja, bool $post): void
             $b = bitwa_wiersz((int) ($_GET['id'] ?? 0));
             if (!bitwa_moze($u, $b)) blad('Brak dostępu do tej symulacji.', 403);
             [$b, $S] = bitwa_dolicz((int) $b['id']);
-            odpowiedz(['stan' => bitwa_widok($b, $S) + ['moge_prowadzic' => bitwa_prowadzi($u, $b), 'mg' => bitwa_mg($u)]]);
+            odpowiedz(['stan' => bitwa_widok($b, $S) + ['moge_prowadzic' => bitwa_prowadzi($u, $b), 'mg' => bitwa_mg($u),
+                'stanowiska' => bitwa_stanowiska_widok($u, $b)]]);
         case 'bitwa_utworz':
             $silnik();
             if (!$post) blad('Zła metoda.', 405);
@@ -662,6 +761,13 @@ function obsluz_bitwa(string $akcja, bool $post): void
             $b = bitwa_wiersz((int) ($w['id'] ?? 0));
             if (!bitwa_moze($u, $b)) blad('Brak dostępu do tej symulacji.', 403);
             if ($b['status'] !== 'aktywna' || $b['pauza_od_utc'] !== null) blad('Symulacja nie trwa — rozkazy czekają na start lub koniec pauzy.');
+            $st = bitwa_stanowiska_widok($u, $b);
+            if (!$st['pelny']) {
+                $pulpitRozkazu = isset($w['klucz_id']) ? 'Myśliwce' : (string) ($w['pulpit'] ?? 'Osłony');
+                if (!in_array($pulpitRozkazu, $st['moje'], true) && !(isset($w['klucz_id']) && array_intersect(['Klucz', 'Eskadra'], $st['moje']))) {
+                    blad("Ten rozkaz wydaje się z pulpitu {$pulpitRozkazu} — nie masz go przydzielonego.", 403);
+                }
+            }
             $uid = substr(preg_replace('/[^A-Za-z0-9-]/', '', (string) ($w['uid'] ?? '')), 0, 36) ?: bin2hex(random_bytes(16));
             $q = $db->prepare('SELECT 1 FROM bitwy_rozkazy WHERE bitwa_id=? AND uid=?');
             $q->execute([(int) $b['id'], $uid]);
@@ -707,6 +813,42 @@ function obsluz_bitwa(string $akcja, bool $post): void
             });
             if (isset($wynik['odmowa'])) odpowiedz(['ok' => false, 'odmowa' => $wynik['odmowa']]);
             odpowiedz(['ok' => true] + $wynik);
+        case 'bitwa_gracze':
+            $silnik();
+            $b = bitwa_wiersz((int) ($_GET['id'] ?? 0));
+            $okret = bitwa_okret_graczy((int) $b['id']);
+            if (!$okret) blad('Ta symulacja nie ma okrętu z mapy.');
+            if (!bitwa_mg($u) && !bitwa_kapitan($u, $okret)) blad('Stanowiska przydziela MG albo kapitan okrętu.', 403);
+            odpowiedz(['gracze' => bitwa_gracze_do_przydzialu($u, $okret)]);
+        case 'bitwa_stanowisko':
+            // Przypisanie pulpitu graczowi (login) albo zwolnienie (login pusty). MG: każdy gracz, postać spoza pokładu
+            // zostaje teleportowana na mostek. Kapitan: tylko gracze na pokładzie.
+            $silnik();
+            if (!$post) blad('Zła metoda.', 405);
+            $b = bitwa_wiersz((int) ($w['id'] ?? 0));
+            $okret = bitwa_okret_graczy((int) $b['id']);
+            if (!$okret) blad('Ta symulacja nie ma okrętu z mapy.');
+            $mg = bitwa_mg($u);
+            if (!$mg && !bitwa_kapitan($u, $okret)) blad('Stanowiska przydziela MG albo kapitan okrętu.', 403);
+            $pulpit = mb_substr(trim((string) ($w['pulpit'] ?? '')), 0, 40);
+            if ($pulpit === '') blad('Wybierz pulpit.');
+            $login = trim((string) ($w['login'] ?? ''));
+            if ($login === '') {
+                $db->prepare('DELETE FROM bitwy_stanowiska WHERE bitwa_jednostka_id = ? AND pulpit = ?')->execute([(int) $okret['id'], $pulpit]);
+                odpowiedz(['ok' => true]);
+            }
+            $gracz = null;
+            foreach (uzytkownicy() as $x) if (mb_strtolower((string) $x['login']) === mb_strtolower($login)) $gracz = $x;
+            if (!$gracz || ($gracz['rola'] ?? '') === 'mg') blad('Nie ma takiego gracza.');
+            $teleport = false;
+            if (bitwa_na_pokladzie($gracz) !== (int) $okret['obiekt_id']) {
+                if (!$mg) blad('Kapitan przydziela stanowiska tylko załodze na pokładzie.');
+                bitwa_teleport_na_okret($gracz, (int) $okret['obiekt_id']);
+                $teleport = true;
+            }
+            $db->prepare('INSERT INTO bitwy_stanowiska (bitwa_jednostka_id, pulpit, login) VALUES (?,?,?) ON DUPLICATE KEY UPDATE login = VALUES(login)')
+                ->execute([(int) $okret['id'], $pulpit, (string) $gracz['login']]);
+            odpowiedz(['ok' => true, 'teleport' => $teleport, 'postac' => $gracz['postac'] ?? $gracz['login']]);
         case 'bitwa_xp_zatwierdz':
             $silnik();
             if (!$post) blad('Zła metoda.', 405);

@@ -59,7 +59,7 @@ ale inną funkcję i kompozycję:
 - **Nawigacja** — sterowanie ruchem: ekran 7×7, okręgi 250 / 500 / 1000 km, wektor ruchu osobno od zwrotu dziobu;
   po bokach skręt i przesuw każdej burty, pod ekranem suwak ciągu głównego między „pełne hamowanie” i „cała naprzód”.
 - **Radar** — obraz pola bitwy: ekran 5×5 w ramce przycisków (filtry kontaktów po bokach, sektory i skale nad i pod),
-  okręgi w skali pasm walki 10 / 40 / 100 km, IFF, tory i prognozy torów; na zewnątrz listy zagrożeń każdej burty.
+  okręgi w skali 50 / 200 / 1000 km, IFF, tory i prognozy torów; na zewnątrz listy zagrożeń każdej burty.
   Różnica wobec Sensorów: Sensory sterują skanem i mierzą Hz, Radar pokazuje i śledzi to, co wykryto.
 
 Brakuje [U z audytu]: hipernapęd, Działa jonowe (osobno od turbolaserów — inna mechanika), Hangar

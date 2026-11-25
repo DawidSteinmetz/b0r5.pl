@@ -14,6 +14,7 @@ const BITWA_STALE = [
     'promien_trafienia' => 7,
     'zasieg_ognia_klucza_km' => 3.0,
     'dystans_ataku_km' => 2.0,
+    'zasieg_sensorow_km' => 200.0,
     'tasma_s' => 60,
     'promien_ochrony_km' => 3.0,
     'promien_patrolu_km' => 8.0,
@@ -50,7 +51,7 @@ function bitwa_slowniki(): array
             'nazwa' => $p['nazwa'], 'generatory' => (int) $p['generatory_oslon'], 'zyly' => (int) $p['zyly_oslon'],
             'siatka' => $p['siatka_kolumny'] !== null ? (int) $p['siatka_kolumny'] : null,
             'U0' => (float) $p['zyla_u0_v'], 'R0' => (float) $p['zyla_r0_ohm'], 'domyslnie_hz' => (int) $p['oslony_domyslnie_hz'],
-            'mysliwce' => (int) $p['mysliwce'], 'kadlub' => [],
+            'mysliwce' => (int) $p['mysliwce'], 'dlugosc_m' => (float) $p['dlugosc_m'], 'kadlub' => [],
         ];
     }
     foreach ($db->query('SELECT profil_kod, sekcja, udzial FROM profile_klas_kadlub')->fetchAll(PDO::FETCH_ASSOC) as $k) {
@@ -340,7 +341,7 @@ function bitwa_ai_oslony(array &$S, int $tik, int $ji): void
         $j = $S['jednostki'][$ji];
         $hz = [];
         foreach ($S['klucze'] as $k) {
-            if ($k['strona'] !== $j['strona'] && $k['stan'] === 'w_locie' && bitwa_odleglosc($k, $j) < 30) $hz[] = bitwa_hz_klucza($k);
+            if ($k['strona'] !== $j['strona'] && $k['stan'] === 'w_locie' && bitwa_odleglosc($k, $j) < BITWA_STALE['zasieg_sensorow_km']) $hz[] = bitwa_hz_klucza($k);
         }
         if (!$hz) continue;
         $cel = bitwa_stopien_w_gore($gen['zyly']['n'], max($hz)) ?: $gen['hz_max'];

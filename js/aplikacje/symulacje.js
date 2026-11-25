@@ -5,7 +5,7 @@
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
-import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady } from './konsole.js';
+import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, pulpityKlasy } from './konsole.js';
 
 const DOWODZENIE = { gracze: 'gracze', radus: 'AI: Radus (agresywny)', ackbar: 'AI: Ackbar (defensywny)', calrissian: 'AI: Calrissian (zrównoważony)' };
 const STATUS = { przygotowanie: 'w przygotowaniu', aktywna: 'trwa', zakonczona: 'zakończona', anulowana: 'anulowana' };
@@ -129,8 +129,13 @@ export default {
       const zdarzenia = h('div');
       const wynikXp = h('div');
       let ostatni = null;
-      // Widoki: przegląd albo konsola mostka (Radar, Sensory…). Docelowo gracz dostaje tylko przypisane mu pulpity.
+      // Widoki: przegląd albo konsola mostka. MG, prowadzący i kapitan widzą wszystko; gracz ze stanowiskiem — tylko
+      // przypisane mu pulpity (bitwy_stanowiska); bez przydziału czeka na niego.
       let widok = 'przeglad';
+      let podpisZakladek = '';
+      let podpisStanowisk = '';
+      let gracze = null;
+      const stanowiskaEl = h('div');
       const stanKonsol = nowyStanKonsol();
       const zakladki = h('div.zakladki');
       const konsolaEl = h('div', { hidden: true, style: 'margin:10px 0' });
@@ -141,18 +146,71 @@ export default {
         komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat.blad', tekst)),
       };
       function rysujKonsole() {
-        if (widok === 'przeglad' || !ostatni) return;
+        if (!ostatni) return;
+        const st = ostatni.stanowiska || { pelny: true, moje: [] };
+        przeglad.hidden = !(st.pelny && widok === 'przeglad');
+        konsolaEl.hidden = !przeglad.hidden ? true : false;
+        if (!przeglad.hidden) return;
+        if (!widok) {
+          wyczysc(konsolaEl).append(panel('STANOWISKO', h('p.maly-tekst', 'Czekasz na przydział stanowiska. Pulpit przydziela MG albo kapitan okrętu.')));
+          return;
+        }
         wyczysc(konsolaEl).append(konsola(widok, ostatni, stanKonsol, akcjeKonsoli));
       }
+      // Zakładki: pełny podgląd — przegląd, pulpity z mechaniką, potem pozostałe pulpity klasy; gracz — tylko swoje.
+      function listaWidokow() {
+        const st = ostatni?.stanowiska || { pelny: true, moje: [] };
+        const profil = st.okret?.profil || ostatni?.jednostki?.[0]?.profil;
+        if (!st.pelny) return st.moje.map((k) => [k, k]);
+        const inne = pulpityKlasy(profil).filter((k) => !KONSOLE.includes(k));
+        return [['przeglad', 'Przegląd'], ...KONSOLE.map((k) => [k, k]), ...inne.map((k) => [k, k])];
+      }
       function rysujZakladki() {
-        wyczysc(zakladki).append(...[['przeglad', 'Przegląd'], ...KONSOLE.map((k) => [k, k])].map(([k, n]) =>
-          h('button' + (k === widok ? '.aktywna' : ''), { onclick: () => {
-            widok = k;
-            przeglad.hidden = k !== 'przeglad';
-            konsolaEl.hidden = k === 'przeglad';
-            rysujZakladki();
-            rysujKonsole();
-          } }, n)));
+        const lista = listaWidokow();
+        const podpis = JSON.stringify([lista, widok]);
+        if (podpis === podpisZakladek) return;
+        podpisZakladek = podpis;
+        wyczysc(zakladki).append(...lista.map(([k, n]) =>
+          h('button' + (k === widok ? '.aktywna' : ''), { onclick: () => { widok = k; rysujZakladki(); rysujKonsole(); } }, n)));
+      }
+      // Panel przydziału stanowisk (MG i kapitan): pulpity klasy, przypisana postać, wybór gracza.
+      function rysujStanowiska(force = false) {
+        const st = ostatni?.stanowiska;
+        if (!st?.okret || !(st.mg || st.kapitan)) { wyczysc(stanowiskaEl); podpisStanowisk = ''; return; }
+        const podpis = JSON.stringify([st.przypisane, gracze]);
+        if (!force && podpis === podpisStanowisk) return;
+        podpisStanowisk = podpis;
+        const przypisany = Object.fromEntries(st.przypisane.map((p) => [p.pulpit, p]));
+        const wiersz = (pulpit) => {
+          const wybor = gracze ? h('select', { style: 'min-height:32px;max-width:200px' }, h('option', { value: '' }, '— gracz —'),
+            gracze.map((g) => h('option', { value: g.login, selected: przypisany[pulpit]?.login === g.login },
+              `${g.postac}${g.na_pokladzie ? '' : ' (teleport)'}`))) : null;
+          return h('tr',
+            h('td', pulpit),
+            h('td', przypisany[pulpit] ? przypisany[pulpit].postac : h('span.slaby', '—')),
+            h('td', { style: 'text-align:right;white-space:nowrap' }, h('div', { style: 'display:flex;gap:4px;justify-content:flex-end' },
+              wybor,
+              wybor ? h('button.przycisk.drugi.maly', { onclick: () => przydziel(pulpit, wybor.value) }, 'Przydziel') : null,
+              przypisany[pulpit] ? h('button.przycisk.drugi.maly', { onclick: () => przydziel(pulpit, '') }, 'Zwolnij') : null)));
+        };
+        wyczysc(stanowiskaEl).append(panel('STANOWISKA · ' + st.okret.nazwa,
+          h('p.slaby.maly-tekst', st.mg ? 'MG przydziela każdego gracza — postać spoza pokładu zostaje teleportowana na mostek.'
+            : 'Kapitan przydziela graczy obecnych na pokładzie. Kapitan widzi wszystkie pulpity.'),
+          gracze ? null : h('button.przycisk.drugi', { style: 'width:100%;margin-bottom:8px', onclick: wczytajGraczy }, 'Wczytaj graczy do przydziału'),
+          h('table.tabela', pulpityKlasy(st.okret.profil).map(wiersz))));
+      }
+      async function wczytajGraczy() {
+        try { gracze = (await api('bitwa_gracze', undefined, { id })).gracze; rysujStanowiska(true); }
+        catch (e) { wyczysc(komunikat).append(blad(e)); }
+      }
+      async function przydziel(pulpit, login) {
+        try {
+          const r = await api('bitwa_stanowisko', { id, pulpit, login });
+          wyczysc(komunikat).append(h('div.komunikat.ok', !login ? `Pulpit ${pulpit} zwolniony.`
+            : r.teleport ? `${r.postac}: teleport na mostek i przydział do pulpitu ${pulpit}.` : `${r.postac}: przydział do pulpitu ${pulpit}.`));
+          if (r.teleport) gracze = null;
+          odswiez();
+        } catch (e) { wyczysc(komunikat).append(blad(e)); }
       }
 
       const rozkaz = async (dane) => {
@@ -208,7 +266,11 @@ export default {
       function rysuj(s) {
         ostatni = s;
         zapiszSlady(stanKonsol, s);
+        const st = s.stanowiska || { pelny: true, moje: [] };
+        if (!st.pelny && !st.moje.includes(widok)) widok = st.moje[0] || null;
+        rysujZakladki();
         rysujKonsole();
+        rysujStanowiska();
         const trwa = s.status === 'aktywna' && !s.pauza;
         wyczysc(naglowek).append(panel(s.nazwa,
           h('table.tabela',
@@ -279,8 +341,7 @@ export default {
         } catch (e) { wyczysc(komunikat).append(blad(e)); zatrzymaj(); }
       }
 
-      przeglad.append(panel('RADAR', radar), okrety, klucze, zdarzenia);
-      rysujZakladki();
+      przeglad.append(stanowiskaEl, panel('RADAR', radar), okrety, klucze, zdarzenia);
       wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, przeglad, wynikXp);
       odswiez();
       zegar = setInterval(odswiez, 1000);

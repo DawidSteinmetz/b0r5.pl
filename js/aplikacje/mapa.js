@@ -6,6 +6,7 @@ import { h, wyczysc, czasGry, dwaKroki, pasekLadowania, ladowaniePelne } from '.
 import { stanUkladu, stronaOrbity, wysokoscSlonca } from '../rdzen/astro.js';
 import { panelZgod } from '../rdzen/wskazniki.js';
 import { api } from '../rdzen/api.js';
+import { rysujGwiazdyTla } from '../rdzen/gwiazdy_tla.js';
 
 const KOLOR_WYKRYCIA = '#ffb347'; // wykrycia radarowe skoków
 const RAD = Math.PI / 180;
@@ -225,6 +226,17 @@ export default {
       if (!panelFlot.hidden) { if (waski()) wybierz(null); odswiezFloty(); }
     } }, 'Floty / nawigacja');
 
+    // Gwiazdy tła z ziarna (szum, z bliska oznaczenia): ikonka w prawym górnym rogu, wybór zapamiętany w przeglądarce.
+    let gwiazdyTla = true;
+    try { gwiazdyTla = localStorage.getItem('hololink.mapa.gwiazdyTla') !== '0'; } catch { /* bez pamięci */ }
+    const przyciskGwiazd = h('button.przycisk.maly.drugi.mapa-ikona', { title: 'Gwiazdy tła (z ziarna)', 'aria-label': 'Gwiazdy tła', onclick: () => {
+      gwiazdyTla = !gwiazdyTla; przyciskGwiazd.classList.toggle('wl', gwiazdyTla);
+      try { localStorage.setItem('hololink.mapa.gwiazdyTla', gwiazdyTla ? '1' : '0'); } catch { /* bez pamięci */ }
+      odswiez();
+    } });
+    przyciskGwiazd.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8l3 10 10 3-10 3-3 10-3-10-10-3 10-3z"/><circle cx="9" cy="38" r="1.8"/><circle cx="39" cy="10" r="1.8"/><circle cx="40" cy="37" r="1.4"/><circle cx="8" cy="11" r="1.4"/></svg>';
+    przyciskGwiazd.classList.toggle('wl', gwiazdyTla);
+
     // Zbliżenie: małe ikonki w doku (obok głośnika), tylko gdy mapa jest otwarta — +/− (×4) i progi:
     // galaktyka, sektor, układ, planeta (płynny przelot na zaznaczony obiekt albo moją pozycję).
     const IKONY_ZOOMU = [
@@ -246,7 +258,7 @@ export default {
     if (ctx.dok) ctx.dok(IKONY_ZOOMU);
 
     w.append(plotno,
-      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskSzlaki, przyciskFloty), skalaEl),
+      h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskSzlaki, przyciskFloty, przyciskGwiazd), skalaEl),
       panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
@@ -1270,6 +1282,7 @@ export default {
       g.fillStyle = kolory.tlo;
       g.fillRect(0, 0, szer, wys);
       rysujSiatke(g);
+      if (gwiazdyTla) rysujGwiazdyTla(g, { naMape, naEkran, skala, szer, wys, napis, kroj });
       rysujRegiony(g);
       if (szlakiWidoczne) rysujSzlaki(g);
       rysujPlanety(g);

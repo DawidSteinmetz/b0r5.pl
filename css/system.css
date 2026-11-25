@@ -629,6 +629,8 @@ html.z-tlem #ekran::before {
 .mapa-przyciski { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
 .mapa-przyciski .przycisk { background: rgba(5, 8, 10, 0.88); }
 .mapa-przyciski .przycisk.wl { color: var(--akcent); border-color: var(--akcent); }
+.mapa-przyciski .mapa-ikona { padding: 4px 7px; color: var(--tekst-slaby); }
+.mapa-przyciski .mapa-ikona svg { display: block; width: 18px; height: 18px; fill: currentColor; }
 .mapa-karta {
   /* Jedna wysokość dla wszystkich kart (planeta, gwiazda, jednostka): od paska skali do dołu mapy. */
   position: absolute; right: 12px; top: 140px; bottom: 12px; width: min(340px, calc(100% - 24px)); overflow-y: auto;

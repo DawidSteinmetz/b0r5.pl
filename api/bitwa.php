@@ -9,7 +9,9 @@ declare(strict_types=1);
 // Zgodność z wzorcem sprawdza akcja api/?a=bitwa_test (MG) na wektorach z api/bitwa_wektory.php.
 // Pętla tików, tworzenie symulacji ze scenariusza i konsole — kolejne etapy (WDROZENIE.md, rozdz. 6).
 //
-// Akcje: bitwa_test (MG), bitwa_scenariusze (MG) — lista scenariuszy z odprawą i składem.
+// Akcje: bitwa_dostep (czy konto widzi aplikację Symulacje), bitwa_scenariusze (upoważnieni) — lista scenariuszy
+// z odprawą i składem, bitwa_test (MG). Upoważnieni: MG i konta, które mogą dowodzić okrętem z profilem klasy
+// (mapa_obiekty.profil_klasy) — ten sam warunek co rozkazy dla kluczy (klucze_moze).
 
 require_once __DIR__ . '/bitwa_wektory.php';
 
@@ -135,11 +137,30 @@ function bitwa_test(): array
     return $w;
 }
 
+// Okręty z profilem klasy, którymi konto może dowodzić (MG — wszystkie).
+function bitwa_okrety_konta(array $u): array
+{
+    $okrety = polaczenie_bazy()->query("SELECT id, nazwa, profil_klasy FROM mapa_obiekty WHERE profil_klasy IS NOT NULL ORDER BY nazwa")->fetchAll(PDO::FETCH_ASSOC);
+    if (($u['rola'] ?? '') === 'mg') return $okrety;
+    if (!function_exists('klucze_moze')) return [];
+    return array_values(array_filter($okrety, static fn($o) => klucze_moze($u, (int) $o['id'])));
+}
+
+function bitwa_upowazniony(array $u): bool
+{
+    if (($u['rola'] ?? '') === 'mg') return true;
+    if (!bitwa_dostepna()) return false;
+    try { return (bool) bitwa_okrety_konta($u); } catch (Throwable $e) { return false; }
+}
+
 function obsluz_bitwa(string $akcja, bool $post): void
 {
-    if (!in_array($akcja, ['bitwa_test', 'bitwa_scenariusze'], true)) return;
-    wymagaj_mg();
-    if (!bitwa_dostepna()) blad('Bitwy wymagają migracji 068 i 069.');
+    if (!in_array($akcja, ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze'], true)) return;
+    $u = wymagaj_logowania();
+    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => ($u['rola'] ?? '') === 'mg', 'migracja' => bitwa_dostepna()]);
+    if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
+    if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);
+    if ($akcja === 'bitwa_test' && ($u['rola'] ?? '') !== 'mg') blad('Test silnika jest tylko dla MG.', 403);
     $db = polaczenie_bazy();
     switch ($akcja) {
         case 'bitwa_test':
@@ -161,6 +182,6 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 $s['klucze'] = $q->fetchAll(PDO::FETCH_ASSOC);
                 $out[] = $s;
             }
-            odpowiedz(['scenariusze' => $out]);
+            odpowiedz(['scenariusze' => $out, 'okrety' => bitwa_okrety_konta($u), 'mg' => ($u['rola'] ?? '') === 'mg']);
     }
 }

@@ -17,8 +17,9 @@ import karta from './aplikacje/karta.js';
 import nawigacja, { odliczanie } from './aplikacje/nawigacja.js';
 import mapa from './aplikacje/mapa.js';
 import gielda from './aplikacje/gielda.js';
+import symulacje from './aplikacje/symulacje.js';
 
-const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, ustawienia];
+const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, symulacje, ustawienia];
 
 const html = document.documentElement;
 const pulpit = document.getElementById('pulpit');
@@ -824,9 +825,11 @@ function zapiszPulpit() {
   pamiec.zapisz(kluczPulpitu(), ukryte);
   api('ustawienie_zapisz', { klucz: 'pulpit', wartosc: { ukryte } }).catch(() => {});
 }
+// Aplikacja z warunkiem dostępu (np. Symulacje — tylko upoważnieni) pokazuje się dopiero, gdy dostep(stan) zwróci true.
+function dostepna(a) { return !a.dostep || a.dostep(stan); }
 function rysujIkony(siatka) {
-  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id));
-  const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id));
+  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id) && dostepna(a));
+  const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id) && dostepna(a));
   siatka.classList.toggle('edycja', edycjaPulpitu);
   siatka.querySelectorAll('.ikona-app, .kafel-dodaj').forEach((e) => e.remove());
   const ikony = widoczne.map((a) => h('button.ikona-aplikacji.ikona-app', { onclick: () => (edycjaPulpitu ? null : otworz(a.id)) },
@@ -879,6 +882,10 @@ function ekranPulpitu() {
   const pierwszy = ukryte === null;
   rysujIkony(siatka);
   if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));
+  api('bitwa_dostep').then((d) => {
+    const jest = !!d?.upowazniony;
+    if (jest !== stan.symulacje) { stan.symulacje = jest; if (siatka.isConnected) rysujIkony(siatka); }
+  }).catch(() => {});
   odswiezZegar();
   rysujSzybkieAkcje();
   rysujLiczniki();
@@ -900,7 +907,7 @@ function zamknijAplikacje() {
 
 function otworz(id, parametr = null) {
   const def = APLIKACJE.find((a) => a.id === id);
-  if (!def || !stan.uzytkownik) return;
+  if (!def || !stan.uzytkownik || !dostepna(def)) return;
   zamknijAplikacje();
   tlo(false);
   tytulPaska.textContent = def.nazwa;

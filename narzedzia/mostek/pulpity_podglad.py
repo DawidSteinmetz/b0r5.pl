@@ -14,9 +14,15 @@ def podglad(klasa, wyjscie, nazwy=None):
     out = [f'<!doctype html><meta charset="utf-8"><title>Pulpity {klasa}</title><style>body{{font:11px Arial;background:#222;color:#eee;margin:10px}}'
            f'.p{{display:grid;grid-template-columns:repeat({KOL},{KRATKA}px);grid-template-rows:repeat({WIER},{KRATKA}px);background:#ddd;width:{KOL * KRATKA}px;margin:6px 0 24px}}'
            '.c{border:1px solid #000;display:flex;align-items:center;justify-content:center;text-align:center;color:#000;padding:2px;box-sizing:border-box;overflow:hidden;font-size:10px;line-height:1.15}'
-           'h2{margin:0}</style>']
+           'h2{margin:0}'
+           # wydruk: jeden pulpit na stronę A4 poziomo, komórka 20 mm, kolory tła zachowane
+           f'@page{{size:A4 landscape;margin:10mm}}'
+           f'@media print{{body{{background:#fff;color:#000;margin:0}}.s{{break-after:page;break-inside:avoid}}.s:last-child{{break-after:auto}}'
+           f'.p{{grid-template-columns:repeat({KOL},20mm);grid-template-rows:repeat({WIER},20mm);width:{KOL * 20}mm;margin:2mm 0 0}}'
+           '.c{font-size:7pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}h2{font-size:12pt}}'
+           '</style>']
     for nazwa in nazwy or UKLADY:
-        out.append(f'<h2>{html.escape(nazwa)}</h2><div class="p">')
+        out.append(f'<section class="s"><h2>Pulpit {html.escape(klasa)} · {html.escape(nazwa)}</h2><div class="p">')
         for e in UKLADY[nazwa]:
             t, c, r, txt = e[:4]
             w, h = wymiary(e)
@@ -26,7 +32,7 @@ def podglad(klasa, wyjscie, nazwy=None):
                 continue
             bold = 'font-weight:bold;color:#fff' if t == 'B' else ''
             out.append(f'<div class="c" style="grid-column:{c}/span {w};grid-row:{r}/span {h};background:{KOLORY[t]};{bold}">{html.escape(txt)}</div>')
-        out.append('</div>')
+        out.append('</div></section>')
     with open(wyjscie, 'w', encoding='utf-8') as f:
         f.write(''.join(out))
 

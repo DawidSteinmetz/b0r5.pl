@@ -155,7 +155,7 @@ ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), grupa = VALUES(grupa), przygotowa
 -- Scenariusze
 -- Atak na Walako
 INSERT INTO bitwy_scenariusze (kod, nazwa, odprawa, opis_mg, okno_s, pole_km, zwyciestwo, porazka, status) VALUES
-  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Rebelia wychodzi ze skoku 100 km od Walako: MC80 i 9 kluczy. Klucze rebelii są na 30 km po ok. 70 s, krążownik w paśmie 40 km po ok. 120 s, na 10 km po ok. 300 s. Fale ISD (4 + 6 + 8 kluczy w 4 min) są szybsze niż taśmociąg 1 klucz/min — zakładają alarm czerwony z oboma pokładami startowymi; do rozstrzygnięcia w testach. Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
+  ('walako_atak', 'Atak na Walako', 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.', 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s (pasmo 40 km po ok. 4 min od wyjścia, 10 km po ok. 5 min). Profil MC80 jest propozycją (M1–M10).', 3600, 200, 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii unieszkodliwiony lub wycofany.', 'Imperium: kadłub Walako poniżej 25% przed przybyciem posiłków.', 'roboczy')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), odprawa = VALUES(odprawa), opis_mg = VALUES(opis_mg), okno_s = VALUES(okno_s), pole_km = VALUES(pole_km), zwyciestwo = VALUES(zwyciestwo), porazka = VALUES(porazka), status = VALUES(status);
 
 DELETE FROM bitwy_scenariusze_wyzwalacze WHERE scenariusz_kod = 'walako_atak';
@@ -167,19 +167,20 @@ INSERT INTO bitwy_scenariusze_strony (scenariusz_kod, strona, kolor, dowodzenie,
 
 INSERT INTO bitwy_scenariusze_jednostki (scenariusz_kod, nr, strona, profil_kod, nazwa, z_mapy, x_km, y_km, kurs_deg, predkosc_km_s, kadlub, wejscie_s, wejscie_rozrzut_s) VALUES
   ('walako_atak', 1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-  ('walako_atak', 2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 0, 0);
+  ('walako_atak', 2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20);
 
 INSERT INTO bitwy_scenariusze_klucze (scenariusz_kod, fala, strona, jednostka_nr, typ_maszyny, liczba_kluczy, start_s, start_rozrzut_s, x_km, y_km, rozkaz) VALUES
   ('walako_atak', 1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, NULL, NULL, 'ochrona'),
   ('walako_atak', 2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, NULL, NULL, 'ochrona'),
   ('walako_atak', 3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, NULL, NULL, 'ochrona'),
-  ('walako_atak', 1, 'Rebelia', 2, 'X_WING', 5, 0, 10, NULL, NULL, 'atak'),
-  ('walako_atak', 1, 'Rebelia', 2, 'Y_WING', 2, 0, 10, NULL, NULL, 'atak'),
-  ('walako_atak', 1, 'Rebelia', 2, 'A_WING', 1, 0, 10, NULL, NULL, 'atak'),
-  ('walako_atak', 1, 'Rebelia', 2, 'B_WING', 1, 0, 10, NULL, NULL, 'atak');
+  ('walako_atak', 1, 'Rebelia', 2, 'X_WING', 5, 145, 10, NULL, NULL, 'atak'),
+  ('walako_atak', 1, 'Rebelia', 2, 'Y_WING', 2, 145, 10, NULL, NULL, 'atak'),
+  ('walako_atak', 1, 'Rebelia', 2, 'A_WING', 1, 145, 10, NULL, NULL, 'atak'),
+  ('walako_atak', 1, 'Rebelia', 2, 'B_WING', 1, 145, 10, NULL, NULL, 'atak');
 
 INSERT INTO bitwy_scenariusze_wyzwalacze (scenariusz_kod, nr, czas_s, rozrzut_s, rodzaj, tresc) VALUES
-  ('walako_atak', 1, 0, 0, 'komunikat', 'Wyjście z nadprzestrzeni 100 km od Walako. Alarm bojowy.'),
+  ('walako_atak', 1, 0, 0, 'komunikat', 'Sensory dalekiego zasięgu: zmarszczka nadprzestrzeni ok. 100 km od Walako — duża masa.'),
+  ('walako_atak', 4, 120, 20, 'komunikat', 'Wyjście z nadprzestrzeni 100 km od Walako: krążownik rebelii. Alarm bojowy.'),
   ('walako_atak', 2, 3600, 0, 'posilki', 'Posiłki Imperium wychodzą z nadprzestrzeni.'),
   ('walako_atak', 3, 3600, 0, 'koniec', 'Koniec symulacji: przybycie posiłków.');
 

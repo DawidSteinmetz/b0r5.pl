@@ -25,6 +25,7 @@ STALE = {
     'zasieg_ognia_klucza_km': 3.0,  # [R]
     'dystans_ataku_km': 2.0,        # [R] klucz podchodzi do celu na tyle i krąży
     'zasieg_sensorow_km': 200.0,    # [R] pomiar Hz kluczy przez sensory (tryb automatyczny osłon, konsola Sensory)
+    'dystans_walki_km': 10.0,       # [R] okręt AI zatrzymuje się w paśmie wymiany ognia (MECHANIKA 4.2) od wrogiego okrętu
     'tasma_s': 60,                  # [U] taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
     'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
     'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
@@ -170,6 +171,7 @@ def utworz(scenariusz_kod, ziarno):
                                   'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie'})
         # wyjście ze skoku później: jednostka czeka w nadprzestrzeni (sensory widzą jej zmarszczkę), nie walczy, nie leci
         if stan['jednostki'][-1]['wejscie'] > 0: stan['jednostki'][-1]['stan'] = 'oczekuje'
+        stan['jednostki'][-1]['ai'] = next(t[2] for t in s['strony'] if t[0] == strona) != 'gracze'
     numery = {}
     # kolejność kluczy: strona, fala, typ maszyny (jak ORDER BY w PHP — tabela nie pamięta kolejności wpisów)
     for fala, strona, jedn_nr, typ, n, start, start_r, x, y, rozkaz in sorted(s['klucze'], key=lambda kl: (kl[1], kl[0], kl[3])):
@@ -372,6 +374,8 @@ def krok(stan):
         k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
         if j['stan'] != 'w_bitwie': continue
+        # okręt AI (do czasu modelu manewrów): stoi w paśmie wymiany ognia od najbliższego wrogiego okrętu
+        if j['ai'] and j['v'] and any(odleglosc(j, w) <= STALE['dystans_walki_km'] for w in wrogowie(stan, j['strona'])): continue
         j['x'] += j['v'] * math.sin(radiany(j['kurs']))
         j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów

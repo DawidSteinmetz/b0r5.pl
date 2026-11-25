@@ -11,11 +11,11 @@ SCENARIUSZE = [
         'nazwa': 'Atak na Walako',
         'odprawa': 'Walako (ISD I) pełni wachtę w układzie. Wywiad floty ostrzega przed ruchem sił rebelii w sektorze. '
                    'Zadanie: utrzymać pozycję i okręt do przybycia posiłków, spodziewanych w ciągu godziny.',
-        'opis_mg': 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Rebelia wychodzi ze skoku 100 km od '
-                   'Walako: MC80 i 9 kluczy. Klucze rebelii są na 30 km po ok. 70 s, krążownik w paśmie 40 km po ok. 120 s, '
-                   'na 10 km po ok. 300 s. Fale ISD (4 + 6 + 8 kluczy w 4 min) są szybsze niż taśmociąg 1 klucz/min — '
-                   'zakładają alarm czerwony z oboma pokładami startowymi; do rozstrzygnięcia w testach. '
-                   'Profil MC80 jest propozycją (M1–M10).',
+        'opis_mg': 'Wzorcowy scenariusz z profilu ISD (rozdz. „Scenariusz wzorcowy”). Od startu sensory Walako widzą '
+                   'zmarszczkę nadprzestrzeni ok. 100 km od okrętu (konsola Sensory: czas do wyjścia i krąg niepewności) — '
+                   'załoga ma ok. 2 minuty na alarm, start kluczy i dostrojenie osłon. MC80 wychodzi ze skoku po 120–140 s, '
+                   'klucze rebelii startują z niego od 145 s (taśmociąg 1 klucz/min), krążownik idzie na Walako 0,5 km/s '
+                   '(pasmo 40 km po ok. 4 min od wyjścia, 10 km po ok. 5 min). Profil MC80 jest propozycją (M1–M10).',
         'okno_s': 3600, 'pole_km': 200,
         'zwyciestwo': 'Imperium: Walako utrzymany do przybycia posiłków (kadłub co najmniej 25%) albo krążownik rebelii '
                       'unieszkodliwiony lub wycofany.',
@@ -28,21 +28,22 @@ SCENARIUSZE = [
         # nr, strona, profil, nazwa, z_mapy, x, y, kurs, prędkość, kadłub, wejście, rozrzut wejścia
         'jednostki': [
             (1, 'Imperium', 'ISD_I', 'Walako', 1, 0, 0, 0, 0, 100, 0, 0),
-            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 0, 0),
+            (2, 'Rebelia', 'MC80', 'krążownik rebelii', 0, 0, 100, 180, 0.5, 100, 120, 20),
         ],
         # fala, strona, jednostka_nr, typ, liczba kluczy, start, rozrzut, x, y, rozkaz
         'klucze': [
             (1, 'Imperium', 1, 'TIE_LN', 4, 0, 30, None, None, 'ochrona'),
             (2, 'Imperium', 1, 'TIE_LN', 6, 60, 60, None, None, 'ochrona'),
             (3, 'Imperium', 1, 'TIE_LN', 8, 150, 90, None, None, 'ochrona'),
-            (1, 'Rebelia', 2, 'X_WING', 5, 0, 10, None, None, 'atak'),
-            (1, 'Rebelia', 2, 'Y_WING', 2, 0, 10, None, None, 'atak'),
-            (1, 'Rebelia', 2, 'A_WING', 1, 0, 10, None, None, 'atak'),
-            (1, 'Rebelia', 2, 'B_WING', 1, 0, 10, None, None, 'atak'),
+            (1, 'Rebelia', 2, 'X_WING', 5, 145, 10, None, None, 'atak'),
+            (1, 'Rebelia', 2, 'Y_WING', 2, 145, 10, None, None, 'atak'),
+            (1, 'Rebelia', 2, 'A_WING', 1, 145, 10, None, None, 'atak'),
+            (1, 'Rebelia', 2, 'B_WING', 1, 145, 10, None, None, 'atak'),
         ],
         # nr, czas, rozrzut, rodzaj, treść
         'wyzwalacze': [
-            (1, 0, 0, 'komunikat', 'Wyjście z nadprzestrzeni 100 km od Walako. Alarm bojowy.'),
+            (1, 0, 0, 'komunikat', 'Sensory dalekiego zasięgu: zmarszczka nadprzestrzeni ok. 100 km od Walako — duża masa.'),
+            (4, 120, 20, 'komunikat', 'Wyjście z nadprzestrzeni 100 km od Walako: krążownik rebelii. Alarm bojowy.'),
             (2, 3600, 0, 'posilki', 'Posiłki Imperium wychodzą z nadprzestrzeni.'),
             (3, 3600, 0, 'koniec', 'Koniec symulacji: przybycie posiłków.'),
         ],

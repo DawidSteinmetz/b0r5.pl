@@ -15,6 +15,7 @@ const BITWA_STALE = [
     'zasieg_ognia_klucza_km' => 3.0,
     'dystans_ataku_km' => 2.0,
     'zasieg_sensorow_km' => 200.0,
+    'dystans_walki_km' => 10.0,
     'tasma_s' => 60,
     'promien_ochrony_km' => 3.0,
     'promien_patrolu_km' => 8.0,
@@ -178,10 +179,11 @@ function bitwa_stan_ze_scenariusza(array $sc, int $ziarno): array
             'wejscie' => (int) $j['wejscie_s'] + bitwa_rozrzut($ziarno, (int) $j['wejscie_rozrzut_s'], 'j', $nr),
             'generatory' => $gen, 'sekcje' => array_fill_keys(array_keys($p['kadlub']), 100.0),
             'stan' => (int) $j['wejscie_s'] + bitwa_rozrzut($ziarno, (int) $j['wejscie_rozrzut_s'], 'j', $nr) > 0 ? 'oczekuje' : 'w_bitwie',
-            'obiekt_id' => $j['obiekt_id'] ?? null];
+            'obiekt_id' => $j['obiekt_id'] ?? null, 'ai' => false];
     }
     $strony = [];
     foreach ($sc['strony'] as $s) $strony[$s['strona']] = $s;
+    foreach ($S['jednostki'] as $ji => $j) $S['jednostki'][$ji]['ai'] = ($strony[$j['strona']]['dowodzenie'] ?? 'gracze') !== 'gracze';
     $klucze = $sc['klucze'];
     usort($klucze, static fn($a, $b) => strcmp($a['strona'], $b['strona']) ?: ((int) $a['fala'] <=> (int) $b['fala']) ?: strcmp($a['typ_maszyny'], $b['typ_maszyny']));
     $numery = [];
@@ -454,6 +456,12 @@ function bitwa_krok(array &$S): void
     }
     foreach ($S['jednostki'] as $ji => $j) {
         if ($j['stan'] !== 'w_bitwie') continue;
+        // okręt AI (do czasu modelu manewrów): stoi w paśmie wymiany ognia od najbliższego wrogiego okrętu (jak silnik.py)
+        if (!empty($j['ai']) && $j['v']) {
+            $stoi = false;
+            foreach (bitwa_wrogowie($S, $j['strona']) as $wi) if (bitwa_odleglosc($j, $S['jednostki'][$wi]) <= BITWA_STALE['dystans_walki_km']) { $stoi = true; break; }
+            if ($stoi) continue;
+        }
         $S['jednostki'][$ji]['x'] += $j['v'] * sin(bitwa_radiany($j['kurs']));
         $S['jednostki'][$ji]['y'] += $j['v'] * cos(bitwa_radiany($j['kurs']));
     }

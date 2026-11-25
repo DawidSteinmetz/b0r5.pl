@@ -441,6 +441,9 @@ function bitwa_wczytaj_stan(array $b): array
     $tik = (int) $b['tik_policzony'];
     $S = ['id' => $id, 'ziarno' => (int) $b['ziarno'], 'tik' => $tik, 'rozkazy' => [], 'po_kanale' => [], 'aktywne' => [], 'zdarzenia' => [], 'jednostki' => [], 'klucze' => [], 'tasma' => []];
     $nrJednostki = [];
+    $q = $db->prepare('SELECT strona, dowodzenie FROM bitwy_scenariusze_strony WHERE scenariusz_kod=?');
+    $q->execute([(string) $b['scenariusz_kod']]);
+    $dowodzenie = $q->fetchAll(PDO::FETCH_KEY_PAIR);
     $q = $db->prepare('SELECT * FROM bitwy_jednostki WHERE bitwa_id=? ORDER BY id');
     $q->execute([$id]);
     $qg = $db->prepare("SELECT s.*, z.liczba, z.martwe, z.temperatury FROM bitwy_systemy s JOIN bitwy_zyly z ON z.system_id = s.id
@@ -465,7 +468,7 @@ function bitwa_wczytaj_stan(array $b): array
         $S['jednostki'][] = ['id' => $jid, 'nr' => (int) $r['scenariusz_nr'], 'strona' => $r['strona'], 'profil' => $r['profil_kod'], 'nazwa' => $r['nazwa'],
             'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'], 'kurs' => (float) $r['zwrot_deg'], 'v' => (float) $r['v_km_s'],
             'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id'],
-            'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000)];
+            'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000), 'ai' => ($dowodzenie[$r['strona']] ?? 'gracze') !== 'gracze'];
     }
     $indeksKlucza = [];
     $q = $db->prepare('SELECT * FROM bitwy_klucze WHERE bitwa_id=? ORDER BY id');

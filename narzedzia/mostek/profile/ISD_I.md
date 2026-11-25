@@ -69,14 +69,10 @@ i lotnictwo (straty, powroty), Uszkodzenia i naprawy, Centrum taktyczne (mapa sy
 
 | t | Zdarzenie |
 |---|---|
-| 0 s | Wyjście rebelii 100 km od Walako. Alarm. Sensory zaczynają pomiar Hz. |
-| 0–30 s | Fala 1 ISD: 4 klucze dyżurne. Osłony na 1800/1800. |
-| 30–60 s | Pierwszy odczyt typu i Hz kluczy rebelii; przestrajanie osłon i zapory. |
-| 70–90 s | Starcie klucz na klucz 10–30 km od ISD (rebelia 9 kluczy, ISD ok. 4). |
-| 60–120 s | Fala 2: 6 kluczy. |
-| ok. 120 s | Krążownik rebelii (MC80) w paśmie 40 km. |
-| 150–240 s | Fala 3: 8 kluczy. |
-| ok. 300 s | Krążownik na 10 km — wymiana burtami. |
+| 0 s | Sensory dalekiego zasięgu: zmarszczka nadprzestrzeni ok. 100 km od Walako (czas do wyjścia, krąg niepewności). Alarm, start kluczy dyżurnych, strojenie osłon. |
+| 120–140 s | Wyjście MC80 ze skoku 100 km od Walako. |
+| od 145 s | Klucze rebelii startują z MC80 (taśmociąg 1 klucz/min). |
+| ok. 6–7 min | Krążownik w paśmie 10 km — staje do wymiany burtami (do czasu modelu manewrów: AI zatrzymuje okręt na 10 km). |
 | 3600 s | Posiłki. Koniec okna. |
 
 Skan nadprzestrzeni Walako może z wyprzedzeniem dać prognozę wyjścia krążownika (klucze słabo widoczne). [R]

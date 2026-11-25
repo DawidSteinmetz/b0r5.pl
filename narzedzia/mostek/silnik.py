@@ -9,6 +9,7 @@ daje ten sam przebieg — w Pythonie i w PHP (losowość z crc32, jak PHP crc32(
 import math, sys, zlib
 from mechanika import stopnie_natywne, stopien_w_gore, moc_zyly, pojemnosc, filtr
 from profile_klas import PROFILE, WSPOLNE
+W_ENERGIA_ZYLY = WSPOLNE['energia_zyly_lufy_J']  # energia bolta na aktywną żyłę baterii
 from dane.maszyny import MASZYNY, WALKA
 from dane.uzbrojenie import UZBROJENIE
 from dane.rozkazy import ROZKAZY
@@ -20,6 +21,9 @@ for _kod, (_zw, _zas, _st, _th) in WALKA.items():
     MASZ[_kod].update({'zwrot': _zw, 'zasieg': _zas, 'stozek': _st, 'theta': _th})
 # Obrona punktowa okrętów: działka (nr, x, y, łuk — środek i połowa, zasięg km, θ mrad, Hz) z dane/uzbrojenie.py
 PD = {kod: [(u[0], u[2], u[3], u[4], u[5], u[6], u[7], u[8]) for u in lista if u[1] == 'pd'] for kod, lista in UZBROJENIE.items()}
+# Baterie okrętów: turbolasery (salwa wszystkich luf) i jony (obciążają generator osłon celu, nie ranią kadłuba)
+TL = {kod: [(u[0], u[2], u[3], u[4], u[5], u[6], u[7], u[8]) for u in lista if u[1] == 'turbolaser'] for kod, lista in UZBROJENIE.items()}
+JON = {kod: [(u[0], u[2], u[3], u[4], u[5], u[6], u[7], u[8]) for u in lista if u[1] == 'jon'] for kod, lista in UZBROJENIE.items()}
 ROZK = {r[0]: dict(zip(['kod', 'nazwa', 'grupa', 'c', 'd', 'o', 'theta', 'theta_wl', 'v', 'ogien_wyl', 'ranga', 'skraca', 'opis'], r)) for r in ROZKAZY}
 RANGI = {'kadet': 0, 'standard': 1, 'as': 2}
 
@@ -40,13 +44,16 @@ STALE = {
     'zwrot_as': 1.25,               # [R] as skręca szybciej
     'oslona_nasycenie': 0.25,       # [R] trafienie zatrzymane przez osłonę maszyny nasyca ją o tyle × (1 − przepuszczone)
     'oslona_regen': 0.01,           # [R] osłona maszyny odzyskuje tyle na tik
-    'p_min': 0.01, 'p_maks': 0.95,  # [R] granice celności na strzał (MECHANIKA 4.3) taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
+    'p_min': 0.01, 'p_maks': 0.95,  # [R] granice celności na strzał (MECHANIKA 4.3)
+    'prog_unieszkodliwienia': 25.0, # [?] W13: średnia integralność kadłuba poniżej — okręt unieszkodliwiony, nie walczy
+    'przekroj_okretu': 0.05,        # [R] przekrój okrętu do celności baterii: długość² × 0,05 (ISD 128 000 m²)
+    'jon': {'ISD_I': (4e20, 1, 8), 'MC80': (2e20, 3, 8)},  # [R] bateria jonowa: energia lufy (J), lufy, ładowanie (tiki) taśmociąg: z jednego okrętu najwyżej 1 klucz na minutę (jak api/klucze.php)
     'promien_ochrony_km': 3.0,      # [R] ochrona: klucz krąży przy okręcie matce
     'promien_patrolu_km': 8.0,      # [R] patrol: szerszy krąg wokół okrętu matki
     'promien_skanu_km': 10.0,       # [R] skan: krąży przy celu poza zasięgiem jego ognia
     'ladowanie_km': 0.5,            # [R] powrót: klucz ląduje w hangarze bliżej niż tyle
     'skret_lagodny': 3.0, 'skret_ostry': 9.0, 'skret_zawrot': 30.0,  # [R] °/tik
-    'kadlub_j': {'ISD_I': 5e23, 'MC80': 4e23, 'ZBIEG': 2e21},          # [?] odporność całego kadłuba (100% wszystkich sekcji)
+    'kadlub_j': {'ISD_I': 1.2e25, 'MC80': 8e24, 'ZBIEG': 2e22},        # [R] odporność całego kadłuba — wymiana burtami ISD–MC80 ok. 40 min
     'xp_akcja': 0.5,                # [U]
     'xp_mnoznik': {'as': 0.5, 'standard': 1.0, 'kadet': 1.5},          # [U] jak w api/klucze.php
     'dryf_k': {'kadet': 0.25, 'standard': 0.25, 'as': 1 / 3},          # [U]
@@ -310,6 +317,58 @@ def strzal_w_klucz(stan, tik, k, t):
             traf_maszyne(stan, tik, t, hz_klucza(k), kan, i, f'{k["strona"]} {k["nr"]}')
 
 
+def punkt_na_kadlubie(j, x, y):
+    """Położenie punktu kadłuba (x, y w długościach okrętu, dziób −y) w polu bitwy."""
+    dl = PROFILE[j['profil']]['dlugosc_m'] / 1000
+    s, c = math.sin(radiany(j['kurs'])), math.cos(radiany(j['kurs']))
+    return {'x': j['x'] + s * (-y) * dl + c * x * dl, 'y': j['y'] + c * (-y) * dl - s * x * dl}
+
+
+def cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg):
+    """Najbliższy wrogi okręt w zasięgu i łuku baterii (łuk od położenia baterii, względem dziobu okrętu)."""
+    cel, dn = None, None
+    for w in wrogowie(stan, j['strona']):
+        d = odleglosc(dzialo, w)
+        if d > zasieg or (dn is not None and d >= dn): continue
+        if abs(norm180(norm180(namiar(dzialo, w) - j['kurs']) - luk_s)) > luk_p: continue
+        cel, dn = w, d
+    return cel, dn
+
+
+def ogien_okretu(stan, tik, j):
+    """Baterie okrętu (MECHANIKA 4.1): salwa co ładowanie tików, przesunięta o numer baterii. Turbolaser — każda lufa
+    trafia z celnością 4.3 (przekrój okrętu), energia trafionych luf = e_żyły × Hz baterii przez filtr osłon celu.
+    Jon — energia trafień obciąża generator osłon celu (brown-out), bez uszkodzeń kadłuba i żył."""
+    b = PROFILE[j['profil']].get('baterie') or {}
+    for nr, x, y, luk_s, luk_p, zasieg, theta, hz in TL.get(j['profil'], []):
+        if (tik + nr) % b.get('ladowanie_tiki', 6): continue
+        dzialo = punkt_na_kadlubie(j, x, y)
+        cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
+        if cel is None: continue
+        p = celnosc(theta / 1000, dn, PROFILE[cel['profil']]['dlugosc_m'] ** 2 * STALE['przekroj_okretu'])
+        kan = f'tl:{j["nr"]}:{nr}'
+        trafienia = sum(1 for i in range(b.get('lufy', 0)) if los(stan['ziarno'], tik, 'tl', kan, i) < p)
+        if trafienia:
+            gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
+            trafienie_oslony(stan, tik, cel, gen, trafienia * W_ENERGIA_ZYLY * hz, hz, f'{j["nazwa"]} TL {nr}', kan)
+    energia, lufy, ladowanie = STALE['jon'].get(j['profil'], (0, 0, 8))
+    for nr, x, y, luk_s, luk_p, zasieg, theta, hz in JON.get(j['profil'], []):
+        if (tik + nr) % ladowanie: continue
+        dzialo = punkt_na_kadlubie(j, x, y)
+        cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
+        if cel is None: continue
+        p = celnosc(theta / 1000, dn, PROFILE[cel['profil']]['dlugosc_m'] ** 2 * STALE['przekroj_okretu'])
+        kan = f'jon:{j["nr"]}:{nr}'
+        trafienia = sum(1 for i in range(lufy) if los(stan['ziarno'], tik, 'jon', kan, i) < p)
+        if trafienia:
+            gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
+            gen['obciazenie'] += trafienia * energia
+            c = pojemnosc(PROFILE[cel['profil']])
+            if gen['obciazenie'] > c:
+                gen['rykoszet'] += gen['obciazenie'] - c
+                gen['obciazenie'] = c
+
+
 def obrona_punktowa(stan, tik, j):
     """Działka obrony punktowej okrętu (pozycje i łuki z dane/uzbrojenie.py): każde strzela raz na tik do najbliższego
     klucza wroga w swoim zasięgu i łuku (łuk liczony od położenia działka, względem dziobu okrętu)."""
@@ -389,6 +448,12 @@ def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz):
         ubytek = 100 * do_kadluba / (STALE['kadlub_j'][j['profil']] * udzial)
         j['sekcje'][sek] = max(0.0, j['sekcje'][sek] - ubytek)
         stan['zdarzenia'].append((tik, 'przebicie', sprawca, j['nazwa'], gen['kod'], round(do_kadluba / energia, 4)))
+        udzialy = dict((s, u) for s, _, u in p['kadlub'])
+        kadlub = 0.0
+        for s in sorted(j['sekcje']): kadlub += j['sekcje'][s] * udzialy[s]
+        if kadlub < STALE['prog_unieszkodliwienia'] and j['stan'] == 'w_bitwie':
+            j['stan'] = 'unieszkodliwiona'
+            stan['zdarzenia'].append((tik, 'unieszkodliwienie', j['strona'], j['nazwa']))
     return do_kadluba, do_gen
 
 
@@ -398,6 +463,7 @@ def ai_oslony(stan, tik, j):
     for gen in j['generatory']:
         if not gen['auto']: continue
         hz = [hz_klucza(k) for k in stan['klucze'] if k['strona'] != j['strona'] and k['stan'] == 'w_locie' and odleglosc(k, j) < STALE['zasieg_sensorow_km']]
+        hz += [max(u[7] for u in TL[w['profil']]) for w in wrogowie(stan, j['strona']) if TL.get(w['profil']) and odleglosc(w, j) < STALE['zasieg_sensorow_km']]
         if not hz: continue
         cel = stopien_w_gore(gen['zyly']['n'], max(hz)) or gen['hz_max']
         cel = min(max(cel, gen['hz_min']), gen['hz_max'])
@@ -510,6 +576,8 @@ def krok(stan):
             trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'], hz_klucza(k), f'{k["strona"]} {k["nr"]}', kanal_klucza(k))
     for j in stan['jednostki']:
         if j['stan'] == 'w_bitwie': obrona_punktowa(stan, tik, j)
+    for j in stan['jednostki']:
+        if j['stan'] == 'w_bitwie': ogien_okretu(stan, tik, j)
     for k in stan['klucze']:
         if k['oslona_pkt'] > 0: k['oslona_pkt'] = max(0.0, k['oslona_pkt'] - STALE['oslona_regen'])
     # osłony: odpływ obciążenia, AI osłon

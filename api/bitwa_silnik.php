@@ -26,11 +26,14 @@ const BITWA_STALE = [
     'oslona_nasycenie' => 0.25,
     'oslona_regen' => 0.01,
     'p_min' => 0.01, 'p_maks' => 0.95,
+    'prog_unieszkodliwienia' => 25.0,
+    'przekroj_okretu' => 0.05,
+    'jon' => ['ISD_I' => [4e20, 1, 8], 'MC80' => [2e20, 3, 8]],
     'promien_ochrony_km' => 3.0,
     'promien_patrolu_km' => 8.0,
     'promien_skanu_km' => 10.0,
     'ladowanie_km' => 0.5,
-    'kadlub_j' => ['ISD_I' => 5e23, 'MC80' => 4e23, 'ZBIEG' => 2e21],
+    'kadlub_j' => ['ISD_I' => 1.2e25, 'MC80' => 8e24, 'ZBIEG' => 2e22],
     'xp_akcja' => 0.5,
     'xp_mnoznik' => ['as' => 0.5, 'standard' => 1.0, 'kadet' => 1.5],
     'dryf_k' => ['kadet' => 0.25, 'standard' => 0.25, 'as' => 1 / 3],
@@ -63,7 +66,8 @@ function bitwa_slowniki(): array
             'nazwa' => $p['nazwa'], 'generatory' => (int) $p['generatory_oslon'], 'zyly' => (int) $p['zyly_oslon'],
             'siatka' => $p['siatka_kolumny'] !== null ? (int) $p['siatka_kolumny'] : null,
             'U0' => (float) $p['zyla_u0_v'], 'R0' => (float) $p['zyla_r0_ohm'], 'domyslnie_hz' => (int) $p['oslony_domyslnie_hz'],
-            'mysliwce' => (int) $p['mysliwce'], 'dlugosc_m' => (float) $p['dlugosc_m'], 'moc_reaktora_w' => (float) $p['moc_reaktora_w'], 'kadlub' => [],
+            'mysliwce' => (int) $p['mysliwce'], 'dlugosc_m' => (float) $p['dlugosc_m'],
+            'lufy' => (int) $p['lufy_na_baterie'], 'ladowanie' => (int) $p['ladowanie_tiki'], 'moc_reaktora_w' => (float) $p['moc_reaktora_w'], 'kadlub' => [],
         ];
     }
     foreach ($db->query('SELECT profil_kod, sekcja, udzial FROM profile_klas_kadlub')->fetchAll(PDO::FETCH_ASSOC) as $k) {
@@ -79,14 +83,18 @@ function bitwa_slowniki(): array
             'zwrot' => (float) ($m['zwrot_deg_s'] ?? 30), 'zasieg' => (float) ($m['zasieg_ognia_km'] ?? 1.5),
             'stozek' => (float) ($m['stozek_deg'] ?? 15), 'theta' => (float) ($m['theta_mrad'] ?? 4)];
     }
-    $pd = [];
+    $pd = $tl = $jon = [];
     try {
-        foreach ($db->query("SELECT * FROM profile_klas_uzbrojenie WHERE rodzaj = 'pd' ORDER BY profil_kod, nr")->fetchAll(PDO::FETCH_ASSOC) as $u) {
-            $pd[$u['profil_kod']][] = [(int) $u['nr'], (float) $u['x'], (float) $u['y'], (float) $u['luk_srodek_deg'], (float) $u['luk_pol_deg'],
+        foreach ($db->query("SELECT * FROM profile_klas_uzbrojenie WHERE rodzaj IN ('pd','turbolaser','jon') ORDER BY profil_kod, nr")->fetchAll(PDO::FETCH_ASSOC) as $u) {
+            $w = [(int) $u['nr'], (float) $u['x'], (float) $u['y'], (float) $u['luk_srodek_deg'], (float) $u['luk_pol_deg'],
                 (float) $u['zasieg_km'], (float) $u['theta_mrad'], (int) $u['hz']];
+            if ($u['rodzaj'] === 'pd') $pd[$u['profil_kod']][] = $w;
+            elseif ($u['rodzaj'] === 'turbolaser') $tl[$u['profil_kod']][] = $w;
+            else $jon[$u['profil_kod']][] = $w;
         }
-    } catch (Throwable $e) { $pd = []; }
-    return $s = ['profile' => $profile, 'maszyny' => $maszyny, 'pd' => $pd,
+    } catch (Throwable $e) { $pd = $tl = $jon = []; }
+    return $s = ['profile' => $profile, 'maszyny' => $maszyny, 'pd' => $pd, 'tl' => $tl, 'jon' => $jon,
+        'e_zyly' => (float) ($stale['energia_zyly_lufy_j'] ?? 8.4e20 / 3600),
         'skala_zyl' => (float) ($stale['skala_zyl'] ?? 1e17), 'tau' => (float) ($stale['tau_pojemnosci_s'] ?? 0.2508)];
 }
 
@@ -368,6 +376,75 @@ function bitwa_strzal_w_klucz(array &$S, int $tik, int $ki, int $ti): void
     }
 }
 
+// Położenie punktu kadłuba (x, y w długościach okrętu, dziób −y) w polu bitwy — jak silnik.py punkt_na_kadlubie.
+function bitwa_punkt_na_kadlubie(array $j, float $x, float $y): array
+{
+    $dl = bitwa_slowniki()['profile'][$j['profil']]['dlugosc_m'] / 1000;
+    $s = sin(bitwa_radiany($j['kurs']));
+    $c = cos(bitwa_radiany($j['kurs']));
+    return ['x' => $j['x'] + $s * (-$y) * $dl + $c * $x * $dl, 'y' => $j['y'] + $c * (-$y) * $dl - $s * $x * $dl];
+}
+
+// Najbliższy wrogi okręt w zasięgu i łuku baterii: [indeks|null, odległość|null].
+function bitwa_cel_baterii(array $S, array $j, array $dzialo, float $lukS, float $lukP, float $zasieg): array
+{
+    $cel = null;
+    $dn = null;
+    foreach (bitwa_wrogowie($S, $j['strona']) as $wi) {
+        $w = $S['jednostki'][$wi];
+        $d = bitwa_odleglosc($dzialo, $w);
+        if ($d > $zasieg || ($dn !== null && $d >= $dn)) continue;
+        if (abs(bitwa_norm180(bitwa_norm180(bitwa_namiar($dzialo, $w) - $j['kurs']) - $lukS)) > $lukP) continue;
+        $cel = $wi;
+        $dn = $d;
+    }
+    return [$cel, $dn];
+}
+
+// Baterie okrętu (jak silnik.py ogien_okretu): turbolasery przez filtr osłon celu, jony obciążają generator celu.
+function bitwa_ogien_okretu(array &$S, int $tik, int $ji): void
+{
+    $sl = bitwa_slowniki();
+    $j = $S['jednostki'][$ji];
+    $p = $sl['profile'][$j['profil']];
+    foreach ($sl['tl'][$j['profil']] ?? [] as [$nr, $x, $y, $lukS, $lukP, $zasieg, $theta, $hz]) {
+        if (($tik + $nr) % ($p['ladowanie'] ?: 6)) continue;
+        $dzialo = bitwa_punkt_na_kadlubie($j, $x, $y);
+        [$ci, $dn] = bitwa_cel_baterii($S, $j, $dzialo, $lukS, $lukP, $zasieg);
+        if ($ci === null) continue;
+        $pc = bitwa_celnosc($theta / 1000, $dn, $sl['profile'][$S['jednostki'][$ci]['profil']]['dlugosc_m'] ** 2 * BITWA_STALE['przekroj_okretu']);
+        $kan = "tl:{$j['nr']}:$nr";
+        $trafienia = 0;
+        for ($i = 0; $i < $p['lufy']; $i++) if (bitwa_los($S['ziarno'], $tik, 'tl', $kan, $i) < $pc) $trafienia++;
+        if ($trafienia) {
+            $gi = bitwa_generator_od_strony($S['jednostki'][$ci], $dzialo['x'], $dzialo['y']);
+            bitwa_trafienie($S, $tik, $ci, $gi, $trafienia * $sl['e_zyly'] * $hz, (float) $hz, "{$j['nazwa']} TL $nr", $kan);
+        }
+    }
+    [$energia, $lufy, $ladowanie] = BITWA_STALE['jon'][$j['profil']] ?? [0, 0, 8];
+    foreach ($sl['jon'][$j['profil']] ?? [] as [$nr, $x, $y, $lukS, $lukP, $zasieg, $theta, $hz]) {
+        if (($tik + $nr) % $ladowanie) continue;
+        $dzialo = bitwa_punkt_na_kadlubie($j, $x, $y);
+        [$ci, $dn] = bitwa_cel_baterii($S, $j, $dzialo, $lukS, $lukP, $zasieg);
+        if ($ci === null) continue;
+        $pc = bitwa_celnosc($theta / 1000, $dn, $sl['profile'][$S['jednostki'][$ci]['profil']]['dlugosc_m'] ** 2 * BITWA_STALE['przekroj_okretu']);
+        $kan = "jon:{$j['nr']}:$nr";
+        $trafienia = 0;
+        for ($i = 0; $i < $lufy; $i++) if (bitwa_los($S['ziarno'], $tik, 'jon', $kan, $i) < $pc) $trafienia++;
+        if ($trafienia) {
+            $gi = bitwa_generator_od_strony($S['jednostki'][$ci], $dzialo['x'], $dzialo['y']);
+            $g = &$S['jednostki'][$ci]['generatory'][$gi];
+            $g['obciazenie'] += $trafienia * $energia;
+            $c = bitwa_pojemnosc($sl['profile'][$S['jednostki'][$ci]['profil']]);
+            if ($g['obciazenie'] > $c) {
+                $g['rykoszet'] += $g['obciazenie'] - $c;
+                $g['obciazenie'] = $c;
+            }
+            unset($g);
+        }
+    }
+}
+
 // Obrona punktowa okrętu (jak silnik.py obrona_punktowa): każde działko raz na tik w najbliższy klucz w zasięgu i łuku.
 function bitwa_obrona_punktowa(array &$S, int $tik, int $ji): void
 {
@@ -476,6 +553,12 @@ function bitwa_trafienie(array &$S, int $tik, int $ji, int $gi, float $energia, 
         $j['sekcje'][$sek] = max(0.0, $j['sekcje'][$sek] - $ubytek);
         $S['zdarzenia'][] = ['tik' => $tik, 'rodzaj' => 'przebicie', 'opis' => "$sprawca przebija osłonę {$j['nazwa']} ({$gen['kod']})",
             'wartosc' => round($doKadluba / $energia, 4)];
+        $kadlub = 0.0;
+        foreach ($j['sekcje'] as $s => $v) $kadlub += $v * $p['kadlub'][$s];
+        if ($kadlub < BITWA_STALE['prog_unieszkodliwienia'] && $j['stan'] === 'w_bitwie') {
+            $j['stan'] = 'unieszkodliwiona';
+            $S['zdarzenia'][] = ['tik' => $tik, 'rodzaj' => 'unieszkodliwienie', 'opis' => "{$j['strona']}: {$j['nazwa']} unieszkodliwiony", 'wartosc' => round($kadlub, 2)];
+        }
     }
     unset($gen, $j);
 }
@@ -488,6 +571,11 @@ function bitwa_ai_oslony(array &$S, int $tik, int $ji): void
         $hz = [];
         foreach ($S['klucze'] as $k) {
             if ($k['strona'] !== $j['strona'] && $k['stan'] === 'w_locie' && bitwa_odleglosc($k, $j) < BITWA_STALE['zasieg_sensorow_km']) $hz[] = bitwa_hz_klucza($k);
+        }
+        foreach (bitwa_wrogowie($S, $j['strona']) as $wi) {
+            $w = $S['jednostki'][$wi];
+            $tlw = bitwa_slowniki()['tl'][$w['profil']] ?? [];
+            if ($tlw && bitwa_odleglosc($w, $j) < BITWA_STALE['zasieg_sensorow_km']) $hz[] = max(array_map(static fn($u) => $u[7], $tlw));
         }
         if (!$hz) continue;
         $cel = bitwa_stopien_w_gore($gen['zyly']['n'], max($hz)) ?: $gen['hz_max'];
@@ -640,6 +728,9 @@ function bitwa_krok(array &$S): void
     }
     foreach (array_keys($S['jednostki']) as $ji) {
         if ($S['jednostki'][$ji]['stan'] === 'w_bitwie') bitwa_obrona_punktowa($S, $tik, $ji);
+    }
+    foreach (array_keys($S['jednostki']) as $ji) {
+        if ($S['jednostki'][$ji]['stan'] === 'w_bitwie') bitwa_ogien_okretu($S, $tik, $ji);
     }
     foreach (array_keys($S['klucze']) as $ki) {
         if ($S['klucze'][$ki]['oslona_pkt'] > 0) $S['klucze'][$ki]['oslona_pkt'] = max(0.0, $S['klucze'][$ki]['oslona_pkt'] - BITWA_STALE['oslona_regen']);

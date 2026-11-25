@@ -362,8 +362,16 @@ Klucz ma pozycję, kurs i prędkość w każdym tiku; od geometrii zależy, któ
   burtę wzdłuż klina, zasięg 5 km, łuk ±90° na zewnątrz burty, θ 8 mrad, 1500 Hz — dane/uzbrojenie.py, rysunek ISD).
   Każde strzela raz na tik w najbliższy klucz w swoim łuku — pokrycie wynika z geometrii (np. przy samym dziobie
   i za rufą mniej działek).
-- Turbolasery i baterie jonowe mają już pozycje, łuki i zasięgi (ISD: 4 + 4 baterie, łuk burtowy ±80°, 40 km;
-  2 wieże jonowe na grzbiecie, 20 km) — ogień okrętów to kolejny etap.
+- **Ogień okrętów** (silnik, 25.11.2026) [R]: bateria turbolaserów (ISD 4 + 4 po 8 luf, MC80 3 + 3 po 9 luf) ma
+  położenie na kadłubie, łuk ±100° wokół trawersu (wieże na grzbiecie strzelają nad dziobem na zakładkę) i zasięg
+  40 km. Salwa co 6 s (przesunięta o numer baterii) w najbliższy wrogi okręt w łuku: każda lufa trafia z celnością 4.3
+  (θ 5 mrad, przekrój okrętu = długość² × 0,05), energia trafionych luf = e_żyły × Hz baterii przez filtr osłon celu
+  (rozdz. 3). Baterie jonowe (ISD 2 wieże, MC80 6 baterii, 20 km): energia trafień obciąża generator osłon celu,
+  bez uszkodzeń kadłuba. Automatyczne osłony mierzą także Hz baterii wrogich okrętów. Trafienie jest natychmiastowe
+  (lot bolta 5 km/s — kolejny etap).
+- **Kadłub** [R]: odporność całego kadłuba ISD 1,2×10²⁵ J, MC80 8×10²⁴ J; średnia integralność poniżej 25%
+  (W13) — okręt unieszkodliwiony, nie walczy. „Atak na Walako”: MC80 unieszkodliwiony po ok. 15 min wymiany ognia,
+  Walako bez strat (osłony 3600 Hz blokują baterie 2187 Hz) — do strojenia, rebelia potrzebuje przeciwwagi.
 
 ## 6. Ruch okrętu i silniki
 

@@ -103,7 +103,7 @@ if '--php' in sys.argv:
                                for j in s['jednostki'] for g in j['generatory']],
                 'sekcje': [v for j in s['jednostki'] for _, v in sorted(j['sekcje'].items())],
                 'zdarzenia': dict(sorted(zd.items()))}
-    przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300)]
+    przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420)]
     for pb in przebiegi:
         print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}: zdarzenia {pb['zdarzenia']}, generatory {[g[:2] for g in pb['generatory']]}, "
               f"sekcje min {min(pb['sekcje']):.4f}")

@@ -32,13 +32,13 @@ def _krawedz(od, do, n, start_nr, rodzaj, zasieg, theta, hz, strona):
 # nr, rodzaj, x, y, luk_srodek_deg, luk_pol_deg, zasieg_km, theta_mrad, hz
 def _isd():
     p = []
-    # turbolasery (duże czerwone): 4 na burtę wzdłuż nadbudówki; łuk burtowy ±80° wokół trawersu
+    # turbolasery (duże czerwone): 4 na burtę wzdłuż nadbudówki; wieże na grzbiecie — łuk ±100° wokół trawersu (dziób na zakładkę)
     for i, (y, x) in enumerate([(0.358, 0.1625), (0.275, 0.158), (0.2, 0.15), (0.125, 0.1375)]):
-        p.append((1 + i, 'turbolaser', _r(-x), _r(y), -90.0, 80.0, 40.0, 1.0, 3600))
-        p.append((5 + i, 'turbolaser', _r(x), _r(y), 90.0, 80.0, 40.0, 1.0, 3600))
+        p.append((1 + i, 'turbolaser', _r(-x), _r(y), -90.0, 100.0, 40.0, 5.0, 3600))
+        p.append((5 + i, 'turbolaser', _r(x), _r(y), 90.0, 100.0, 40.0, 5.0, 3600))
     # baterie jonowe (niebieskie) na grzbiecie — wieże, pełny obrót
-    p.append((9, 'jon', -0.03, 0.0375, 0.0, 180.0, 20.0, 1.5, 1800))
-    p.append((10, 'jon', 0.03, 0.0375, 0.0, 180.0, 20.0, 1.5, 1800))
+    p.append((9, 'jon', -0.03, 0.0375, 0.0, 180.0, 20.0, 6.0, 1800))
+    p.append((10, 'jon', 0.03, 0.0375, 0.0, 180.0, 20.0, 6.0, 1800))
     # generatory osłon (żółte), radar i sensory (brązowy), silniki (białe)
     p.append((11, 'oslona', -0.079, 0.4125, 0.0, 0.0, 0.0, 0.0, 0))
     p.append((12, 'oslona', 0.079, 0.4125, 0.0, 0.0, 0.0, 0.0, 0))
@@ -54,11 +54,11 @@ def _isd():
 def _mc80():
     p = []
     for i, y in enumerate([-0.15, 0.05, 0.25]):
-        p.append((1 + i, 'turbolaser', -0.095, y, -90.0, 80.0, 40.0, 1.0, 2187))
-        p.append((4 + i, 'turbolaser', 0.095, y, 90.0, 80.0, 40.0, 1.0, 2187))
+        p.append((1 + i, 'turbolaser', -0.095, y, -90.0, 100.0, 40.0, 5.0, 2187))
+        p.append((4 + i, 'turbolaser', 0.095, y, 90.0, 100.0, 40.0, 5.0, 2187))
     for i, y in enumerate([-0.3, 0.0, 0.3]):
-        p.append((7 + i, 'jon', -0.05, y, -90.0, 100.0, 20.0, 1.5, 1458))
-        p.append((10 + i, 'jon', 0.05, y, 90.0, 100.0, 20.0, 1.5, 1458))
+        p.append((7 + i, 'jon', -0.05, y, -90.0, 100.0, 20.0, 6.0, 1458))
+        p.append((10 + i, 'jon', 0.05, y, 90.0, 100.0, 20.0, 6.0, 1458))
     for i, (x, y) in enumerate([(-0.15, -0.1), (-0.15, 0.1), (-0.15, 0.25), (0.15, -0.1), (0.15, 0.1), (0.15, 0.25)]):
         p.append((13 + i, 'oslona', x, y, 0.0, 0.0, 0.0, 0.0, 0))
     p.append((19, 'sensory', 0.0, -0.27, 0.0, 0.0, 0.0, 0.0, 0))

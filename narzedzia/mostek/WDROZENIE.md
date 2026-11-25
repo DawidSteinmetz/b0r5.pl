@@ -240,7 +240,8 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   (Turbolasery, Kontrola ognia), walka klucz na klucz, energia i ciepło reaktora, grawitacja.
 - Walka kluczy i obrona punktowa (25.11.2026, MECHANIKA 5.1; migracje 074 i 075): skręt z prędkością kątową,
   cele z rozkazu, ogień w stożku z celnością zależną od geometrii (ogon ×0,5), osłony maszyn, straty maszyn,
-  60 działek PD ISD z pozycją i łukiem z rysunku użytkownika. Ogień turbolaserów i jonów okrętów — następny krok.
+  60 działek PD ISD z pozycją i łukiem z rysunku użytkownika. Ogień turbolaserów i jonów okrętów, unieszkodliwienie
+  okrętu poniżej 25% kadłuba (MECHANIKA 5.1).
 - Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

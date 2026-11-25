@@ -265,14 +265,14 @@ do tego podpiąć, a nie budować od nowa. Liczba myśliwców i kluczy — z pro
 | Przebicie skali N | baza > N/(1+k) przy pełnej mocy na działka przebija osłonę N (ISD 3600: > 2880 zwykły, > 2700 as) | [U, sprawdzone] | — |
 | As | więcej manewrów; przestrojenie 1 tik (zwykły 3); limit zmian 4 na cykl (zwykły 2) | [U] | rangi są, bez manewrów |
 | Prędkość | myśliwiec 1 km/s, krążownik 0,5 km/s | [R] | patrz uwaga niżej |
-| Doświadczenie | 0,5 PD za symulację | [U] | jest inny model (patrz niżej) |
+| Doświadczenie | symulacja: 0,5 XP za każdą akcję NPC × mnożnik rangi (WDROZENIE.md, rozdz. 4) | [U] 25.11.2026 | XP pilotów jest (INT — do zmiany na DECIMAL) |
 
 Przebicie dla MC80 (N = 2187): baza > 1750 (zwykły), > 1640 (as).
 
 **Do uzgodnienia z grą** [?]:
 - W grze piloci mają trzy rangi (as, standardowy, kadet), poziom z doświadczenia i mnożnik zdobywania
   (×0,5 / ×1 / ×1,5); arkusz zna dwie. Proponuję: k dryfu = 0,25 dla kadeta i standardowego, 1/3 dla asa;
-  przestrojenie 3 / 2 / 1 tik (kadet / standardowy / as); 0,5 PD za symulację × mnożnik rangi.
+  przestrojenie 3 / 2 / 1 tik (kadet / standardowy / as); 0,5 XP za akcję w symulacji × mnożnik rangi.
 - Prędkości: klucze na mapie układu poruszają się dziś w skali mapy (setki–tysiące km/s). Walka toczy się w
   **lokalnym polu bitwy** (km, km/s) — osobny układ odniesienia, zakotwiczony w punkcie układu, w którym toczy się bitwa.
 - Manewry (lista zwykłych i asów) i zapas zmian na turę [?].

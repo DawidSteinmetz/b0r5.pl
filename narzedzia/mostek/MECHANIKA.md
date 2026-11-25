@@ -60,6 +60,60 @@ Uściślenie [R]: „ogień” = wystrzały, których bolt dolatuje w tym tiku. 
 ostatniego zapisu (jak klucze myśliwców dziś), więc bitwa toczy się także bez otwartych konsol. Godzina = 3600 tików,
 27 kluczy i kilka okrętów — to dla PHP drobiazg.
 
+**Tiki i cykle są tylko dla nas** [U, 25.11.2026] — do liczenia mechaniki i rozliczania czasu (limity zmian na cykl,
+ładowanie, stygnięcie). Gracz gra w czasie rzeczywistym: nie ma tur, nie ma czekania na innych. Liczy się szybkość
+reakcji i wciśnięcie właściwego przycisku we właściwej chwili.
+
+### 1.1 Czas wykonania rozkazów (cast time)
+
+[U zasada, R liczby] Niemal każdy rozkaz ma **czas wykonania**: od kliknięcia do chwili, w której skutek działa.
+
+```
+kliknięcie ─► przygotowanie (cast) ─► działanie (czas trwania) ─► odnowienie (cooldown)
+     t0            t0 … t0+c                t0+c … t0+c+d            do t0+c+d+o
+```
+
+- **Rozstrzyga chwila działania, nie chwila kliknięcia.** W tiku silnik bierze pod uwagę tylko figury i ustawienia,
+  które już działają. Unik rozkazany odpowiednio wcześnie działa, gdy wróg wykonuje „przelot przez cel” — jego ogień
+  trafia w klucz z mnożnikiem rozrzutu uniku. Unik rozkazany za późno (przygotowanie nie skończone) nie daje nic.
+- **Rozkaz wydany w trakcie przygotowania innego rozkazu tego samego systemu** przerywa poprzedni; zużyta zmiana
+  z limitu na cykl przepada. Rozkaz w trakcie działania figury — zaczyna przygotowanie od razu, nowa figura
+  zastępuje starą w chwili gotowości.
+- **Ranga skraca przygotowanie** (dla kluczy): kadet +1 s, standardowy 0, as −1 s (min. 1 s) — jak przestrojenie
+  3 / 2 / 1 tik.
+- **Widoczność**: własne przygotowanie widać na konsoli od razu (pasek, licznik w sekundach); przygotowanie wroga jest
+  niewidoczne — jego figurę widać dopiero, gdy działa (ikona manewru na ekranie Klucz i Radar). Czytanie wroga =
+  reagowanie na początek jego figury albo przewidywanie.
+- **Kolejność w tiku**: rozkazy przypisane do tiku według czasu serwera w chwili odebrania; w obrębie tiku — według
+  milisekund. Szybsza reakcja wygrywa remis.
+
+Czasy robocze [R] (sekundy czasu gry; c — przygotowanie, d — działanie, o — odnowienie):
+
+| Rozkaz | c | d | o | Skutek w czasie działania |
+|---|---|---|---|---|
+| łagodny skręt, prosto | 1 | do zmiany | — | zmiana kursu |
+| ostry skręt | 2 | do zmiany | — | szybsza zmiana kursu, θ celu ×1,1 |
+| zygzak | 1 | 12 | — | θ ×1,3 |
+| beczka | 2 | 4 | 4 | θ ×1,6 |
+| burst | 1 | 3 | 12 | θ ×1,5, prędkość ×2 |
+| spirala asa (tylko as) | 2 | 6 | 12 | θ ×2 |
+| skok cieniowy (tylko as) | 3 | 2 | 24 | θ ×2,5, chwilowe zgubienie namiaru wroga |
+| pętla, split-S (zawrót) | 3 | 6 | — | odwrócenie kursu; w czasie działania własny ogień wyłączony |
+| rozejście klucza L/P, zwarcie szyku | 2 | do zmiany | — | rozejście: trafienie obszarowe ×0,5; zwarcie: własny ogień skupiony, θ celu przy nas ×0,8 |
+| atak z nurkowania | 3 | 4 | — | okno ognia z celnością ×1,3, własny θ ×1,2 |
+| przelot przez cel | 2 | 3 | — | okno ognia: celność ×1,5, wystawienie na PD celu |
+| nożyce | 2 | 12 | — | pojedynek: celność obu stron zależy od rangi |
+| ogon (trzymaj cel) | 2 | do zmiany | — | ciągły ogień, celność ×1,2 po 3 s utrzymania |
+| eskorta | 2 | do zmiany | — | przejmuje część ostrzału chronionej jednostki |
+| rozkaz klucza (patrol, atak, skan, powrót) | 3 | do zmiany | — | jak w grze dziś |
+| przestrojenie Hz osłon ręcznie / preset / auto | 12 / 3 / 2–4 | do zmiany | — | MECHANIKA 3.6 |
+| wzmocnij | 3 | 12 | 24 | +1 stopień wydajności |
+| synchronizuj, równaj z reaktorem | jak przestrojenie | do zmiany | — | PULPITY 3 |
+| przełącz zasilanie | 1–3 (przerwa zasilania) | — | — | |
+| salwa baterii | ładowanie 6 + lot bolta (10 km: 2 s) | — | — | trafia tam, gdzie cel będzie |
+
+Gdzie „θ ×…” — mnożnik efektywnego rozrzutu strzałów **w tę jednostkę** (wzór celności, rozdz. 4.3).
+
 ---
 
 ## 2. Energia: reaktor, porcje, dławienie

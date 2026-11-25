@@ -36,7 +36,7 @@ tabelach `symulacje_*` z warstwy projektowej.
 | Stan walki | tabele `bitwy_*` | te same tabele `bitwy_*` |
 | Start | kopia stanu jednostek (kadłub, osłony, piloci, maszyny) do `bitwy_*` | jednostki wchodzą do bitwy ze stanem z mapy |
 | Przeciwnik | jednostki wirtualne z profilu klasy (np. MC80, `obiekt_id` NULL) sterowane AI | prawdziwe jednostki innych stron |
-| Zegar | własny: start, pauza, tempo, cofnięcie przez MG | czas świata 1:1, bez pauzy |
+| Zegar | własny, 1:1 z czasem rzeczywistym; pauza i cofnięcie tylko dla MG | czas świata 1:1, bez pauzy |
 | Widoczność | tylko uczestnicy i MG; poza radarem i mapą | radar, mieszkańcy planety (jak dziś `mapa_bitwy`) |
 | Koniec | XP dla NPC; **nic nie wraca** do `mapa_naped_jednostki`, `mapa_floty_jednostki`, `mapa_piloci` (poza XP) | skutki zapisane w świecie: kadłub, osłony, straty maszyn, ranni i zabici piloci, uszkodzone systemy |
 
@@ -51,8 +51,13 @@ klucze w symulacji nie startują naprawdę (`mapa_klucze` bez zmian, `mapa_piloc
 - **Leniwe doliczanie** (decyzja nr 1): każde zapytanie o bitwę wywołuje `bitwa_dolicz($id)`: blokada bitwy
   (`SELECT … FOR UPDATE` na wierszu bitwy albo `GET_LOCK('bitwa_N')`), policzenie tików od `tik_policzony` do
   „teraz” zegara bitwy, zapis, zwolnienie. Konsole wielu graczy nie liczą tego samego dwa razy.
-- **Kolejność w tiku**: ruch → ogień → straty → zdarzenia (MECHANIKA, rozdz. 1); rozkazy z `bitwy_rozkazy`
-  stosowane na początku tiku, w którym zostały wydane.
+- **Tiki tylko wewnątrz silnika.** Dla graczy nie ma tur: grają w czasie rzeczywistym, a o wyniku decyduje
+  szybkość reakcji. Tik (1 s) i cykl (12 s) służą do liczenia mechaniki i rozliczania czasu.
+- **Rozkazy z czasem wykonania** (MECHANIKA 1.1): `bitwy_rozkazy` zapisuje chwilę kliknięcia (czas serwera z
+  milisekundami), a silnik wylicza z profilu rozkazu i rangi chwilę działania, koniec działania i odnowienie.
+  W tiku liczą się tylko rozkazy, które już działają — stąd „wcześniej rozkazany unik kontra przelot wroga”.
+- **Kolejność w tiku**: ruch → ogień → straty → zdarzenia (MECHANIKA, rozdz. 1); w obrębie tiku rozkazy według
+  milisekund.
 - **Determinizm**: losowość z ziarna bitwy i numeru tiku (np. `crc32(ziarno . tik . nr_losowania)`), bez `rand()`.
   Ten sam dziennik rozkazów daje ten sam przebieg — to umożliwia „cofnij zdarzenie” MG (zasada 5) i powtórkę
   symulacji do omówienia z graczami.
@@ -63,6 +68,10 @@ klucze w symulacji nie startują naprawdę (`mapa_klucze` bez zmian, `mapa_piloc
   jedno zapytanie (np. 600 tików) i dokończenie w następnych.
 - **Gracz nie widzi tików** (zasada 4): API zwraca stan, chwilę stanu i tempo zmian; przeglądarka interpoluje
   (wzór z `mapa.js`: liczniki „na żywo” co 1 s).
+- **Opóźnienie sieci a refleks**: skoro liczy się reakcja, odświeżanie co 1 s to za mało. Propozycja: w bitwie
+  odczyt co 0,5 s (albo strumień SSE z `bitwa.php`), kliknięcie od razu rysuje pasek przygotowania w przeglądarce
+  (bez czekania na serwer), a serwer potwierdza chwilę przyjęcia. Rozkaz liczy się od czasu odebrania przez serwer —
+  uczciwie dla wszystkich, niezależnie od tego, kto ile odpytuje.
 
 ### 2.3 Profile klas w SQL
 
@@ -89,14 +98,15 @@ Wszystko w SQL, bez JSON (zasada 2). Nazwy robocze.
 
 | Tabela | Zawartość |
 |---|---|
-| `mapa_bitwy` + kolumny | `rodzaj` (symulacja / rzeczywista), `scenariusz`, `ziarno`, `tryb_zegara` (ciągły / turowy), `tempo`, `pauza`, `zegar_start_utc`, `zegar_przesuniecie_s`, `tik_policzony`, `kotwica_x/y` (punkt układu dla pola bitwy), `prowadzacy_login`; `planeta_id` dopuszcza NULL dla symulacji |
+| `mapa_bitwy` + kolumny | `rodzaj` (symulacja / rzeczywista), `scenariusz`, `ziarno`, `pauza`, `zegar_start_utc`, `zegar_przesuniecie_s`, `tik_policzony`, `kotwica_x/y` (punkt układu dla pola bitwy), `prowadzacy_login`; `planeta_id` dopuszcza NULL dla symulacji |
 | `bitwy_jednostki` | bitwa, `obiekt_id` (NULL = wirtualna), profil, strona, nazwa; położenie i prędkość w km na polu bitwy, zwrot, prędkość kątowa; integralność sekcji kadłuba; reaktor (dławienie, margines cieplny, zasobnik); stan wejściowy (do porównania na koniec) |
 | `bitwy_systemy` | system jednostki: kod (`oslona_L`, `bateria_L1`, `rdzen_2`…), stan, Hz zadane / osiągane, przydział porcji, ładunek, obciążenie C, rykoszet, temperatura |
 | `bitwy_zyly` | jedna linia na generator lub baterię: `martwe` (VARBINARY, mapa bitowa 3600 b = 450 B) i `temperatury` (VARBINARY, 1 bajt na żyłę) — binarny zapis zamiast 3600 wierszy, nie JSON |
 | `bitwy_klucze` | klucz w bitwie: z `mapa_klucze`/hangaru albo wirtualny; maszyny 4–1, Hz bazowe, moc 0–1, figura i tik jej rozpoczęcia, zmiany w bieżącym cyklu, rozkaz, cel, położenie; stan lampy (hangar / gotowy / w locie / powrót / stracony) i `start_tik` |
 | `bitwy_piloci` | pilot w kluczu bitwy (`mapa_piloci.id`), stan w bitwie (w locie, zestrzelony, uratowany), licznik akcji |
 | `bitwy_stanowiska` | konto → jednostka → pulpit; blokady kapitana |
-| `bitwy_rozkazy` | dziennik wejść: tik, konto lub AI, jednostka, system, parametr, wartość przed / po, przyczyna |
+| `bitwy_rozkazy` | dziennik wejść: chwila kliknięcia (ms, czas serwera), konto lub AI, jednostka lub klucz, system, rozkaz / figura, wartość przed / po, przyczyna; wyliczone: chwila działania, koniec działania, koniec odnowienia, przerwany przez |
+| `rozkazy_profile` | czasy rozkazów z MECHANIKA 1.1: kod, przygotowanie, działanie, odnowienie, mnożnik θ, wymóg rangi |
 | `bitwy_zdarzenia` | wyjścia silnika dla konsol i MG: trafienie, przebicie, utrata generatora, strata maszyny, alarm; tik, sprawca, cel, wartość |
 | `bitwy_migawki` | stan co cykl lub minutę (te same kolumny w tabelach-kopiach albo binarny zrzut) — do cofania |
 | `bitwy_xp` | NPC × bitwa: liczba akcji, XP surowe, mnożnik rangi, XP naliczone, chwila zatwierdzenia |
@@ -112,7 +122,7 @@ w INT — mniej czytelne). `klucze_poziom()` działa bez zmian po rzutowaniu na 
 1. **Utworzenie** (MG lub kapitan): scenariusz (np. „Atak na Walako”), uczestnicy z mapy, przeciwnik wirtualny,
    pozycje startowe na polu bitwy. Silnik kopiuje stan jednostek do `bitwy_*`.
 2. **Przydział stanowisk** graczom; pulpity bez gracza — AI stanowiska albo „autopilot” (patrz decyzje).
-3. **Przebieg**: zegar symulacji (pauza i tempo dla MG), rozkazy, zdarzenia.
+3. **Przebieg**: w czasie rzeczywistym (pauza i cofnięcie tylko dla MG); rozkazy z czasem wykonania, zdarzenia.
 4. **Zakończenie** (warunek scenariusza, MG albo upływ okna): raport, XP, archiwum (dziennik zostaje do omówienia).
    Stan jednostek w świecie bez zmian.
 
@@ -121,7 +131,7 @@ propozycja:
 
 | Akcja NPC | Liczy się | Uwagi |
 |---|---|---|
-| figura klucza (manewr z ekranu Klucz) | tak — każdy pilot w kluczu | limit zmian na cykl (zwykły 2, as 4) sam ogranicza tempo |
+| figura klucza (manewr z ekranu Klucz) | tak — każdy pilot w kluczu, gdy figura zacznie działać (przerwana w przygotowaniu — nie) | limit zmian na cykl (zwykły 2, as 4) sam ogranicza tempo |
 | rozkaz klucza (patrol, atak, skan…) | tak | |
 | przestrojenie Hz klucza, zmiana mocy | tak | |
 | salwa / atak zakończony rozstrzygnięciem | tak | jedna akcja na atak, nie na tik ognia |
@@ -139,14 +149,17 @@ symulacji.
 Decyzje z [MECHANIKA.md](MECHANIKA.md) rozdz. 12 (1–16), MC80 (M1–M10 w [profile/MC80.md](profile/MC80.md)) oraz nowe,
 wynikające z wdrożenia. Każda z propozycją domyślną.
 
-### 5.1 Walka „turowa” i zegar
+### 5.1 Czas rzeczywisty i czas wykonania rozkazów
+
+Ustalone (25.11.2026): **tury są tylko dla nas** — do mechaniki i rozliczania czasu. W grze liczy się szybkość reakcji;
+niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik działa przeciw przelotowi wroga.
 
 | # | Pytanie | Propozycja |
 |---|---|---|
-| W1 | Czy symulacja jest turowa, czy ciągła? Mechanika liczy tiki 1 s, cykl 12 s. | Dwa tryby zegara symulacji: **ciągły** (1:1, jak bitwa na mapie) i **turowy** — tura = 1 cykl (12 tików); zegar stoi, aż wszyscy obsadzeni gracze zatwierdzą rozkazy albo minie limit (np. 60 s realnych), potem silnik liczy 12 tików naraz. Bitwy na mapie — tylko ciągłe. |
-| W2 | Pauza, tempo, cofnięcie w symulacji | MG: pauza, tempo ×0,5 / ×1 / ×2, cofnięcie do migawki; gracze: brak |
-| W3 | Co się dzieje z rozkazem wydanym w środku tury (tryb turowy) | obowiązuje od pierwszego tiku następnej tury; figura klucza trwa całą turę |
-| W4 | Długość symulacji | okno scenariusza (wzorzec: 1 h = 3600 tików); w trybie turowym 300 tur |
+| W1 | Czasy wykonania rozkazów | tabela robocza w MECHANIKA 1.1 (przygotowanie / działanie / odnowienie, ranga ±1 s) |
+| W2 | Pauza i cofnięcie w symulacji | tylko MG; tempa zegara nie zmieniamy (zmieniłoby wartość refleksu) |
+| W3 | Czy widać przygotowanie rozkazu wroga | nie — widać dopiero działającą figurę (ikona na ekranie Klucz i Radar) |
+| W4 | Częstotliwość odświeżania konsol w bitwie | 0,5 s albo strumień SSE; pasek przygotowania rysowany od razu po kliknięciu |
 
 ### 5.2 Uczestnicy i NPC
 
@@ -190,11 +203,11 @@ wynikające z wdrożenia. Każda z propozycją domyślną.
 | Etap | Zakres | Gotowe, gdy |
 |---|---|---|
 | E0 | migracja 068 (rozdz. 3), `profile_klas` z generatora, `mapa_piloci.xp` DECIMAL | migracja wchodzi na czystą bazę i na produkcyjną |
-| E1 | `api/bitwa_silnik.php`: zegar (ciągły i turowy), tiki, ruch, osłony (żyły, filtr, C, rykoszet), baterie; test zgodności z `mechanika.py` | symulacja ISD vs wirtualny cel liczy się poprawnie bez konsol |
+| E1 | `api/bitwa_silnik.php`: zegar bitwy, tiki, rozkazy z czasem wykonania, ruch, osłony (żyły, filtr, C, rykoszet), baterie; test zgodności z `mechanika.py` | symulacja ISD vs wirtualny cel liczy się poprawnie bez konsol |
 | E2 | `api/bitwa.php` (utwórz, stan, rozkaz, pauza, zakończ) + konsola **Osłony** (decyzja 15) i podgląd Reaktorów | jeden gracz broni ISD w symulacji |
 | E3 | klucze w bitwie: ekrany Klucz i Eskadra (telefon), lampa z odliczaniem, figury, XP | piloci dostają XP po symulacji, stan świata bez zmian |
 | E4 | AI przeciwnika (Radus / Ackbar / Calrissian), pozostałe konsole, migawki i cofanie | pełny scenariusz „Atak na Walako” |
 | E5 | bitwy rzeczywiste na mapie (W21–W24) | skutki trwałe zapisane w świecie |
 
-Pierwsze do decyzji, bo blokują E0–E1: **W1** (tryb turowy), **W7/W12** (akcja i typ XP), **W13** (kadłub), **W14**
+Pierwsze do decyzji, bo blokują E0–E1: **W1** (czasy wykonania), **W7/W12** (akcja i typ XP), **W13** (kadłub), **W14**
 (2D) oraz M1–M10 dla MC80, jeśli przeciwnikiem w pierwszej symulacji ma być MC80.

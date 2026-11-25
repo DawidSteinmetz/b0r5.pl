@@ -39,7 +39,8 @@ w pliku układów klasy. Wydruk: A4 pionowo, komórka 28 mm.
 - **Klucz** — zbliżenie pojedynczego klucza, wszystko na jednym ekranie: nagłówek ze stanem, ekran jak w radarze
   (klucz zawsze w środku, okręgi 2 / 10 / 30 km), po bokach skręty, pod spodem figury (manewry) na kursie, moc i rozkazy.
   Wejście: kliknięcie lampki „Klucz N” na pulpicie Myśliwce (na komputerze — nakładka nad pulpitem, powrót do pulpitu)
-  albo w ekranie Eskadra.
+  albo w ekranie Eskadra. Każdy przycisk figury i rozkazu pokazuje po kliknięciu pasek przygotowania (sekundy do
+  działania), potem czas działania i odnowienie (MECHANIKA 1.1); działająca figura wroga — ikona na ekranie.
 - **Eskadra** — 3 klucze: ekran ze środkiem eskadry (okręgi 5 / 15 / 40 km), lampki 3 kluczy, szyki i rozkazy.
   Na pulpicie Myśliwce eskadrę tworzy rząd 3 lampek jednej burty (lewa: eskadry 1–3, prawa: 4–6).
 

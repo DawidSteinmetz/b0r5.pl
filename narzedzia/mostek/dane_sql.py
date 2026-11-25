@@ -179,9 +179,9 @@ def zbuduj():
         '-- Profile klas\n' + profile(),
         "-- Przypisanie profilu jednostkom na mapie (tylko puste)\n"
         "UPDATE mapa_obiekty SET profil_klasy = 'ISD_I'\n"
-        "WHERE profil_klasy IS NULL AND typ = 'jednostka' AND (klasa = 'ISD I' OR klasa LIKE 'ISD I %' OR kod LIKE '%isd-i-%');\n"
+        "WHERE profil_klasy IS NULL AND typ IN ('statek', 'jednostka') AND (klasa = 'ISD I' OR klasa LIKE 'ISD I %' OR kod LIKE '%isd-i-%');\n"
         "UPDATE mapa_obiekty SET profil_klasy = 'MC80'\n"
-        "WHERE profil_klasy IS NULL AND typ = 'jednostka' AND klasa LIKE 'MC80%';\n",
+        "WHERE profil_klasy IS NULL AND typ IN ('statek', 'jednostka') AND klasa LIKE 'MC80%';\n",
         '-- Typy maszyn\n' + maszyny(),
         '-- Czas wykonania rozkazów\n' + rozkazy(),
         '-- Scenariusze\n' + scenariusze(),

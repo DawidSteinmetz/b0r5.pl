@@ -96,9 +96,9 @@ INSERT INTO profile_klas_kadlub (profil_kod, sekcja, nazwa, udzial) VALUES
 
 -- Przypisanie profilu jednostkom na mapie (tylko puste)
 UPDATE mapa_obiekty SET profil_klasy = 'ISD_I'
-WHERE profil_klasy IS NULL AND typ = 'jednostka' AND (klasa = 'ISD I' OR klasa LIKE 'ISD I %' OR kod LIKE '%isd-i-%');
+WHERE profil_klasy IS NULL AND typ IN ('statek', 'jednostka') AND (klasa = 'ISD I' OR klasa LIKE 'ISD I %' OR kod LIKE '%isd-i-%');
 UPDATE mapa_obiekty SET profil_klasy = 'MC80'
-WHERE profil_klasy IS NULL AND typ = 'jednostka' AND klasa LIKE 'MC80%';
+WHERE profil_klasy IS NULL AND typ IN ('statek', 'jednostka') AND klasa LIKE 'MC80%';
 
 -- Typy maszyn
 INSERT INTO typy_maszyn (kod, nazwa, strona, rola, hz_bazowe, oslona_hz, predkosc_km_s, przekroj_m2, energia_strzalu_j, ladowanie_tiki, opis) VALUES

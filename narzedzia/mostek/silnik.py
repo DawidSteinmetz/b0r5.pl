@@ -33,6 +33,21 @@ STALE = {
 }
 
 
+# ------------------------------------------------------------------------------------------------------------ przenośność
+# Te same operacje w PHP: kąty przez stałe (nie math.degrees / deg2rad — różnią się kolejnością działań w ostatnim bicie),
+# zaokrąglenie „pół w górę” (Python round() zaokrągla do parzystej), kolejność kluczy i sekcji ustalona sortowaniem.
+def stopnie(x):
+    return x * 57.29577951308232
+
+
+def radiany(x):
+    return x * 0.017453292519943295
+
+
+def zaokr(x):
+    return math.floor(x + 0.5)
+
+
 # ------------------------------------------------------------------------------------------------------------ losowość
 def los(ziarno, tik, *klucze):
     """[0, 1) z crc32 tekstu „ziarno:tik:klucz…” — identycznie w PHP: crc32("$ziarno:$tik:…") / 4294967296."""
@@ -146,9 +161,10 @@ def utworz(scenariusz_kod, ziarno):
                         'hz_min': 1, 'hz_max': o['zyly'], 'obciazenie': 0.0, 'rykoszet': 0.0, 'zyly': nowe_zyly(o['zyly']), 'auto': True})
         stan['jednostki'].append({'nr': nr, 'strona': strona, 'profil': prof, 'nazwa': nazwa, 'x': float(x), 'y': float(y),
                                   'kurs': float(kurs), 'v': float(v), 'wejscie': wej + rozrzut(ziarno, wej_r, 'j', nr),
-                                  'generatory': gen, 'sekcje': {sk: 100.0 for sk, _, _ in p['kadlub']}, 'stan': 'w_bitwie'})
+                                  'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie'})
     numery = {}
-    for fala, strona, jedn_nr, typ, n, start, start_r, x, y, rozkaz in s['klucze']:
+    # kolejność kluczy: strona, fala, typ maszyny (jak ORDER BY w PHP — tabela nie pamięta kolejności wpisów)
+    for fala, strona, jedn_nr, typ, n, start, start_r, x, y, rozkaz in sorted(s['klucze'], key=lambda kl: (kl[1], kl[0], kl[3])):
         st = next(t for t in s['strony'] if t[0] == strona)
         for i in range(n):
             numery[strona] = numery.get(strona, 0) + 1
@@ -160,7 +176,8 @@ def utworz(scenariusz_kod, ziarno):
             stan['klucze'].append({'strona': strona, 'nr': nr, 'typ': typ, 'maszyny': 4, 'ranga': ranga, 'moc': 1.0,
                                    'stan': 'hangar', 'start': start + rozrzut(ziarno, start_r, 'k', strona, nr),
                                    'x': float(x if x is not None else mac['x']), 'y': float(y if y is not None else mac['y']),
-                                   'kurs': 0.0, 'rozkaz': rozkaz, 'macierzysta': jedn_nr, 'ladunek': 0, 'akcje': 0})
+                                   'kurs': 0.0, 'rozkaz': rozkaz, 'macierzysta': jedn_nr, 'ladunek': 0, 'akcje': 0,
+                                   'ai': st[2] != 'gracze'})
     return stan
 
 
@@ -182,7 +199,7 @@ def hz_klucza(k):
 
 def generator_od_strony(j, x, y):
     """Który generator przyjmuje trafienie z punktu (x, y): ISD 2 — burta lewa/prawa; MC80 6 — burta × dziób/śródokręcie/rufa."""
-    kat = math.radians(j['kurs'])
+    kat = radiany(j['kurs'])
     dx, dy = x - j['x'], y - j['y']
     wzdl = dx * math.sin(kat) + dy * math.cos(kat)          # + przed dziobem
     w_bok = dx * math.cos(kat) - dy * math.sin(kat)          # + prawa burta
@@ -216,7 +233,7 @@ def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz):
         for i in range(zabite):
             a = los(stan['ziarno'], tik, 'zyla', ziarno_klucz, i) * 2 * math.pi
             r = math.sqrt(-2 * math.log(max(1e-12, los(stan['ziarno'], tik, 'r', ziarno_klucz, i)))) * STALE['promien_trafienia'] / 2
-            dx, dy = int(round(r * math.cos(a))), int(round(r * math.sin(a)))
+            dx, dy = zaokr(r * math.cos(a)), zaokr(r * math.sin(a))
             z = srodek + dy * bok + dx
             if 0 <= z < n: zabij(gen['zyly'], z)
         sekcje = list(j['sekcje'])
@@ -284,14 +301,14 @@ def krok(stan):
         if cele:
             cel = min(cele, key=lambda j: odleglosc(k, j))
             d = odleglosc(k, cel)
-            kurs_do = math.degrees(math.atan2(cel['x'] - k['x'], cel['y'] - k['y']))
+            kurs_do = stopnie(math.atan2(cel['x'] - k['x'], cel['y'] - k['y']))
             k['kurs'] = kurs_do if d > STALE['dystans_ataku_km'] else kurs_do + 90   # krążenie przy celu
         if fig in ('petla', 'split_s'): k['kurs'] += 180 / max(1, ROZK[fig]['d'])
-        k['x'] += v * math.sin(math.radians(k['kurs']))
-        k['y'] += v * math.cos(math.radians(k['kurs']))
+        k['x'] += v * math.sin(radiany(k['kurs']))
+        k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
-        j['x'] += j['v'] * math.sin(math.radians(j['kurs']))
-        j['y'] += j['v'] * math.cos(math.radians(j['kurs']))
+        j['x'] += j['v'] * math.sin(radiany(j['kurs']))
+        j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów
     for k in stan['klucze']:
         if k['stan'] != 'w_locie': continue
@@ -312,7 +329,7 @@ def krok(stan):
             g['obciazenie'] *= STALE['odplyw_obciazenia']
         ai_oslony(stan, tik, j)
     for k in stan['klucze']:
-        if k['stan'] == 'w_locie': ai_klucza(stan, tik, k)
+        if k['stan'] == 'w_locie' and k['ai']: ai_klucza(stan, tik, k)
     stan['tik'] = tik + 1
 
 

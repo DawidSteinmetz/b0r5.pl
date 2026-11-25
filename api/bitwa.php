@@ -1,19 +1,24 @@
 <?php
 declare(strict_types=1);
 
-// Bitwy i symulacje bitew (migracje 068, 069). Mechanika: narzedzia/mostek/MECHANIKA.md, wdrożenie: WDROZENIE.md.
+// Bitwy i symulacje bitew (migracje 068–070). Mechanika: narzedzia/mostek/MECHANIKA.md, wdrożenie: WDROZENIE.md.
 //
-// Ten plik to rdzeń silnika przeniesiony 1:1 z silnika wzorcowego (narzedzia/mostek/silnik.py): losowość z ziarna
-// (crc32 — ta sama w Pythonie i PHP), zegar bitwy z pauzą MG, czas wykonania rozkazów (przygotowanie zależne od rangi),
-// stopnie natywne, filtr energii osłon, żyły jako mapa bitowa (martwe) i Hz skuteczne.
-// Zgodność z wzorcem sprawdza akcja api/?a=bitwa_test (MG) na wektorach z api/bitwa_wektory.php.
-// Pętla tików, tworzenie symulacji ze scenariusza i konsole — kolejne etapy (WDROZENIE.md, rozdz. 6).
+// Rdzeń przeniesiony 1:1 z silnika wzorcowego (narzedzia/mostek/silnik.py): losowość z ziarna (crc32 — ta sama w Pythonie
+// i PHP), zegar bitwy z pauzą, czas wykonania rozkazów, stopnie natywne, filtr energii, żyły jako mapa bitowa.
+// Pętla tików: api/bitwa_silnik.php. Zgodność z wzorcem: api/?a=bitwa_test (MG) na wektorach z api/bitwa_wektory.php.
 //
-// Akcje: bitwa_dostep (czy konto widzi aplikację Symulacje), bitwa_scenariusze (upoważnieni) — lista scenariuszy
-// z odprawą i składem, bitwa_test (MG). Upoważnieni: MG i konta, które mogą dowodzić okrętem z profilem klasy
-// (mapa_obiekty.profil_klasy) — ten sam warunek co rozkazy dla kluczy (klucze_moze).
+// Symulacja: scenariusz → mapa_bitwy (rodzaj 'symulacja', planeta NULL — nie ma jej na radarze) + tabele bitwy_*.
+// Silnik dolicza tiki leniwie, przy każdym odczycie, pod blokadą wiersza bitwy (SELECT … FOR UPDATE), najwyżej 600
+// tików na zapytanie. Rozkaz liczy się od chwili odebrania przez serwer (komputer centralny okrętu); uid nadaje konsola,
+// więc ponowiona wysyłka nie tworzy drugiego rozkazu. Po zakończeniu: XP pilotów z mapa_piloci (0,5 za akcję × ranga)
+// czeka na zatwierdzenie MG; stan świata (kadłuby, maszyny, piloci) się nie zmienia.
+//
+// Akcje: bitwa_dostep, bitwa_scenariusze, bitwa_symulacje, bitwa_stan, bitwa_utworz, bitwa_start, bitwa_pauza,
+// bitwa_rozkaz, bitwa_zakoncz, bitwa_xp_zatwierdz (MG), bitwa_test (MG). Upoważnieni: MG i konta, które mogą dowodzić
+// okrętem z profilem klasy (mapa_obiekty.profil_klasy) — ten sam warunek co rozkazy dla kluczy (klucze_moze).
 
 require_once __DIR__ . '/bitwa_wektory.php';
+require_once __DIR__ . '/bitwa_silnik.php';
 
 const BITWA_RANGA_PRZYGOTOWANIE = ['kadet' => 1, 'standard' => 0, 'as' => -1];
 
@@ -108,6 +113,9 @@ function bitwa_hz_skuteczne(array $z, int $f): int
     return $ile;
 }
 
+
+// ------------------------------------------------------------------------------------------------------- test
+
 // Porównanie z wektorami silnika wzorcowego. Zwraca listę wyników [nazwa, oczekiwane, otrzymane, ok].
 function bitwa_test(): array
 {
@@ -134,8 +142,43 @@ function bitwa_test(): array
     $w[] = ['stopień ISD wobec 2187', 3600, bitwa_stopien_w_gore(3600, 2187), bitwa_stopien_w_gore(3600, 2187) === 3600];
     $w[] = ['stopnie natywne MC80', 8, count(bitwa_stopnie(2187)), count(bitwa_stopnie(2187)) === 8];
     $w[] = ['zegar z trwającą pauzą', 3.0, bitwa_czas(110.0, 100.0, 2.0, 105.0), bitwa_czas(110.0, 100.0, 2.0, 105.0) === 3.0];
+    // Całe przebiegi scenariusza: ta sama pętla tików co w Pythonie (pozycje z tolerancją 1e-6 — różnice bibliotek sin/cos).
+    foreach (BITWA_WEKTORY['przebiegi'] ?? [] as $pb) {
+        $nazwa = "przebieg {$pb['kod']}/{$pb['ziarno']}" . ($pb['auto'] ? '' : ' (osłony ręczne)');
+        $S = bitwa_stan_ze_scenariusza(bitwa_scenariusz_dane($pb['kod']), (int) $pb['ziarno']);
+        if (!$pb['auto']) foreach ($S['jednostki'] as $ji => $j) foreach (array_keys($j['generatory']) as $gi) $S['jednostki'][$ji]['generatory'][$gi]['auto'] = false;
+        for ($i = 0; $i < $pb['tiki']; $i++) bitwa_krok($S);
+        $roznica = null;
+        foreach ($pb['klucze'] as $i => [$st, $nr, $stan, $ranga, $x, $y, $akcje]) {
+            $k = $S['klucze'][$i] ?? null;
+            if (!$k || $k['strona'] !== $st || $k['nr'] !== $nr || $k['stan'] !== $stan || $k['ranga'] !== $ranga || $k['akcje'] !== $akcje
+                || abs($k['x'] - $x) > 1e-6 * max(1.0, abs($x)) || abs($k['y'] - $y) > 1e-6 * max(1.0, abs($y))) {
+                $roznica = "klucz $st $nr: oczekiwane $stan/$ranga/$akcje ($x, $y), jest " . ($k ? "{$k['stan']}/{$k['ranga']}/{$k['akcje']} ({$k['x']}, {$k['y']})" : 'brak');
+                break;
+            }
+        }
+        $w[] = ["$nazwa: klucze", count($pb['klucze']), $roznica ?? count($S['klucze']), $roznica === null && count($S['klucze']) === count($pb['klucze'])];
+        $gen = [];
+        foreach ($S['jednostki'] as $j) foreach ($j['generatory'] as $g) $gen[] = [$g['hz_osiagane'], bitwa_martwe($g['zyly']), $g['obciazenie'], $g['rykoszet']];
+        $ok = count($gen) === count($pb['generatory']);
+        foreach ($pb['generatory'] as $i => $g) {
+            $ok = $ok && $gen[$i][0] === $g[0] && $gen[$i][1] === $g[1] && abs($gen[$i][2] - $g[2]) <= 1e-9 * max(1.0, abs($g[2])) && abs($gen[$i][3] - $g[3]) <= 1e-9 * max(1.0, abs($g[3]));
+        }
+        $w[] = ["$nazwa: osłony", json_encode($pb['generatory']), json_encode($gen), $ok];
+        $sek = [];
+        foreach ($S['jednostki'] as $j) foreach ($j['sekcje'] as $v) $sek[] = $v;
+        $ok = count($sek) === count($pb['sekcje']);
+        foreach ($pb['sekcje'] as $i => $v) $ok = $ok && abs($sek[$i] - $v) <= 1e-9;
+        $w[] = ["$nazwa: kadłub", json_encode($pb['sekcje']), json_encode($sek), $ok];
+        $zd = [];
+        foreach ($S['zdarzenia'] as $z) $zd[$z['rodzaj']] = ($zd[$z['rodzaj']] ?? 0) + 1;
+        ksort($zd, SORT_STRING);
+        $w[] = ["$nazwa: zdarzenia", json_encode($pb['zdarzenia']), json_encode($zd), $zd == $pb['zdarzenia']];
+    }
     return $w;
 }
+
+// ------------------------------------------------------------------------------------------------------- dostęp
 
 // Okręty z profilem klasy, którymi konto może dowodzić (MG — wszystkie).
 function bitwa_okrety_konta(array $u): array
@@ -153,15 +196,384 @@ function bitwa_upowazniony(array $u): bool
     try { return (bool) bitwa_okrety_konta($u); } catch (Throwable $e) { return false; }
 }
 
+// Migracja 070 (stan silnika) — bez niej scenariusze i test działają, symulacje nie.
+function bitwa_silnik_gotowy(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT ranga, ladunek, ai FROM bitwy_klucze LIMIT 0'); polaczenie_bazy()->query('SELECT kanal FROM bitwy_rozkazy LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function bitwa_mg(array $u): bool
+{
+    return ($u['rola'] ?? '') === 'mg';
+}
+
+// Kto widzi symulację: MG, prowadzący, dowodzący okrętem biorącym w niej udział.
+function bitwa_moze(array $u, array $b): bool
+{
+    if (bitwa_mg($u) || mb_strtolower((string) $b['prowadzacy_login']) === mb_strtolower((string) ($u['login'] ?? ''))) return true;
+    $ids = array_map(static fn($o) => (int) $o['id'], bitwa_okrety_konta($u));
+    if (!$ids) return false;
+    $q = polaczenie_bazy()->prepare('SELECT obiekt_id FROM bitwy_jednostki WHERE bitwa_id=? AND obiekt_id IS NOT NULL');
+    $q->execute([(int) $b['id']]);
+    return (bool) array_intersect($ids, array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)));
+}
+
+// Prowadzi (start, pauza, koniec): MG albo prowadzący.
+function bitwa_prowadzi(array $u, array $b): bool
+{
+    return bitwa_mg($u) || mb_strtolower((string) $b['prowadzacy_login']) === mb_strtolower((string) ($u['login'] ?? ''));
+}
+
+// ------------------------------------------------------------------------------------------------------- czas
+
+function bitwa_utc(float $t): string
+{
+    $s = (int) floor($t);
+    return gmdate('Y-m-d H:i:s', $s) . sprintf('.%03d', min(999, (int) floor(($t - $s) * 1000)));
+}
+
+function bitwa_z_utc(?string $s): ?float
+{
+    if ($s === null || $s === '') return null;
+    $d = DateTime::createFromFormat('Y-m-d H:i:s.u', str_contains($s, '.') ? $s : $s . '.000', new DateTimeZone('UTC'));
+    return $d ? (float) $d->format('U.u') : null;
+}
+
+function bitwa_czas_teraz(array $b): float
+{
+    return bitwa_czas(microtime(true), bitwa_z_utc($b['zegar_start_utc']), (float) $b['zegar_pauzy_s'], bitwa_z_utc($b['pauza_od_utc']));
+}
+
+// ------------------------------------------------------------------------------------------------------- scenariusz
+
+function bitwa_scenariusz_dane(string $kod): array
+{
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT * FROM bitwy_scenariusze WHERE kod=?');
+    $q->execute([$kod]);
+    $s = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$s) throw new InvalidArgumentException("Nieznany scenariusz: $kod");
+    foreach (['strony' => 'bitwy_scenariusze_strony', 'jednostki' => 'bitwy_scenariusze_jednostki', 'klucze' => 'bitwy_scenariusze_klucze'] as $k => $tab) {
+        $q = $db->prepare("SELECT * FROM $tab WHERE scenariusz_kod=?" . ($k === 'jednostki' ? ' ORDER BY nr' : ''));
+        $q->execute([$kod]);
+        $s[$k] = $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+    return $s;
+}
+
+// ------------------------------------------------------------------------------------------------------- zapis i odczyt
+
+function bitwa_utworz(array $u, string $scenariusz, ?int $obiektId): int
+{
+    $db = polaczenie_bazy();
+    $sc = bitwa_scenariusz_dane($scenariusz);
+    $okrety = bitwa_okrety_konta($u);
+    foreach ($sc['jednostki'] as &$j) {
+        $j['obiekt_id'] = null;
+        if (!(int) $j['z_mapy']) continue;
+        $pasujace = array_values(array_filter($okrety, static fn($o) => $o['profil_klasy'] === $j['profil_kod']));
+        $wybrany = null;
+        foreach ($pasujace as $o) if ($obiektId !== null && (int) $o['id'] === $obiektId) $wybrany = $o;
+        $wybrany ??= $pasujace[0] ?? null;
+        if (!$wybrany) blad("Do tego scenariusza potrzebny jest okręt klasy {$j['profil_kod']}, którym dowodzisz.");
+        $j['obiekt_id'] = (int) $wybrany['id'];
+        $j['nazwa'] = $wybrany['nazwa'];
+    }
+    unset($j);
+    $ziarno = random_int(1, 2147483646);
+    $S = bitwa_stan_ze_scenariusza($sc, $ziarno);
+    $sl = bitwa_slowniki();
+
+    // Piloci z pokładu (mapa_piloci) w kluczach stron prowadzonych przez graczy: 4 na klucz, ranga klucza = prowadzący.
+    $strony = [];
+    foreach ($sc['strony'] as $s) $strony[$s['strona']] = $s;
+    $pule = [];
+    $piloci = [];
+    foreach ($S['klucze'] as $ki => $k) {
+        $piloci[$ki] = [];
+        $mac = null;
+        foreach ($S['jednostki'] as $jj) if ($jj['nr'] === $k['macierzysta']) $mac = $jj;
+        if ($k['ai'] || !$mac || !$mac['obiekt_id'] || !function_exists('klucze_piloci_dostepni') || !klucze_piloci_dostepni()) continue;
+        $okret = (int) $mac['obiekt_id'];
+        if (!isset($pule[$okret])) {
+            if (function_exists('klucze_piloci_zapewnij')) klucze_piloci_zapewnij($okret);
+            $q = $db->prepare('SELECT id, imie, ranga FROM mapa_piloci WHERE okret_id=? ORDER BY id');
+            $q->execute([$okret]);
+            $pule[$okret] = $q->fetchAll(PDO::FETCH_ASSOC);
+        }
+        $piloci[$ki] = array_splice($pule[$okret], 0, 4);
+        if ($piloci[$ki]) $S['klucze'][$ki]['ranga'] = $piloci[$ki][0]['ranga'];
+    }
+
+    $db->beginTransaction();
+    try {
+        $db->prepare("INSERT INTO mapa_bitwy (kod, nazwa, rodzaj, scenariusz_kod, ziarno, status, planeta_id, prowadzacy_login, opis)
+            VALUES (?, ?, 'symulacja', ?, ?, 'przygotowanie', NULL, ?, ?)")
+            ->execute(['sym-' . bin2hex(random_bytes(6)), 'Symulacja: ' . $sc['nazwa'], $scenariusz, $ziarno, (string) ($u['login'] ?? ''), $sc['odprawa']]);
+        $id = (int) $db->lastInsertId();
+        $insJ = $db->prepare('INSERT INTO bitwy_jednostki (bitwa_id, obiekt_id, profil_kod, nazwa, strona, scenariusz_nr, stan, wejscie_tik, x_km, y_km,
+            vx_km_s, vy_km_s, v_km_s, zwrot_deg, kadlub_start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,100)');
+        $insS = $db->prepare('INSERT INTO bitwy_sekcje (bitwa_jednostka_id, sekcja, integralnosc) VALUES (?,?,?)');
+        $insG = $db->prepare("INSERT INTO bitwy_systemy (bitwa_jednostka_id, kod, stan, hz_zadane, hz_osiagane, hz_min, hz_max, auto) VALUES (?,?,'gotowy',?,?,?,?,1)");
+        $insZ = $db->prepare('INSERT INTO bitwy_zyly (system_id, liczba, martwe, temperatury) VALUES (?,?,?,?)');
+        $idJednostki = [];
+        foreach ($S['jednostki'] as $j) {
+            $rad = bitwa_radiany($j['kurs']);
+            $insJ->execute([$id, $j['obiekt_id'], $j['profil'], $j['nazwa'], $j['strona'], $j['nr'], $j['stan'], $j['wejscie'], $j['x'], $j['y'],
+                $j['v'] * sin($rad), $j['v'] * cos($rad), $j['v'], $j['kurs']]);
+            $jid = (int) $db->lastInsertId();
+            $idJednostki[$j['nr']] = $jid;
+            foreach ($j['sekcje'] as $sek => $v) $insS->execute([$jid, $sek, $v]);
+            foreach ($j['generatory'] as $g) {
+                $insG->execute([$jid, $g['kod'], $g['hz_zadane'], $g['hz_osiagane'], $g['hz_min'], $g['hz_max']]);
+                $insZ->execute([(int) $db->lastInsertId(), $g['zyly']['n'], $g['zyly']['martwe'], $g['zyly']['temperatury']]);
+            }
+        }
+        $insK = $db->prepare("INSERT INTO bitwy_klucze (bitwa_id, strona, macierzysta_id, numer, typ_maszyny, ranga, maszyny, stan, start_tik, hz_bazowe, moc,
+            rozkaz, x_km, y_km, kurs_deg, ladunek, akcje, ai) VALUES (?,?,?,?,?,?,?,'hangar',?,?,?,?,?,?,?,0,0,?)");
+        $insP = $db->prepare('INSERT INTO bitwy_piloci (bitwa_klucz_id, pilot_id, imie, ranga) VALUES (?,?,?,?)');
+        foreach ($S['klucze'] as $ki => $k) {
+            $insK->execute([$id, $k['strona'], $k['macierzysta'] !== null ? ($idJednostki[$k['macierzysta']] ?? null) : null, $k['nr'], $k['typ'], $k['ranga'],
+                $k['maszyny'], $k['start'], $sl['maszyny'][$k['typ']]['hz'], $k['moc'], $k['rozkaz'], $k['x'], $k['y'], $k['kurs'], $k['ai'] ? 1 : 0]);
+            $kid = (int) $db->lastInsertId();
+            for ($i = 0; $i < $k['maszyny']; $i++) {
+                $p = $piloci[$ki][$i] ?? null;
+                $insP->execute([$kid, $p ? (int) $p['id'] : null, $p ? $p['imie'] : "pilot {$k['strona']} {$k['nr']}-" . ($i + 1), $p ? $p['ranga'] : $k['ranga']]);
+            }
+        }
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+    return $id;
+}
+
+function bitwa_wczytaj_stan(array $b): array
+{
+    $db = polaczenie_bazy();
+    $id = (int) $b['id'];
+    $tik = (int) $b['tik_policzony'];
+    $S = ['id' => $id, 'ziarno' => (int) $b['ziarno'], 'tik' => $tik, 'rozkazy' => [], 'po_kanale' => [], 'aktywne' => [], 'zdarzenia' => [], 'jednostki' => [], 'klucze' => []];
+    $nrJednostki = [];
+    $q = $db->prepare('SELECT * FROM bitwy_jednostki WHERE bitwa_id=? ORDER BY id');
+    $q->execute([$id]);
+    $qg = $db->prepare("SELECT s.*, z.liczba, z.martwe, z.temperatury FROM bitwy_systemy s JOIN bitwy_zyly z ON z.system_id = s.id
+        WHERE s.bitwa_jednostka_id=? AND s.kod LIKE 'oslona\\_%' ORDER BY s.id");
+    $qs = $db->prepare('SELECT sekcja, integralnosc FROM bitwy_sekcje WHERE bitwa_jednostka_id=?');
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $jid = (int) $r['id'];
+        $qg->execute([$jid]);
+        $gen = [];
+        foreach ($qg->fetchAll(PDO::FETCH_ASSOC) as $g) {
+            $gen[] = ['id' => (int) $g['id'], 'kod' => $g['kod'], 'hz_zadane' => (int) $g['hz_zadane'], 'hz_osiagane' => (int) $g['hz_osiagane'],
+                'hz_min' => (int) $g['hz_min'], 'hz_max' => (int) $g['hz_max'], 'obciazenie' => (float) $g['obciazenie_j'], 'rykoszet' => (float) $g['rykoszet_j'],
+                'auto' => (bool) (int) $g['auto'], 'zyly' => ['n' => (int) $g['liczba'], 'martwe' => (string) $g['martwe'], 'temperatury' => (string) $g['temperatury']],
+                'zyly_org' => (string) $g['martwe']];
+        }
+        $qs->execute([$jid]);
+        $sek = [];
+        foreach ($qs->fetchAll(PDO::FETCH_ASSOC) as $s) $sek[$s['sekcja']] = (float) $s['integralnosc'];
+        ksort($sek, SORT_STRING);
+        $nrJednostki[$jid] = (int) $r['scenariusz_nr'];
+        $S['jednostki'][] = ['id' => $jid, 'nr' => (int) $r['scenariusz_nr'], 'strona' => $r['strona'], 'profil' => $r['profil_kod'], 'nazwa' => $r['nazwa'],
+            'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'], 'kurs' => (float) $r['zwrot_deg'], 'v' => (float) $r['v_km_s'],
+            'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id']];
+    }
+    $indeksKlucza = [];
+    $q = $db->prepare('SELECT * FROM bitwy_klucze WHERE bitwa_id=? ORDER BY id');
+    $q->execute([$id]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $indeksKlucza[(int) $r['id']] = count($S['klucze']);
+        $S['klucze'][] = ['id' => (int) $r['id'], 'strona' => $r['strona'], 'nr' => (int) $r['numer'], 'typ' => $r['typ_maszyny'], 'maszyny' => (int) $r['maszyny'],
+            'ranga' => $r['ranga'], 'moc' => (float) $r['moc'], 'stan' => $r['stan'], 'start' => (int) $r['start_tik'], 'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'],
+            'kurs' => (float) $r['kurs_deg'], 'rozkaz' => $r['rozkaz'], 'macierzysta' => $r['macierzysta_id'] !== null ? ($nrJednostki[(int) $r['macierzysta_id']] ?? null) : null,
+            'ladunek' => (int) $r['ladunek'], 'akcje' => (int) $r['akcje'], 'ai' => (bool) (int) $r['ai']];
+    }
+    // Rozkazy potrzebne silnikowi: w przygotowaniu i działające, z bieżącego cyklu (limit zmian) i w odnowieniu.
+    $q = $db->prepare("SELECT * FROM bitwy_rozkazy WHERE bitwa_id=? AND (stan IN ('przygotowanie','dziala') OR tik >= ? OR odnowienie_do_tik > ?) ORDER BY id");
+    $q->execute([$id, intdiv($tik, BITWA_CYKL) * BITWA_CYKL, $tik]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        if ($r['rozkaz_kod'] === null) continue;
+        $S['rozkazy'][] = ['id' => (int) $r['id'], 'kanal' => $r['kanal'], 'kod' => $r['rozkaz_kod'], 'tik' => (int) $r['tik'], 'czas_s' => (float) $r['czas_s'],
+            'stan' => $r['stan'], 'ranga' => $r['ranga'], 'dziala_od' => (int) $r['dziala_od_tik'],
+            'dziala_do' => $r['dziala_do_tik'] !== null ? (int) $r['dziala_do_tik'] : null, 'odnowienie_do' => $r['odnowienie_do_tik'] !== null ? (int) $r['odnowienie_do_tik'] : null,
+            'ki' => $r['bitwa_klucz_id'] !== null ? ($indeksKlucza[(int) $r['bitwa_klucz_id']] ?? null) : null, 'zmieniony' => false];
+        $i = array_key_last($S['rozkazy']);
+        $S['po_kanale'][$r['kanal']][] = $i;
+        if ($r['stan'] === 'przygotowanie' || $r['stan'] === 'dziala') $S['aktywne'][$i] = true;
+    }
+    return $S;
+}
+
+function bitwa_zapisz_stan(array $S): void
+{
+    $db = polaczenie_bazy();
+    $id = $S['id'];
+    $updJ = $db->prepare('UPDATE bitwy_jednostki SET x_km=?, y_km=?, zwrot_deg=?, v_km_s=?, stan=? WHERE id=?');
+    $updG = $db->prepare('UPDATE bitwy_systemy SET hz_zadane=?, hz_osiagane=?, auto=?, obciazenie_j=?, rykoszet_j=? WHERE id=?');
+    $updZ = $db->prepare('UPDATE bitwy_zyly SET martwe=?, temperatury=? WHERE system_id=?');
+    $updS = $db->prepare('UPDATE bitwy_sekcje SET integralnosc=? WHERE bitwa_jednostka_id=? AND sekcja=?');
+    $idJednostki = [];
+    foreach ($S['jednostki'] as $j) {
+        $idJednostki[$j['nr']] = $j['id'];
+        $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $j['id']]);
+        foreach ($j['generatory'] as $g) {
+            $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
+            if ($g['zyly']['martwe'] !== $g['zyly_org']) $updZ->execute([$g['zyly']['martwe'], $g['zyly']['temperatury'], $g['id']]);
+        }
+        foreach ($j['sekcje'] as $sek => $v) $updS->execute([$v, $j['id'], $sek]);
+    }
+    $updK = $db->prepare('UPDATE bitwy_klucze SET stan=?, x_km=?, y_km=?, kurs_deg=?, ladunek=?, akcje=?, figura=? WHERE id=?');
+    foreach ($S['klucze'] as $k) {
+        $updK->execute([$k['stan'], $k['x'], $k['y'], $k['kurs'], $k['ladunek'], $k['akcje'], bitwa_figura($S, bitwa_kanal_klucza($k)), $k['id']]);
+    }
+    $insR = $db->prepare('INSERT INTO bitwy_rozkazy (bitwa_id, uid, odebrano_utc, tik, kanal, czas_s, ranga, login, ai, bitwa_jednostka_id, bitwa_klucz_id,
+        pulpit, system_kod, rozkaz_kod, wartosc_po, przyczyna, stan, dziala_od_tik, dziala_do_tik, odnowienie_do_tik) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+    $updR = $db->prepare('UPDATE bitwy_rozkazy SET stan=? WHERE id=?');
+    foreach ($S['rozkazy'] as $w) {
+        if (!$w['zmieniony']) continue;
+        if ($w['id'] !== null) { $updR->execute([$w['stan'], $w['id']]); continue; }
+        $jid = null;
+        $sys = null;
+        if (!str_starts_with($w['kanal'], 'klucz:')) {
+            [$nr, $sys] = explode(':', $w['kanal'], 2);
+            $jid = $idJednostki[(int) $nr] ?? null;
+        }
+        $kid = $w['ki'] !== null ? $S['klucze'][$w['ki']]['id'] : null;
+        $insR->execute([$id, $w['uid'] ?? bin2hex(random_bytes(16)), $w['odebrano'] ?? bitwa_utc(microtime(true)), $w['tik'], $w['kanal'], $w['czas_s'], $w['ranga'],
+            $w['login'] ?? null, !empty($w['ai']) ? 1 : 0, $jid, $kid, $w['pulpit'] ?? null, $sys, $w['kod'], $w['wartosc'] ?? null, $w['przyczyna'] ?? null,
+            $w['stan'], $w['dziala_od'], $w['dziala_do'], $w['odnowienie_do']]);
+    }
+    $insZd = $db->prepare('INSERT INTO bitwy_zdarzenia (bitwa_id, tik, rodzaj, wartosc, opis) VALUES (?,?,?,?,?)');
+    foreach ($S['zdarzenia'] as $z) $insZd->execute([$id, $z['tik'], $z['rodzaj'], $z['wartosc'], mb_substr($z['opis'], 0, 255)]);
+    $db->prepare('UPDATE mapa_bitwy SET tik_policzony=? WHERE id=?')->execute([$S['tik'], $id]);
+}
+
+// Doliczenie tików do „teraz” pod blokadą bitwy; $dzialanie (opcjonalne) dostaje stan po doliczeniu (np. nowy rozkaz).
+// Zwraca [bitwa, stan, wynik działania].
+function bitwa_dolicz(int $id, ?callable $dzialanie = null): array
+{
+    $db = polaczenie_bazy();
+    $db->beginTransaction();
+    try {
+        $q = $db->prepare('SELECT * FROM mapa_bitwy WHERE id=? FOR UPDATE');
+        $q->execute([$id]);
+        $b = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$b) throw new RuntimeException('Nie ma takiej symulacji.');
+        $q = $db->prepare('SELECT okno_s FROM bitwy_scenariusze WHERE kod=?');
+        $q->execute([$b['scenariusz_kod']]);
+        $b['okno_s'] = (int) $q->fetchColumn();
+        $S = bitwa_wczytaj_stan($b);
+        if ($b['status'] === 'aktywna' && $b['zegar_start_utc'] !== null) {
+            $cel = min((int) floor(bitwa_czas_teraz($b)), (int) $b['okno_s']);
+            for ($n = min(max(0, $cel - $S['tik']), 600); $n > 0; $n--) bitwa_krok($S);
+        }
+        $wynik = $dzialanie ? $dzialanie($S, $b) : null;
+        bitwa_zapisz_stan($S);
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+    $b['tik_policzony'] = $S['tik'];
+    return [$b, $S, $wynik];
+}
+
+// Widok stanu dla aplikacji Symulacje (konsole dostaną własne widoki stanowisk).
+function bitwa_widok(array $b, array $S): array
+{
+    $db = polaczenie_bazy();
+    $sl = bitwa_slowniki();
+    $prof = bitwa_rozkazy_profile();
+    $czas = $b['zegar_start_utc'] !== null ? bitwa_czas_teraz($b) : 0.0;
+    $jednostki = [];
+    foreach ($S['jednostki'] as $j) {
+        $p = $sl['profile'][$j['profil']];
+        $kadlub = 0.0;
+        foreach ($j['sekcje'] as $sek => $v) $kadlub += $v * ($p['kadlub'][$sek] ?? 0);
+        $c = bitwa_pojemnosc($p);
+        $jednostki[] = ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
+            'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
+            'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
+            'generatory' => array_map(static fn($g) => ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
+                'hz_skuteczne' => $g['hz_osiagane'] ? bitwa_hz_skuteczne($g['zyly'], $g['hz_osiagane']) : 0, 'auto' => $g['auto'],
+                'obciazenie_proc' => round(100 * $g['obciazenie'] / $c, 1), 'rykoszet_j' => $g['rykoszet'], 'martwe' => bitwa_martwe($g['zyly'])], $j['generatory'])];
+    }
+    $klucze = [];
+    foreach ($S['klucze'] as $k) {
+        $kan = bitwa_kanal_klucza($k);
+        $przyg = null;
+        foreach (array_reverse($S['po_kanale'][$kan] ?? []) as $i) {
+            $w = $S['rozkazy'][$i];
+            if ($w['stan'] === 'przygotowanie') { $przyg = ['kod' => $w['kod'], 'nazwa' => $prof[$w['kod']]['nazwa'], 'dziala_za_s' => round(max(0, $w['dziala_od'] - $czas), 1)]; break; }
+        }
+        $fig = bitwa_figura($S, $kan);
+        $klucze[] = ['id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
+            'maszyny' => $k['maszyny'], 'stan' => $k['stan'], 'ranga' => $k['ranga'], 'ai' => $k['ai'], 'akcje' => $k['akcje'],
+            'x' => round($k['x'], 3), 'y' => round($k['y'], 3), 'figura' => $fig ? $prof[$fig]['nazwa'] : null, 'przygotowanie' => $przyg,
+            'start_za_s' => $k['stan'] === 'hangar' ? round(max(0, $k['start'] - $czas), 1) : null];
+    }
+    $q = $db->prepare('SELECT tik, rodzaj, opis FROM bitwy_zdarzenia WHERE bitwa_id=? ORDER BY id DESC LIMIT 25');
+    $q->execute([(int) $b['id']]);
+    $figury = [];
+    foreach ($prof as $kod => $r) {
+        if (in_array($r['grupa'], ['okret'], true)) continue;
+        $figury[] = ['kod' => $kod, 'nazwa' => $r['nazwa'], 'grupa' => $r['grupa'], 'ranga_min' => $r['ranga_min'], 'przygotowanie_s' => (float) $r['przygotowanie_s']];
+    }
+    return ['id' => (int) $b['id'], 'nazwa' => $b['nazwa'], 'status' => $b['status'], 'pauza' => $b['pauza_od_utc'] !== null, 'czas_s' => round($czas, 2),
+        'tik' => $S['tik'], 'okno_s' => (int) $b['okno_s'], 'prowadzacy' => $b['prowadzacy_login'], 'jednostki' => $jednostki, 'klucze' => $klucze,
+        'zdarzenia' => $q->fetchAll(PDO::FETCH_ASSOC), 'figury' => $figury];
+}
+
+function bitwa_wiersz(int $id): array
+{
+    $q = polaczenie_bazy()->prepare("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod WHERE b.id=? AND b.rodzaj='symulacja'");
+    $q->execute([$id]);
+    $b = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$b) blad('Nie ma takiej symulacji.', 404);
+    return $b;
+}
+
+// XP pilotów z mapa_piloci za symulację: akcje klucza × 0,5 × mnożnik rangi pilota.
+function bitwa_policz_xp(int $id): array
+{
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT p.pilot_id, p.imie, p.ranga, k.akcje FROM bitwy_piloci p JOIN bitwy_klucze k ON k.id = p.bitwa_klucz_id
+        WHERE k.bitwa_id=? AND p.pilot_id IS NOT NULL');
+    $q->execute([$id]);
+    $ins = $db->prepare('INSERT INTO bitwy_xp (bitwa_id, pilot_id, akcje, xp_surowe, mnoznik, xp) VALUES (?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE akcje=VALUES(akcje), xp_surowe=VALUES(xp_surowe), mnoznik=VALUES(mnoznik), xp=VALUES(xp)');
+    $out = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+        $akcje = (int) $p['akcje'];
+        $sur = $akcje * BITWA_STALE['xp_akcja'];
+        $mn = BITWA_STALE['xp_mnoznik'][$p['ranga']] ?? 1.0;
+        $xp = round($sur * $mn, 1);
+        $ins->execute([$id, (int) $p['pilot_id'], $akcje, $sur, $mn, $xp]);
+        $out[] = ['pilot' => $p['imie'], 'ranga' => $p['ranga'], 'akcje' => $akcje, 'xp' => $xp];
+    }
+    return $out;
+}
+
 function obsluz_bitwa(string $akcja, bool $post): void
 {
-    if (!in_array($akcja, ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze'], true)) return;
+    $akcje = ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze', 'bitwa_symulacje', 'bitwa_stan', 'bitwa_utworz', 'bitwa_start', 'bitwa_pauza',
+        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz'];
+    if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
-    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => ($u['rola'] ?? '') === 'mg', 'migracja' => bitwa_dostepna()]);
+    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna()]);
     if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
     if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);
-    if ($akcja === 'bitwa_test' && ($u['rola'] ?? '') !== 'mg') blad('Test silnika jest tylko dla MG.', 403);
+    if (in_array($akcja, ['bitwa_test', 'bitwa_xp_zatwierdz'], true) && !bitwa_mg($u)) blad('Tylko dla MG.', 403);
     $db = polaczenie_bazy();
+    $w = $post ? wejscie() : [];
+    $silnik = static function () { if (!bitwa_silnik_gotowy()) blad('Symulacje wymagają migracji 070.'); };
     switch ($akcja) {
         case 'bitwa_test':
             $wyniki = bitwa_test();
@@ -182,6 +594,117 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 $s['klucze'] = $q->fetchAll(PDO::FETCH_ASSOC);
                 $out[] = $s;
             }
-            odpowiedz(['scenariusze' => $out, 'okrety' => bitwa_okrety_konta($u), 'mg' => ($u['rola'] ?? '') === 'mg']);
+            odpowiedz(['scenariusze' => $out, 'okrety' => bitwa_okrety_konta($u), 'mg' => bitwa_mg($u), 'silnik' => bitwa_silnik_gotowy()]);
+        case 'bitwa_symulacje':
+            $silnik();
+            $out = [];
+            foreach ($db->query("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod
+                WHERE b.rodzaj='symulacja' ORDER BY b.id DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC) as $b) {
+                if (!bitwa_moze($u, $b)) continue;
+                $out[] = ['id' => (int) $b['id'], 'nazwa' => $b['nazwa'], 'status' => $b['status'], 'pauza' => $b['pauza_od_utc'] !== null,
+                    'prowadzacy' => $b['prowadzacy_login'], 'czas_s' => $b['zegar_start_utc'] !== null ? round(bitwa_czas_teraz($b), 1) : 0, 'okno_s' => (int) $b['okno_s'],
+                    'utworzono' => $b['rozpoczecie_utc']];
+            }
+            odpowiedz(['symulacje' => $out]);
+        case 'bitwa_stan':
+            $silnik();
+            $b = bitwa_wiersz((int) ($_GET['id'] ?? 0));
+            if (!bitwa_moze($u, $b)) blad('Brak dostępu do tej symulacji.', 403);
+            [$b, $S] = bitwa_dolicz((int) $b['id']);
+            odpowiedz(['stan' => bitwa_widok($b, $S) + ['moge_prowadzic' => bitwa_prowadzi($u, $b), 'mg' => bitwa_mg($u)]]);
+        case 'bitwa_utworz':
+            $silnik();
+            if (!$post) blad('Zła metoda.', 405);
+            $id = bitwa_utworz($u, (string) ($w['scenariusz'] ?? ''), isset($w['obiekt_id']) ? (int) $w['obiekt_id'] : null);
+            odpowiedz(['id' => $id]);
+        case 'bitwa_start':
+        case 'bitwa_pauza':
+        case 'bitwa_zakoncz':
+            $silnik();
+            if (!$post) blad('Zła metoda.', 405);
+            $b = bitwa_wiersz((int) ($w['id'] ?? 0));
+            if (!bitwa_prowadzi($u, $b)) blad('Symulację prowadzi MG albo jej prowadzący.', 403);
+            $teraz = microtime(true);
+            if ($akcja === 'bitwa_start') {
+                if ($b['status'] !== 'przygotowanie') blad('Symulacja już ruszyła.');
+                $db->prepare("UPDATE mapa_bitwy SET status='aktywna', zegar_start_utc=? WHERE id=?")->execute([bitwa_utc($teraz), (int) $b['id']]);
+            } elseif ($akcja === 'bitwa_pauza') {
+                if ($b['status'] !== 'aktywna') blad('Symulacja nie trwa.');
+                [$b] = bitwa_dolicz((int) $b['id']);
+                if (!empty($w['pauza'])) {
+                    if ($b['pauza_od_utc'] === null) $db->prepare('UPDATE mapa_bitwy SET pauza_od_utc=? WHERE id=?')->execute([bitwa_utc($teraz), (int) $b['id']]);
+                } elseif ($b['pauza_od_utc'] !== null) {
+                    $db->prepare('UPDATE mapa_bitwy SET zegar_pauzy_s = zegar_pauzy_s + ?, pauza_od_utc=NULL WHERE id=?')
+                        ->execute([max(0.0, $teraz - (float) bitwa_z_utc($b['pauza_od_utc'])), (int) $b['id']]);
+                }
+            } else {
+                if (in_array($b['status'], ['zakonczona', 'anulowana'], true)) blad('Symulacja jest już zakończona.');
+                if ($b['status'] === 'aktywna') bitwa_dolicz((int) $b['id']);
+                $db->prepare("UPDATE mapa_bitwy SET status=?, koniec_utc=UTC_TIMESTAMP() WHERE id=?")
+                    ->execute([$b['status'] === 'aktywna' ? 'zakonczona' : 'anulowana', (int) $b['id']]);
+                odpowiedz(['ok' => true, 'xp' => $b['status'] === 'aktywna' ? bitwa_policz_xp((int) $b['id']) : []]);
+            }
+            odpowiedz(['ok' => true]);
+        case 'bitwa_rozkaz':
+            $silnik();
+            if (!$post) blad('Zła metoda.', 405);
+            $b = bitwa_wiersz((int) ($w['id'] ?? 0));
+            if (!bitwa_moze($u, $b)) blad('Brak dostępu do tej symulacji.', 403);
+            if ($b['status'] !== 'aktywna' || $b['pauza_od_utc'] !== null) blad('Symulacja nie trwa — rozkazy czekają na start lub koniec pauzy.');
+            $uid = substr(preg_replace('/[^A-Za-z0-9-]/', '', (string) ($w['uid'] ?? '')), 0, 36) ?: bin2hex(random_bytes(16));
+            $q = $db->prepare('SELECT 1 FROM bitwy_rozkazy WHERE bitwa_id=? AND uid=?');
+            $q->execute([(int) $b['id'], $uid]);
+            if ($q->fetchColumn()) odpowiedz(['ok' => true, 'powtorka' => true]);
+            $odebrano = microtime(true);
+            $kod = (string) ($w['kod'] ?? '');
+            [, , $wynik] = bitwa_dolicz((int) $b['id'], static function (array &$S, array $b) use ($w, $kod, $uid, $odebrano, $u) {
+                $czas = bitwa_czas_teraz($b);
+                $meta = ['uid' => $uid, 'odebrano' => bitwa_utc($odebrano), 'login' => (string) ($u['login'] ?? '')];
+                if (isset($w['klucz_id'])) {
+                    foreach ($S['klucze'] as $ki => $k) {
+                        if ($k['id'] !== (int) $w['klucz_id']) continue;
+                        if ($k['ai']) return ['odmowa' => 'Ten klucz prowadzi AI strony przeciwnej.'];
+                        if ($k['stan'] !== 'w_locie') return ['odmowa' => $k['stan'] === 'hangar' ? 'Klucz jest jeszcze w hangarze.' : 'Klucz nie jest w locie.'];
+                        $r = bitwa_przyjmij($S, bitwa_kanal_klucza($k), $kod, $czas, $k['ranga'], $ki, $meta);
+                        return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
+                    }
+                    return ['odmowa' => 'Nie ma takiego klucza.'];
+                }
+                foreach ($S['jednostki'] as $ji => $j) {
+                    foreach ($j['generatory'] as $gi => $g) {
+                        if ($g['id'] !== (int) ($w['generator_id'] ?? 0)) continue;
+                        if ($kod === 'auto') { $S['jednostki'][$ji]['generatory'][$gi]['auto'] = true; return ['ok' => true]; }
+                        $hz = (int) ($w['hz'] ?? 0);
+                        if ($hz < 1 || $g['zyly']['n'] % $hz !== 0) return ['odmowa' => 'To nie jest stopień natywny generatora.'];
+                        $S['jednostki'][$ji]['generatory'][$gi]['auto'] = false;
+                        $S['jednostki'][$ji]['generatory'][$gi]['hz_zadane'] = $hz;
+                        $r = bitwa_przyjmij($S, "{$j['nr']}:{$g['kod']}", 'przestrojenie_reczne', $czas, 'standard', null, $meta + ['wartosc' => (string) $hz, 'pulpit' => 'Osłony']);
+                        return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
+                    }
+                }
+                return ['odmowa' => 'Nieznany cel rozkazu.'];
+            });
+            if (isset($wynik['odmowa'])) odpowiedz(['ok' => false, 'odmowa' => $wynik['odmowa']]);
+            odpowiedz(['ok' => true] + $wynik);
+        case 'bitwa_xp_zatwierdz':
+            $silnik();
+            if (!$post) blad('Zła metoda.', 405);
+            $b = bitwa_wiersz((int) ($w['id'] ?? 0));
+            if ($b['status'] !== 'zakonczona') blad('XP zatwierdza się po zakończeniu symulacji.');
+            $db->beginTransaction();
+            try {
+                $q = $db->prepare('SELECT pilot_id, xp FROM bitwy_xp WHERE bitwa_id=? AND zatwierdzono_utc IS NULL FOR UPDATE');
+                $q->execute([(int) $b['id']]);
+                $upd = $db->prepare('UPDATE mapa_piloci SET xp = xp + ? WHERE id=?');
+                $ile = 0;
+                foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $x) { $upd->execute([(float) $x['xp'], (int) $x['pilot_id']]); $ile++; }
+                $db->prepare('UPDATE bitwy_xp SET zatwierdzono_utc=UTC_TIMESTAMP(), zatwierdzil_login=? WHERE bitwa_id=? AND zatwierdzono_utc IS NULL')
+                    ->execute([(string) ($u['login'] ?? ''), (int) $b['id']]);
+                $db->commit();
+            } catch (Throwable $e) {
+                $db->rollBack();
+                throw $e;
+            }
+            odpowiedz(['ok' => true, 'piloci' => $ile]);
     }
 }

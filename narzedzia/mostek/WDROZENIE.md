@@ -216,8 +216,19 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
 - `api/bitwa.php` — port rdzenia do PHP (losowość, zegar, przygotowanie rozkazów z `rozkazy_profile`, stopnie,
   filtr, żyły jako mapa bitowa, Hz skuteczne) i akcje MG `bitwa_test` (porównanie z wektorami z Pythona)
   oraz `bitwa_scenariusze`. Zarejestrowany w `api/index.php`.
-- Następnie (część 2): pętla tików w PHP na tabelach `bitwy_*`, utworzenie symulacji ze scenariusza, odczyt stanu,
-  przyjmowanie rozkazów, pauza MG, zakończenie z XP.
+
+**Stan E1, część 2 — symulacje działają w grze (po migracji 070):**
+- `api/bitwa_silnik.php` — pętla tików przepisana 1:1 z `silnik.py`; test `bitwa_test` porównuje dwa całe przebiegi
+  scenariusza (200 i 300 tików) z wektorami z Pythona (pozycje z tolerancją 1e-6 na różnice bibliotek sin/cos).
+- `api/bitwa.php` — tworzenie symulacji ze scenariusza (okręt z mapy, piloci z `mapa_piloci` w kluczach graczy,
+  ranga klucza = prowadzący), doliczanie tików pod blokadą wiersza bitwy (maks. 600 na zapytanie), rozkazy z `uid`
+  (figury kluczy, Hz osłon ręcznie / auto), start, pauza (MG i prowadzący), zakończenie z XP, zatwierdzenie XP (MG).
+- Aplikacja Symulacje: lista symulacji, „Utwórz symulację” przy scenariuszu, podgląd co 1 s (radar 10/30/60 km,
+  kadłub i osłony, klucze z lampą stanu i odliczaniem startu, przygotowanie rozkazu, zdarzenia), XP po zakończeniu.
+- Migracja 070: pozycje, kąty i integralność sekcji jako DOUBLE (zaokrąglanie przy zapisie zmieniałoby przebieg
+  zależnie od częstości odświeżania), ranga / ładunek / akcje / AI klucza, tryb auto osłon, kanał rozkazu.
+- Ograniczenia: myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
+  w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 
 **Stan (25.11.2026): E0 gotowe w repo, niezaimportowane.**
 - [`api/migracje/068_bitwy_symulacje.sql`](../../api/migracje/068_bitwy_symulacje.sql) — struktura: słowniki mechaniki,

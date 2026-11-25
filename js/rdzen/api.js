@@ -10,7 +10,7 @@ export class BladSieci extends Error {
 }
 
 // Zapytania w toku (bez cyklicznego tła sceny) — ekran ładowania aplikacji czeka, aż spadną do zera.
-const TLO = new Set(['scena']);
+const TLO = new Set(['scena', 'bitwa_stan']); // zapytania w tle: bez wskaźnika ładowania
 const sluchacze = new Set();
 let wToku = 0;
 export function nasluchujApi(fn) { sluchacze.add(fn); return () => sluchacze.delete(fn); }

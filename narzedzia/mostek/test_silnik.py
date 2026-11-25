@@ -89,13 +89,41 @@ if '--php' in sys.argv:
     hz = [hz_wektor(3600, 1800, [1, 2]), hz_wektor(3600, 3600, [1, 2]), hz_wektor(2187, 729, [2, 5, 6]),
           hz_wektor(2187, 2187, []), hz_wektor(3600, 1, [3599])]
     fl = [(1.0, 900, 1200, filtr(1.0, 900, 1200)[0]), (1.0, 2187, 3600, filtr(1.0, 2187, 3600)[0]), (1.0, 3600, 2187, 0.0)]
+    def przebieg(kod, ziarno, auto, tiki):
+        s = S.utworz(kod, ziarno)
+        if not auto:
+            for j in s['jednostki']:
+                for g in j['generatory']: g['auto'] = False
+        for _ in range(tiki): S.krok(s)
+        zd = {}
+        for z in s['zdarzenia']: zd[z[1]] = zd.get(z[1], 0) + 1
+        return {'kod': kod, 'ziarno': ziarno, 'auto': auto, 'tiki': tiki,
+                'klucze': [[k['strona'], k['nr'], k['stan'], k['ranga'], k['x'], k['y'], k['akcje']] for k in s['klucze']],
+                'generatory': [[g['hz_osiagane'], sum(bin(x).count('1') for x in g['zyly']['martwe']), g['obciazenie'], g['rykoszet']]
+                               for j in s['jednostki'] for g in j['generatory']],
+                'sekcje': [v for j in s['jednostki'] for _, v in sorted(j['sekcje'].items())],
+                'zdarzenia': dict(sorted(zd.items()))}
+    przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300)]
+    for pb in przebiegi:
+        print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}: zdarzenia {pb['zdarzenia']}, generatory {[g[:2] for g in pb['generatory']]}, "
+              f"sekcje min {min(pb['sekcje']):.4f}")
+
+    def php_w(x):
+        if isinstance(x, bool): return 'true' if x else 'false'
+        if isinstance(x, int): return str(x)
+        if isinstance(x, float): return repr(x)
+        if isinstance(x, str): return "'" + x.replace("'", "\'") + "'"
+        if isinstance(x, list): return '[' + ', '.join(php_w(v) for v in x) + ']'
+        if isinstance(x, dict): return '[' + ', '.join(f'{php_w(k)} => {php_w(v)}' for k, v in x.items()) + ']'
+        raise TypeError(x)
     php = ['<?php', '// PLIK GENEROWANY: python narzedzia/mostek/test_silnik.py --php — wektory z silnika wzorcowego (Python).',
            '// Port PHP (api/bitwa_silnik.php) musi dać te same wyniki; sprawdza je akcja api/?a=bitwa_test (MG).',
            'declare(strict_types=1);', '', 'const BITWA_WEKTORY = [',
            "    'los' => [" + ', '.join(f"[{z}, {t}, '{k}', {v!r}]" for z, t, k, v in los_w) + '],',
            "    'przygotowanie' => [" + ', '.join(f"['{a}', '{b}', {c}]" for a, b, c in prz) + '],',
            "    'hz_skuteczne' => [" + ', '.join(f"[{n}, {f}, [{', '.join(map(str, m))}], {w}]" for n, f, m, w in hz) + '],',
-           "    'filtr' => [" + ', '.join(f"[{e!r}, {o}, {l}, {w!r}]" for e, o, l, w in fl) + '],', '];', '']
+           "    'filtr' => [" + ', '.join(f"[{e!r}, {o}, {l}, {w!r}]" for e, o, l, w in fl) + '],',
+           "    'przebiegi' => " + php_w(przebiegi) + ',', '];', '']
     cel = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'api', 'bitwa_wektory.php')
     with open(cel, 'w', encoding='utf-8', newline='\n') as f: f.write('\n'.join(php))
     print('zapisano api/bitwa_wektory.php')

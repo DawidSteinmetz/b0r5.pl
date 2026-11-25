@@ -205,6 +205,20 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
 
 ## 6. Kolejność prac
 
+**Stan E1 (25.11.2026), część 1 — rdzeń:**
+- `narzedzia/mostek/silnik.py` — silnik wzorcowy (specyfikacja wykonywalna) + `test_silnik.py` (testy przechodzą).
+  Rozgrywa scenariusz bez graczy: AI kluczy (podejście, uniki, przelot), automatyczne osłony (pomiar Hz kluczy
+  w 30 km, przestrojenie z czasem wykonania), filtr, pojemność, rykoszet, martwe żyły, sekcje kadłuba, XP.
+  Wynik „Szkolenia” (ziarna 1–2): osłony Walako przestrajają się na 3600 Hz po wykryciu B-winga (Hz 3000) w 42.–47. s,
+  zanim ten dotrze — nic nie przebija. Celność i ogień broni okrętu jeszcze nieliczone (brak liczb θ broni).
+- **Uwaga do W9:** AI kluczy wykonuje ok. 60 akcji na klucz w 15 minut → 30–40 XP na pilota. Potrzebny limit
+  (proponuję 1 akcja z XP na cykl na klucz, czyli maks. 75 akcji na godzinę → 37,5 XP standardowemu).
+- `api/bitwa.php` — port rdzenia do PHP (losowość, zegar, przygotowanie rozkazów z `rozkazy_profile`, stopnie,
+  filtr, żyły jako mapa bitowa, Hz skuteczne) i akcje MG `bitwa_test` (porównanie z wektorami z Pythona)
+  oraz `bitwa_scenariusze`. Zarejestrowany w `api/index.php`.
+- Następnie (część 2): pętla tików w PHP na tabelach `bitwy_*`, utworzenie symulacji ze scenariusza, odczyt stanu,
+  przyjmowanie rozkazów, pauza MG, zakończenie z XP.
+
 **Stan (25.11.2026): E0 gotowe w repo, niezaimportowane.**
 - [`api/migracje/068_bitwy_symulacje.sql`](../../api/migracje/068_bitwy_symulacje.sql) — struktura: słowniki mechaniki,
   profile klas z sekcjami kadłuba, typy maszyn, `rozkazy_profile`, scenariusze, stan bitwy, `mapa_bitwy` (rodzaj,

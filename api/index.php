@@ -69,6 +69,7 @@ require __DIR__ . '/atmosfera.php';
 require __DIR__ . '/gospodarka.php';
 require __DIR__ . '/astro.php';
 require __DIR__ . '/gwiazdy.php';
+require __DIR__ . '/bitwa.php';
 
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'secure' => !empty($_SERVER['HTTPS'])]);
 session_name('dp_sesja');
@@ -380,6 +381,7 @@ obsluz_gielda($akcja, $post);
 obsluz_czas($akcja, $post);
 obsluz_astro($akcja, $post);
 obsluz_gwiazdy($akcja, $post);
+obsluz_bitwa($akcja, $post);
 
 switch ($akcja) {
 

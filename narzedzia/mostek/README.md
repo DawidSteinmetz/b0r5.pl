@@ -13,6 +13,8 @@ Wszystko o pulpitach mostka (konsolach okrętów) w jednym miejscu.
 | [siatka.py](siatka.py) | język pulpitów: stałe siatki, kolory, suwaki zakresu, kontrola nakładania i symetrii |
 | [uklady/](uklady/) | układy pulpitów jako dane, plik na klasę (`isd_i.py` — 10 pulpitów i 2 ekrany telefonu, `mc80.py` — puste) |
 | [dane/](dane/) | dane mechaniki: typy maszyn (`maszyny.py`), czas wykonania rozkazów (`rozkazy.py`), scenariusze bitew (`scenariusze.py`) |
+| [silnik.py](silnik.py) | silnik wzorcowy bitwy (Python): zegar, losowość z ziarna, rozkazy z czasem wykonania, osłony z żyłami, ogień kluczy, kadłub, XP; `python silnik.py walako_klucze 1` rozgrywa scenariusz bez graczy |
+| [test_silnik.py](test_silnik.py) | testy silnika; `--php` zapisuje wektory `api/bitwa_wektory.php` dla portu PHP (`api/bitwa.php`, akcja `bitwa_test`) |
 | [dane_sql.py](dane_sql.py) | generator migracji `api/migracje/069_mostek_dane.sql` z profili i `dane/` (z kontrolą spójności) |
 | [pulpity_ods.py](pulpity_ods.py) | generator arkusza ODS |
 | [pulpity_podglad.py](pulpity_podglad.py) | generator podglądu HTML |

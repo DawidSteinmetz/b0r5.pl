@@ -72,6 +72,11 @@ klucze w symulacji nie startują naprawdę (`mapa_klucze` bez zmian, `mapa_piloc
   odczyt co 0,5 s (albo strumień SSE z `bitwa.php`), kliknięcie od razu rysuje pasek przygotowania w przeglądarce
   (bez czekania na serwer), a serwer potwierdza chwilę przyjęcia. Rozkaz liczy się od czasu odebrania przez serwer —
   uczciwie dla wszystkich, niezależnie od tego, kto ile odpytuje.
+- **Bez wyrównywania wstecz** (ustalone 25.11.2026): przeglądarka nie wysyła własnej chwili kliknięcia i serwer jej
+  nie uwzględnia. Rozkaz opóźniony albo zgubiony w sieci to w grze zakłócenie procesu (wróg, mała awaria): opóźniony —
+  pasek przeskakuje do czasu serwera z oznaczeniem „zakłócony”; brak potwierdzenia w ok. 2 s — pasek gaśnie
+  z komunikatem „zakłócenie — rozkaz nie wykonany”. Ponowienie wysyłki przez przeglądarkę tylko z tym samym
+  identyfikatorem rozkazu (serwer przyjmuje go raz), żeby powtórka nie dała dwóch rozkazów.
 
 ### 2.3 Profile klas w SQL
 

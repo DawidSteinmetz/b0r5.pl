@@ -480,7 +480,7 @@ function bitwa_zapisz_stan(array $S): void
     $db = polaczenie_bazy();
     $id = $S['id'];
     $updJ = $db->prepare('UPDATE bitwy_jednostki SET x_km=?, y_km=?, zwrot_deg=?, v_km_s=?, stan=?, tasma_tik=? WHERE id=?');
-    $updG = $db->prepare('UPDATE bitwy_systemy SET hz_zadane=?, hz_osiagane=?, auto=?, obciazenie_j=?, rykoszet_j=? WHERE id=?');
+    $updG = $db->prepare('UPDATE bitwy_systemy SET hz_zadane=?, hz_osiagane=?, hz_min=?, hz_max=?, auto=?, obciazenie_j=?, rykoszet_j=? WHERE id=?');
     $updZ = $db->prepare('UPDATE bitwy_zyly SET martwe=?, temperatury=? WHERE system_id=?');
     $updS = $db->prepare('UPDATE bitwy_sekcje SET integralnosc=? WHERE bitwa_jednostka_id=? AND sekcja=?');
     $idJednostki = [];
@@ -488,7 +488,7 @@ function bitwa_zapisz_stan(array $S): void
         $idJednostki[$j['nr']] = $j['id'];
         $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $S['tasma'][$j['nr']] ?? null, $j['id']]);
         foreach ($j['generatory'] as $g) {
-            $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
+            $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['hz_min'], $g['hz_max'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
             if ($g['zyly']['martwe'] !== $g['zyly_org']) $updZ->execute([$g['zyly']['martwe'], $g['zyly']['temperatury'], $g['id']]);
         }
         foreach ($j['sekcje'] as $sek => $v) $updS->execute([$v, $j['id'], $sek]);
@@ -562,13 +562,17 @@ function bitwa_widok(array $b, array $S): array
         $kadlub = 0.0;
         foreach ($j['sekcje'] as $sek => $v) $kadlub += $v * ($p['kadlub'][$sek] ?? 0);
         $c = bitwa_pojemnosc($p);
-        $jednostki[] = ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
+        $pobor = 0.0;
+        foreach ($j['generatory'] as $g) $pobor += ($g['hz_osiagane'] ? bitwa_hz_skuteczne($g['zyly'], $g['hz_osiagane']) : 0) * bitwa_moc_zyly($p);
+        $jednostki[] = ['pobor_oslon_proc' => round(100 * $pobor / $p['moc_reaktora_w'], 2),'id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
             'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000,
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
-            'generatory' => array_map(static fn($g) => ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
+            'generatory' => array_map(static fn($g) => $p ? ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
                 'hz_skuteczne' => $g['hz_osiagane'] ? bitwa_hz_skuteczne($g['zyly'], $g['hz_osiagane']) : 0, 'auto' => $g['auto'],
-                'obciazenie_proc' => round(100 * $g['obciazenie'] / $c, 1), 'rykoszet_j' => $g['rykoszet'], 'martwe' => bitwa_martwe($g['zyly'])], $j['generatory'])];
+                'n' => $g['zyly']['n'], 'siatka_k' => $p['siatka'] ?? (int) ceil(sqrt($g['zyly']['n'])), 'hz_min' => $g['hz_min'], 'hz_max' => $g['hz_max'],
+                'martwe_b64' => base64_encode($g['zyly']['martwe']),
+                'obciazenie_proc' => round(100 * $g['obciazenie'] / $c, 1), 'rykoszet_j' => $g['rykoszet'], 'martwe' => bitwa_martwe($g['zyly'])] : [], $j['generatory'])];
     }
     $klucze = [];
     foreach ($S['klucze'] as $k) {
@@ -798,6 +802,16 @@ function obsluz_bitwa(string $akcja, bool $post): void
                     foreach ($j['generatory'] as $gi => $g) {
                         if ($g['id'] !== (int) ($w['generator_id'] ?? 0)) continue;
                         if ($kod === 'auto') { $S['jednostki'][$ji]['generatory'][$gi]['auto'] = true; return ['ok' => true]; }
+                        if ($kod === 'zakres') {
+                            // Zakres trybu automatycznego (szare suwaki MIN/MAX pulpitu osłon): stopnie natywne, min ≤ max.
+                            $min = (int) ($w['hz_min'] ?? $g['hz_min']);
+                            $max = (int) ($w['hz_max'] ?? $g['hz_max']);
+                            $n = $g['zyly']['n'];
+                            if ($min < 1 || $max < $min || $n % $min !== 0 || $n % $max !== 0) return ['odmowa' => 'Zakres musi być parą stopni natywnych, MIN ≤ MAX.'];
+                            $S['jednostki'][$ji]['generatory'][$gi]['hz_min'] = $min;
+                            $S['jednostki'][$ji]['generatory'][$gi]['hz_max'] = $max;
+                            return ['ok' => true];
+                        }
                         $hz = (int) ($w['hz'] ?? 0);
                         if ($hz < 1 || $g['zyly']['n'] % $hz !== 0) return ['odmowa' => 'To nie jest stopień natywny generatora.'];
                         // ręcznie z pulpitu osłon (12 s) albo preset z sensorów / radaru („wyślij Hz do osłon”, 3 s)

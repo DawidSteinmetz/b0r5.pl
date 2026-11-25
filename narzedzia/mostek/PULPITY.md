@@ -89,6 +89,21 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   zamroź obraz, „wyślij namiar zagrożenia do osłon” — każda burta: preset Hz (3 s) do stopnia ≥ Hz zagrożeń tej burty.
 - **Sensory** — ekran skanu 1000 km (Hz celów w zasięgu sensorów 200 km — jak pomiar automatycznych osłon), widmo Hz grup celów
   z liniami Hz osłon, wybór grupy, „wyślij Hz celu do konsoli osłon” (preset obu generatorów), SKANUJ, filtr kontaktów.
+- **Osłony** — ekrany żył obu generatorów (lampka = żyła: świeci przy n mod (N/f) = 0, martwa ciemnoczerwona), Hz
+  osiągane / skuteczne, obciążenie, martwe żyły; pod ekranem ◀ Hz ▶, USTAW (przestrojenie ręczne 12 s) i AUTO; szare
+  suwaki = zakres trybu automatycznego (górna połowa — maksimum, dolna — minimum); „wyrównaj osłony” — oba na auto.
+- **Reaktory** — ekran 100 porcji z udziałem osłon (pobór G · Hz skuteczne · P_żyły / P_r) i przydział mocy dla osłon.
+- **Myśliwce** — 18 lampek kluczy (stan, odliczanie startu); pierwsze dotknięcie wybiera klucz, drugie otwiera
+  **zbliżenie** (ekran Klucz) z powrotem do pulpitu; ekran sytuacji kluczy, taśmociągi pokładów (kolejka i ETA),
+  start i powrót z każdego pokładu, rozkaz dla wybranego klucza, START.
+- **Klucz** (telefon) — nagłówek z lampą i stanem, ekran z kluczem w środku (2 / 10 / 30 km), wszystkie figury
+  i rozkazy, Hz klucza; dotknięcie nagłówka — następny klucz. **Eskadra** — 3 klucze, ekran ze środkiem eskadry,
+  lampki ze zbliżeniem, rozkazy dla całej eskadry.
+- **Nawigacja** — ekran 250 / 500 / 1000 km, wybór celu, odczyty kursu, prędkości, odległości i ETA (sterowanie ruchem
+  czeka na model ruchu okrętu w silniku). **Kontrola ognia** — ekran celu (ogień okrętu — kolejny etap).
+- **Powiększanie** każdego ekranu sytuacyjnego: przyciski + i − w rogu oraz kółko myszy (×1/8 … ×64) — przy małych
+  odległościach (krążownik blisko) liczy się każdy kilometr.
+- Bez mechaniki w silniku: Turbolasery, Silniki, Grawitacja i przygaszone elementy pozostałych pulpitów.
 - Pomiar Hz jest na razie natychmiastowy w zasięgu 200 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
   kolejny etap).
 

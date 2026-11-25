@@ -7,7 +7,8 @@
 import { h } from '../rdzen/narzedzia.js';
 import { UKLADY, KOLORY, FORMATY } from './pulpity_uklady.js';
 
-export const KONSOLE = ['Radar', 'Sensory'];
+// Pulpity z mechaniką (pozostałe rysują się z samym układem). Kolejność = kolejność zakładek.
+export const KONSOLE = ['Radar', 'Sensory', 'Osłony', 'Reaktory', 'Myśliwce', 'Nawigacja', 'Kontrola ognia', 'Klucz', 'Eskadra'];
 export const pulpityKlasy = (klasa) => Object.keys(UKLADY[klasa] || {});
 const NS = 'http://www.w3.org/2000/svg';
 const ZASIEG_SENSOROW_KM = 200; // jak automatyczne osłony w silniku (STALE zasieg_sensorow_km)
@@ -25,6 +26,8 @@ const rad = (d) => (d * Math.PI) / 180;
 const odl = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mmss = (s) => { s = Math.max(0, Math.round(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const km = (d) => (d >= 100 ? d.toFixed(0) : d.toFixed(1));
+// Opis okręgu: liczba bez zbędnych miejsc po przecinku (po powiększeniu pierścienie mają ułamki km).
+const zaokr = (r) => (r >= 10 ? Math.round(r) : r >= 1 ? Math.round(r * 10) / 10 : Math.round(r * 100) / 100);
 
 // Sylwetki z góry (długość 1, dziób w górę, środek w 0,0) — według grafik: ISD (Top View; rufa z dwóch trójkątów —
 // od narożników burt ukośnie do bloku silników) i MC80 (ostry dziób, wąski kadłub, skrzydła odchylone do rufy).
@@ -71,8 +74,28 @@ export function nowyStanKonsol() {
     sektor: null, tory: true, prognozy: false, oznaczony: null, sledzony: null, zamrozony: false, slady: new Map(),
     progZblizenia: 30, progKolizji: 10, tempo: 12, syncSensory: false, syncNawigacja: false,
     grupa: null, skan: true, kontaktyNormalne: true,
+    zoom: {}, hzCel: {}, klucz: null, wybranyKlucz: null, rozkazMysliwcow: 'atak', eskadra: 1, skalaNaw: 500, skalaKlucza: 10, celNaw: null,
   };
 }
+
+// Ekran z powiększaniem: + i − w rogu oraz kółko myszy (×1,25 na ząbek, od ×1/8 do ×64). rysuj(zoom) zwraca SVG.
+function powiekszany(st, akcje, id, rysuj) {
+  const z = st.zoom[id] || 1;
+  const ustaw = (nowy) => { st.zoom[id] = Math.min(64, Math.max(0.125, nowy)); akcje.odswiez(); };
+  const przycisk = (znak, mnoznik) => h('button', { type: 'button', style: 'width:26px;height:26px;padding:0;border:1px solid rgba(77,226,201,.6);border-radius:4px;'
+    + 'background:rgba(11,16,18,.85);color:#4de2c9;font-size:16px;line-height:1;cursor:pointer', 'aria-label': znak === '+' ? 'Przybliż' : 'Oddal',
+    onclick: (ev) => { ev.stopPropagation(); ustaw(z * mnoznik); } }, znak);
+  const el = h('div', { style: 'position:relative;width:100%;height:100%' }, rysuj(z),
+    h('div', { style: 'position:absolute;right:4px;top:4px;display:flex;flex-direction:column;gap:3px' }, przycisk('+', 1.5), przycisk('−', 1 / 1.5)),
+    z !== 1 ? h('div', { style: `position:absolute;left:5px;top:4px;color:#4de2c9;font-size:11px;${CZCIONKA}` }, `×${z >= 1 ? z.toFixed(1) : z.toFixed(2)}`) : null);
+  el.addEventListener('wheel', (ev) => { ev.preventDefault(); ustaw(z * (ev.deltaY < 0 ? 1.25 : 0.8)); }, { passive: false });
+  return el;
+}
+
+// Lampa klucza (PULPITY.md 1b): kolor tła, kolor napisu, opis stanu.
+const LAMPA = { hangar: ['#2a2a80', '#fff', 'hangar'], gotowy: ['#6666ff', '#fff', 'gotowy'], w_locie: ['#66ccff', '#000', 'w locie'],
+  powrot: ['#66ccff', '#000', 'powrót'], stracony: ['#999999', '#000', 'stracony'] };
+const opisLampy = (k) => (k.stan === 'hangar' && k.start_za_s != null ? `start ${mmss(k.start_za_s)}` : (LAMPA[k.stan] || LAMPA.hangar)[2]);
 
 // Ślady pozycji (do torów na radarze): ostatnie 40 odczytów każdego obiektu.
 export function zapiszSlady(st, s) {
@@ -124,13 +147,18 @@ function pulpit(klasa, nazwa, wiazania) {
       title: aktywny ? tekst : `${tekst} — bez mechaniki (kolejny etap)`, role: w?.klik ? 'button' : null, 'aria-label': tekst,
     });
     if (w?.klik) el.addEventListener('click', w.klik);
+    // Szary suwak zakresu: górna połowa — maksimum, dolna — minimum.
+    if (w?.klikS) {
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', (ev) => { const r = el.getBoundingClientRect(); w.klikS(ev.clientY - r.top < r.height / 2); });
+    }
     if (w?.ekran) el.append(w.ekran());
     kontrolki.append(el);
     if (w?.ekran) continue;
     const napis = h('div', { style: pole + `display:flex;flex-direction:column;align-items:center;justify-content:${typ === 'S' ? 'space-between' : 'center'};`
       + `text-align:center;overflow:hidden;padding:3px;box-sizing:border-box;font-size:${rozmiar};line-height:1.15;`
-      + `color:${typ === 'B' ? '#fff' : '#111'};${typ === 'B' || w?.wl ? 'font-weight:bold;' : ''}${aktywny ? '' : 'opacity:.38;'}` });
-    if (typ === 'S') napis.append(h('span', tekst.replace('suwak: ', '')), h('span', (tekstMin || '').replace('suwak: ', '')));
+      + `color:${w?.kolorTekstu || (typ === 'B' ? '#fff' : '#111')};${typ === 'B' || w?.wl ? 'font-weight:bold;' : ''}${aktywny ? '' : 'opacity:.38;'}` });
+    if (typ === 'S') napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')), h('span', w?.etykietaMin ?? (tekstMin || '').replace('suwak: ', '')));
     else napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')));
     teksty.append(napis);
   }
@@ -209,7 +237,7 @@ function radar(s, st, akcje) {
   const przelacz = (klucz) => ({ wl: st[klucz], klik: () => { st[klucz] = !st[klucz]; akcje.odswiez(); } });
   const filtr = (k) => ({ wl: f[k], klik: () => { f[k] = !f[k]; akcje.odswiez(); } });
   const cyklicznie = (pole, wartosci, opis) => ({ etykieta: `${opis}: ${st[pole]}`, klik: () => { st[pole] = wartosci[(wartosci.indexOf(st[pole]) + 1) % wartosci.length]; akcje.odswiez(); } });
-  const skala = (km) => ({ wl: st.skala === km, klik: () => { st.skala = km; akcje.odswiez(); } });
+  const skala = (km) => ({ wl: st.skala === km && (st.zoom.radar || 1) === 1, klik: () => { st.skala = km; st.zoom.radar = 1; akcje.odswiez(); } });
   const wyslijDoOslon = () => {
     let ile = 0;
     for (const [gi, burta] of [[0, 'lewa'], [1, 'prawa']]) {
@@ -222,8 +250,8 @@ function radar(s, st, akcje) {
   const wybierz = (o) => { st.oznaczony = ('nr' in o ? 'k' : 'j') + o.id; akcje.odswiez(); };
   const w = {
     'EKRAN RADARU · sylwetka ISD zawsze w środku · okręgi odległości 50 / 200 / 1000 km · wiązka omiatania · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski': {
-      ekran: () => ekranPlot(s, st, { zasieg: st.skala, srodek: j, pierscienie: [st.skala / 4, st.skala / 2, st.skala], hz: st.syncSensory, wybierz,
-        obiekty: [...widoczne, j], sektor: st.sektor ? sektor[st.sektor] : null, tory: st.tory, prognozy: st.prognozy }) },
+      ekran: () => powiekszany(st, akcje, 'radar', (z) => ekranPlot(s, st, { zasieg: st.skala / z, srodek: j, pierscienie: [st.skala / 4 / z, st.skala / 2 / z, st.skala / z].map(zaokr),
+        hz: st.syncSensory, wybierz, obiekty: [...widoczne, j], sektor: st.sektor ? sektor[st.sektor] : null, tory: st.tory, prognozy: st.prognozy })) },
     'skala: 50 km': skala(50), 'skala: 200 km': skala(200), 'skala: 1000 km': skala(1000),
     'odczyt: kontakty obce': { etykieta: `kontakty obce: ${obce.length}` },
     'odczyt: kontakty własne': { etykieta: `kontakty własne: ${wlasne.length}` },
@@ -286,8 +314,8 @@ function sensory(s, st, akcje) {
   };
   const w = {
     'EKRAN SKANU · przestrzeń normalna (kontakty, elipsa błędu, sygnatura) i nadprzestrzeń (zmarszczki wejścia, odcinki skoków, prognoza wyjścia)': {
-      ekran: () => ekranPlot(s, st, { zasieg: 1000, srodek: j, pierscienie: [ZASIEG_SENSOROW_KM, 500, 1000], hz: st.skan,
-        obiekty: st.kontaktyNormalne ? [...wrogie.map((k) => ({ ...k, hzZnane: odl(k, j) <= ZASIEG_SENSOROW_KM })), ...s.jednostki.filter((x) => x.strona !== j.strona), j] : [j] }) },
+      ekran: () => powiekszany(st, akcje, 'skan', (z) => ekranPlot(s, st, { zasieg: 1000 / z, srodek: j, pierscienie: [ZASIEG_SENSOROW_KM, 500, 1000].map((r) => zaokr(r / z)),
+        hz: st.skan, obiekty: st.kontaktyNormalne ? [...wrogie.map((k) => ({ ...k, hzZnane: odl(k, j) <= ZASIEG_SENSOROW_KM })), ...s.jednostki.filter((x) => x.strona !== j.strona), j] : [j] })) },
     'EKRAN: WIDMO Hz GRUP CELÓW · baza i bieżący odczyt · wykryte skany wroga': { ekran: widmo },
     'skan Hz celu (wybór grupy)': { etykieta: cel ? `cel: ${cel.maszyna} · ${cel.hz} Hz` : 'skan Hz celu (brak celów)',
       klik: () => { if (!lista.length) return; const i = lista.indexOf(cel); st.grupa = lista[(i + 1) % lista.length].typ; akcje.odswiez(); } },
@@ -299,11 +327,256 @@ function sensory(s, st, akcje) {
   return pulpit(j.profil, 'Sensory', w);
 }
 
-// Konsola o nazwie pulpitu: Radar i Sensory z mechaniką, pozostałe pulpity klasy — sam układ (przygaszony).
+// ------------------------------------------------------------------------------------------- wspólne dla kluczy
+const RANGA = { as: 'as', standard: 'standardowy', kadet: 'kadet' };
+const wlasneKlucze = (s, j) => s.klucze.filter((k) => k.strona === j.strona && !k.ai).sort((a, b) => a.nr - b.nr);
+const doKlucza = (akcje, k, kod, pulpit) => akcje.rozkaz({ klucz_id: k.id, kod, pulpit });
+const lampa = (k, etykieta) => ({ kolor: (LAMPA[k.stan] || LAMPA.hangar)[0], kolorTekstu: (LAMPA[k.stan] || LAMPA.hangar)[1], etykieta });
+
+// ------------------------------------------------------------------------------------------- Osłony
+// Ekran żył generatora: lampka = żyła; świeci, gdy n mod (N/f) = 0 (MECHANIKA 3.1); martwa — ciemnoczerwona.
+function ekranZyl(g, st, akcje, stopnie) {
+  const K = g.siatka_k || 60, n = g.n || 3600, f = g.hz_osiagane || 0, krok = f && n % f === 0 ? n / f : 0;
+  const W = Math.ceil(n / K);
+  const martwe = Uint8Array.from(atob(g.martwe_b64 || ''), (c) => c.charCodeAt(0));
+  const c = h('canvas', { width: K, height: W, style: 'width:100%;flex:1;min-height:0;image-rendering:pixelated;object-fit:contain;display:block' });
+  const ctx = c.getContext('2d');
+  const obraz = ctx.createImageData(K, W);
+  for (let i = 0; i < n; i++) {
+    const martwa = (martwe[i >> 3] >> (i & 7)) & 1;
+    const swieci = krok && (i + 1) % krok === 0;
+    const [r, gg, b] = martwa ? [122, 31, 31] : swieci ? [77, 226, 201] : [22, 52, 58];
+    obraz.data.set([r, gg, b, 255], i * 4);
+  }
+  ctx.putImageData(obraz, 0, 0);
+  const cel = st.hzCel[g.id] ?? g.hz_zadane;
+  const krokHz = (kier) => () => {
+    const i = stopnie.indexOf(cel);
+    st.hzCel[g.id] = stopnie[Math.min(stopnie.length - 1, Math.max(0, (i < 0 ? stopnie.findIndex((x) => x >= cel) : i) + kier))];
+    akcje.odswiez();
+  };
+  const maly = (tekst, fn, wl) => h('button', { type: 'button', onclick: (ev) => { ev.stopPropagation(); fn(); },
+    style: `padding:1px 6px;border:1px solid rgba(77,226,201,.6);border-radius:3px;background:${wl ? '#1d8f7f' : 'rgba(11,16,18,.9)'};color:#cfe;font-size:11px;cursor:pointer;${CZCIONKA}` }, tekst);
+  return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
+    h('div', `${g.hz_osiagane}${g.hz_zadane !== g.hz_osiagane ? ` → ${g.hz_zadane}` : ''} Hz · skuteczne ${g.hz_skuteczne} · obciążenie ${g.obciazenie_proc}% · martwe ${g.martwe}`),
+    c,
+    h('div', { style: 'display:flex;gap:4px;justify-content:center;align-items:center;flex-wrap:wrap' },
+      maly('◀', krokHz(-1)), h('span', `${cel} Hz`), maly('▶', krokHz(1)),
+      maly('USTAW', () => akcje.rozkaz({ generator_id: g.id, kod: 'przestrojenie_reczne', hz: cel, pulpit: 'Osłony' })),
+      maly('AUTO', () => akcje.rozkaz({ generator_id: g.id, kod: 'auto', pulpit: 'Osłony' }), g.auto)));
+}
+
+function oslony(s, st, akcje) {
+  const j = wlasna(s);
+  const [L, P] = j.generatory;
+  const stopnie = j.stopnie;
+  // Szary suwak: zakres trybu automatycznego (MIN / MAX) — górna połowa zmienia maksimum, dolna minimum.
+  const zakres = (g) => g && ({
+    etykieta: `maks. ${g.hz_max} Hz`, etykietaMin: `min. ${g.hz_min} Hz`,
+    klikS: (gora) => {
+      const nast = (v, filtr) => { const l = stopnie.filter(filtr); return l[(l.indexOf(v) + 1) % l.length] ?? l[0]; };
+      const min = gora ? g.hz_min : nast(g.hz_min, (x) => x <= g.hz_max);
+      const max = gora ? nast(g.hz_max, (x) => x >= g.hz_min) : g.hz_max;
+      akcje.rozkaz({ generator_id: g.id, kod: 'zakres', hz_min: min, hz_max: max, pulpit: 'Osłony' });
+    },
+  });
+  const w = {
+    'GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': L && { ekran: () => ekranZyl(L, st, akcje, stopnie) },
+    'GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': P && { ekran: () => ekranZyl(P, st, akcje, stopnie) },
+    'suwak: maksymalna częstotliwość lewego generatora osłon': zakres(L),
+    'suwak: maksymalna częstotliwość prawego generatora osłon': zakres(P),
+    'wyrównaj osłony': { etykieta: 'wyrównaj osłony (oba na auto)', klik: () => j.generatory.forEach((g) => akcje.rozkaz({ generator_id: g.id, kod: 'auto', pulpit: 'Osłony' })) },
+  };
+  return pulpit(j.profil, 'Osłony', w);
+}
+
+// ------------------------------------------------------------------------------------------- Reaktory
+function reaktory(s, st, akcje) {
+  const j = wlasna(s);
+  const pobor = j.pobor_oslon_proc || 0;
+  const ekran = () => {
+    const e = svg('svg', { viewBox: '0 0 200 200', style: `width:100%;height:100%;display:block;${CZCIONKA}` });
+    for (let i = 0; i < 100; i++) {
+      const x = 12 + (i % 10) * 17.6, y = 12 + Math.floor(i / 10) * 15;
+      e.append(svg('rect', { x, y, width: 15, height: 12, rx: 2, fill: i < Math.round(pobor) ? '#4de2c9' : 'rgba(77,226,201,.12)' }));
+    }
+    e.append(svg('text', { x: 12, y: 168, fill: '#cfe', 'font-size': 9 }, `osłony ${pobor}% · wolne ${(100 - pobor).toFixed(1)}%`));
+    e.append(svg('text', { x: 12, y: 181, fill: 'rgba(207,238,238,.6)', 'font-size': 8 }, 'dławienie 100%'));
+    e.append(svg('text', { x: 12, y: 193, fill: 'rgba(207,238,238,.6)', 'font-size': 8 }, 'ciepło, zasobniki — kolejny etap'));
+    return e;
+  };
+  return pulpit(j.profil, 'Reaktory', {
+    'REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie': { ekran },
+    'suwak: przydział mocy dla osłon': { etykieta: `osłony: ${pobor}% mocy` },
+  });
+}
+
+// ------------------------------------------------------------------------------------------- Klucz (zbliżenie)
+const FIGURY = {
+  'łagodnie w lewo': 'lagodnie_l', 'łagodnie w prawo': 'lagodnie_p', 'ostro w lewo': 'ostro_l', 'ostro w prawo': 'ostro_p',
+  'rozejście klucza w lewo': 'rozejscie_l', 'rozejście klucza w prawo': 'rozejscie_p', 'beczka w lewo (rozrzut ×1,6)': 'beczka_l', 'zygzak (×1,3)': 'zygzak',
+  'PROSTO': 'prosto', 'burst (×1,5)': 'burst', 'beczka w prawo (×1,6)': 'beczka_p', 'pętla (zawrót górą)': 'petla', 'spirala asa (×2, tylko as)': 'spirala',
+  'zwarcie szyku': 'zwarcie', 'skok cieniowy (×2,5, tylko as)': 'skok_cieniowy', 'split-S (zawrót dołem)': 'split_s', 'atak z nurkowania': 'nurkowanie',
+  'nożyce (pojedynek)': 'nozyce', 'ogon (trzymaj się celu)': 'ogon', 'przelot przez cel': 'przelot', 'eskorta wskazanej jednostki': 'eskorta',
+  'patrol': 'patrol', 'ochrona okrętu': 'ochrona', 'skan z bliska': 'skan', 'powrót do hangaru': 'powrot',
+};
+
+function kluczPulpit(s, st, akcje, k, naglowekKlik) {
+  const j = wlasna(s);
+  const srodek = k.stan === 'w_locie' || k.stan === 'powrot' ? k : { ...j, nr: k.nr, strona: k.strona };
+  const skale = [2, 10, 30];
+  const w = {
+    'KLUCZ N · 4/4 maszyn · pilot prowadzący i ranga · stan: w hangarze — start za mm:ss / gotowy / w locie (kolor nagłówka = kolor lampy klucza)': {
+      ...lampa(k, `KLUCZ ${k.nr} · ${k.maszyna} · ${k.maszyny}/4 · ${RANGA[k.ranga] || k.ranga} · ${opisLampy(k)} · ${k.rozkaz_nazwa || k.rozkaz}`
+        + (k.przygotowanie ? ` · ${k.przygotowanie.nazwa} za ${k.przygotowanie.dziala_za_s} s` : '') + (k.figura ? ` · ${k.figura}` : '')),
+      klik: naglowekKlik,
+    },
+    'EKRAN KLUCZA · klucz zawsze w środku · okręgi 2 / 10 / 30 km (dotknięcie zmienia skalę) · kurs i wektor · cele (dotknij, by wybrać) · okręt macierzysty · inne klucze': {
+      klik: () => { st.skalaKlucza = skale[(skale.indexOf(st.skalaKlucza) + 1) % skale.length]; st.zoom.klucz = 1; akcje.odswiez(); },
+      ekran: () => powiekszany(st, akcje, 'klucz', (z) => ekranPlot(s, st, { zasieg: st.skalaKlucza / z, srodek,
+        pierscienie: [st.skalaKlucza / 5, st.skalaKlucza / 2, st.skalaKlucza].map((r) => zaokr(r / z)), prognozy: true,
+        obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie' && x.id !== k.id), ...s.jednostki, srodek] })) },
+    'odczyt: Hz klucza (baza / bieżący) · zmiany w cyklu': { etykieta: `Hz ${k.hz} · ${k.v ? `${k.v} km/s` : '—'}` },
+    'START (gdy gotowy) · ATAK (w locie)': { etykieta: k.stan === 'hangar' ? 'START' : 'ATAK', klik: () => doKlucza(akcje, k, k.stan === 'hangar' ? 'start' : 'atak', 'Klucz') },
+  };
+  for (const [tekst, kod] of Object.entries(FIGURY)) w[tekst] = { klik: () => doKlucza(akcje, k, kod, 'Klucz') };
+  return pulpit(j.profil, 'Klucz', w);
+}
+
+// Zbliżenie klucza nad innym pulpitem (Myśliwce, Eskadra): przycisk powrotu + ekran Klucz.
+function zblizenie(s, st, akcje, k, skad) {
+  return h('div',
+    h('button.przycisk.drugi.maly', { style: 'margin-bottom:6px', onclick: () => { st.zoomKlucz = null; akcje.odswiez(); } }, `← ${skad}`),
+    kluczPulpit(s, st, akcje, k, null));
+}
+
+// ------------------------------------------------------------------------------------------- Myśliwce
+function mysliwce(s, st, akcje) {
+  const j = wlasna(s);
+  const klucze = wlasneKlucze(s, j);
+  const zoom = klucze.find((k) => k.id === st.zoomKlucz);
+  if (zoom) return zblizenie(s, st, akcje, zoom, 'Myśliwce');
+  const wybrany = klucze.find((k) => k.id === st.wybranyKlucz);
+  const ROZK = ['atak', 'ochrona', 'patrol', 'skan'];
+  const nazwyR = { atak: 'atak', ochrona: 'ochrona', patrol: 'patrol', skan: 'skan' };
+  const wymagaj = (fn) => () => (wybrany ? fn(wybrany) : akcje.komunikat('Najpierw wybierz klucz (lampka „Klucz N”; drugie dotknięcie — zbliżenie).'));
+  const strona = (od, doN) => klucze.filter((k) => k.nr >= od && k.nr <= doN);
+  const kolejka = (od, doN, opis) => () => h('div', { style: `padding:3px 5px;font-size:max(7px,0.72cqw);color:#cfe;text-align:left;width:100%;${CZCIONKA}` },
+    `${opis}: ` + (strona(od, doN).filter((k) => k.stan === 'hangar' && k.start_za_s != null).sort((a, b) => a.start_za_s - b.start_za_s)
+      .map((k) => `K${k.nr} ${mmss(k.start_za_s)}`).join(' · ') || 'pusta'));
+  const startStrony = (od, doN) => () => {
+    const k = strona(od, doN).find((x) => x.stan === 'hangar' && x.start_za_s == null);
+    if (k) doKlucza(akcje, k, 'start', 'Myśliwce'); else akcje.komunikat('Na tym pokładzie nie ma klucza czekającego na start.');
+  };
+  const powrotStrony = (od, doN) => () => strona(od, doN).filter((k) => k.stan === 'w_locie').forEach((k) => doKlucza(akcje, k, 'powrot', 'Myśliwce'));
+  const w = {
+    'EKRAN: PILOCI · ZAŁOGA · TAŚMOCIĄG': { ekran: () => powiekszany(st, akcje, 'mysliwce', (z) => ekranPlot(s, st, { zasieg: 30 / z, srodek: j,
+      pierscienie: [5, 15, 30].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { if ('nr' in o && !o.ai) { st.wybranyKlucz = o.id; akcje.odswiez(); } },
+      obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki.filter((x) => x.id !== j.id), j] })) },
+    'taśmociąg lewego pokładu · kolejka i ETA': { ekran: kolejka(1, 9, 'lewy pokład') },
+    'taśmociąg prawego pokładu · kolejka i ETA': { ekran: kolejka(10, 18, 'prawy pokład') },
+    'start klucza (lewy pokład)': { klik: startStrony(1, 9) }, 'start klucza (prawy pokład)': { klik: startStrony(10, 18) },
+    'powrót do hangaru (lewy pokład)': { klik: powrotStrony(1, 9) }, 'powrót do hangaru (prawy pokład)': { klik: powrotStrony(10, 18) },
+    'rozkaz klucza: patrol · ochrona · atak · skan': { etykieta: `rozkaz: ${nazwyR[st.rozkazMysliwcow]}${wybrany ? ` → klucz ${wybrany.nr}` : ''} (dotknij, by zmienić)`,
+      klik: () => { st.rozkazMysliwcow = ROZK[(ROZK.indexOf(st.rozkazMysliwcow) + 1) % ROZK.length]; akcje.odswiez(); } },
+    'kurs przechwycenia': { klik: wymagaj((k) => doKlucza(akcje, k, 'atak', 'Myśliwce')) },
+    'wstrzymaj / zawróć': { etykieta: 'wstrzymaj / zawróć (ochrona okrętu)', klik: wymagaj((k) => doKlucza(akcje, k, 'ochrona', 'Myśliwce')) },
+    'START': { etykieta: wybrany ? (wybrany.stan === 'hangar' ? `START klucza ${wybrany.nr}` : `WYKONAJ: ${st.rozkazMysliwcow} → klucz ${wybrany.nr}`) : 'START',
+      klik: wymagaj((k) => doKlucza(akcje, k, k.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce')) },
+  };
+  for (let n = 1; n <= 18; n++) {
+    const k = klucze.find((x) => x.nr === n);
+    if (!k) continue;
+    w[`Klucz ${n}`] = { ...lampa(k, `Klucz ${n} · ${opisLampy(k)}`), wl: st.wybranyKlucz === k.id,
+      klik: () => { if (st.wybranyKlucz === k.id) st.zoomKlucz = k.id; else st.wybranyKlucz = k.id; akcje.odswiez(); } };
+  }
+  return pulpit(j.profil, 'Myśliwce', w);
+}
+
+// ------------------------------------------------------------------------------------------- Klucz (zakładka)
+function klucz(s, st, akcje) {
+  const j = wlasna(s);
+  const klucze = wlasneKlucze(s, j);
+  if (!klucze.length) return h('div.komunikat', 'Ta strona nie ma kluczy myśliwców.');
+  const k = klucze.find((x) => x.id === st.klucz) || klucze[0];
+  return kluczPulpit(s, st, akcje, k, () => { st.klucz = klucze[(klucze.indexOf(k) + 1) % klucze.length].id; akcje.odswiez(); });
+}
+
+// ------------------------------------------------------------------------------------------- Eskadra (3 klucze)
+function eskadra(s, st, akcje) {
+  const j = wlasna(s);
+  const klucze = wlasneKlucze(s, j);
+  const zoom = klucze.find((k) => k.id === st.zoomKlucz);
+  if (zoom) return zblizenie(s, st, akcje, zoom, 'Eskadra');
+  const ile = Math.max(1, Math.ceil(klucze.length / 3));
+  if (st.eskadra > ile) st.eskadra = 1;
+  const moje = klucze.filter((k) => Math.ceil(k.nr / 3) === st.eskadra);
+  const lot = moje.filter((k) => k.stan === 'w_locie');
+  const srodek = lot.length ? { x: lot.reduce((a, k) => a + k.x, 0) / lot.length, y: lot.reduce((a, k) => a + k.y, 0) / lot.length, kurs: 0, strona: j.strona } : j;
+  const wszystkim = (kod) => () => {
+    const cel = moje.filter((k) => k.stan === 'w_locie' || (kod !== 'powrot' && k.stan === 'powrot'));
+    if (!cel.length) return akcje.komunikat('Żaden klucz eskadry nie jest w locie.');
+    cel.forEach((k) => doKlucza(akcje, k, kod, 'Eskadra'));
+  };
+  const w = {
+    'ESKADRA N · klucze 3/3 · dowódca eskadry · alarm: normalny / żółty / czerwony': {
+      etykieta: `ESKADRA ${st.eskadra} z ${ile} · w locie ${lot.length}/${moje.length} (dotknij — następna eskadra)`,
+      klik: () => { st.eskadra = (st.eskadra % ile) + 1; akcje.odswiez(); } },
+    'EKRAN ESKADRY · środek eskadry zawsze w środku · okręgi 5 / 15 / 40 km · 3 klucze z kursami · okręt macierzysty · cele i zagrożenia': {
+      ekran: () => powiekszany(st, akcje, 'eskadra', (z) => ekranPlot(s, st, { zasieg: 40 / z, srodek, pierscienie: [5, 15, 40].map((r) => zaokr(r / z)), prognozy: true,
+        obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki] })) },
+    'patrol': { klik: wszystkim('patrol') }, 'przechwycenie': { klik: wszystkim('atak') }, 'ATAK ESKADRY': { klik: wszystkim('atak') },
+    'eskorta': { etykieta: 'eskorta (ochrona okrętu)', klik: wszystkim('ochrona') }, 'powrót eskadry': { klik: wszystkim('powrot') },
+  };
+  ['Klucz 1 · start za mm:ss', 'Klucz 2 · start za mm:ss', 'Klucz 3 · start za mm:ss'].forEach((tekst, i) => {
+    const k = moje[i];
+    if (k) w[tekst] = { ...lampa(k, `Klucz ${k.nr} · ${opisLampy(k)}`), klik: () => { st.zoomKlucz = k.id; akcje.odswiez(); } };
+  });
+  return pulpit(j.profil, 'Eskadra', w);
+}
+
+// ------------------------------------------------------------------------------------------- Nawigacja
+function nawigacja(s, st, akcje) {
+  const j = wlasna(s);
+  const obiekty = [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki];
+  const cel = obiekty.find((o) => ('nr' in o ? 'k' : 'j') + o.id === st.celNaw);
+  const d = cel ? odl(cel, j) : null;
+  const skala = (km) => ({ wl: st.skalaNaw === km && (st.zoom.nav || 1) === 1, klik: () => { st.skalaNaw = km; st.zoom.nav = 1; akcje.odswiez(); } });
+  return pulpit(j.profil, 'Nawigacja', {
+    'EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy': {
+      ekran: () => powiekszany(st, akcje, 'nav', (z) => ekranPlot(s, st, { zasieg: st.skalaNaw / z, srodek: j, pierscienie: [st.skalaNaw / 4, st.skalaNaw / 2, st.skalaNaw].map((r) => zaokr(r / z)),
+        prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty: obiekty.map((o) => ({ ...o, hzZnane: odl(o, j) <= ZASIEG_SENSOROW_KM })),
+        wybierz: (o) => { st.celNaw = ('nr' in o ? 'k' : 'j') + o.id; akcje.odswiez(); } })) },
+    'skala ekranu: 250 km': skala(250), 'skala ekranu: 500 km': skala(500), 'skala ekranu: 1000 km': skala(1000),
+    'synchronizacja z sensorami (kontakty)': { wl: st.syncSensory, klik: () => { st.syncSensory = !st.syncSensory; akcje.odswiez(); } },
+    'synchronizacja z radarem (tory jednostek)': { wl: st.tory, klik: () => { st.tory = !st.tory; akcje.odswiez(); } },
+    'odczyt: wektor ruchu (kurs, prędkość)': { etykieta: `wektor: ${Math.round(j.kurs)}° · ${j.v} km/s` },
+    'odczyt: zwrot dziobu': { etykieta: `zwrot dziobu: ${Math.round(j.kurs)}°` },
+    'odczyt: prędkość kątowa': { etykieta: 'prędkość kątowa: 0°/s' },
+    'wybierz cel / punkt nawigacyjny': { etykieta: cel ? `cel: ${'nr' in cel ? `${cel.strona} ${cel.nr}` : cel.nazwa} (dotknij — wyczyść)` : 'wybierz cel (dotknij na ekranie)',
+      klik: () => { st.celNaw = null; akcje.odswiez(); } },
+    'odczyt: odległość do celu': { etykieta: d != null ? `do celu: ${km(d)} km` : 'do celu: —' },
+    'odczyt: czas do celu (ETA)': { etykieta: d != null && j.v > 0 ? `ETA ${mmss(d / j.v)}` : 'ETA: —' },
+  });
+}
+
+// ------------------------------------------------------------------------------------------- Kontrola ognia
+function kontrolaOgnia(s, st, akcje) {
+  const j = wlasna(s);
+  const obce = [...s.klucze.filter((x) => x.stan === 'w_locie' && x.strona !== j.strona), ...s.jednostki.filter((x) => x.strona !== j.strona)];
+  return pulpit(j.profil, 'Kontrola ognia', {
+    'wskazanie celu: siatka taktyczna': { ekran: () => powiekszany(st, akcje, 'ogien', (z) => ekranPlot(s, st, { zasieg: 50 / z, srodek: j,
+      pierscienie: [10, 25, 50].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { st.oznaczony = ('nr' in o ? 'k' : 'j') + o.id; akcje.odswiez(); },
+      obiekty: [...obce, j] })) },
+  });
+}
+
+// Konsola o nazwie pulpitu: pulpity z KONSOLE mają mechanikę, pozostałe (Turbolasery, Silniki, Grawitacja) — sam układ.
 export function konsola(nazwa, s, st, akcje) {
   if (!s.jednostki.length) return h('div.komunikat', 'Brak okrętu w tej symulacji.');
-  if (nazwa === 'Radar') return radar(s, st, akcje);
-  if (nazwa === 'Sensory') return sensory(s, st, akcje);
+  const f = { Radar: radar, Sensory: sensory, 'Osłony': oslony, Reaktory: reaktory, 'Myśliwce': mysliwce, Nawigacja: nawigacja,
+    'Kontrola ognia': kontrolaOgnia, Klucz: klucz, Eskadra: eskadra }[nazwa];
+  if (f) return f(s, st, akcje);
   return h('div', h('div.slaby.maly-tekst', { style: 'margin-bottom:6px' }, 'Ten pulpit nie ma jeszcze mechaniki — widać układ do nauki.'),
     pulpit(wlasna(s).profil, nazwa, {}));
 }

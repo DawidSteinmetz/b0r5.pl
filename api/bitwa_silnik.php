@@ -51,7 +51,7 @@ function bitwa_slowniki(): array
             'nazwa' => $p['nazwa'], 'generatory' => (int) $p['generatory_oslon'], 'zyly' => (int) $p['zyly_oslon'],
             'siatka' => $p['siatka_kolumny'] !== null ? (int) $p['siatka_kolumny'] : null,
             'U0' => (float) $p['zyla_u0_v'], 'R0' => (float) $p['zyla_r0_ohm'], 'domyslnie_hz' => (int) $p['oslony_domyslnie_hz'],
-            'mysliwce' => (int) $p['mysliwce'], 'dlugosc_m' => (float) $p['dlugosc_m'], 'kadlub' => [],
+            'mysliwce' => (int) $p['mysliwce'], 'dlugosc_m' => (float) $p['dlugosc_m'], 'moc_reaktora_w' => (float) $p['moc_reaktora_w'], 'kadlub' => [],
         ];
     }
     foreach ($db->query('SELECT profil_kod, sekcja, udzial FROM profile_klas_kadlub')->fetchAll(PDO::FETCH_ASSOC) as $k) {

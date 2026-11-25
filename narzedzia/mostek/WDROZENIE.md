@@ -234,6 +234,9 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   Zasięg: radar 50 / 200 / 1000 km, pomiar Hz przez sensory (i automatyczne osłony) do 200 km, ekran skanu 1000 km.
   Stanowiska: przydział przez MG (z teleportem postaci na mostek) i kapitana (załoga na pokładzie), akcje
   `bitwa_stanowisko`, `bitwa_gracze`; gracz ze stanowiskiem widzi i obsługuje tylko swoje pulpity.
+- Pozostałe konsole (PULPITY 1c): Osłony, Reaktory, Myśliwce ze zbliżeniem klucza, Klucz, Eskadra, Nawigacja,
+  Kontrola ognia; powiększanie ekranów. Brakuje w silniku: ruch okrętu (Silniki, Nawigacja), broń okrętu
+  (Turbolasery, Kontrola ognia), walka klucz na klucz, energia i ciepło reaktora, grawitacja.
 - Ograniczenia: myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

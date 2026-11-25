@@ -2617,7 +2617,7 @@ export const UKLADY = {
     "W",
     6,
     2,
-    "skala: 50 km",
+    "skala: 12 km",
     1,
     1
    ],
@@ -2625,7 +2625,7 @@ export const UKLADY = {
     "W",
     7,
     2,
-    "skala: 200 km",
+    "skala: 30 km",
     1,
     1
    ],
@@ -2633,7 +2633,7 @@ export const UKLADY = {
     "W",
     8,
     2,
-    "skala: 1000 km",
+    "skala: 60 km",
     1,
     1
    ],
@@ -2681,7 +2681,7 @@ export const UKLADY = {
     "B",
     5,
     3,
-    "EKRAN RADARU · sylwetka ISD zawsze w środku · okręgi odległości 50 / 200 / 1000 km · wiązka omiatania · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski",
+    "EKRAN RADARU · sylwetka ISD zawsze w środku · bliski zasięg 12 km na bieżąco · średni do 60 km odświeżany wiązką · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski",
     5,
     5
    ],

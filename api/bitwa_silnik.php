@@ -176,7 +176,8 @@ function bitwa_stan_ze_scenariusza(array $sc, int $ziarno): array
         $S['jednostki'][] = ['nr' => $nr, 'strona' => $j['strona'], 'profil' => $j['profil_kod'], 'nazwa' => $j['nazwa'],
             'x' => (float) $j['x_km'], 'y' => (float) $j['y_km'], 'kurs' => (float) $j['kurs_deg'], 'v' => (float) $j['predkosc_km_s'],
             'wejscie' => (int) $j['wejscie_s'] + bitwa_rozrzut($ziarno, (int) $j['wejscie_rozrzut_s'], 'j', $nr),
-            'generatory' => $gen, 'sekcje' => array_fill_keys(array_keys($p['kadlub']), 100.0), 'stan' => 'w_bitwie',
+            'generatory' => $gen, 'sekcje' => array_fill_keys(array_keys($p['kadlub']), 100.0),
+            'stan' => (int) $j['wejscie_s'] + bitwa_rozrzut($ziarno, (int) $j['wejscie_rozrzut_s'], 'j', $nr) > 0 ? 'oczekuje' : 'w_bitwie',
             'obiekt_id' => $j['obiekt_id'] ?? null];
     }
     $strony = [];
@@ -379,6 +380,13 @@ function bitwa_krok(array &$S): void
 {
     $tik = $S['tik'];
     $prof = bitwa_rozkazy_profile();
+    // wyjście ze skoku (jak silnik.py): jednostka czekająca w nadprzestrzeni wchodzi do bitwy
+    foreach ($S['jednostki'] as $ji => $j) {
+        if ($j['stan'] === 'oczekuje' && $tik >= $j['wejscie']) {
+            $S['jednostki'][$ji]['stan'] = 'w_bitwie';
+            $S['zdarzenia'][] = ['tik' => $tik, 'rodzaj' => 'wejscie', 'opis' => "{$j['strona']}: {$j['nazwa']} wychodzi z nadprzestrzeni", 'wartosc' => null];
+        }
+    }
     $masz = bitwa_slowniki()['maszyny'];
     foreach (bitwa_aktywuj($S, $tik) as $i) {
         $w = $S['rozkazy'][$i];
@@ -445,6 +453,7 @@ function bitwa_krok(array &$S): void
         $S['klucze'][$ki] = $k;
     }
     foreach ($S['jednostki'] as $ji => $j) {
+        if ($j['stan'] !== 'w_bitwie') continue;
         $S['jednostki'][$ji]['x'] += $j['v'] * sin(bitwa_radiany($j['kurs']));
         $S['jednostki'][$ji]['y'] += $j['v'] * cos(bitwa_radiany($j['kurs']));
     }
@@ -468,7 +477,7 @@ function bitwa_krok(array &$S): void
     // osłony: odpływ obciążenia, AI osłon
     foreach (array_keys($S['jednostki']) as $ji) {
         foreach (array_keys($S['jednostki'][$ji]['generatory']) as $gi) $S['jednostki'][$ji]['generatory'][$gi]['obciazenie'] *= BITWA_STALE['odplyw_obciazenia'];
-        bitwa_ai_oslony($S, $tik, $ji);
+        if ($S['jednostki'][$ji]['stan'] === 'w_bitwie') bitwa_ai_oslony($S, $tik, $ji);
     }
     foreach (array_keys($S['klucze']) as $ki) {
         if ($S['klucze'][$ki]['stan'] === 'w_locie' && $S['klucze'][$ki]['ai']) bitwa_ai_klucza($S, $tik, $ki);

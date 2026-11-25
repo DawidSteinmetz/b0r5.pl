@@ -248,6 +248,23 @@ function bitwa_teleport_na_okret(array $gracz, int $okretId): void
     }
 }
 
+// Zasięg sensorów (migracja 073, opcjonalna): poziomy i koszt w porcjach — k · (zasięg / 1000 km)^1,618.
+const BITWA_ZASIEGI_SENSOROW = [1000, 3000, 10000, 30000];
+function bitwa_koszt_sensorow(int $km): float
+{
+    return round(0.245 * ($km / 1000) ** 1.618, 2);
+}
+
+function bitwa_sensory_dostepne(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT zasieg_sensorow_km FROM bitwy_jednostki LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
 // Migracje 070 i 072 (stan silnika, taśmociąg) — bez niej scenariusze i test działają, symulacje nie.
 function bitwa_silnik_gotowy(): bool
 {
@@ -447,7 +464,8 @@ function bitwa_wczytaj_stan(array $b): array
         if ($r['tasma_tik'] !== null) $S['tasma'][(int) $r['scenariusz_nr']] = (int) $r['tasma_tik'];
         $S['jednostki'][] = ['id' => $jid, 'nr' => (int) $r['scenariusz_nr'], 'strona' => $r['strona'], 'profil' => $r['profil_kod'], 'nazwa' => $r['nazwa'],
             'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'], 'kurs' => (float) $r['zwrot_deg'], 'v' => (float) $r['v_km_s'],
-            'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id']];
+            'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id'],
+            'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000)];
     }
     $indeksKlucza = [];
     $q = $db->prepare('SELECT * FROM bitwy_klucze WHERE bitwa_id=? ORDER BY id');
@@ -484,8 +502,10 @@ function bitwa_zapisz_stan(array $S): void
     $updZ = $db->prepare('UPDATE bitwy_zyly SET martwe=?, temperatury=? WHERE system_id=?');
     $updS = $db->prepare('UPDATE bitwy_sekcje SET integralnosc=? WHERE bitwa_jednostka_id=? AND sekcja=?');
     $idJednostki = [];
+    $updSens = bitwa_sensory_dostepne() ? $db->prepare('UPDATE bitwy_jednostki SET zasieg_sensorow_km=? WHERE id=?') : null;
     foreach ($S['jednostki'] as $j) {
         $idJednostki[$j['nr']] = $j['id'];
+        if ($updSens) $updSens->execute([(int) ($j['zasieg_sensorow'] ?? 1000), $j['id']]);
         $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $S['tasma'][$j['nr']] ?? null, $j['id']]);
         foreach ($j['generatory'] as $g) {
             $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['hz_min'], $g['hz_max'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
@@ -564,7 +584,10 @@ function bitwa_widok(array $b, array $S): array
         $c = bitwa_pojemnosc($p);
         $pobor = 0.0;
         foreach ($j['generatory'] as $g) $pobor += ($g['hz_osiagane'] ? bitwa_hz_skuteczne($g['zyly'], $g['hz_osiagane']) : 0) * bitwa_moc_zyly($p);
-        $jednostki[] = ['pobor_oslon_proc' => round(100 * $pobor / $p['moc_reaktora_w'], 2),'id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
+        $zasieg = (int) ($j['zasieg_sensorow'] ?? 1000);
+        $jednostki[] = ['pobor_oslon_proc' => round(100 * $pobor / $p['moc_reaktora_w'], 2), 'stan' => $j['stan'],
+            'wejscie_za_s' => $j['stan'] === 'oczekuje' ? round(max(0, $j['wejscie'] - $czas), 1) : null,
+            'zasieg_sensorow_km' => $zasieg, 'pobor_sensorow_proc' => bitwa_koszt_sensorow($zasieg), 'zasiegi_sensorow' => BITWA_ZASIEGI_SENSOROW,'id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
             'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000,
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
@@ -586,7 +609,7 @@ function bitwa_widok(array $b, array $S): array
         }
         $fig = bitwa_figura($S, $kan);
         $vKl = $sl['maszyny'][$k['typ']]['v'] * ($fig && $prof[$fig]['predkosc_mn'] !== null ? (float) $prof[$fig]['predkosc_mn'] : 1);
-        $klucze[] = ['hz' => (int) round(bitwa_hz_klucza($k)), 'kurs' => round($k['kurs'], 2), 'v' => round($vKl, 3), 'theta' => $fig && $prof[$fig]['theta_mn'] !== null ? (float) $prof[$fig]['theta_mn'] : 1.0,'id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
+        $klucze[] = ['z_zewnatrz' => $k['macierzysta'] === null, 'hz' => (int) round(bitwa_hz_klucza($k)), 'kurs' => round($k['kurs'], 2), 'v' => round($vKl, 3), 'theta' => $fig && $prof[$fig]['theta_mn'] !== null ? (float) $prof[$fig]['theta_mn'] : 1.0,'id' => $k['id'], 'strona' => $k['strona'], 'nr' => $k['nr'], 'typ' => $k['typ'], 'maszyna' => $sl['maszyny'][$k['typ']]['nazwa'] ?? $k['typ'],
             'maszyny' => $k['maszyny'], 'stan' => $k['stan'], 'ranga' => $k['ranga'], 'ai' => $k['ai'], 'akcje' => $k['akcje'],
             'x' => round($k['x'], 3), 'y' => round($k['y'], 3), 'figura' => $fig ? $prof[$fig]['nazwa'] : null, 'przygotowanie' => $przyg,
             'rozkaz' => $k['rozkaz'], 'rozkaz_nazwa' => $prof[$k['rozkaz']]['nazwa'] ?? $k['rozkaz'],
@@ -767,7 +790,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
             if ($b['status'] !== 'aktywna' || $b['pauza_od_utc'] !== null) blad('Symulacja nie trwa — rozkazy czekają na start lub koniec pauzy.');
             $st = bitwa_stanowiska_widok($u, $b);
             if (!$st['pelny']) {
-                $pulpitRozkazu = isset($w['klucz_id']) ? 'Myśliwce' : (string) ($w['pulpit'] ?? 'Osłony');
+                $pulpitRozkazu = isset($w['klucz_id']) ? 'Myśliwce' : (isset($w['jednostka_id']) ? 'Sensory' : (string) ($w['pulpit'] ?? 'Osłony'));
                 if (!in_array($pulpitRozkazu, $st['moje'], true) && !(isset($w['klucz_id']) && array_intersect(['Klucz', 'Eskadra'], $st['moje']))) {
                     blad("Ten rozkaz wydaje się z pulpitu {$pulpitRozkazu} — nie masz go przydzielonego.", 403);
                 }
@@ -797,6 +820,17 @@ function obsluz_bitwa(string $akcja, bool $post): void
                         return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
                     }
                     return ['odmowa' => 'Nie ma takiego klucza.'];
+                }
+                if (isset($w['jednostka_id']) && $kod === 'sensory_zasieg') {
+                    if (!bitwa_sensory_dostepne()) return ['odmowa' => 'Zasięg sensorów wymaga migracji 073.'];
+                    $km = (int) ($w['zasieg_km'] ?? 0);
+                    if (!in_array($km, BITWA_ZASIEGI_SENSOROW, true)) return ['odmowa' => 'Nieznany poziom zasięgu sensorów.'];
+                    foreach ($S['jednostki'] as $ji => $j) {
+                        if ($j['id'] !== (int) $w['jednostka_id']) continue;
+                        $S['jednostki'][$ji]['zasieg_sensorow'] = $km;
+                        return ['ok' => true, 'koszt_porcje' => bitwa_koszt_sensorow($km)];
+                    }
+                    return ['odmowa' => 'Nie ma takiej jednostki.'];
                 }
                 foreach ($S['jednostki'] as $ji => $j) {
                     foreach ($j['generatory'] as $gi => $g) {

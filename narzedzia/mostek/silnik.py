@@ -168,6 +168,8 @@ def utworz(scenariusz_kod, ziarno):
         stan['jednostki'].append({'nr': nr, 'strona': strona, 'profil': prof, 'nazwa': nazwa, 'x': float(x), 'y': float(y),
                                   'kurs': float(kurs), 'v': float(v), 'wejscie': wej + rozrzut(ziarno, wej_r, 'j', nr),
                                   'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie'})
+        # wyjście ze skoku później: jednostka czeka w nadprzestrzeni (sensory widzą jej zmarszczkę), nie walczy, nie leci
+        if stan['jednostki'][-1]['wejscie'] > 0: stan['jednostki'][-1]['stan'] = 'oczekuje'
     numery = {}
     # kolejność kluczy: strona, fala, typ maszyny (jak ORDER BY w PHP — tabela nie pamięta kolejności wpisów)
     for fala, strona, jedn_nr, typ, n, start, start_r, x, y, rozkaz in sorted(s['klucze'], key=lambda kl: (kl[1], kl[0], kl[3])):
@@ -321,6 +323,10 @@ def ai_klucza(stan, tik, k):
 def krok(stan):
     """Jeden tik: rozkazy → ruch → ogień → straty → zdarzenia (MECHANIKA 1)."""
     tik = stan['tik']
+    for j in stan['jednostki']:
+        if j['stan'] == 'oczekuje' and tik >= j['wejscie']:
+            j['stan'] = 'w_bitwie'
+            stan['zdarzenia'].append((tik, 'wejscie', j['strona'], j['nazwa']))
     for w in aktywuj_rozkazy(stan, tik):
         if w['klucz'] is not None:                       # akcja NPC: figura lub rozkaz zaczął działać → XP (W7)
             k = w['klucz']
@@ -365,6 +371,7 @@ def krok(stan):
         k['x'] += v * math.sin(radiany(k['kurs']))
         k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
+        if j['stan'] != 'w_bitwie': continue
         j['x'] += j['v'] * math.sin(radiany(j['kurs']))
         j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów
@@ -385,7 +392,7 @@ def krok(stan):
     for j in stan['jednostki']:
         for g in j['generatory']:
             g['obciazenie'] *= STALE['odplyw_obciazenia']
-        ai_oslony(stan, tik, j)
+        if j['stan'] == 'w_bitwie': ai_oslony(stan, tik, j)
     for k in stan['klucze']:
         if k['stan'] == 'w_locie' and k['ai']: ai_klucza(stan, tik, k)
     stan['tik'] = tik + 1

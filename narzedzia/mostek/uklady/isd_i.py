@@ -226,8 +226,8 @@ UKLADY['Nawigacja'] = suwaki('suwak: maksymalna prędkość kątowa skrętu w le
     ('Y', 5, 9, 'suwak: ciąg główny (prędkość zadana)', 5, 1),
 ]
 
-# Radar: obraz sytuacji na polu bitwy, nie sterowanie. Ekran 5×5 na środku (sylwetka ISD w centrum, okręgi w skali
-# 50 / 200 / 1000 km) otoczony ramką przycisków jak luneta: filtry kontaktów po bokach, sektory i skale
+# Radar: obraz sytuacji na polu bitwy, nie sterowanie. Ekran 5×5 na środku (sylwetka ISD w centrum; do 12 km obraz na
+# bieżąco, 12–60 km odświeżany przejściem wiązki; dalej — Sensory) otoczony ramką przycisków jak luneta: filtry kontaktów po bokach, sektory i skale
 # nad i pod ekranem; na zewnątrz listy zagrożeń każdej burty.
 UKLADY['Radar'] = suwaki('suwak: maksymalny zasięg radaru', 'suwak: minimalny zasięg (tłumienie bliskich ech)',
                          'suwak: maksymalna czułość odbiornika', 'suwak: minimalna czułość (próg szumu)') + [
@@ -235,11 +235,11 @@ UKLADY['Radar'] = suwaki('suwak: maksymalny zasięg radaru', 'suwak: minimalny z
     ('Y', 3, 1, 'suwak: moc nadajnika'), ('Y', 11, 1, 'suwak: wzmocnienie odbiornika'),
     ('G', 6, 1, 'synchronizacja z sensorami (dane skanu, Hz celów)'), ('G', 8, 1, 'synchronizacja z nawigacją (kurs i prędkość własna)'),
     ('Y', 7, 1, 'suwak: tempo omiatania'),
-    ('W', 5, 2, 'sektor dziobowy lewej burty'), ('W', 6, 2, 'skala: 50 km'), ('W', 7, 2, 'skala: 200 km'),
-    ('W', 8, 2, 'skala: 1000 km'), ('W', 9, 2, 'sektor dziobowy prawej burty'),
+    ('W', 5, 2, 'sektor dziobowy lewej burty'), ('W', 6, 2, 'skala: 12 km'), ('W', 7, 2, 'skala: 30 km'),
+    ('W', 8, 2, 'skala: 60 km'), ('W', 9, 2, 'sektor dziobowy prawej burty'),
     ('B', 2, 2, 'odczyt: kontakty obce'), ('B', 12, 2, 'odczyt: kontakty własne'),
     ('Y', 3, 2, 'suwak: próg alarmu zbliżenia'), ('Y', 11, 2, 'suwak: próg alarmu kursu kolizyjnego'),
-    ('B', 5, 3, 'EKRAN RADARU · sylwetka ISD zawsze w środku · okręgi odległości 50 / 200 / 1000 km · wiązka omiatania · '
+    ('B', 5, 3, 'EKRAN RADARU · sylwetka ISD zawsze w środku · bliski zasięg 12 km na bieżąco · średni do 60 km odświeżany wiązką · '
                 'kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski', 5, 5),
     ('W', 4, 3, 'filtr: własne'), ('W', 10, 3, 'filtr: obce'),
     ('B', 2, 3, 'LISTA ZAGROŻEŃ LEWEJ BURTY · namiar, odległość, czas do zasięgu ognia', 2, 4),

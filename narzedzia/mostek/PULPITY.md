@@ -83,12 +83,17 @@ także opisy na ekranach. Każdy pulpit klasy da się otworzyć; bez mechaniki w
 z kopułami osłon), MC80 (ostry dziób, wąski kadłub, skrzydła z wklęsłą krawędzią natarcia, odchylone do rufy);
 własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ekranie.
 
-- **Radar** — ekran (okręt w środku, okręgi ¼, ½ i całość skali, wiązka omiatania, kontakty swój/obcy, tory, prognozy
-  30 s, Hz celów przy synchronizacji z sensorami), skale 50 / 200 / 1000 km, sektory, filtry, listy zagrożeń burt
-  (namiar od dziobu, odległość, czas do zasięgu ognia), alarm zbliżenia z progiem, oznacz / śledź kontakt, kasuj ślady,
-  zamroź obraz, „wyślij namiar zagrożenia do osłon” — każda burta: preset Hz (3 s) do stopnia ≥ Hz zagrożeń tej burty.
-- **Sensory** — ekran skanu 1000 km (Hz celów w zasięgu sensorów 200 km — jak pomiar automatycznych osłon), widmo Hz grup celów
-  z liniami Hz osłon, wybór grupy, „wyślij Hz celu do konsoli osłon” (preset obu generatorów), SKANUJ, filtr kontaktów.
+- **Radar** (25.11.2026) — do **12 km obraz na bieżąco** (kontakty płyną, ogony torów), **12–60 km echo**: kontakt
+  widać w pozycji z chwili, gdy nad jego namiarem przeszła wiązka, i odświeża się dopiero przy następnym przejściu;
+  dalej radar nie sięga. Skale 12 / 30 / 60 km, granice stref jako przerywane okręgi. Sektory, filtry, listy zagrożeń
+  burt (z tego, co wie radar), alarm zbliżenia, oznacz / śledź, kasuj ślady, zamroź obraz; „wyślij namiar zagrożenia
+  do osłon” używa Hz zmierzonych wcześniej przez sensory.
+- **Sensory** — skan **od 60 km wzwyż** do zasięgu ustawionego mocą sensorów (1000 / 3000 / 10 000 / 30 000 km;
+  koszt k · (zasięg / 1000 km)^1,618 porcji, k = 0,245: 0,25 / 1,4 / 10 / 60 porcji — widać go też na Reaktorach),
+  odświeżany własną wiązką (obrót 20 s). Wnętrze 60 km to strefa radaru (zaciemnione). **Zmarszczki nadprzestrzeni**:
+  jednostka przed wyjściem ze skoku (silnik: stan „oczekuje” do chwili wejścia) widoczna dobrze, z czasem do wyjścia
+  i elipsą niepewności malejącą z czasem obserwacji; klucze z zewnątrz — słabo, tylko w połowie zasięgu. Hz celów
+  mierzone w skanie zostają w pamięci konsoli (widmo Hz, „wyślij Hz do osłon”, Hz na radarze po synchronizacji).
 - **Osłony** — ekrany żył obu generatorów (lampka = żyła: świeci przy n mod (N/f) = 0, martwa ciemnoczerwona), Hz
   osiągane / skuteczne, obciążenie, martwe żyły; pod ekranem ◀ Hz ▶, USTAW (przestrojenie ręczne 12 s) i AUTO; szare
   suwaki = zakres trybu automatycznego (górna połowa — maksimum, dolna — minimum); „wyrównaj osłony” — oba na auto.

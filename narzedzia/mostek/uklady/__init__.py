@@ -1,15 +1,23 @@
 """Układy pulpitów jako dane, osobno dla każdej klasy: {kod_profilu: {nazwa_pulpitu: [elementy]}}."""
 import importlib
 
-KLASY = {'ISD_I': 'uklady.isd_i', 'MC80': 'uklady.mc80'}
+# Aktualne układy klasy. ISD I: wariant „Walako” (poprawiony przez użytkownika); poprzedni wariant w uklady/isd_i.py —
+# powrót: 'ISD_I': 'uklady.isd_i'. Wariant można też podać nazwą modułu, np. `python pulpity_ods.py isd_i stare.ods`.
+KLASY = {'ISD_I': 'uklady.isd_i_walako', 'MC80': 'uklady.mc80'}
+
+
+def _modul(klasa):
+    if klasa in KLASY: return importlib.import_module(KLASY[klasa])
+    try:
+        return importlib.import_module('uklady.' + klasa)
+    except ModuleNotFoundError:
+        raise SystemExit(f'nieznana klasa lub wariant {klasa}; klasy: {", ".join(KLASY)}')
 
 
 def uklady(klasa):
-    if klasa not in KLASY:
-        raise SystemExit(f'nieznana klasa {klasa}; dostępne: {", ".join(KLASY)}')
-    return importlib.import_module(KLASY[klasa]).UKLADY
+    return _modul(klasa).UKLADY
 
 
 def format_pulpitu(klasa, nazwa):
     """'pulpit' (13×9, komputer i tablet) albo 'telefon' (5×9) — z FORMATY modułu klasy, domyślnie 'pulpit'."""
-    return getattr(importlib.import_module(KLASY[klasa]), 'FORMATY', {}).get(nazwa, 'pulpit')
+    return getattr(_modul(klasa), 'FORMATY', {}).get(nazwa, 'pulpit')

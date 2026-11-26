@@ -12,13 +12,14 @@ Wszystko o pulpitach mostka (konsolach okrętów) w jednym miejscu.
 | [profile_klas.py](profile_klas.py) | profile klas jako dane — jedyne miejsce z liczbami zależnymi od klasy |
 | [mechanika.py](mechanika.py) | wzory wspólne w kodzie; `python mechanika.py` przelicza liczby z dokumentacji dla każdej klasy |
 | [siatka.py](siatka.py) | język pulpitów: stałe siatki, kolory, suwaki zakresu, kontrola nakładania i symetrii |
-| [uklady/](uklady/) | układy pulpitów jako dane, plik na klasę (`isd_i.py` — 10 pulpitów i 2 ekrany telefonu, `mc80.py` — puste) |
+| [uklady/](uklady/) | układy pulpitów jako dane, plik na klasę; ISD I: `isd_i_walako.py` (aktualny, poprawiony przez użytkownika w ODS), `isd_i.py` (poprzedni, do powrotu); `mc80.py` — puste |
 | [dane/](dane/) | dane mechaniki: typy maszyn (`maszyny.py`), czas wykonania rozkazów (`rozkazy.py`), scenariusze bitew (`scenariusze.py`) |
 | [silnik.py](silnik.py) | silnik wzorcowy bitwy (Python): zegar, losowość z ziarna, rozkazy z czasem wykonania, osłony z żyłami, ogień kluczy, kadłub, XP; `python silnik.py walako_klucze 1` rozgrywa scenariusz bez graczy |
 | [test_silnik.py](test_silnik.py) | testy silnika; `--php` zapisuje wektory `api/bitwa_wektory.php` dla portu PHP (`api/bitwa.php`, akcja `bitwa_test`) |
 | [dane_sql.py](dane_sql.py) | generator migracji `api/migracje/069_mostek_dane.sql` z profili i `dane/` (z kontrolą spójności) |
 | [pulpity_js.py](pulpity_js.py) | eksport układów do `js/aplikacje/pulpity_uklady.js` — konsole w grze rysowane z tych samych danych co arkusz i wydruk |
 | [pulpity_ods.py](pulpity_ods.py) | generator arkusza ODS |
+| [pulpity_z_ods.py](pulpity_z_ods.py) | wczytanie układów z arkusza ODS do `uklady/` (kolor tła → typ, scalenie → rozmiar) |
 | [pulpity_podglad.py](pulpity_podglad.py) | generator podglądu HTML |
 | [ods_model.py](ods_model.py) | odczyt arkusza ODS (komórki, kolory, scalenia) — do porównań z arkuszem użytkownika |
 
@@ -32,9 +33,13 @@ python dane_sql.py [--sprawdz]
 python pulpity_js.py
 python pulpity_ods.py ISD_I pulpity_isd.ods --zrodlo ../../Pulpity_ISD_2_uklad_konsol.ods
 python pulpity_ods.py ISD_I pulpity_isd.ods
+python pulpity_ods.py isd_i stare_pulpity.ods          # poprzedni wariant ISD I
+python pulpity_z_ods.py wydruk/pulpity_ISD_I.ods isd_i_walako   # arkusz → uklady/isd_i_walako.py
 python pulpity_podglad.py ISD_I podglad.html [Osłony Reaktory ...]
 python ods_model.py arkusz.ods
 ```
+
+Powrót do poprzednich układów ISD I: w `uklady/__init__.py` ustaw `'ISD_I': 'uklady.isd_i'` i uruchom `pulpity_js.py`.
 
 Z `--zrodlo` arkusze pulpitów są podmieniane, a arkusze dokumentacji („Warstwy UI”, „Reguły i profile”) przechodzą
 bez zmian — tak powstał `Pulpity_ISD_2_uklad_konsol_ujednolicone.ods` (generator odtwarza go 1:1). Pliki ODS

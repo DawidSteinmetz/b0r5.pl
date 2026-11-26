@@ -17,6 +17,22 @@ export const UKLADY = {
     "suwak: minimalna częstotliwość lewego generatora osłon"
    ],
    [
+    "B",
+    2,
+    1,
+    "GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
+    5,
+    5
+   ],
+   [
+    "B",
+    8,
+    1,
+    "GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
+    5,
+    5
+   ],
+   [
     "S",
     13,
     1,
@@ -26,82 +42,10 @@ export const UKLADY = {
     "suwak: minimalna częstotliwość prawego generatora osłon"
    ],
    [
-    "R",
-    2,
-    1,
-    "wzmocnij górne osłony lewej burty",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij górne osłony prawej burty",
-    1,
-    1
-   ],
-   [
-    "Y",
-    3,
-    1,
-    "suwak: stopień pokrycia granic górnej osłony lewej burty",
-    1,
-    1
-   ],
-   [
-    "Y",
-    11,
-    1,
-    "suwak: stopień pokrycia granic górnej osłony prawej burty",
-    1,
-    1
-   ],
-   [
     "Y",
     7,
-    1,
+    2,
     "suwak: stopień pokrycia granic osłony dziobowej",
-    1,
-    1
-   ],
-   [
-    "R",
-    2,
-    2,
-    "wzmocnij dolne osłony lewej burty",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    2,
-    "wzmocnij dolne osłony prawej burty",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    2,
-    "GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
-    4,
-    4
-   ],
-   [
-    "B",
-    8,
-    2,
-    "GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
-    4,
-    4
-   ],
-   [
-    "R",
-    7,
-    2,
-    "wzmocnij osłony dziobowe",
     1,
     1
    ],
@@ -114,34 +58,50 @@ export const UKLADY = {
     1
    ],
    [
-    "R",
+    "W",
     7,
     4,
-    "wzmocnij osłonę hangaru",
+    "równaj częstotliwość z reaktorem",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    5,
+    "wzmocnij osłony dziobowe",
     1,
     1
    ],
    [
     "G",
     2,
-    5,
+    6,
     "synchronizacja z lewą baterią turbolaserów",
     1,
     1
    ],
    [
     "G",
-    12,
-    5,
-    "synchronizacja z prawą baterią turbolaserów",
+    3,
+    6,
+    "synchronizacja z lewym promieniem ściągającym",
     1,
     1
    ],
    [
     "Y",
-    7,
-    5,
-    "suwak: stopień pokrycia granic osłony hangarów",
+    4,
+    6,
+    "suwak: stopień pokrycia granic dolnej osłony lewej burty",
+    1,
+    1
+   ],
+   [
+    "R",
+    6,
+    6,
+    "wzmocnij górne osłony lewej burty",
     1,
     1
    ],
@@ -149,23 +109,39 @@ export const UKLADY = {
     "R",
     7,
     6,
-    "wzmocnij osłony rufowe",
+    "wzmocnij osłonę hangaru",
     1,
     1
    ],
    [
-    "Y",
-    3,
+    "R",
+    8,
     6,
-    "suwak: stopień pokrycia granic dolnej osłony lewej burty",
+    "wzmocnij górne osłony prawej burty",
     1,
     1
    ],
    [
     "Y",
-    11,
+    10,
     6,
     "suwak: stopień pokrycia granic dolnej osłony prawej burty",
+    1,
+    1
+   ],
+   [
+    "G",
+    11,
+    6,
+    "synchronizacja z prawym promieniem ściągającym",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    6,
+    "synchronizacja z prawą baterią turbolaserów",
     1,
     1
    ],
@@ -179,49 +155,81 @@ export const UKLADY = {
    ],
    [
     "G",
-    12,
+    3,
     7,
-    "synchronizacja osłony rufowej z prawym silnikiem głównym",
-    1,
-    1
-   ],
-   [
-    "G",
-    6,
-    7,
-    "synchronizacja z lewym promieniem ściągającym",
-    1,
-    1
-   ],
-   [
-    "G",
-    8,
-    7,
-    "synchronizacja z prawym promieniem ściągającym",
+    "synchronizacja osłony rufowej z lewymi silnikami manewrowymi",
     1,
     1
    ],
    [
     "Y",
+    4,
     7,
+    "suwak: stopień pokrycia granic górnej osłony lewej burty",
+    1,
+    1
+   ],
+   [
+    "Y",
+    5,
     7,
     "suwak: stopień pokrycia granic osłony rufowej",
     1,
     1
    ],
    [
-    "W",
+    "R",
+    6,
     7,
+    "wzmocnij dolne osłony lewej burty",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    7,
+    "wzmocnij osłony rufowe",
+    1,
+    1
+   ],
+   [
+    "R",
     8,
-    "równaj częstotliwość z reaktorem",
+    7,
+    "wzmocnij dolne osłony prawej burty",
+    1,
+    1
+   ],
+   [
+    "Y",
+    9,
+    7,
+    "suwak: stopień pokrycia granic osłony hangarów",
+    1,
+    1
+   ],
+   [
+    "Y",
+    10,
+    7,
+    "suwak: stopień pokrycia granic górnej osłony prawej burty",
     1,
     1
    ],
    [
     "G",
+    11,
     7,
-    9,
-    "synchronizacja osłony rufowej ze środkowym silnikiem głównym",
+    "synchronizacja osłony rufowej z prawymi silnikami manewrowymi",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    7,
+    "synchronizacja osłony rufowej z prawym silnikiem głównym",
     1,
     1
    ]
@@ -237,6 +245,94 @@ export const UKLADY = {
     "suwak: minimalna częstotliwość lewej baterii turbolaserów"
    ],
    [
+    "G",
+    2,
+    1,
+    "synchronizacja lewych PDLC z konsolą myśliwców (IFF)",
+    1,
+    1
+   ],
+   [
+    "G",
+    3,
+    1,
+    "synchronizacja lewej baterii z lewym generatorem osłon",
+    1,
+    1
+   ],
+   [
+    "G",
+    4,
+    1,
+    "synchronizacja lewej baterii z kontrolą ognia",
+    1,
+    1
+   ],
+   [
+    "R",
+    5,
+    1,
+    "wzmocnij lewą baterię turbolaserów",
+    1,
+    1
+   ],
+   [
+    "R",
+    6,
+    1,
+    "wzmocnij lewe przednie działka PDLC",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    1,
+    "wzmocnij dziobowe działka PDLC",
+    1,
+    1
+   ],
+   [
+    "R",
+    8,
+    1,
+    "wzmocnij prawe przednie działka PDLC",
+    1,
+    1
+   ],
+   [
+    "R",
+    9,
+    1,
+    "wzmocnij prawą baterię turbolaserów",
+    1,
+    1
+   ],
+   [
+    "G",
+    10,
+    1,
+    "synchronizacja prawej baterii z kontrolą ognia",
+    1,
+    1
+   ],
+   [
+    "G",
+    11,
+    1,
+    "synchronizacja prawej baterii z prawym generatorem osłon",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    1,
+    "synchronizacja prawych PDLC z konsolą myśliwców (IFF)",
+    1,
+    1
+   ],
+   [
     "S",
     13,
     1,
@@ -246,281 +342,209 @@ export const UKLADY = {
     "suwak: minimalna częstotliwość prawej baterii turbolaserów"
    ],
    [
-    "R",
-    2,
-    1,
-    "wzmocnij lewe przednie działka PDLC",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij prawe przednie działka PDLC",
-    1,
-    1
-   ],
-   [
-    "Y",
-    3,
-    1,
-    "suwak: kąt pokrycia lewych przednich działek PDLC",
-    1,
-    1
-   ],
-   [
-    "Y",
-    11,
-    1,
-    "suwak: kąt pokrycia prawych przednich działek PDLC",
-    1,
-    1
-   ],
-   [
     "B",
-    6,
-    1,
-    "Turbolaser lewy 1 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "B",
-    8,
-    1,
-    "Turbolaser prawy 1 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "Y",
-    7,
-    1,
-    "suwak: kąt pokrycia dziobowych działek PDLC",
-    1,
-    1
-   ],
-   [
-    "R",
     2,
     2,
-    "wzmocnij lewą baterię turbolaserów",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    2,
-    "wzmocnij prawą baterię turbolaserów",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    3,
     "WYBRANA BATERIA LEWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz",
-    3,
-    3
-   ],
-   [
-    "B",
-    9,
-    3,
-    "WYBRANA BATERIA PRAWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz",
-    3,
-    3
+    4,
+    4
    ],
    [
     "R",
-    7,
-    2,
-    "wzmocnij dziobowe działka PDLC",
-    1,
-    1
-   ],
-   [
-    "B",
     6,
-    3,
-    "Turbolaser lewy 2 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "B",
-    8,
-    3,
-    "Turbolaser prawy 2 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "Y",
-    7,
-    3,
-    "suwak: kąt pokrycia dolnych działek PDLC",
-    1,
-    1
-   ],
-   [
-    "G",
     2,
-    4,
-    "synchronizacja lewej baterii z kontrolą ognia",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    4,
-    "synchronizacja prawej baterii z kontrolą ognia",
-    1,
-    1
-   ],
-   [
-    "R",
-    7,
-    4,
-    "wzmocnij dolne działka PDLC",
-    1,
-    1
-   ],
-   [
-    "G",
-    2,
-    5,
-    "synchronizacja lewej baterii z lewym generatorem osłon",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    5,
-    "synchronizacja prawej baterii z prawym generatorem osłon",
-    1,
-    1
-   ],
-   [
-    "B",
-    6,
-    5,
-    "Turbolaser lewy 3 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "B",
-    8,
-    5,
-    "Turbolaser prawy 3 (8 luf)",
-    1,
-    2
-   ],
-   [
-    "W",
-    7,
-    5,
-    "wyrównaj baterie",
-    1,
-    1
-   ],
-   [
-    "R",
-    2,
-    6,
     "wzmocnij lewe boczne działka PDLC",
     1,
     1
    ],
    [
     "R",
-    12,
-    6,
+    7,
+    2,
+    "wzmocnij dolne działka PDLC",
+    1,
+    1
+   ],
+   [
+    "R",
+    8,
+    2,
     "wzmocnij prawe boczne działka PDLC",
     1,
     1
    ],
    [
-    "Y",
-    3,
-    7,
-    "suwak: kąt pokrycia lewych bocznych działek PDLC",
-    1,
-    1
+    "B",
+    9,
+    2,
+    "WYBRANA BATERIA PRAWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz",
+    4,
+    4
    ],
    [
-    "Y",
-    11,
-    7,
-    "suwak: kąt pokrycia prawych bocznych działek PDLC",
+    "W",
+    6,
+    3,
+    "wyrównaj baterie",
     1,
     1
    ],
    [
     "R",
     7,
-    6,
+    3,
     "wzmocnij rufowe działka PDLC",
     1,
     1
    ],
    [
-    "G",
-    2,
-    7,
-    "synchronizacja lewych PDLC z konsolą myśliwców (IFF)",
+    "W",
+    8,
+    3,
+    "równaj częstotliwość z reaktorem",
     1,
     1
    ],
    [
-    "G",
-    12,
+    "Y",
+    6,
+    4,
+    "suwak: kąt pokrycia lewych przednich działek PDLC",
+    1,
+    1
+   ],
+   [
+    "Y",
     7,
-    "synchronizacja prawych PDLC z konsolą myśliwców (IFF)",
+    4,
+    "suwak: kąt pokrycia dziobowych działek PDLC",
+    1,
+    1
+   ],
+   [
+    "Y",
+    8,
+    4,
+    "suwak: kąt pokrycia prawych przednich działek PDLC",
+    1,
+    1
+   ],
+   [
+    "Y",
+    6,
+    5,
+    "suwak: kąt pokrycia lewych bocznych działek PDLC",
+    1,
+    1
+   ],
+   [
+    "Y",
+    7,
+    5,
+    "suwak: kąt pokrycia dolnych działek PDLC",
+    1,
+    1
+   ],
+   [
+    "Y",
+    8,
+    5,
+    "suwak: kąt pokrycia prawych bocznych działek PDLC",
+    1,
+    1
+   ],
+   [
+    "B",
+    2,
+    6,
+    "Turbolaser lewy 4 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    3,
+    6,
+    "Turbolaser lewy 3 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    6,
+    "Turbolaser lewy 2 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    6,
+    "Turbolaser lewy 1 (8 luf)",
     1,
     1
    ],
    [
     "B",
     6,
-    7,
-    "Turbolaser lewy 4 (8 luf)",
+    6,
+    "Lewa bateria jonowa",
     1,
-    2
-   ],
-   [
-    "B",
-    8,
-    7,
-    "Turbolaser prawy 4 (8 luf)",
-    1,
-    2
+    1
    ],
    [
     "Y",
     7,
-    7,
+    6,
     "suwak: kąt pokrycia rufowych działek PDLC",
     1,
     1
    ],
    [
-    "W",
-    7,
+    "B",
     8,
-    "równaj częstotliwość z reaktorem",
+    6,
+    "Prawa bateria jonowa",
+    1,
+    1
+   ],
+   [
+    "B",
+    9,
+    6,
+    "Turbolaser prawy 1 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    6,
+    "Turbolaser prawy 2 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    6,
+    "Turbolaser prawy 3 (8 luf)",
+    1,
+    1
+   ],
+   [
+    "B",
+    12,
+    6,
+    "Turbolaser prawy 4 (8 luf)",
     1,
     1
    ],
    [
     "G",
     7,
-    9,
+    7,
     "synchronizacja z konsolą sensorów (Hz celów)",
     1,
     1
@@ -537,27 +561,10 @@ export const UKLADY = {
     "suwak: minimalny ciąg lewego silnika głównego"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalny ciąg prawego silnika głównego",
-    1,
-    7,
-    "suwak: minimalny ciąg prawego silnika głównego"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij lewy górny silnik manewrowy",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij prawy górny silnik manewrowy",
     1,
     1
    ],
@@ -570,20 +577,36 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    11,
-    1,
-    "suwak: ciąg prawego górnego silnika manewrowego",
-    1,
-    1
-   ],
-   [
     "B",
     4,
     1,
     "Silnik manewrowy lewy górny",
     2,
     2
+   ],
+   [
+    "Y",
+    6,
+    1,
+    "suwak: trym pochylenia (silniki manewrowe)",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    1,
+    "wzmocnij wszystkie silniki manewrowe",
+    1,
+    1
+   ],
+   [
+    "Y",
+    8,
+    1,
+    "suwak: trym odchylenia (silniki manewrowe)",
+    1,
+    1
    ],
    [
     "B",
@@ -595,17 +618,42 @@ export const UKLADY = {
    ],
    [
     "Y",
-    7,
+    11,
     1,
-    "suwak: trym pochylenia (silniki manewrowe)",
+    "suwak: ciąg prawego górnego silnika manewrowego",
     1,
     1
+   ],
+   [
+    "R",
+    12,
+    1,
+    "wzmocnij prawy górny silnik manewrowy",
+    1,
+    1
+   ],
+   [
+    "S",
+    13,
+    1,
+    "suwak: maksymalny ciąg prawego silnika głównego",
+    1,
+    7,
+    "suwak: minimalny ciąg prawego silnika głównego"
    ],
    [
     "Y",
     3,
     2,
     "suwak: wychylenie dyszy lewego górnego silnika manewrowego",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    2,
+    "wzmocnij środkowy silnik główny",
     1,
     1
    ],
@@ -618,26 +666,10 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    7,
-    2,
-    "suwak: trym odchylenia (silniki manewrowe)",
-    1,
-    1
-   ],
-   [
     "G",
     2,
     3,
     "synchronizacja lewych silników manewrowych z lewym silnikiem głównym",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    3,
-    "synchronizacja prawych silników manewrowych z prawym silnikiem głównym",
     1,
     1
    ],
@@ -650,6 +682,22 @@ export const UKLADY = {
     3
    ],
    [
+    "W",
+    6,
+    3,
+    "wyrównaj ciąg silników",
+    1,
+    1
+   ],
+   [
+    "W",
+    8,
+    3,
+    "równaj ciąg z mocą reaktora",
+    1,
+    1
+   ],
+   [
     "B",
     9,
     3,
@@ -658,10 +706,10 @@ export const UKLADY = {
     3
    ],
    [
-    "R",
-    7,
+    "G",
+    12,
     3,
-    "wzmocnij wszystkie silniki manewrowe",
+    "synchronizacja prawych silników manewrowych z prawym silnikiem głównym",
     1,
     1
    ],
@@ -674,6 +722,30 @@ export const UKLADY = {
     1
    ],
    [
+    "G",
+    6,
+    4,
+    "synchronizacja lewego silnika głównego ze środkowym",
+    1,
+    1
+   ],
+   [
+    "Y",
+    7,
+    4,
+    "suwak: ciąg środkowego silnika głównego",
+    1,
+    1
+   ],
+   [
+    "G",
+    8,
+    4,
+    "synchronizacja prawego silnika głównego ze środkowym",
+    1,
+    1
+   ],
+   [
     "R",
     12,
     4,
@@ -682,20 +754,12 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    7,
-    4,
-    "wyrównaj ciąg silników",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
+    "B",
+    6,
     5,
-    "równaj ciąg z mocą reaktora",
-    1,
-    1
+    "Silnik główny środkowy",
+    3,
+    3
    ],
    [
     "R",
@@ -706,26 +770,10 @@ export const UKLADY = {
     1
    ],
    [
-    "R",
-    12,
-    6,
-    "wzmocnij prawy dolny silnik manewrowy",
-    1,
-    1
-   ],
-   [
     "Y",
     3,
     6,
     "suwak: ciąg lewego dolnego silnika manewrowego",
-    1,
-    1
-   ],
-   [
-    "Y",
-    11,
-    6,
-    "suwak: ciąg prawego dolnego silnika manewrowego",
     1,
     1
    ],
@@ -746,10 +794,18 @@ export const UKLADY = {
     2
    ],
    [
-    "R",
-    7,
+    "Y",
+    11,
     6,
-    "wzmocnij środkowy silnik główny",
+    "suwak: ciąg prawego dolnego silnika manewrowego",
+    1,
+    1
+   ],
+   [
+    "R",
+    12,
+    6,
+    "wzmocnij prawy dolny silnik manewrowy",
     1,
     1
    ],
@@ -758,14 +814,6 @@ export const UKLADY = {
     2,
     7,
     "synchronizacja lewego silnika głównego z osłoną rufową",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    7,
-    "synchronizacja prawego silnika głównego z osłoną rufową",
     1,
     1
    ],
@@ -787,35 +835,11 @@ export const UKLADY = {
    ],
    [
     "G",
-    6,
+    12,
     7,
-    "synchronizacja lewego silnika głównego ze środkowym",
+    "synchronizacja prawego silnika głównego z osłoną rufową",
     1,
     1
-   ],
-   [
-    "G",
-    8,
-    7,
-    "synchronizacja prawego silnika głównego ze środkowym",
-    1,
-    1
-   ],
-   [
-    "Y",
-    7,
-    7,
-    "suwak: ciąg środkowego silnika głównego",
-    1,
-    1
-   ],
-   [
-    "B",
-    6,
-    8,
-    "Silnik główny środkowy",
-    3,
-    2
    ]
   ],
   "Reaktory": [
@@ -829,27 +853,10 @@ export const UKLADY = {
     "suwak: minimalna moc reaktora pomocniczego uzbrojenia"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalne obciążenie głównego generatora mocy",
-    1,
-    7,
-    "suwak: minimalne obciążenie głównego generatora mocy"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij reaktor pomocniczy uzbrojenia",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij główny generator mocy",
     1,
     1
    ],
@@ -871,6 +878,30 @@ export const UKLADY = {
    ],
    [
     "Y",
+    5,
+    1,
+    "suwak: przydział mocy dla silników jonowych",
+    1,
+    1
+   ],
+   [
+    "B",
+    6,
+    1,
+    "Przedni reaktor pomocniczy",
+    3,
+    1
+   ],
+   [
+    "Y",
+    9,
+    1,
+    "suwak: moc przedniego reaktora pomocniczego",
+    1,
+    1
+   ],
+   [
+    "Y",
     10,
     1,
     "suwak: częstotliwość wyjściowa generatora",
@@ -887,41 +918,26 @@ export const UKLADY = {
    ],
    [
     "R",
-    5,
+    12,
     1,
-    "wzmocnij przedni reaktor pomocniczy",
-    1,
-    1
-   ],
-   [
-    "Y",
-    9,
-    1,
-    "suwak: moc przedniego reaktora pomocniczego",
+    "wzmocnij główny generator mocy",
     1,
     1
    ],
    [
-    "B",
-    6,
+    "S",
+    13,
     1,
-    "Przedni reaktor pomocniczy",
-    3,
-    1
+    "suwak: maksymalne obciążenie głównego generatora mocy",
+    1,
+    7,
+    "suwak: minimalne obciążenie głównego generatora mocy"
    ],
    [
     "B",
     2,
     2,
     "Reaktor pomocniczy uzbrojenia",
-    3,
-    3
-   ],
-   [
-    "B",
-    10,
-    2,
-    "Główny generator mocy",
     3,
     3
    ],
@@ -934,20 +950,28 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
+    "B",
+    6,
+    2,
+    "REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie",
+    3,
+    3
+   ],
+   [
+    "G",
     9,
     2,
-    "przełącz systemy podstawowe na przedni reaktor",
+    "synchronizacja zapasowego reaktora z silnikiem głównym środkowym",
     1,
     1
    ],
    [
-    "W",
-    7,
+    "B",
+    10,
     2,
-    "wyrównaj obciążenie reaktorów",
-    1,
-    1
+    "Główny generator mocy",
+    3,
+    3
    ],
    [
     "Y",
@@ -966,14 +990,6 @@ export const UKLADY = {
     1
    ],
    [
-    "B",
-    6,
-    3,
-    "REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie",
-    3,
-    3
-   ],
-   [
     "R",
     5,
     4,
@@ -985,7 +1001,7 @@ export const UKLADY = {
     "Y",
     9,
     4,
-    "suwak: przydział mocy dla silników jonowych",
+    "suwak: moc zapasowego reaktora silników",
     1,
     1
    ],
@@ -998,10 +1014,10 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
+    "Y",
     3,
     5,
-    "wyrównaj zasilanie baterii",
+    "suwak: częstotliwość bazowa reaktora (wzorzec dla konsol)",
     1,
     1
    ],
@@ -1010,6 +1026,30 @@ export const UKLADY = {
     4,
     5,
     "synchronizacja reaktora uzbrojenia z prawą baterią turbolaserów",
+    1,
+    1
+   ],
+   [
+    "Y",
+    5,
+    5,
+    "suwak: siła pola zamykającego komory",
+    1,
+    1
+   ],
+   [
+    "B",
+    6,
+    5,
+    "Zapasowy reaktor silników",
+    3,
+    3
+   ],
+   [
+    "Y",
+    9,
+    5,
+    "suwak: przydział mocy dla hipernapędu",
     1,
     1
    ],
@@ -1025,7 +1065,7 @@ export const UKLADY = {
     "W",
     11,
     5,
-    "wyrównaj dystrybucję mocy",
+    "przełącz silniki na zasilanie zapasowe",
     1,
     1
    ],
@@ -1038,22 +1078,6 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    5,
-    5,
-    "suwak: siła pola zamykającego komory",
-    1,
-    1
-   ],
-   [
-    "Y",
-    9,
-    5,
-    "suwak: przydział mocy dla hipernapędu",
-    1,
-    1
-   ],
-   [
     "G",
     2,
     6,
@@ -1062,10 +1086,18 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    12,
+    "W",
+    3,
     6,
-    "synchronizacja generatora z reaktorem głównym",
+    "wyrównaj zasilanie baterii",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    6,
+    "wyrównaj obciążenie reaktorów",
     1,
     1
    ],
@@ -1086,6 +1118,30 @@ export const UKLADY = {
     1
    ],
    [
+    "W",
+    10,
+    6,
+    "przełącz systemy podstawowe na przedni reaktor",
+    1,
+    1
+   ],
+   [
+    "W",
+    11,
+    6,
+    "wyrównaj dystrybucję mocy",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    6,
+    "synchronizacja generatora z reaktorem głównym",
+    1,
+    1
+   ],
+   [
     "Y",
     2,
     7,
@@ -1094,32 +1150,24 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    12,
+    "R",
+    4,
     7,
-    "suwak: rezerwa mocy awaryjnej",
+    "wzmocnij zapasowy reaktor silników",
     1,
     1
    ],
    [
     "R",
-    6,
+    5,
     7,
     "wzmocnij zasilanie lewej burty",
     1,
     1
    ],
    [
-    "Y",
-    7,
-    7,
-    "suwak: częstotliwość bazowa reaktora (wzorzec dla konsol)",
-    1,
-    1
-   ],
-   [
     "R",
-    8,
+    9,
     7,
     "wzmocnij zasilanie prawej burty",
     1,
@@ -1127,41 +1175,17 @@ export const UKLADY = {
    ],
    [
     "R",
-    5,
-    8,
-    "wzmocnij zapasowy reaktor silników",
+    10,
+    7,
+    "wzmocnij przedni reaktor pomocniczy",
     1,
     1
    ],
    [
     "Y",
-    9,
-    8,
-    "suwak: moc zapasowego reaktora silników",
-    1,
-    1
-   ],
-   [
-    "B",
-    6,
-    8,
-    "Zapasowy reaktor silników",
-    3,
-    2
-   ],
-   [
-    "G",
-    5,
-    9,
-    "synchronizacja zapasowego reaktora z silnikiem głównym środkowym",
-    1,
-    1
-   ],
-   [
-    "W",
-    9,
-    9,
-    "przełącz silniki na zasilanie zapasowe",
+    12,
+    7,
+    "suwak: rezerwa mocy awaryjnej",
     1,
     1
    ]
@@ -1177,27 +1201,10 @@ export const UKLADY = {
     "suwak: minimalne tempo ognia lewej baterii"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalne tempo ognia prawej baterii",
-    1,
-    7,
-    "suwak: minimalne tempo ognia prawej baterii"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij ogień lewej baterii",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij ogień prawej baterii",
     1,
     1
    ],
@@ -1210,6 +1217,46 @@ export const UKLADY = {
     1
    ],
    [
+    "W",
+    4,
+    1,
+    "blokada celu lewej baterii",
+    1,
+    1
+   ],
+   [
+    "W",
+    6,
+    1,
+    "przydziel cel działom jonowym",
+    1,
+    1
+   ],
+   [
+    "W",
+    7,
+    1,
+    "wyrównaj baterie na cel",
+    1,
+    1
+   ],
+   [
+    "W",
+    8,
+    1,
+    "tryb: obezwładnienie (działa jonowe)",
+    1,
+    1
+   ],
+   [
+    "W",
+    10,
+    1,
+    "blokada celu prawej baterii",
+    1,
+    1
+   ],
+   [
     "Y",
     11,
     1,
@@ -1218,12 +1265,21 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    7,
+    "R",
+    12,
     1,
-    "suwak: namiar celu (azymut)",
+    "wzmocnij ogień prawej baterii",
     1,
     1
+   ],
+   [
+    "S",
+    13,
+    1,
+    "suwak: maksymalne tempo ognia prawej baterii",
+    1,
+    7,
+    "suwak: minimalne tempo ognia prawej baterii"
    ],
    [
     "W",
@@ -1234,34 +1290,34 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    12,
-    2,
-    "przydziel cel prawej baterii",
-    1,
-    1
-   ],
-   [
-    "W",
+    "B",
     3,
     2,
-    "blokada celu lewej baterii",
-    1,
-    1
-   ],
-   [
-    "W",
-    11,
-    2,
-    "blokada celu prawej baterii",
-    1,
-    1
+    "wskazanie celu: siatka taktyczna",
+    4,
+    4
    ],
    [
     "Y",
     7,
     2,
-    "suwak: elewacja celu",
+    "suwak: namiar celu (azymut)",
+    1,
+    1
+   ],
+   [
+    "B",
+    8,
+    2,
+    "stan baterii i dział jonowych",
+    4,
+    4
+   ],
+   [
+    "W",
+    12,
+    2,
+    "przydziel cel prawej baterii",
     1,
     1
    ],
@@ -1274,6 +1330,14 @@ export const UKLADY = {
     1
    ],
    [
+    "Y",
+    7,
+    3,
+    "suwak: elewacja celu",
+    1,
+    1
+   ],
+   [
     "W",
     12,
     3,
@@ -1282,34 +1346,18 @@ export const UKLADY = {
     1
    ],
    [
-    "B",
-    3,
-    3,
-    "wskazanie celu: siatka taktyczna",
-    3,
-    3
-   ],
-   [
-    "B",
-    9,
-    3,
-    "stan baterii i dział jonowych",
-    3,
-    3
-   ],
-   [
-    "Y",
-    7,
-    3,
-    "suwak: dystans do celu",
-    1,
-    1
-   ],
-   [
     "W",
     2,
     4,
     "tryb: salwa (lewa bateria)",
+    1,
+    1
+   ],
+   [
+    "Y",
+    7,
+    4,
+    "suwak: dystans do celu",
     1,
     1
    ],
@@ -1323,33 +1371,17 @@ export const UKLADY = {
    ],
    [
     "W",
-    6,
-    4,
-    "przydziel cel działom jonowym",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    4,
-    "wyrównaj baterie na cel",
-    1,
-    1
-   ],
-   [
-    "W",
-    8,
-    4,
-    "tryb: obezwładnienie (działa jonowe)",
-    1,
-    1
-   ],
-   [
-    "W",
     2,
     5,
     "tryb: ogień zaporowy (lewa bateria)",
+    1,
+    1
+   ],
+   [
+    "Y",
+    7,
+    5,
+    "suwak: natężenie wiązki jonowej",
     1,
     1
    ],
@@ -1362,42 +1394,18 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    6,
-    5,
-    "suwak: natężenie wiązki jonowej",
-    1,
-    1
-   ],
-   [
-    "R",
-    7,
-    5,
-    "wzmocnij salwę",
-    1,
-    1
-   ],
-   [
-    "R",
-    8,
-    5,
-    "wzmocnij działa jonowe",
-    1,
-    1
-   ],
-   [
-    "G",
+    "W",
     2,
     6,
-    "synchronizacja z lewą baterią turbolaserów",
+    "równaj tempo ognia z mocą reaktora",
     1,
     1
    ],
    [
-    "G",
-    12,
+    "R",
     6,
-    "synchronizacja z prawą baterią turbolaserów",
+    6,
+    "wzmocnij salwę",
     1,
     1
    ],
@@ -1410,6 +1418,14 @@ export const UKLADY = {
     1
    ],
    [
+    "R",
+    8,
+    6,
+    "wzmocnij działa jonowe",
+    1,
+    1
+   ],
+   [
     "G",
     2,
     7,
@@ -1419,25 +1435,17 @@ export const UKLADY = {
    ],
    [
     "G",
-    12,
-    7,
-    "synchronizacja z konsolą dowodzenia myśliwcami (IFF)",
-    1,
-    1
-   ],
-   [
-    "Y",
     3,
     7,
-    "suwak: tempo ognia lewej baterii",
+    "synchronizacja z lewą baterią turbolaserów",
     1,
     1
    ],
    [
     "Y",
-    11,
+    6,
     7,
-    "suwak: tempo ognia prawej baterii",
+    "suwak: tempo ognia lewej baterii",
     1,
     1
    ],
@@ -1450,18 +1458,34 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    7,
+    "Y",
     8,
-    "równaj tempo ognia z mocą reaktora",
+    7,
+    "suwak: tempo ognia prawej baterii",
     1,
     1
    ],
    [
     "G",
+    10,
     7,
-    9,
     "synchronizacja z konsolą sensorów",
+    1,
+    1
+   ],
+   [
+    "G",
+    11,
+    7,
+    "synchronizacja z prawą baterią turbolaserów",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    7,
+    "synchronizacja z konsolą dowodzenia myśliwcami (IFF)",
     1,
     1
    ]
@@ -1477,27 +1501,10 @@ export const UKLADY = {
     "suwak: minimalna moc skanu"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: górna granica pasma skanu (Hz)",
-    1,
-    7,
-    "suwak: dolna granica pasma skanu (Hz)"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij skan nadprzestrzeni",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij rozdzielczość skanu przestrzeni normalnej",
     1,
     1
    ],
@@ -1510,6 +1517,14 @@ export const UKLADY = {
     1
    ],
    [
+    "B",
+    4,
+    1,
+    "EKRAN SKANU · przestrzeń normalna (kontakty, elipsa błędu, sygnatura) i nadprzestrzeń (zmarszczki wejścia, odcinki skoków, prognoza wyjścia)",
+    7,
+    6
+   ],
+   [
     "Y",
     11,
     1,
@@ -1518,12 +1533,21 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    7,
+    "R",
+    12,
     1,
-    "suwak: przydział mocy sensorów",
+    "wzmocnij rozdzielczość skanu przestrzeni normalnej",
     1,
     1
+   ],
+   [
+    "S",
+    13,
+    1,
+    "suwak: górna granica pasma skanu (Hz)",
+    1,
+    7,
+    "suwak: dolna granica pasma skanu (Hz)"
    ],
    [
     "W",
@@ -1542,12 +1566,12 @@ export const UKLADY = {
     1
    ],
    [
-    "B",
-    5,
+    "G",
     2,
-    "EKRAN SKANU · przestrzeń normalna (kontakty, elipsa błędu, sygnatura) i nadprzestrzeń (zmarszczki wejścia, odcinki skoków, prognoza wyjścia)",
-    5,
-    4
+    3,
+    "synchronizacja z konsolą nawigacji (prognoza wyjścia)",
+    1,
+    1
    ],
    [
     "Y",
@@ -1567,41 +1591,49 @@ export const UKLADY = {
    ],
    [
     "G",
-    2,
-    4,
-    "synchronizacja z konsolą nawigacji (prognoza wyjścia)",
-    1,
-    1
-   ],
-   [
-    "G",
     12,
-    4,
+    3,
     "synchronizacja z kontrolą ognia (cele)",
     1,
     1
    ],
    [
     "B",
-    3,
-    5,
+    2,
+    4,
     "odczyt: koszt skanu (porcje)",
-    1,
-    1
+    2,
+    2
    ],
    [
     "B",
     11,
-    5,
+    4,
     "odczyt: elipsa błędu",
-    1,
-    1
+    2,
+    2
    ],
    [
     "W",
     2,
     6,
     "tryb bierny (nasłuch)",
+    1,
+    1
+   ],
+   [
+    "W",
+    3,
+    6,
+    "SKANUJ",
+    1,
+    1
+   ],
+   [
+    "W",
+    11,
+    6,
+    "wyrównaj czułość sensorów",
     1,
     1
    ],
@@ -1615,57 +1647,49 @@ export const UKLADY = {
    ],
    [
     "W",
-    5,
-    6,
+    2,
+    7,
     "skan Hz celu (wybór grupy)",
     1,
     1
    ],
    [
+    "Y",
+    3,
+    7,
+    "suwak: przydział mocy sensorów",
+    1,
+    1
+   ],
+   [
     "G",
-    6,
-    6,
+    4,
+    7,
     "wyślij Hz celu do konsoli osłon",
     1,
     1
    ],
    [
-    "W",
+    "B",
+    5,
     7,
-    6,
-    "SKANUJ",
-    1,
+    "EKRAN: WIDMO Hz GRUP CELÓW · baza i bieżący odczyt · wykryte skany wroga",
+    5,
     1
    ],
    [
     "G",
-    8,
-    6,
+    10,
+    7,
     "wyślij Hz celu do kontroli ognia",
     1,
     1
    ],
    [
     "W",
-    9,
-    6,
+    12,
+    7,
     "zakłócanie (walka elektroniczna)",
-    1,
-    1
-   ],
-   [
-    "B",
-    6,
-    7,
-    "EKRAN: WIDMO Hz GRUP CELÓW · baza i bieżący odczyt · wykryte skany wroga",
-    3,
-    2
-   ],
-   [
-    "W",
-    7,
-    9,
-    "wyrównaj czułość sensorów",
     1,
     1
    ]
@@ -1681,19 +1705,42 @@ export const UKLADY = {
     "suwak: minimalna siła pola pokładowego"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalna moc blokady Anchor/Lock",
-    1,
-    7,
-    "suwak: minimalna moc blokady Anchor/Lock"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij grawitację pokładową",
+    1,
+    1
+   ],
+   [
+    "W",
+    3,
+    1,
+    "równaj pole z częstotliwością reaktora",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    1,
+    "wybierz ciało / punkt odniesienia",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    1,
+    "EKRAN: REFERENCJA · POZYCJA · STABILNOŚĆ blokady",
+    5,
+    5
+   ],
+   [
+    "W",
+    10,
+    1,
+    "ZAŁÓŻ / ZWOLNIJ BLOKADĘ",
     1,
     1
    ],
@@ -1706,18 +1753,35 @@ export const UKLADY = {
     1
    ],
    [
-    "B",
-    6,
+    "S",
+    13,
     1,
-    "EKRAN: REFERENCJA · POZYCJA · STABILNOŚĆ blokady",
-    3,
-    3
+    "suwak: maksymalna moc blokady Anchor/Lock",
+    1,
+    7,
+    "suwak: minimalna moc blokady Anchor/Lock"
    ],
    [
     "Y",
     3,
     2,
     "suwak: siła pola pokładowego",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    2,
+    "wyrównaj pole w sekcjach",
+    1,
+    1
+   ],
+   [
+    "W",
+    10,
+    2,
+    "ustaw pozycję względem odniesienia",
     1,
     1
    ],
@@ -1738,6 +1802,38 @@ export const UKLADY = {
     1
    ],
    [
+    "G",
+    3,
+    3,
+    "synchronizacja z reaktorem (zasilanie pokładowe)",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    3,
+    "stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    3,
+    "stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana",
+    1,
+    1
+   ],
+   [
+    "G",
+    11,
+    3,
+    "synchronizacja z konsolą nawigacji (pozycja)",
+    1,
+    1
+   ],
+   [
     "W",
     12,
     3,
@@ -1746,76 +1842,28 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    6,
-    4,
-    "wybierz ciało / punkt odniesienia",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    4,
-    "ZAŁÓŻ / ZWOLNIJ BLOKADĘ",
-    1,
-    1
-   ],
-   [
-    "W",
-    8,
-    4,
-    "ustaw pozycję względem odniesienia",
-    1,
-    1
-   ],
-   [
-    "G",
+    "B",
     2,
-    5,
-    "synchronizacja z reaktorem (zasilanie pokładowe)",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    5,
-    "synchronizacja z konsolą nawigacji (pozycja)",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    5,
+    4,
     "odczyt: pobór mocy",
-    1,
-    1
+    3,
+    3
    ],
    [
     "B",
-    11,
-    5,
+    10,
+    4,
     "odczyt: sygnatura",
-    1,
-    1
+    3,
+    3
    ],
    [
     "B",
-    7,
     5,
-    "stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
     6,
-    "wyrównaj pole w sekcjach",
-    1,
-    1
+    "EKRAN: GRAWITACJA POKŁADÓW · sekcje, przeciążenia, spadki zasilania",
+    5,
+    2
    ],
    [
     "Y",
@@ -1832,22 +1880,6 @@ export const UKLADY = {
     "suwak: rezerwa mocy blokady",
     1,
     1
-   ],
-   [
-    "B",
-    5,
-    7,
-    "EKRAN: GRAWITACJA POKŁADÓW · sekcje, przeciążenia, spadki zasilania",
-    5,
-    2
-   ],
-   [
-    "W",
-    7,
-    9,
-    "równaj pole z częstotliwością reaktora",
-    1,
-    1
    ]
   ],
   "Myśliwce": [
@@ -1861,159 +1893,6 @@ export const UKLADY = {
     "suwak: minimalna liczba kluczy do poderwania"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalne tempo taśmociągu",
-    1,
-    7,
-    "suwak: minimalne tempo taśmociągu"
-   ],
-   [
-    "B",
-    3,
-    2,
-    "Klucz 1",
-    1,
-    1
-   ],
-   [
-    "B",
-    9,
-    2,
-    "Klucz 10",
-    1,
-    1
-   ],
-   [
-    "B",
-    4,
-    2,
-    "Klucz 2",
-    1,
-    1
-   ],
-   [
-    "B",
-    10,
-    2,
-    "Klucz 11",
-    1,
-    1
-   ],
-   [
-    "B",
-    5,
-    2,
-    "Klucz 3",
-    1,
-    1
-   ],
-   [
-    "B",
-    11,
-    2,
-    "Klucz 12",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    3,
-    "Klucz 4",
-    1,
-    1
-   ],
-   [
-    "B",
-    9,
-    3,
-    "Klucz 13",
-    1,
-    1
-   ],
-   [
-    "B",
-    4,
-    3,
-    "Klucz 5",
-    1,
-    1
-   ],
-   [
-    "B",
-    10,
-    3,
-    "Klucz 14",
-    1,
-    1
-   ],
-   [
-    "B",
-    5,
-    3,
-    "Klucz 6",
-    1,
-    1
-   ],
-   [
-    "B",
-    11,
-    3,
-    "Klucz 15",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    4,
-    "Klucz 7",
-    1,
-    1
-   ],
-   [
-    "B",
-    9,
-    4,
-    "Klucz 16",
-    1,
-    1
-   ],
-   [
-    "B",
-    4,
-    4,
-    "Klucz 8",
-    1,
-    1
-   ],
-   [
-    "B",
-    10,
-    4,
-    "Klucz 17",
-    1,
-    1
-   ],
-   [
-    "B",
-    5,
-    4,
-    "Klucz 9",
-    1,
-    1
-   ],
-   [
-    "B",
-    11,
-    4,
-    "Klucz 18",
-    1,
-    1
-   ],
-   [
     "R",
     2,
     1,
@@ -2022,26 +1901,10 @@ export const UKLADY = {
     1
    ],
    [
-    "R",
-    12,
-    1,
-    "wzmocnij taśmociąg prawego pokładu startowego",
-    1,
-    1
-   ],
-   [
     "Y",
     3,
     1,
     "suwak: skład załogi (asy · standardowi · kadeci)",
-    1,
-    1
-   ],
-   [
-    "Y",
-    11,
-    1,
-    "suwak: liczba kluczy do poderwania",
     1,
     1
    ],
@@ -2070,6 +1933,55 @@ export const UKLADY = {
     1
    ],
    [
+    "Y",
+    11,
+    1,
+    "suwak: liczba kluczy do poderwania",
+    1,
+    1
+   ],
+   [
+    "R",
+    12,
+    1,
+    "wzmocnij taśmociąg prawego pokładu startowego",
+    1,
+    1
+   ],
+   [
+    "S",
+    13,
+    1,
+    "suwak: maksymalne tempo taśmociągu",
+    1,
+    7,
+    "suwak: minimalne tempo taśmociągu"
+   ],
+   [
+    "B",
+    3,
+    2,
+    "Klucz 1",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    2,
+    "Klucz 2",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    2,
+    "Klucz 3",
+    1,
+    1
+   ],
+   [
     "B",
     6,
     2,
@@ -2078,10 +1990,82 @@ export const UKLADY = {
     3
    ],
    [
+    "B",
+    9,
+    2,
+    "Klucz 16",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    2,
+    "Klucz 17",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    2,
+    "Klucz 18",
+    1,
+    1
+   ],
+   [
     "W",
     2,
     3,
     "start klucza (lewy pokład)",
+    1,
+    1
+   ],
+   [
+    "B",
+    3,
+    3,
+    "Klucz 4",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    3,
+    "Klucz 5",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    3,
+    "Klucz 6",
+    1,
+    1
+   ],
+   [
+    "B",
+    9,
+    3,
+    "Klucz 19",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    3,
+    "Klucz 20",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    3,
+    "Klucz 21",
     1,
     1
    ],
@@ -2094,6 +2078,54 @@ export const UKLADY = {
     1
    ],
    [
+    "B",
+    3,
+    4,
+    "Klucz 7",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    4,
+    "Klucz 8",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    4,
+    "Klucz 9",
+    1,
+    1
+   ],
+   [
+    "B",
+    9,
+    4,
+    "Klucz 22",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    4,
+    "Klucz 23",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    4,
+    "Klucz 24",
+    1,
+    1
+   ],
+   [
     "G",
     2,
     5,
@@ -2102,10 +2134,26 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    12,
+    "B",
+    3,
     5,
-    "synchronizacja z sensorami (Hz celów)",
+    "Klucz 10",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    5,
+    "Klucz 11",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    5,
+    "Klucz 12",
     1,
     1
    ],
@@ -2135,18 +2183,90 @@ export const UKLADY = {
    ],
    [
     "B",
+    9,
+    5,
+    "Klucz 25",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    5,
+    "Klucz 26",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    5,
+    "Klucz 27",
+    1,
+    1
+   ],
+   [
+    "G",
+    12,
+    5,
+    "synchronizacja z sensorami (Hz celów)",
+    1,
+    1
+   ],
+   [
+    "B",
     3,
     6,
-    "taśmociąg lewego pokładu · kolejka i ETA",
-    3,
+    "Klucz 13",
+    1,
+    1
+   ],
+   [
+    "B",
+    4,
+    6,
+    "Klucz 14",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    6,
+    "Klucz 15",
+    1,
+    1
+   ],
+   [
+    "W",
+    7,
+    6,
+    "wezwij załogę i pilotów",
+    1,
     1
    ],
    [
     "B",
     9,
     6,
-    "taśmociąg prawego pokładu · kolejka i ETA",
-    3,
+    "Klucz 28",
+    1,
+    1
+   ],
+   [
+    "B",
+    10,
+    6,
+    "Klucz 29",
+    1,
+    1
+   ],
+   [
+    "B",
+    11,
+    6,
+    "Klucz 30",
+    1,
     1
    ],
    [
@@ -2158,26 +2278,34 @@ export const UKLADY = {
     1
    ],
    [
+    "B",
+    3,
+    7,
+    "taśmociąg lewego pokładu · kolejka i ETA",
+    3,
+    1
+   ],
+   [
+    "W",
+    7,
+    7,
+    "START",
+    1,
+    1
+   ],
+   [
+    "B",
+    9,
+    7,
+    "taśmociąg prawego pokładu · kolejka i ETA",
+    3,
+    1
+   ],
+   [
     "W",
     12,
     7,
     "powrót do hangaru (prawy pokład)",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    7,
-    "wezwij załogę i pilotów",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    9,
-    "START",
     1,
     1
    ]
@@ -2193,27 +2321,10 @@ export const UKLADY = {
     "suwak: minimalna prędkość kątowa skrętu w lewo"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalna prędkość kątowa skrętu w prawo",
-    1,
-    7,
-    "suwak: minimalna prędkość kątowa skrętu w prawo"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij skręt w lewo",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij skręt w prawo",
     1,
     1
    ],
@@ -2226,6 +2337,14 @@ export const UKLADY = {
     1
    ],
    [
+    "B",
+    4,
+    1,
+    "EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy",
+    7,
+    7
+   ],
+   [
     "Y",
     11,
     1,
@@ -2234,60 +2353,21 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    4,
+    "R",
+    12,
     1,
-    "przesuw w lewo (bez zmiany zwrotu)",
-    1,
-    1
-   ],
-   [
-    "W",
-    10,
-    1,
-    "przesuw w prawo (bez zmiany zwrotu)",
+    "wzmocnij skręt w prawo",
     1,
     1
    ],
    [
-    "W",
-    5,
+    "S",
+    13,
     1,
-    "skala ekranu: 250 km",
+    "suwak: maksymalna prędkość kątowa skrętu w prawo",
     1,
-    1
-   ],
-   [
-    "W",
     7,
-    1,
-    "skala ekranu: 500 km",
-    1,
-    1
-   ],
-   [
-    "W",
-    9,
-    1,
-    "skala ekranu: 1000 km",
-    1,
-    1
-   ],
-   [
-    "G",
-    6,
-    1,
-    "synchronizacja z sensorami (kontakty)",
-    1,
-    1
-   ],
-   [
-    "G",
-    8,
-    1,
-    "synchronizacja z radarem (tory jednostek)",
-    1,
-    1
+    "suwak: minimalna prędkość kątowa skrętu w prawo"
    ],
    [
     "Y",
@@ -2295,15 +2375,7 @@ export const UKLADY = {
     2,
     "suwak: skręt w lewo (różnica ciągu lewy − prawy)",
     1,
-    3
-   ],
-   [
-    "Y",
-    12,
-    2,
-    "suwak: skręt w prawo (różnica ciągu prawy − lewy)",
-    1,
-    3
+    2
    ],
    [
     "Y",
@@ -2322,12 +2394,20 @@ export const UKLADY = {
     2
    ],
    [
-    "B",
-    4,
+    "Y",
+    12,
     2,
-    "EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy",
-    7,
-    7
+    "suwak: skręt w prawo (różnica ciągu prawy − lewy)",
+    1,
+    2
+   ],
+   [
+    "W",
+    2,
+    4,
+    "PEŁNE HAMOWANIE",
+    1,
+    1
    ],
    [
     "B",
@@ -2347,17 +2427,17 @@ export const UKLADY = {
    ],
    [
     "W",
-    2,
-    5,
-    "zwrot o 90° w lewo",
+    12,
+    4,
+    "CAŁA NAPRZÓD",
     1,
     1
    ],
    [
     "W",
-    12,
+    2,
     5,
-    "zwrot o 90° w prawo",
+    "zwrot o 90° w lewo",
     1,
     1
    ],
@@ -2378,18 +2458,18 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    2,
-    6,
-    "synchronizacja z konsolą silników (ciąg lewej burty)",
+    "W",
+    12,
+    5,
+    "zwrot o 90° w prawo",
     1,
     1
    ],
    [
     "G",
-    12,
+    2,
     6,
-    "synchronizacja z konsolą silników (ciąg prawej burty)",
+    "synchronizacja z konsolą silników (ciąg lewej burty)",
     1,
     1
    ],
@@ -2410,18 +2490,18 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    2,
-    7,
-    "wybierz cel / punkt nawigacyjny",
+    "G",
+    12,
+    6,
+    "synchronizacja z konsolą silników (ciąg prawej burty)",
     1,
     1
    ],
    [
     "W",
-    12,
+    2,
     7,
-    "kurs na wybrany cel",
+    "wybierz cel / punkt nawigacyjny",
     1,
     1
    ],
@@ -2442,91 +2522,11 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    2,
-    8,
-    "synchronizacja z hipernapędem (punkt skoku)",
-    1,
-    1
-   ],
-   [
-    "G",
-    12,
-    8,
-    "synchronizacja z grawitacją (Anchor / Lock)",
-    1,
-    1
-   ],
-   [
-    "B",
-    3,
-    8,
-    "odczyt: odległość do celu",
-    1,
-    1
-   ],
-   [
-    "B",
-    11,
-    8,
-    "odczyt: czas do celu (ETA)",
-    1,
-    1
-   ],
-   [
-    "W",
-    2,
-    9,
-    "wyrównaj kurs (stabilizacja zwrotu)",
-    1,
-    1
-   ],
-   [
     "W",
     12,
-    9,
-    "równaj ciąg z mocą reaktora",
+    7,
+    "kurs na wybrany cel",
     1,
-    1
-   ],
-   [
-    "R",
-    3,
-    9,
-    "wzmocnij hamowanie",
-    1,
-    1
-   ],
-   [
-    "R",
-    11,
-    9,
-    "wzmocnij ciąg główny",
-    1,
-    1
-   ],
-   [
-    "W",
-    4,
-    9,
-    "PEŁNE HAMOWANIE",
-    1,
-    1
-   ],
-   [
-    "W",
-    10,
-    9,
-    "CAŁA NAPRZÓD",
-    1,
-    1
-   ],
-   [
-    "Y",
-    5,
-    9,
-    "suwak: ciąg główny (prędkość zadana)",
-    5,
     1
    ]
   ],
@@ -2541,27 +2541,10 @@ export const UKLADY = {
     "suwak: minimalny zasięg (tłumienie bliskich ech)"
    ],
    [
-    "S",
-    13,
-    1,
-    "suwak: maksymalna czułość odbiornika",
-    1,
-    7,
-    "suwak: minimalna czułość (próg szumu)"
-   ],
-   [
     "R",
     2,
     1,
     "wzmocnij nadajnik (zasięg)",
-    1,
-    1
-   ],
-   [
-    "R",
-    12,
-    1,
-    "wzmocnij odbiornik (czułość)",
     1,
     1
    ],
@@ -2574,10 +2557,18 @@ export const UKLADY = {
     1
    ],
    [
-    "Y",
-    11,
+    "W",
+    4,
     1,
-    "suwak: wzmocnienie odbiornika",
+    "filtr: własne",
+    1,
+    1
+   ],
+   [
+    "W",
+    5,
+    1,
+    "sektor dziobowy lewej burty",
     1,
     1
    ],
@@ -2590,14 +2581,6 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    8,
-    1,
-    "synchronizacja z nawigacją (kurs i prędkość własna)",
-    1,
-    1
-   ],
-   [
     "Y",
     7,
     1,
@@ -2606,44 +2589,53 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    5,
-    2,
-    "sektor dziobowy lewej burty",
-    1,
-    1
-   ],
-   [
-    "W",
-    6,
-    2,
-    "skala: 12 km",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    2,
-    "skala: 30 km",
-    1,
-    1
-   ],
-   [
-    "W",
+    "G",
     8,
-    2,
-    "skala: 60 km",
+    1,
+    "synchronizacja z nawigacją (kurs i prędkość własna)",
     1,
     1
    ],
    [
     "W",
     9,
-    2,
+    1,
     "sektor dziobowy prawej burty",
     1,
     1
+   ],
+   [
+    "W",
+    10,
+    1,
+    "filtr: obce",
+    1,
+    1
+   ],
+   [
+    "Y",
+    11,
+    1,
+    "suwak: wzmocnienie odbiornika",
+    1,
+    1
+   ],
+   [
+    "R",
+    12,
+    1,
+    "wzmocnij odbiornik (czułość)",
+    1,
+    1
+   ],
+   [
+    "S",
+    13,
+    1,
+    "suwak: maksymalna czułość odbiornika",
+    1,
+    7,
+    "suwak: minimalna czułość (próg szumu)"
    ],
    [
     "B",
@@ -2654,18 +2646,66 @@ export const UKLADY = {
     1
    ],
    [
-    "B",
-    12,
-    2,
-    "odczyt: kontakty własne",
-    1,
-    1
-   ],
-   [
     "Y",
     3,
     2,
     "suwak: próg alarmu zbliżenia",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    2,
+    "zakłócenia: tłumienie",
+    1,
+    1
+   ],
+   [
+    "W",
+    5,
+    2,
+    "sektor rufowy lewej burty",
+    1,
+    1
+   ],
+   [
+    "W",
+    6,
+    2,
+    "pokaż tory",
+    1,
+    1
+   ],
+   [
+    "W",
+    7,
+    2,
+    "ALARM ZBLIŻENIA",
+    1,
+    1
+   ],
+   [
+    "W",
+    8,
+    2,
+    "pokaż prognozy torów",
+    1,
+    1
+   ],
+   [
+    "W",
+    9,
+    2,
+    "sektor rufowy prawej burty",
+    1,
+    1
+   ],
+   [
+    "W",
+    10,
+    2,
+    "zakłócenia: wskaż źródło",
     1,
     1
    ],
@@ -2679,25 +2719,9 @@ export const UKLADY = {
    ],
    [
     "B",
-    5,
-    3,
-    "EKRAN RADARU · sylwetka ISD zawsze w środku · bliski zasięg 12 km na bieżąco · średni do 60 km odświeżany wiązką · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski",
-    5,
-    5
-   ],
-   [
-    "W",
-    4,
-    3,
-    "filtr: własne",
-    1,
-    1
-   ],
-   [
-    "W",
-    10,
-    3,
-    "filtr: obce",
+    12,
+    2,
+    "odczyt: kontakty własne",
     1,
     1
    ],
@@ -2708,6 +2732,30 @@ export const UKLADY = {
     "LISTA ZAGROŻEŃ LEWEJ BURTY · namiar, odległość, czas do zasięgu ognia",
     2,
     4
+   ],
+   [
+    "W",
+    4,
+    3,
+    "kasuj ślady",
+    1,
+    1
+   ],
+   [
+    "B",
+    5,
+    3,
+    "EKRAN RADARU · sylwetka ISD zawsze w środku · bliski zasięg 12 km na bieżąco · średni do 60 km odświeżany wiązką · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski",
+    5,
+    5
+   ],
+   [
+    "W",
+    10,
+    3,
+    "zamroź obraz",
+    1,
+    1
    ],
    [
     "B",
@@ -2767,6 +2815,22 @@ export const UKLADY = {
    ],
    [
     "W",
+    2,
+    7,
+    "tryb bierny (nasłuch)",
+    1,
+    1
+   ],
+   [
+    "G",
+    3,
+    7,
+    "wyślij namiar zagrożenia do osłon",
+    1,
+    1
+   ],
+   [
+    "W",
     4,
     7,
     "oznacz kontakt",
@@ -2782,30 +2846,6 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    2,
-    7,
-    "tryb bierny (nasłuch)",
-    1,
-    1
-   ],
-   [
-    "W",
-    12,
-    7,
-    "tryb aktywny (emisja)",
-    1,
-    1
-   ],
-   [
-    "G",
-    3,
-    7,
-    "wyślij namiar zagrożenia do osłon",
-    1,
-    1
-   ],
-   [
     "G",
     11,
     7,
@@ -2815,97 +2855,9 @@ export const UKLADY = {
    ],
    [
     "W",
-    5,
-    8,
-    "sektor rufowy lewej burty",
-    1,
-    1
-   ],
-   [
-    "W",
-    6,
-    8,
-    "pokaż tory",
-    1,
-    1
-   ],
-   [
-    "W",
-    7,
-    8,
-    "ALARM ZBLIŻENIA",
-    1,
-    1
-   ],
-   [
-    "W",
-    8,
-    8,
-    "pokaż prognozy torów",
-    1,
-    1
-   ],
-   [
-    "W",
-    9,
-    8,
-    "sektor rufowy prawej burty",
-    1,
-    1
-   ],
-   [
-    "R",
-    2,
-    8,
-    "wzmocnij tłumienie zakłóceń",
-    1,
-    1
-   ],
-   [
-    "R",
     12,
-    8,
-    "wzmocnij rozdzielczość obrazu",
-    1,
-    1
-   ],
-   [
-    "W",
-    2,
-    9,
-    "kasuj ślady",
-    1,
-    1
-   ],
-   [
-    "W",
-    12,
-    9,
-    "zamroź obraz",
-    1,
-    1
-   ],
-   [
-    "W",
-    5,
-    9,
-    "zakłócenia: tłumienie",
-    1,
-    1
-   ],
-   [
-    "W",
     7,
-    9,
-    "wyrównaj obraz (filtr szumu)",
-    1,
-    1
-   ],
-   [
-    "W",
-    9,
-    9,
-    "zakłócenia: wskaż źródło",
+    "tryb aktywny (emisja)",
     1,
     1
    ]
@@ -2928,20 +2880,20 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    5,
-    2,
-    "łagodnie w prawo",
-    1,
-    1
-   ],
-   [
     "B",
     2,
     2,
     "EKRAN KLUCZA · klucz zawsze w środku · okręgi 2 / 10 / 30 km (dotknięcie zmienia skalę) · kurs i wektor · cele (dotknij, by wybrać) · okręt macierzysty · inne klucze",
     3,
     3
+   ],
+   [
+    "W",
+    5,
+    2,
+    "łagodnie w prawo",
+    1,
+    1
    ],
    [
     "W",

@@ -759,7 +759,7 @@ function mysliwce(s, st, akcje) {
     'START': { etykieta: wybrany ? (wybrany.stan === 'hangar' ? `START klucza ${wybrany.nr}` : `WYKONAJ: ${st.rozkazMysliwcow} → klucz ${wybrany.nr}`) : 'START',
       klik: wymagaj((k) => doKlucza(akcje, k, k.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce')) },
   };
-  for (let n = 1; n <= 18; n++) {
+  for (let n = 1; n <= 30; n++) {  // układ Walako: 30 gniazd (1–15 lewy pokład, 16–30 prawy)
     const k = klucze.find((x) => x.nr === n);
     if (!k) continue;
     w[`Klucz ${n}`] = { ...lampa(k, `Klucz ${n} · ${opisLampy(k)}`), wl: st.wybranyKlucz === k.id,
@@ -926,7 +926,7 @@ function celeBaterii(s, j, rodzaj) {
 }
 function turbolasery(s, st, akcje) {
   const j = wlasna(s);
-  const tl = celeBaterii(s, j, 'turbolaser');
+  const tl = celeBaterii(s, j, 'turbolaser'), jon = celeBaterii(s, j, 'jon');
   const opis = (b) => b ? (b.cel ? `${b.cel.nazwa} · ${km(b.d)} km` : `brak celu w łuku (${b.zasieg} km)`) : '—';
   const wskazany = s.jednostki.find((x) => x.nr_jednostki === j.cel_ognia && x.strona !== j.strona);
   const bateria = (lewa) => () => {
@@ -946,6 +946,10 @@ function turbolasery(s, st, akcje) {
     const bl = tl.find((b) => b.nr === i), bp = tl.find((b) => b.nr === i + 4);
     w[`Turbolaser lewy ${i} (8 luf)`] = { wl: !!bl?.cel, etykieta: `TL-L${i} · ${opis(bl)}` };
     w[`Turbolaser prawy ${i} (8 luf)`] = { wl: !!bp?.cel, etykieta: `TL-P${i} · ${opis(bp)}` };
+  }
+  for (const lewa of [true, false]) {
+    const b = jon.filter((x) => x.lewa === lewa), cel = b.find((x) => x.cel) || b[0];
+    w[`${lewa ? 'Lewa' : 'Prawa'} bateria jonowa`] = { wl: b.some((x) => x.cel), etykieta: `JON-${lewa ? 'L' : 'P'} · ${opis(cel)}` };
   }
   return pulpit(j.profil, 'Turbolasery', w);
 }

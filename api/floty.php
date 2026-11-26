@@ -1139,6 +1139,8 @@ function floty_moje_jednostki(string $login): array
 function floty_aktualizuj_ruch(): void
 {
     if (!tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) return;
+    // Lot ręczny z mostka (api/lot_reczny.php) — przed domknięciem manewrów, by kurs z mapy przejął ster.
+    if (function_exists('lot_reczny_aktualizuj')) lot_reczny_aktualizuj();
     floty_domknij_manewry();
     floty_aktualizuj_loty();
     // Jednostka przypisana do planety stoi na współrzędnych jej układu (porządkuje dawne przesunięcia,

@@ -25,6 +25,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/bitwa_wektory.php';
 require_once __DIR__ . '/bitwa_silnik.php';
+require_once __DIR__ . '/lot_reczny.php';
 
 const BITWA_RANGA_PRZYGOTOWANIE = ['kadet' => 1, 'standard' => 0, 'as' => -1];
 
@@ -471,11 +472,11 @@ function mostek_widok(array $u, int $obiektId): array
         'prowadzacy_login' => null];
     $postacie = [];
     foreach (uzytkownicy() as $x) $postacie[mb_strtolower((string) $x['login'])] = $x;
-    return bitwa_widok($b, $S) + ['mostek' => true, 'obiekt_id' => (int) $o['id'], 'moge_prowadzic' => false, 'mg' => $d['mg'],
+    return lot_reczny_do_widoku(bitwa_widok($b, $S) + ['mostek' => true, 'obiekt_id' => (int) $o['id'], 'moge_prowadzic' => false, 'mg' => $d['mg'],
         'stanowiska' => ['okret' => ['nazwa' => $o['nazwa'], 'profil' => $profil], 'pelny' => $d['pelny'], 'mg' => $d['mg'],
             'kapitan' => $d['przydziela'] && !$d['mg'], 'moje' => $d['moje'], 'stale' => true, 'migracja' => bitwa_stale_dostepne(),
             'przypisane' => array_map(static fn($s) => ['pulpit' => $s['pulpit'], 'login' => $s['login'],
-                'postac' => $postacie[mb_strtolower((string) $s['login'])]['postac'] ?? $s['login']], $d['przypisane'])]];
+                'postac' => $postacie[mb_strtolower((string) $s['login'])]['postac'] ?? $s['login']], $d['przypisane'])]], (int) $o['id']);
 }
 
 // Stały przydział (login pusty — zwolnienie); przechodzi też na trwające symulacje okrętu.
@@ -993,7 +994,7 @@ function bitwa_policz_xp(int $id): array
 function obsluz_bitwa(string $akcja, bool $post): void
 {
     $akcje = ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze', 'bitwa_symulacje', 'bitwa_stan', 'bitwa_utworz', 'bitwa_start', 'bitwa_pauza',
-        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze', 'mostek_stan', 'mostek_gracze', 'mostek_stanowisko'];
+        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze', 'mostek_stan', 'mostek_gracze', 'mostek_stanowisko', 'mostek_rozkaz'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle
@@ -1271,6 +1272,11 @@ function obsluz_bitwa(string $akcja, bool $post): void
             odpowiedz(['ok' => true, 'teleport' => $teleport, 'postac' => $gracz['postac'] ?? $gracz['login']]);
         case 'mostek_stan':
             odpowiedz(['stan' => mostek_widok($u, (int) ($_GET['okret'] ?? 0))]);
+        case 'mostek_rozkaz':
+            if (!$post) blad('Zła metoda.', 405);
+            $wynik = lot_reczny_rozkaz($u, (int) ($w['okret'] ?? 0), $w);
+            if (isset($wynik['odmowa'])) odpowiedz(['ok' => false, 'odmowa' => $wynik['odmowa']]);
+            odpowiedz($wynik);
         case 'mostek_gracze':
             $o = mostek_okret((int) ($_GET['okret'] ?? 0));
             if (!mostek_dostep($u, $o)['przydziela']) blad('Stanowiska przydziela MG albo kapitan okrętu.', 403);

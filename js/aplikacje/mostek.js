@@ -151,7 +151,15 @@ export default {
       const przywrocListe = st.pelny && !kiosk ? h('button.przycisk.drugi.maly', { onclick: pokazListe }, '← Mostki') : null;
       const akcje = {
         odswiez: () => rysujMostek(),
-        rozkaz: () => {},
+        // Rozkazy z konsol trafiają do prawdziwego okrętu (api/lot_reczny.php): ster i ciąg, nastawy, wyrównania,
+        // wzmocnienia. Pozostałe (osłony, baterie, klucze) działają tylko w symulacji — serwer odpowie odmową.
+        rozkaz: async (dane) => {
+          try {
+            const r = await api('mostek_rozkaz', { okret: aktywny.obiekt_id, ...dane });
+            if (r.ok === false) wyczysc(komunikat).append(h('div.komunikat', r.odmowa));
+            else { wyczysc(komunikat); sygnaturaStanu = ''; await odswiez(); }
+          } catch (e) { wyczysc(komunikat).append(blad(e)); }
+        },
         komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat', tekst)),
       };
       const ekran = pulpitAktywny ? konsola(pulpitAktywny, stanOkretu, stanKonsol, akcje)

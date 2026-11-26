@@ -163,8 +163,11 @@ export default {
       const przeglad = h('div');
       const akcjeKonsoli = {
         odswiez: () => rysujKonsole(),
-        rozkaz: (dane) => (mostek ? wyczysc(komunikat).append(h('div.komunikat', 'Mostek bez symulacji — rozkaz nie ma skutku. Rozkazy działają w symulacji.'))
-          : rozkaz(dane)),
+        // Mostek bez symulacji: rozkaz do prawdziwego okrętu (api/lot_reczny.php — ster, nastawy, wzmocnienia).
+        rozkaz: (dane) => (mostek ? api('mostek_rozkaz', { okret: mostek, ...dane }).then((r) => {
+          wyczysc(komunikat).append(h(r.ok === false ? 'div.komunikat' : 'div.komunikat.ok', r.ok === false ? r.odmowa : 'Rozkaz przyjęty.'));
+          odswiez();
+        }).catch((e) => wyczysc(komunikat).append(blad(e))) : rozkaz(dane)),
         komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat.blad', tekst)),
       };
       function rysujKonsole() {
@@ -396,7 +399,7 @@ export default {
         let nastepne = 1000;
         try {
           const { stan } = mostek ? await api('mostek_stan', undefined, { okret: mostek }) : await api('bitwa_stan', undefined, { id });
-          if (mostek) nastepne = 15000; // okręt w spoczynku: odczyt tylko po zmiany przydziałów
+          if (mostek) nastepne = 3000; // mostek bez symulacji: ruch prawdziwego okrętu (lot ręczny) i przydziały
           rysuj(stan);
           if (['zakonczona', 'anulowana'].includes(stan.status)) nastepne = null;
           else if (komunikat.querySelector('.blad-sieci')) wyczysc(komunikat);

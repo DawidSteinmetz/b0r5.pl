@@ -622,6 +622,24 @@ platforma ognia (θ baterii × 0,9, × 0,85 przy wzmocnieniu). Pole pokładowe (
 θ × 0,95. Pobór: blokada 10 × siła, pole i zasilanie ± 4 × (n − 0,5) (synchronizacja z reaktorem połowę), rezerwa blokady
 10 × n. „Równaj pole z reaktorem” — pole = częstotliwość bazowa; odniesienie (inny okręt) — odległość, namiar i kurs na nie.
 
+## 11.5 Mostek w realnej grze — lot ręczny [R, 26.11.2026]
+
+Poza symulacją pulpity mostka (aplikacje Mostek i Symulacje → MOSTEK) sterują prawdziwym okrętem (`api/lot_reczny.php`,
+migracja 079). Rozkazy działają od razu (bez czasu przygotowania): ster i ciąg (Silniki, Nawigacja), nastawy, wyrównania
+grup i wzmocnienia (12 s działania, 24 s odnowienia). Nastawy są wspólne dla załogi okrętu (`okrety_nastawy`). Rozkazy
+osłon, baterii i kluczy działają tylko w symulacji bitwy.
+
+Ruch — te same zasady co w symulacji (11.4, Silniki i Nawigacja), w skali układu:
+- pełny ciąg = prędkość przelotowa autopilota w układzie (pc na dobę × 2833 km/s; ISD 22 pc/doba ≈ 62 000 km/s),
+  rozpęd od zera do pełnego ciągu w ok. 60 s; skręt z napędu jednostki (ISD 30°/min) × mnożnik skrętu z konsol;
+- różnica ciągu burt skręca po łuku: (L − P) × 0,3 °/s × v / v_maks — np. lewy 100%, prawy 50% przy pełnej
+  prędkości to 9°/min, pełny okrąg w 40 min (łuk w prawo); trym odchylenia (t − 0,5) × 0,4 °/s; dysze manewrowe —
+  przesuw w bok 0,074 × v_maks × (suma prawych − suma lewych); blokada Anchor/Lock zatrzymuje okręt;
+- ręczne przejmuje: ciąg przerywa lot autopilota i schodzi z orbity (okręt rusza z punktu planety w układzie); nowy lot
+  z mapy zeruje ciąg ręczny, a kurs wydany z mapy staje się kursem zadanym; między układami — tylko autopilot.
+- Pozycja i kurs liczone leniwie przy każdym odczycie ruchu (krok 1 s w rozpędzie i skręcie do kursu zadanego, potem
+  łuk albo prosta w zamkniętej postaci); zapis w mapa_obiekty (uklad_kx, uklad_ky, kurs_deg).
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

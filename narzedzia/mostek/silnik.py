@@ -377,30 +377,55 @@ def ogien_okretu(stan, tik, j):
     trafia z celnością 4.3 (przekrój okrętu), energia trafionych luf = e_żyły × Hz baterii przez filtr osłon celu.
     Jon — energia trafień obciąża generator osłon celu (brown-out), bez uszkodzeń kadłuba i żył."""
     b = PROFILE[j['profil']].get('baterie') or {}
+    def n(k): return nast(j, k)
     for nr, x, y, luk_s, luk_p, zasieg, theta, hz in TL.get(j['profil'], []):
-        # tempo z bilansu mocy (przydział, niedobór, wzmocnienie burty): przy 1 — ładowanie z profilu
-        if (tik + nr) % max(2, int(zaokr(b.get('ladowanie_tiki', 6) / max(0.05, zas(j, 'tl_l' if x < 0 else 'tl_p'))))): continue
+        # tempo: bilans mocy × tempo z Kontroli ognia × wzmocnienie ognia × ogień zaporowy; przy 1 — ładowanie z profilu;
+        # prawa burta przesunięta o opóźnienie (ułamek odstępu salw)
+        bb = 'l' if x < 0 else 'p'
+        tryb = n('tryb_' + bb)
+        rate = zas(j, 'tl_' + bb) * tempo_ognia(j, bb) * (1.25 if wzm(stan, j, 'ogien_' + bb) else 1.0) * (1.5 if tryb >= 0.75 else 1.0)
+        interwal = max(2, int(zaokr(b.get('ladowanie_tiki', 6) / max(0.05, rate))))
+        faza = tik + nr + (int(zaokr(n('opoznienie') * interwal)) if bb == 'p' else 0)
+        if faza % interwal: continue
         dzialo = punkt_na_kadlubie(j, x, y)
         cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
         if cel is None: continue
-        p = celnosc(theta / 1000, dn, PROFILE[cel['profil']]['dlugosc_m'] ** 2 * STALE['przekroj_okretu'])
+        gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
+        # Hz baterii: maks. zakresu; z synchronizacją sensorów — najniższy stopień ≥ 1,5 × Hz osłony celu (w zakresie)
+        hz_b = stopien_baterii(hz, n('tl_hz_max_' + bb))
+        if n('sync_tl_sens') >= 0.5:
+            hz_b = max(stopien_baterii(hz, n('tl_hz_min_' + bb)), min(hz_b, stopien_baterii(hz, min(1.0, 1.5 * gen['hz_osiagane'] / hz))))
+        # celność: niższe Hz — skupiona wiązka; rozrzut (wąski na cel stojący, szeroki na manewrujący), elewacja,
+        # synchronizacje, tryb pojedynczy / zaporowy
+        r = n('rozrzut_' + bb)
+        th = theta * (0.5 + 0.5 * hz_b / hz) * ((0.5 + r) if cel['v'] <= 0.05 else (1.5 - r)) * (1 + abs(n('elewacja') - 0.5))
+        if n('sync_tl_ko_' + bb) >= 0.5: th *= 0.85
+        if n('sync_ko_sens') >= 0.5: th *= 0.9
+        pojedynczy = 0.25 <= tryb < 0.75
+        if pojedynczy: th *= 0.7
+        if tryb >= 0.75: th *= 1.5
+        p = celnosc(th / 1000, dn, PROFILE[cel['profil']]['dlugosc_m'] ** 2 * STALE['przekroj_okretu'])
         kan = f'tl:{j["nr"]}:{nr}'
-        trafienia = sum(1 for i in range(b.get('lufy', 0)) if los(stan['ziarno'], tik, 'tl', kan, i) < p)
+        lufy = max(1, b.get('lufy', 0) // 4) if pojedynczy else b.get('lufy', 0)
+        trafienia = sum(1 for i in range(lufy) if los(stan['ziarno'], tik, 'tl', kan, i) < p)
         if trafienia:
-            gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
-            trafienie_oslony(stan, tik, cel, gen, trafienia * W_ENERGIA_ZYLY * hz, hz, f'{j["nazwa"]} TL {nr}', kan, dzialo['x'], dzialo['y'])
+            mn = (1.25 if wzm(stan, j, 'tl_' + bb) else 1.0) * (1.15 if wzm(stan, j, 'salwa') else 1.0) * (1.1 if n('sync_tl_os_' + bb) >= 0.5 else 1.0)
+            trafienie_oslony(stan, tik, cel, gen, trafienia * W_ENERGIA_ZYLY * hz_b * mn, hz_b, f'{j["nazwa"]} TL {nr}', kan, dzialo['x'], dzialo['y'])
     energia, lufy, ladowanie = STALE['jon'].get(j['profil'], (0, 0, 8))
     for nr, x, y, luk_s, luk_p, zasieg, theta, hz in JON.get(j['profil'], []):
-        if (tik + nr) % max(2, int(zaokr(ladowanie / max(0.05, zas(j, 'jon'))))): continue
+        if (tik + nr) % max(2, int(zaokr(ladowanie / max(0.05, zas(j, 'jon') * (1.5 if wzm(stan, j, 'jony') else 1.0))))): continue
         dzialo = punkt_na_kadlubie(j, x, y)
         cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
         if cel is None: continue
         p = celnosc(theta / 1000, dn, PROFILE[cel['profil']]['dlugosc_m'] ** 2 * STALE['przekroj_okretu'])
         kan = f'jon:{j["nr"]}:{nr}'
         trafienia = sum(1 for i in range(lufy) if los(stan['ziarno'], tik, 'jon', kan, i) < p)
-        if trafienia:
+        if trafienia and n('jon_obezwl') >= 0.5:
+            # obezwładnienie: wiązka w zasilanie celu — ciepło jego rdzenia (dławienie), osłony bez obciążenia
+            cel['cieplo'] = min(150.0, cel['cieplo'] + trafienia * 3 * (0.5 + n('jon_moc')))
+        elif trafienia:
             gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
-            gen['obciazenie'] += trafienia * energia
+            gen['obciazenie'] += trafienia * energia * (0.5 + n('jon_moc'))
             c = pojemnosc(PROFILE[cel['profil']]) * mnoznik_oslony(cel, gen)
             if gen['obciazenie'] > c:
                 gen['rykoszet'] += gen['obciazenie'] - c
@@ -413,6 +438,14 @@ def obrona_punktowa(stan, tik, j):
     dl = PROFILE[j['profil']]['dlugosc_m'] / 1000
     s, c = math.sin(radiany(j['kurs'])), math.cos(radiany(j['kurs']))
     for nr, x, y, luk_s, luk_p, zasieg, theta, hz in PD.get(j['profil'], []):
+        # grupa działek (Turbolasery): kąt pokrycia rozszerza łuk kosztem celności, IFF i wzmocnienie poprawiają celność
+        g = grupa_pd(nr, x, y)
+        kat = 0.5 + nast(j, 'pd_kat_' + g)
+        luk_p = luk_p * kat
+        theta = theta * kat
+        if nast(j, 'sync_tl_iff_' + ('l' if x < 0 else 'p')) >= 0.5: theta *= 0.8
+        if nast(j, 'sync_ko_iff') >= 0.5: theta *= 0.9
+        if wzm(stan, j, 'pd_' + g): theta /= 1.5
         gx, gy = j['x'] + s * (-y) * dl + c * x * dl, j['y'] + c * (-y) * dl - s * x * dl
         dzialko = {'x': gx, 'y': gy}
         cel, dn = None, None
@@ -446,7 +479,10 @@ def hz_klucza(k):
 # przebiegu bitwy (bilans mocy ma zapas, osłony bez przecieków). Ustawia je rozkaz nastawa / synchronizuj / przelacz
 # (wartość „kod=liczba”), grupy wraca do domyślnych rozkaz wyrownaj; wzmocnienia to rozkazy wzmocnij (12 s działania).
 SEKTORY = ('dziob', 'gora_l', 'gora_p', 'dol_l', 'dol_p', 'rufa', 'hangar')
-WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p')
+GRUPY_PD = ('dziob', 'przod_l', 'przod_p', 'bok_l', 'bok_p', 'dol', 'rufa')
+# wzmocnienia uzbrojenia (Turbolasery, Kontrola ognia): +4 do poboru baterii i +0,2 ciepła na tik każde
+WZM_BRONI = ('tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony') + tuple('pd_' + g for g in GRUPY_PD)
+WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI
 SYNC_OSLON = ('sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p')
 NASTAWY = {
     **{'pokr_' + s: 1.0 for s in SEKTORY},
@@ -457,13 +493,45 @@ NASTAWY = {
     'sync_przedni_pr': 0.0, 'sync_zapas_sil': 0.0, 'sync_uzbr_tl_l': 0.0, 'sync_uzbr_tl_p': 0.0, 'sync_gen_sil': 0.0, 'sync_gen_os': 0.0,
     'sync_uzbr_glowny': 0.0, 'sync_glowny_pom': 0.0, 'sync_glowny_gen': 0.0, 'sync_gen_glowny': 0.0,
     'przel_sil_zapas': 0.0, 'przel_podst_przedni': 0.0,
+    # Turbolasery: Hz baterii (zakres jako ułamek liczby żył baterii), kąt pokrycia grup PDLC, synchronizacje
+    'tl_hz_max_l': 1.0, 'tl_hz_min_l': 0.0, 'tl_hz_max_p': 1.0, 'tl_hz_min_p': 0.0,
+    **{'pd_kat_' + g: 0.5 for g in GRUPY_PD},
+    'sync_tl_iff_l': 0.0, 'sync_tl_iff_p': 0.0, 'sync_tl_os_l': 0.0, 'sync_tl_os_p': 0.0, 'sync_tl_ko_l': 0.0, 'sync_tl_ko_p': 0.0,
+    'sync_tl_sens': 0.0,
+    # Kontrola ognia: tempo (z zakresem), rozrzut, tryb (0 salwa, 0,5 pojedynczy, 1 zaporowy), czas ognia zaporowego,
+    # opóźnienie prawej baterii, elewacja, działa jonowe (natężenie, obezwładnienie), synchronizacje
+    'tempo_l': 0.5, 'tempo_min_l': 0.0, 'tempo_max_l': 1.0, 'tempo_p': 0.5, 'tempo_min_p': 0.0, 'tempo_max_p': 1.0,
+    'rozrzut_l': 0.5, 'rozrzut_p': 0.5, 'tryb_l': 0.0, 'tryb_p': 0.0, 'czas_zapor': 0.5, 'opoznienie': 0.0, 'elewacja': 0.5,
+    'jon_moc': 0.5, 'jon_obezwl': 0.0, 'sync_ko_iff': 0.0, 'sync_ko_sens': 0.0,
+    'zapor_do_l': 0.0, 'zapor_do_p': 0.0,   # tik końca ognia zaporowego — ustawia silnik, nie konsola
 }
 GRUPY_WYROWNANIA = {
     'baterie': ('przydz_tl', 'przydz_jon', 'rez_salwa'),
     'reaktory': ('moc_przedni', 'moc_zapas', 'uzbr_min', 'uzbr_max', 'gen_min', 'gen_max'),
     'dystrybucja': ('przydz_tl', 'przydz_jon', 'przydz_sil', 'przydz_os', 'przydz_hiper', 'rez_salwa', 'rez_awaryjna'),
     'oslony': tuple('pokr_' + s for s in SEKTORY),
+    'turbolasery': ('tl_hz_max_l', 'tl_hz_min_l', 'tl_hz_max_p', 'tl_hz_min_p') + tuple('pd_kat_' + g for g in GRUPY_PD),
+    'ogien': ('tempo_l', 'tempo_min_l', 'tempo_max_l', 'tempo_p', 'tempo_min_p', 'tempo_max_p', 'rozrzut_l', 'rozrzut_p', 'opoznienie', 'elewacja'),
 }
+
+
+def grupa_pd(nr, x, y):
+    """Grupa działek obrony punktowej (konsola Turbolasery): dziób, przód i bok burty, dół (co drugie działko śródokręcia), rufa."""
+    b = 'l' if x < 0 else 'p'
+    if y < -0.38: return 'dziob'
+    if y < -0.1: return 'przod_' + b
+    if y < 0.25: return 'dol' if nr % 2 == 0 else 'bok_' + b
+    return 'rufa'
+
+
+def tempo_ognia(j, b):
+    """Mnożnik tempa salw burty z konsoli Kontrola ognia: 0,5 + tempo (w zakresie min…maks.)."""
+    return 0.5 + min(max(nast(j, 'tempo_' + b), nast(j, 'tempo_min_' + b)), nast(j, 'tempo_max_' + b))
+
+
+def stopien_baterii(n, frac):
+    """Stopień natywny baterii (n żył) najbliższy w górę ułamkowi frac · n, co najmniej 1."""
+    return stopien_w_gore(n, max(1.0, frac * n)) or n
 
 
 def nast(j, k):
@@ -492,6 +560,10 @@ def zasilanie(stan, tik, j):
     def n(k): return nast(j, k)
     def w(c): return wzm(stan, j, c)
     p = PROFILE[j['profil']]
+    for b in ('l', 'p'):                    # ogień zaporowy trwa czas_zapor (10…60 s), potem wraca salwa
+        if n('tryb_' + b) >= 0.75 and tik >= n('zapor_do_' + b):
+            j['nastawy']['tryb_' + b] = 0.0
+            stan['zdarzenia'].append((tik, 'zaporowy', j['nazwa'], b))
     spraw = 1 - 0.2 * (abs(n('czest_gen') - 0.5) + abs(n('napiecie_gen') - 0.5)) + 0.03 * n('sync_glowny_gen') + 0.03 * n('sync_gen_glowny')
     glowny = 100 * (0.8 + 0.4 * n('gestosc')) * (1 + 0.15 * w('glowny')) * (1 + 0.1 * w('generator')) * spraw * (0.7 if j['dlawienie'] else 1.0)
     uzbr = 15 * (1 + 0.3 * w('uzbr'))
@@ -504,8 +576,10 @@ def zasilanie(stan, tik, j):
     for s in SEKTORY: os += 4 * w(s) + 2 * n('pokr_' + s)
     for k in SYNC_OSLON: os += n(k)
     os_dozw = min(os, 100 * n('przydz_os'))
-    tl = 20 * n('przydz_tl') + 5 * (w('burta_l') + w('burta_p'))
-    jon = 10 * n('przydz_jon')
+    tl = 20 * n('przydz_tl') * ((tempo_ognia(j, 'l') + tempo_ognia(j, 'p')) / 2) + 5 * (w('burta_l') + w('burta_p'))
+    for c in WZM_BRONI: tl += 4 * w(c)
+    tl += 2 * (n('sync_tl_os_l') + n('sync_tl_os_p'))
+    jon = 10 * n('przydz_jon') * (0.5 + n('jon_moc'))
     sil = 15 * n('przydz_sil')
     podst = koszt_sensorow(j.get('zasieg_sensorow', 1000)) + 10 * n('przydz_hiper') + 3 * n('sync_przedni_pr') + 4 * n('pole_komory')
     przel_sil, przel_podst = n('przel_sil_zapas') >= 0.5, n('przel_podst_przedni') >= 0.5
@@ -556,6 +630,9 @@ def zasilanie(stan, tik, j):
     wyk = max(n('gen_min'), min(1.0, zas_['uzyte'] / pula)) if pula > 0 else 1.0
     przyrost = (wyk - 0.85) * 2 + 0.5 * w('glowny') + 0.3 * w('generator') + 0.2 * (w('uzbr') + w('przedni') + w('zapas'))
     for s in SEKTORY: przyrost += 0.2 * w(s)
+    for c in WZM_BRONI: przyrost += 0.2 * w(c)
+    for b in ('l', 'p'):
+        if n('tryb_' + b) >= 0.75: przyrost += 0.3
     if przyrost > 0: przyrost *= (1.5 - n('pole_komory')) * (0.8 if n('sync_glowny_pom') >= 0.5 else 1.0)
     j['cieplo'] = min(150.0, max(0.0, j['cieplo'] + przyrost))
     if not j['dlawienie'] and j['cieplo'] >= 100:
@@ -814,6 +891,8 @@ def krok(stan):
             else:
                 k, v = w['wartosc'].split('=')
                 j['nastawy'][k] = float(v)
+                if k.startswith('tryb_') and float(v) >= 0.75:
+                    j['nastawy']['zapor_do_' + k[-1]] = float(tik + 10 + int(zaokr(50 * nast(j, 'czas_zapor'))))
         if w['kod'].startswith('przestrojenie'):
             nr, gk = w['kanal'].split(':')
             j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)

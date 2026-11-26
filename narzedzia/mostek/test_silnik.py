@@ -130,8 +130,19 @@ if '--php' in sys.argv:
                     (50, 1, 'n_gen_min', 'nastawa', 'gen_min=1'), (50, 1, 'n_pole_komory', 'nastawa', 'pole_komory=0'),
                     (60, 1, 'n_przel_sil_zapas', 'przelacz', 'przel_sil_zapas=1'), (70, 1, 'n_sync_rufa_sg_l', 'synchronizuj', 'sync_rufa_sg_l=1'),
                     (80, 1, 'wzm_burta_p', 'wzmocnij', None), (120, 1, 'wzm_glowny', 'wzmocnij', None), (300, 1, 'wyrownaj_baterie', 'wyrownaj', 'baterie')]
+    # nastawy konsol Turbolasery i Kontrola ognia: tryby ognia, Hz baterii z sensorów, rozrzut, elewacja, opóźnienie,
+    # obezwładnienie jonami, grupy PDLC, wzmocnienia broni
+    OGIEN_TEST = [(3, 1, 'n_tryb_l', 'nastawa', 'tryb_l=1'), (3, 1, 'n_czas_zapor', 'nastawa', 'czas_zapor=0.2'),
+                  (4, 1, 'n_sync_tl_sens', 'synchronizuj', 'sync_tl_sens=1'), (4, 1, 'n_tl_hz_min_p', 'nastawa', 'tl_hz_min_p=0.3'),
+                  (5, 1, 'n_rozrzut_p', 'nastawa', 'rozrzut_p=0.1'), (5, 1, 'n_elewacja', 'nastawa', 'elewacja=0.8'),
+                  (6, 1, 'n_opoznienie', 'nastawa', 'opoznienie=0.5'), (6, 1, 'n_jon_obezwl', 'nastawa', 'jon_obezwl=1'),
+                  (7, 1, 'n_jon_moc', 'nastawa', 'jon_moc=0.9'), (8, 1, 'wzm_salwa', 'wzmocnij', None), (9, 1, 'wzm_pd_dziob', 'wzmocnij', None),
+                  (9, 1, 'n_pd_kat_bok_l', 'nastawa', 'pd_kat_bok_l=0.9'), (10, 1, 'n_sync_ko_iff', 'synchronizuj', 'sync_ko_iff=1'),
+                  (10, 1, 'n_sync_tl_ko_l', 'synchronizuj', 'sync_tl_ko_l=1'), (30, 1, 'wzm_ogien_p', 'wzmocnij', None),
+                  (100, 1, 'n_tryb_p', 'nastawa', 'tryb_p=0.5'), (150, 1, 'n_tempo_l', 'nastawa', 'tempo_l=1'), (160, 1, 'wzm_jony', 'wzmocnij', None),
+                  (200, 1, 'n_tryb_l', 'nastawa', 'tryb_l=1'), (350, 1, 'wyrownaj_ogien', 'wyrownaj', 'ogien')]
     przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420),
-                 przebieg('walako_atak', 3, True, 420, NASTAWY_TEST)]
+                 przebieg('walako_atak', 3, True, 420, NASTAWY_TEST), przebieg('walako_atak', 3, True, 420, OGIEN_TEST)]
     for pb in przebiegi:
         zs = [[round(x, 2) if isinstance(x, float) else x for x in z] for z in pb['zasilanie']]
         print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}{' + nastawy' if pb['rozkazy'] else ''}: zasilanie {zs}")

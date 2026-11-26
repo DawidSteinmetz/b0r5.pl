@@ -257,7 +257,8 @@ function pulpit(klasa, nazwa, wiazania) {
     // Stan lokalny dla elementów bez mechaniki (i bez własnego kliknięcia): przełącznik, sprężyna, suwak, zakres.
     let lokalny = false;
     let w = wiaz;
-    if (!interakcja && !wiaz?.ekran) {
+    // urządzenie (B) z odczytem z symulacji to wskaźnik — nie dostaje stanu lokalnego
+    if (!interakcja && !wiaz?.ekran && !(typ === 'B' && wiaz)) {
       lokalny = true;
       const l = LOKALNE.get(klucz) ?? (typ === 'S' ? { max: 1, min: 0 } : typ === 'Y' ? { poz: 0.5 } : { wl: typ === 'B' });
       LOKALNE.set(klucz, l);
@@ -1183,12 +1184,16 @@ function turbolasery(s, st, akcje) {
   const tl = celeBaterii(s, j, 'turbolaser'), jon = celeBaterii(s, j, 'jon');
   const opis = (b) => b ? (b.cel ? `${b.cel.nazwa} · ${km(b.d)} km` : `brak celu w łuku (${b.zasieg} km)`) : '—';
   const wskazany = s.jednostki.find((x) => x.nr_jednostki === j.cel_ognia && x.strona !== j.strona);
+  const n = nastawyKonsoli(j, st, akcje, 'Turbolasery');
+  const N0 = tl[0]?.hz || 3600;
+  const dzielniki = [...Array(N0).keys()].map((i) => i + 1).filter((d) => N0 % d === 0);
+  const stopien = (frac) => dzielniki.find((d) => d >= Math.max(1, frac * N0)) || N0;
   const bateria = (lewa) => () => {
     const b = tl.filter((x) => x.lewa === lewa);
-    const hz = b[0]?.hz || 3600, krok = 3600 / hz, strzela = b.some((x) => x.cel);
+    const hz = stopien(n.N(lewa ? 'tl_hz_max_l' : 'tl_hz_max_p')), krok = N0 / hz, strzela = b.some((x) => x.cel);
     return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
       h('div', `bateria ${lewa ? 'lewa' : 'prawa'} · ${hz} Hz · ${strzela ? 'OGIEŃ' : 'czuwanie'}${wskazany ? ` · cel wskazany: ${wskazany.nazwa}` : ''}`),
-      siatkaLampek(3600, 60, (i) => ((i + 1) % krok === 0 ? (strzela ? [255, 120, 90] : [77, 226, 201]) : [16, 26, 34])));
+      siatkaLampek(N0, Math.round(Math.sqrt(N0)) || 60, (i) => ((i + 1) % krok === 0 ? (strzela ? [255, 120, 90] : [77, 226, 201]) : [16, 26, 34])));
   };
   const w = {
     'WYBRANA BATERIA LEWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz': { ekran: bateria(true) },
@@ -1204,6 +1209,34 @@ function turbolasery(s, st, akcje) {
   for (const lewa of [true, false]) {
     const b = jon.filter((x) => x.lewa === lewa), cel = b.find((x) => x.cel) || b[0];
     w[`${lewa ? 'Lewa' : 'Prawa'} bateria jonowa`] = { wl: b.some((x) => x.cel), etykieta: `JON-${lewa ? 'L' : 'P'} · ${opis(cel)}` };
+  }
+  // MECHANIKA 11.4: zakres Hz baterii (bez synchronizacji z sensorami — maks.; z nią najniższy stopień ≥ 1,5 × Hz osłony
+  // celu w zakresie; niższe Hz — celniej, słabiej), grupy PDLC (kąt pokrycia, wzmocnienia), synchronizacje.
+  const hzFmt = (v) => `${stopien(v)} Hz`;
+  w['suwak: maksymalna częstotliwość lewej baterii turbolaserów'] = n.zakres('tl_hz_max_l', 'tl_hz_min_l', 'maks.', 'min.', hzFmt);
+  w['suwak: maksymalna częstotliwość prawej baterii turbolaserów'] = n.zakres('tl_hz_max_p', 'tl_hz_min_p', 'maks.', 'min.', hzFmt);
+  const SYNC = {
+    'synchronizacja lewych PDLC z konsolą myśliwców (IFF)': 'sync_tl_iff_l', 'synchronizacja prawych PDLC z konsolą myśliwców (IFF)': 'sync_tl_iff_p',
+    'synchronizacja lewej baterii z lewym generatorem osłon': 'sync_tl_os_l', 'synchronizacja prawej baterii z prawym generatorem osłon': 'sync_tl_os_p',
+    'synchronizacja lewej baterii z kontrolą ognia': 'sync_tl_ko_l', 'synchronizacja prawej baterii z kontrolą ognia': 'sync_tl_ko_p',
+    'synchronizacja z konsolą sensorów (Hz celów)': 'sync_tl_sens',
+  };
+  for (const [tekst, k] of Object.entries(SYNC)) w[tekst] = n.przelacznik(k);
+  const WZM = { 'wzmocnij lewą baterię turbolaserów': 'tl_l', 'wzmocnij prawą baterię turbolaserów': 'tl_p',
+    'wzmocnij lewe przednie działka PDLC': 'pd_przod_l', 'wzmocnij dziobowe działka PDLC': 'pd_dziob', 'wzmocnij prawe przednie działka PDLC': 'pd_przod_p',
+    'wzmocnij lewe boczne działka PDLC': 'pd_bok_l', 'wzmocnij dolne działka PDLC': 'pd_dol', 'wzmocnij prawe boczne działka PDLC': 'pd_bok_p',
+    'wzmocnij rufowe działka PDLC': 'pd_rufa' };
+  for (const [tekst, cel] of Object.entries(WZM)) w[tekst] = n.wzmocnij(cel, tekst);
+  const KAT = { 'lewych przednich': 'przod_l', 'dziobowych': 'dziob', 'prawych przednich': 'przod_p', 'lewych bocznych': 'bok_l', 'dolnych': 'dol',
+    'prawych bocznych': 'bok_p', 'rufowych': 'rufa' };
+  for (const [opis, g] of Object.entries(KAT)) {
+    w[`suwak: kąt pokrycia ${opis} działek PDLC`] = n.suwak('pd_kat_' + g, `łuk ${opis} PDLC`, (v) => `${Math.round(180 * (0.5 + v))}°`);
+  }
+  w['wyrównaj baterie'] = n.wyrownaj('turbolasery', 'wyrównaj baterie (Hz i łuki PDLC)');
+  w['równaj częstotliwość z reaktorem'] = { etykieta: `równaj z reaktorem (${stopien(n.N('czest_bazowa'))} Hz)`,
+    klik: () => { n.ustaw('tl_hz_max_l', n.N('czest_bazowa')); n.ustaw('tl_hz_max_p', n.N('czest_bazowa')); } };
+  for (const [lewa, tekst] of [[true, 'Lewa bateria jonowa'], [false, 'Prawa bateria jonowa']]) {
+    if (w[tekst]) w[tekst].etykieta += n.N('jon_obezwl') >= 0.5 ? ' · obezwładnienie' : '';
   }
   return pulpit(j.profil, 'Turbolasery', w);
 }
@@ -1226,7 +1259,43 @@ function kontrolaOgnia(s, st, akcje) {
     ...[...tl.map((b) => [`TL ${b.lewa ? 'L' : 'P'}${b.lewa ? b.nr : b.nr - 4}`, b]), ...jon.map((b) => [`JON ${b.nr}`, b])].map(([n, b]) =>
       h('div', { style: `border-bottom:1px solid rgba(255,255,255,.08);color:${b.cel ? '#ff8a80' : '#9fb4c8'}` }, `${n} · ${b.cel ? `${b.cel.nazwa} ${km(b.d)} km` : 'brak celu'}`)));
   const blokada = { wl: !!wskazany, etykieta: wskazany ? `blokada: ${wskazany.nazwa} (dotknij — zwolnij)` : 'blokada celu (brak)', klik: () => wskaz(null) };
+  // MECHANIKA 11.4: tempo (z zakresem), rozrzut, tryby ognia, opóźnienie burt, elewacja, działa jonowe, synchronizacje.
+  const n = nastawyKonsoli(j, st, akcje, K);
+  const N = n.N;
+  const wrogieOkrety = s.jednostki.filter((x) => x.strona !== j.strona && x.stan === 'w_bitwie');
+  const w = {};
+  for (const [b, burta] of [['l', 'lewej'], ['p', 'prawej']]) {
+    w[`suwak: maksymalne tempo ognia ${burta} baterii`] = n.zakres(`tempo_max_${b}`, `tempo_min_${b}`, 'tempo maks.', 'min.', (v) => `×${(0.5 + v).toFixed(2)}`);
+    w[`suwak: tempo ognia ${burta} baterii`] = n.suwak(`tempo_${b}`, `tempo ${burta}`, (v) => `×${(0.5 + v).toFixed(2)}`);
+    w[`suwak: rozrzut salwy ${burta} baterii`] = n.suwak(`rozrzut_${b}`, `rozrzut ${burta} (wąski — cel stojący)`);
+    w[`wzmocnij ogień ${burta} baterii`] = n.wzmocnij(`ogien_${b}`, `wzmocnij ogień ${burta} baterii`);
+    const bat = b === 'l' ? 'lewa bateria' : 'prawa bateria';
+    const tr = N(`tryb_${b}`);
+    w[`tryb: salwa (${bat})`] = { wl: tr < 0.25, przelacznik: true, klik: () => n.ustaw(`tryb_${b}`, 0) };
+    w[`tryb: pojedynczy strzał (${bat})`] = { wl: tr >= 0.25 && tr < 0.75, przelacznik: true, klik: () => n.ustaw(`tryb_${b}`, tr >= 0.25 && tr < 0.75 ? 0 : 0.5) };
+    w[`tryb: ogień zaporowy (${bat})`] = { wl: tr >= 0.75, przelacznik: true, klik: () => n.ustaw(`tryb_${b}`, tr >= 0.75 ? 0 : 1),
+      etykieta: `ogień zaporowy (${bat})${tr >= 0.75 ? ' · TRWA' : ''}` };
+  }
+  w['suwak: czas trwania ognia zaporowego'] = n.suwak('czas_zapor', 'czas ognia zaporowego', (v) => `${10 + Math.round(50 * v)} s`);
+  w['suwak: opóźnienie między salwami lewej i prawej baterii'] = n.suwak('opoznienie', 'opóźnienie prawej baterii');
+  w['suwak: elewacja celu'] = n.suwak('elewacja', 'elewacja (optimum 50%)');
+  w['suwak: natężenie wiązki jonowej'] = n.suwak('jon_moc', 'natężenie wiązki jonowej', (v) => `×${(0.5 + v).toFixed(2)}`);
+  w['tryb: obezwładnienie (działa jonowe)'] = n.przelacznik('jon_obezwl', N('jon_obezwl') >= 0.5 ? 'obezwładnienie: jony w zasilanie celu' : 'tryb: obezwładnienie (działa jonowe)');
+  w['wzmocnij salwę'] = n.wzmocnij('salwa', 'wzmocnij salwę');
+  w['wzmocnij działa jonowe'] = n.wzmocnij('jony', 'wzmocnij działa jonowe');
+  w['synchronizacja z konsolą dowodzenia myśliwcami (IFF)'] = n.przelacznik('sync_ko_iff');
+  w['synchronizacja z konsolą sensorów'] = n.przelacznik('sync_ko_sens');
+  w['synchronizacja z lewą baterią turbolaserów'] = n.przelacznik('sync_tl_ko_l');
+  w['synchronizacja z prawą baterią turbolaserów'] = n.przelacznik('sync_tl_ko_p');
+  // Równaj tempo z mocą reaktora: tempo obu burt tak, by baterie mieściły się w zasilaniu (bilans z konsoli Reaktory).
+  w['równaj tempo ognia z mocą reaktora'] = { etykieta: `równaj tempo z mocą reaktora${j.zasil ? ` (baterie ${Math.round(j.zasil.bron * 100)}%)` : ''}`,
+    klik: () => {
+      const f = j.zasil?.bron ?? 1;
+      if (f >= 0.999) return akcje.komunikat('Moc reaktora wystarcza bateriom — tempo bez zmian.');
+      for (const b of ['l', 'p']) n.ustaw(`tempo_${b}`, Math.max(0, Math.min(1, (0.5 + N(`tempo_${b}`)) * f - 0.5)));
+    } };
   return pulpit(j.profil, K, {
+    ...w,
     'wskazanie celu: siatka taktyczna': { ekran: () => powiekszany(st, akcje, 'ogien', (z) => ekranPlot(s, st, { zasieg: 50 / z, srodek: j,
       pierscienie: [10, 25, 50].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { st.oznaczony = idObiektu(o); akcje.odswiez(); },
       obiekty: [...obce, j] })) },
@@ -1236,8 +1305,14 @@ function kontrolaOgnia(s, st, akcje) {
     'wyrównaj baterie na cel': { klik: przydziel },
     'przydziel cel działom jonowym': { klik: przydziel },
     'blokada celu lewej baterii': blokada, 'blokada celu prawej baterii': blokada,
-    'suwak: dystans do celu': { etykieta: oznaczony ? `dystans: ${km(odl(oznaczony, j))} km` : 'dystans: —' },
-    'suwak: namiar celu (azymut)': { etykieta: oznaczony ? `namiar: ${wzgledem(j, oznaczony).namiar}°` : 'namiar: —' },
+    // Namiar i dystans: odczyt oznaczonego celu; dotknięcie suwaka oznacza okręt wroga najbliższy wskazanej wartości.
+    'suwak: dystans do celu': { etykieta: oznaczony ? `dystans: ${km(odl(oznaczony, j))} km` : 'dystans: — (dotknij, by wybrać)',
+      poz: oznaczony ? Math.min(1, odl(oznaczony, j) / 50) : 0,
+      ustawPoz: (v) => { const c = wrogieOkrety.sort((a, b) => Math.abs(odl(a, j) - 50 * v) - Math.abs(odl(b, j) - 50 * v))[0]; if (c) { st.oznaczony = idObiektu(c); akcje.odswiez(); } } },
+    'suwak: namiar celu (azymut)': { etykieta: oznaczony ? `namiar: ${wzgledem(j, oznaczony).namiar}°` : 'namiar: — (dotknij, by wybrać)',
+      poz: oznaczony ? (wzgledem(j, oznaczony).namiar + 180) / 360 : 0.5,
+      ustawPoz: (v) => { const c = wrogieOkrety.sort((a, b) => Math.abs(wzgledem(j, a).namiar - (360 * v - 180)) - Math.abs(wzgledem(j, b).namiar - (360 * v - 180)))[0];
+        if (c) { st.oznaczony = idObiektu(c); akcje.odswiez(); } } },
   });
 }
 

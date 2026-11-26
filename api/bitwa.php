@@ -1152,7 +1152,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
                             $wart = $grupa;
                         } else {
                             $k = (string) ($w['nastawa'] ?? '');
-                            if (!isset(BITWA_NASTAWY[$k])) return ['odmowa' => 'Nieznana nastawa.'];
+                            if (!isset(BITWA_NASTAWY[$k]) || str_starts_with($k, 'zapor_do_')) return ['odmowa' => 'Nieznana nastawa.'];
                             $czyPrzel = str_starts_with($k, 'przel_');
                             $czySync = str_starts_with($k, 'sync_');
                             $kod = $czyPrzel ? 'przelacz' : ($czySync ? 'synchronizuj' : 'nastawa');

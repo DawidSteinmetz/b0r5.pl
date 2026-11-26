@@ -549,6 +549,29 @@ poniżej. Pole komory (0…1) mnoży przyrost przez 1,5 − pole, synchronizacja
 dławienie (rdzeń daje 70%), koniec poniżej 60%. „Równaj częstotliwość z reaktorem” stroi oba generatory osłon na stopień
 natywny najbliższy częstotliwości bazowej (suwak na konsoli Reaktory, 12 s).
 
+**Turbolasery** (te same nastawy i rozkazy):
+- Hz baterii burty: szary suwak = zakres (ułamek liczby żył baterii, stopień natywny w górę). Bez synchronizacji
+  z konsolą sensorów bateria strzela maks. zakresu; z nią — najniższy stopień ≥ 1,5 × Hz osłony celu (w zakresie).
+  Energia trafienia ∝ Hz, a celność rośnie przy niższych Hz (θ × (0,5 + 0,5 · Hz / N)).
+- Synchronizacje: bateria z generatorem osłon tej burty — energia +10% (+2 do poboru); bateria z Kontrolą ognia —
+  θ × 0,85; PDLC z konsolą myśliwców (IFF) — θ PDLC burty × 0,8.
+- Grupy PDLC (dziób, przód i bok każdej burty, dół — co drugie działko śródokręcia, rufa): kąt pokrycia
+  (0…1, domyślnie 0,5) mnoży łuk i θ przez 0,5 + kąt — szerzej, ale mniej celnie; wzmocnienie grupy θ / 1,5.
+- Wzmocnienie baterii: energia × 1,25. „Wyrównaj baterie” — zakresy Hz i łuki PDLC wracają do domyślnych; „równaj
+  z reaktorem” — maks. Hz obu baterii = częstotliwość bazowa.
+
+**Kontrola ognia:**
+- Tempo burty: 0,5 + tempo (w zakresie szarego suwaka) mnoży tempo salw i pobór baterii; wzmocnienie ognia burty
+  × 1,25; „równaj tempo z mocą reaktora” obniża tempo obu burt do zasilenia baterii.
+- Tryby burty: salwa (domyślnie); pojedynczy strzał — ¼ luf, θ × 0,7; ogień zaporowy — tempo × 1,5, θ × 1,5,
+  +0,3 ciepła rdzenia na tik, trwa 10 + 50 × czas (s), potem sam wraca do salwy (zdarzenie „zaporowy”).
+- Rozrzut burty r: θ × (0,5 + r) na cel stojący (v ≤ 0,05 km/s), × (1,5 − r) na manewrujący. Elewacja: θ × (1 + |e − 0,5|).
+  Opóźnienie: prawa bateria przesunięta o ułamek odstępu salw. Synchronizacja z sensorami: θ × 0,9; IFF: θ PDLC × 0,9.
+- Działa jonowe: natężenie (0,5 + n) mnoży energię i pobór; wzmocnienie — tempo × 1,5; obezwładnienie — trafienia
+  zamiast osłon grzeją rdzeń celu (+3 × trafienia × (0,5 + n)), co może go zdławić. Wzmocnienie salwy: energia × 1,15.
+- Każde wzmocnienie uzbrojenia: +4 do poboru baterii i +0,2 ciepła rdzenia na tik.
+- Namiar i dystans: odczyt oznaczonego celu; dotknięcie oznacza okręt wroga najbliższy wskazanej wartości.
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

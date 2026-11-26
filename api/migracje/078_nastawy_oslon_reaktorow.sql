@@ -3,8 +3,8 @@
 -- pole komory, rezerwy, zakresy reaktora uzbrojenia i generatora mocy, przełączenia zasilania). Brak wiersza = wartość
 -- domyślna z silnika (BITWA_NASTAWY). Ciepło rdzenia i dławienie — stan okrętu w symulacji.
 -- Rozkazy (bitwy_rozkazy): nastawa / synchronizuj / przelacz (wartosc_po „kod=liczba”), wyrownaj (grupa), wzmocnij.
--- Wymaga 068 i odświeżonej 069 (rozkaz „nastawa”). Ponowny import kończy się błędem #1060 (kolumna już jest) — to
--- znaczy, że migracja jest już wgrana; nic nie trzeba robić.
+-- Wymaga 068 i odświeżonej 069 (rozkaz „nastawa”). Kolumna dławienia rdzenia to dlawienie_rdzenia — „dlawienie”
+-- (DECIMAL, współczynnik) istnieje od 068 i nie jest używana przez silnik.
 
 CREATE TABLE IF NOT EXISTS bitwy_nastawy (
   bitwa_jednostka_id BIGINT UNSIGNED NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS bitwy_nastawy (
 
 ALTER TABLE bitwy_jednostki
   ADD COLUMN cieplo_reaktora DOUBLE NOT NULL DEFAULT 0,
-  ADD COLUMN dlawienie TINYINT(1) NOT NULL DEFAULT 0;
+  ADD COLUMN dlawienie_rdzenia TINYINT(1) NOT NULL DEFAULT 0;
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v078-nastawy-oslon-reaktorow', 'Nastawy konsol Osłony i Reaktory, ciepło rdzenia w symulacjach bitew')

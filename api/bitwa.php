@@ -297,7 +297,7 @@ function bitwa_nastawy_dostepne(): bool
 {
     static $jest = null;
     if ($jest === null) {
-        try { polaczenie_bazy()->query('SELECT kod FROM bitwy_nastawy LIMIT 0'); polaczenie_bazy()->query('SELECT cieplo_reaktora FROM bitwy_jednostki LIMIT 0'); $jest = true; }
+        try { polaczenie_bazy()->query('SELECT kod FROM bitwy_nastawy LIMIT 0'); polaczenie_bazy()->query('SELECT cieplo_reaktora, dlawienie_rdzenia FROM bitwy_jednostki LIMIT 0'); $jest = true; }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
@@ -691,7 +691,7 @@ function bitwa_wczytaj_stan(array $b): array
             'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000), 'ai' => ($dowodzenie[$r['strona']] ?? 'gracze') !== 'gracze',
             'kurs_cel' => isset($r['kurs_cel_deg']) ? (float) $r['kurs_cel_deg'] : null, 'v_cel' => isset($r['v_cel_km_s']) ? (float) $r['v_cel_km_s'] : null,
             'cel_ognia' => isset($r['cel_ognia_nr']) ? (int) $r['cel_ognia_nr'] : null,
-            'nastawy' => [], 'cieplo' => (float) ($r['cieplo_reaktora'] ?? 0), 'dlawienie' => (bool) (int) ($r['dlawienie'] ?? 0)];
+            'nastawy' => [], 'cieplo' => (float) ($r['cieplo_reaktora'] ?? 0), 'dlawienie' => (bool) (int) ($r['dlawienie_rdzenia'] ?? 0)];
     }
     if (bitwa_nastawy_dostepne()) {
         $q = $db->prepare('SELECT n.bitwa_jednostka_id, n.kod, n.wartosc FROM bitwy_nastawy n JOIN bitwy_jednostki j ON j.id = n.bitwa_jednostka_id WHERE j.bitwa_id=?');
@@ -742,7 +742,7 @@ function bitwa_zapisz_stan(array $S): void
     $updSens = bitwa_sensory_dostepne() ? $db->prepare('UPDATE bitwy_jednostki SET zasieg_sensorow_km=? WHERE id=?') : null;
     $updSter = bitwa_ster_dostepny() ? $db->prepare('UPDATE bitwy_jednostki SET kurs_cel_deg=?, v_cel_km_s=?, cel_ognia_nr=? WHERE id=?') : null;
     $nastawy = bitwa_nastawy_dostepne();
-    $updCieplo = $nastawy ? $db->prepare('UPDATE bitwy_jednostki SET cieplo_reaktora=?, dlawienie=? WHERE id=?') : null;
+    $updCieplo = $nastawy ? $db->prepare('UPDATE bitwy_jednostki SET cieplo_reaktora=?, dlawienie_rdzenia=? WHERE id=?') : null;
     $insN = $nastawy ? $db->prepare('INSERT INTO bitwy_nastawy (bitwa_jednostka_id, kod, wartosc) VALUES (?,?,?) ON DUPLICATE KEY UPDATE wartosc = VALUES(wartosc)') : null;
     foreach ($S['jednostki'] as $j) {
         if ($updCieplo) {

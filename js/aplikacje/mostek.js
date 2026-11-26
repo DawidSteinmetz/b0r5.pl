@@ -104,40 +104,81 @@ export default {
       return uklady.filter((p) => KONSOLE.includes(p) || !['Klucz', 'Eskadra'].includes(p));
     }
 
+    // Załoga na pokładzie (kapitan widzi tylko obecnych na okręcie, MG — wszystkich); wybór w listach przetrwa
+    // przerysowanie mostka (stan okrętu odświeża się co kilka sekund).
+    let wczytujeZaloge = false;
+    const wybory = {};
     async function wczytajZaloge() {
+      if (wczytujeZaloge) return;
+      wczytujeZaloge = true;
       try {
         gracze = (await api('mostek_gracze', undefined, { okret: aktywny.obiekt_id })).gracze;
         rysujMostek();
       } catch (e) { wyczysc(komunikat).append(blad(e)); }
+      wczytujeZaloge = false;
     }
 
-    async function ustawPrzydzial(nazwa, login) {
+    async function ustawPrzydzial(nazwa, login, cicho = false) {
       try {
         const r = await api('mostek_stanowisko', { okret: aktywny.obiekt_id, pulpit: nazwa, login });
-        const tekst = login ? `${r.postac || login}: przydzielono do pulpitu ${nazwa}.` : `Zablokowano dostęp do pulpitu ${nazwa}.`;
-        wyczysc(komunikat).append(h('div.komunikat.ok', tekst));
-        await odswiez();
+        if (!cicho) {
+          const tekst = login ? `${r.postac || login}: przydzielono do pulpitu ${nazwa}${r.teleport ? ' (teleport na mostek)' : ''}.` : `Odebrano dostęp do pulpitu ${nazwa}.`;
+          wyczysc(komunikat).append(h('div.komunikat.ok', tekst));
+        }
+        delete wybory[nazwa];
+        if (!cicho) await odswiez();
       } catch (e) { wyczysc(komunikat).append(blad(e)); }
+    }
+
+    // Bunt: odebranie graczowi wszystkich stanowisk na tym okręcie naraz (także w trwających symulacjach) —
+    // jego ekran stanowiska zamyka się przy najbliższym odświeżeniu i wraca na pulpit HOLOLINK.
+    async function odbierzWszystko(osoba) {
+      if (!confirm(`Odebrać ${osoba.postac} dostęp do wszystkich stanowisk (${osoba.pulpity.join(', ')})?`)) return;
+      for (const p of osoba.pulpity) await ustawPrzydzial(p, '', true);
+      wyczysc(komunikat).append(h('div.komunikat.ok', `${osoba.postac}: odebrano dostęp do wszystkich stanowisk.`));
+      await odswiez();
+    }
+
+    // Stanowiska do przydziału: pulpity okrętu, każda eskadra (3 klucze) i każdy klucz myśliwców — pilot dostaje
+    // jeden klucz albo jedną eskadrę na telefonie.
+    function stanowiskaDoPrzydzialu(stan) {
+      const klucze = (stan.klucze || []).filter((k) => !k.ai).map((k) => k.nr).sort((a, b) => a - b);
+      const eskadry = [...new Set(klucze.map((n) => Math.ceil(n / 3)))];
+      return { pulpity: pulpity(stan).filter((p) => p !== 'Klucz' && p !== 'Eskadra'), mysliwce: [...eskadry.map((n) => `Eskadra ${n}`), ...klucze.map((n) => `Klucz ${n}`)] };
     }
 
     function rysujAdmin(st) {
       if (!(st.stanowiska?.pelny && (st.stanowiska?.mg || st.stanowiska?.kapitan))) return null;
+      if (!gracze) wczytajZaloge();
       const przypisane = Object.fromEntries((st.stanowiska.przypisane || []).map((x) => [x.pulpit, x]));
-      const wiersze = pulpity(stanOkretu).map((nazwa) => {
+      const wiersz = (nazwa) => {
         const teraz = przypisane[nazwa];
-        const wybor = gracze ? h('select', { style: 'min-height:32px;max-width:220px' },
-          h('option', { value: '' }, '— wybierz załogę —'),
-          gracze.map((g) => h('option', { value: g.login, selected: teraz?.login === g.login }, `${g.postac}${g.na_pokladzie ? '' : ' (poza okrętem)'}`))) : null;
-        return h('tr', h('td', nazwa), h('td', teraz?.postac || h('span.slaby', 'brak przydziału')),
+        const wybor = gracze ? h('select', { style: 'min-height:32px;max-width:220px', onchange: (e) => { wybory[nazwa] = e.target.value; } },
+          h('option', { value: '' }, '— wybierz z załogi —'),
+          gracze.map((g) => h('option', { value: g.login, selected: (wybory[nazwa] ?? teraz?.login) === g.login }, `${g.postac}${g.na_pokladzie ? '' : ' (poza okrętem — teleport)'}`))) : null;
+        return h('tr', h('td', nazwa), h('td', teraz?.postac || h('span.slaby', 'wolne')),
           h('td', { style: 'text-align:right' }, h('div', { style: 'display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap' },
             wybor,
-            wybor ? h('button.przycisk.drugi.maly', { onclick: () => ustawPrzydzial(nazwa, wybor.value) }, 'Przydziel') : null,
-            teraz ? h('button.przycisk.drugi.maly', { onclick: () => ustawPrzydzial(nazwa, '') }, 'Blokuj dostęp') : null)));
-      });
+            wybor ? h('button.przycisk.drugi.maly', { onclick: () => (wybor.value ? ustawPrzydzial(nazwa, wybor.value) : null) }, 'Przydziel') : null,
+            teraz ? h('button.przycisk.drugi.maly', { onclick: () => ustawPrzydzial(nazwa, '') }, 'Odbierz dostęp') : null)));
+      };
+      const { pulpity: pp, mysliwce } = stanowiskaDoPrzydzialu(st);
+      // załoga ze stanowiskami: kto obsadza co — z przyciskiem odebrania wszystkiego
+      const osoby = {};
+      for (const x of st.stanowiska.przypisane || []) (osoby[x.login.toLowerCase()] ||= { login: x.login, postac: x.postac, pulpity: [] }).pulpity.push(x.pulpit);
+      const obsada = Object.values(osoby);
       return panel(`ZAŁOGA · ${aktywny.nazwa}`,
-        h('p.slaby.maly-tekst', 'Przydział daje graczowi tylko ten pulpit. „Blokuj dostęp” zwalnia stanowisko również w aktywnej symulacji.'),
-        gracze ? null : h('button.przycisk.drugi', { style: 'margin-bottom:8px', onclick: wczytajZaloge }, 'Wczytaj załogę'),
-        h('table.tabela', wiersze));
+        h('p.slaby.maly-tekst', 'Przydział jest stały: obowiązuje na co dzień i w każdej symulacji tego okrętu. Gracz widzi tylko swój pulpit '
+          + '(jedno stanowisko na osobę). „Odbierz dostęp” działa od razu — ekran stanowiska gracza zamyka się w kilka sekund. '
+          + (st.stanowiska.mg ? 'MG może przydzielić każdego gracza (postać zostaje przeniesiona na mostek).' : 'Kapitan przydziela graczy obecnych na pokładzie.')),
+        !gracze ? h('div.slaby.maly-tekst', 'Wczytywanie załogi…') : !gracze.length ? h('div.komunikat', 'Na pokładzie nie ma nikogo, kogo można przydzielić.') : null,
+        obsada.length ? h('div', { style: 'margin:8px 0' }, h('div.slaby.maly-tekst', 'Obsada stanowisk:'),
+          h('table.tabela', obsada.map((o) => h('tr', h('td', h('b', o.postac)), h('td', o.pulpity.join(', ')),
+            h('td', { style: 'text-align:right' }, h('button.przycisk.drugi.maly', { onclick: () => odbierzWszystko(o) }, 'Odbierz wszystkie stanowiska')))))) : null,
+        h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Pulpity okrętu:'),
+        h('table.tabela', pp.map(wiersz)),
+        mysliwce.length ? h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Piloci (telefon):') : null,
+        mysliwce.length ? h('table.tabela', mysliwce.map(wiersz)) : null);
     }
 
     function rysujMostek() {
@@ -169,7 +210,7 @@ export default {
       const zawartosc = [
         kiosk ? null : panel('MOSTEK · ' + aktywny.nazwa, przywrocListe,
           st.pelny ? h('p.slaby.maly-tekst', 'Pełny dostęp dowódcy. Wybierz pulpit lub zarządzaj przydziałami załogi.') : null,
-          rysujAdmin(st), pasek, komunikat),
+          rysujAdmin(stanOkretu), pasek, komunikat),
         ramka,
       ];
       wyczysc(trescMostka).append(...zawartosc);

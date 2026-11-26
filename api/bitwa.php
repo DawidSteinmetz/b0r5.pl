@@ -255,6 +255,17 @@ function bitwa_koszt_sensorow(int $km): float
     return round(0.245 * ($km / 1000) ** 1.618, 2);
 }
 
+// Migracja 076 (ster okrętu gracza, cel wskazany baterii).
+function bitwa_ster_dostepny(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT kurs_cel_deg FROM bitwy_jednostki LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
 function bitwa_sensory_dostepne(): bool
 {
     static $jest = null;
@@ -304,6 +315,24 @@ function bitwa_moze(array $u, array $b): bool
     $q = polaczenie_bazy()->prepare('SELECT obiekt_id FROM bitwy_jednostki WHERE bitwa_id=? AND obiekt_id IS NOT NULL');
     $q->execute([(int) $b['id']]);
     return (bool) array_intersect($ids, array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN)));
+}
+
+// Stanowisko konta w trwającej symulacji (przydział MG albo kapitana): po zalogowaniu gracz widzi tylko ten pulpit.
+// MG i prowadzący nie są stanowiskami — dla nich null.
+function bitwa_moje_stanowisko(array $u): ?array
+{
+    if (bitwa_mg($u) || !bitwa_dostepna()) return null;
+    try {
+        if (bitwa_okrety_konta($u)) return null;   // dowodzący okrętem (kapitan) widzi wszystko, nie jest stanowiskiem
+        $q = polaczenie_bazy()->prepare("SELECT b.id, s.pulpit FROM bitwy_stanowiska s JOIN bitwy_jednostki j ON j.id = s.bitwa_jednostka_id
+            JOIN mapa_bitwy b ON b.id = j.bitwa_id WHERE LOWER(s.login) = LOWER(?) AND b.status IN ('przygotowanie','aktywna')
+            AND LOWER(COALESCE(b.prowadzacy_login, '')) <> LOWER(?) ORDER BY b.id DESC, s.pulpit");
+        $q->execute([(string) ($u['login'] ?? ''), (string) ($u['login'] ?? '')]);
+        $w = $q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { return null; }
+    if (!$w) return null;
+    $id = (int) $w[0]['id'];
+    return ['bitwa_id' => $id, 'pulpity' => array_values(array_map(static fn($r) => $r['pulpit'], array_filter($w, static fn($r) => (int) $r['id'] === $id)))];
 }
 
 // Prowadzi (start, pauza, koniec): MG albo prowadzący.
@@ -472,7 +501,9 @@ function bitwa_wczytaj_stan(array $b): array
         $S['jednostki'][] = ['id' => $jid, 'nr' => (int) $r['scenariusz_nr'], 'strona' => $r['strona'], 'profil' => $r['profil_kod'], 'nazwa' => $r['nazwa'],
             'x' => (float) $r['x_km'], 'y' => (float) $r['y_km'], 'kurs' => (float) $r['zwrot_deg'], 'v' => (float) $r['v_km_s'],
             'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id'],
-            'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000), 'ai' => ($dowodzenie[$r['strona']] ?? 'gracze') !== 'gracze'];
+            'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000), 'ai' => ($dowodzenie[$r['strona']] ?? 'gracze') !== 'gracze',
+            'kurs_cel' => isset($r['kurs_cel_deg']) ? (float) $r['kurs_cel_deg'] : null, 'v_cel' => isset($r['v_cel_km_s']) ? (float) $r['v_cel_km_s'] : null,
+            'cel_ognia' => isset($r['cel_ognia_nr']) ? (int) $r['cel_ognia_nr'] : null];
     }
     $indeksKlucza = [];
     $q = $db->prepare('SELECT * FROM bitwy_klucze WHERE bitwa_id=? ORDER BY id');
@@ -493,7 +524,8 @@ function bitwa_wczytaj_stan(array $b): array
         $S['rozkazy'][] = ['id' => (int) $r['id'], 'kanal' => $r['kanal'], 'kod' => $r['rozkaz_kod'], 'tik' => (int) $r['tik'], 'czas_s' => (float) $r['czas_s'],
             'stan' => $r['stan'], 'ranga' => $r['ranga'], 'dziala_od' => (int) $r['dziala_od_tik'],
             'dziala_do' => $r['dziala_do_tik'] !== null ? (int) $r['dziala_do_tik'] : null, 'odnowienie_do' => $r['odnowienie_do_tik'] !== null ? (int) $r['odnowienie_do_tik'] : null,
-            'ki' => $r['bitwa_klucz_id'] !== null ? ($indeksKlucza[(int) $r['bitwa_klucz_id']] ?? null) : null, 'zmieniony' => false];
+            'ki' => $r['bitwa_klucz_id'] !== null ? ($indeksKlucza[(int) $r['bitwa_klucz_id']] ?? null) : null, 'zmieniony' => false,
+            'wartosc' => $r['wartosc_po']];
         $i = array_key_last($S['rozkazy']);
         $S['po_kanale'][$r['kanal']][] = $i;
         if ($r['stan'] === 'przygotowanie' || $r['stan'] === 'dziala') $S['aktywne'][$i] = true;
@@ -511,9 +543,11 @@ function bitwa_zapisz_stan(array $S): void
     $updS = $db->prepare('UPDATE bitwy_sekcje SET integralnosc=? WHERE bitwa_jednostka_id=? AND sekcja=?');
     $idJednostki = [];
     $updSens = bitwa_sensory_dostepne() ? $db->prepare('UPDATE bitwy_jednostki SET zasieg_sensorow_km=? WHERE id=?') : null;
+    $updSter = bitwa_ster_dostepny() ? $db->prepare('UPDATE bitwy_jednostki SET kurs_cel_deg=?, v_cel_km_s=?, cel_ognia_nr=? WHERE id=?') : null;
     foreach ($S['jednostki'] as $j) {
         $idJednostki[$j['nr']] = $j['id'];
         if ($updSens) $updSens->execute([(int) ($j['zasieg_sensorow'] ?? 1000), $j['id']]);
+        if ($updSter) $updSter->execute([$j['kurs_cel'] ?? null, $j['v_cel'] ?? null, $j['cel_ognia'] ?? null, $j['id']]);
         $updJ->execute([$j['x'], $j['y'], $j['kurs'], $j['v'], $j['stan'], $S['tasma'][$j['nr']] ?? null, $j['id']]);
         foreach ($j['generatory'] as $g) {
             $updG->execute([$g['hz_zadane'], $g['hz_osiagane'], $g['hz_min'], $g['hz_max'], $g['auto'] ? 1 : 0, $g['obciazenie'], $g['rykoszet'], $g['id']]);
@@ -564,11 +598,23 @@ function bitwa_dolicz(int $id, ?callable $dzialanie = null): array
         $b['okno_s'] = (int) $q->fetchColumn();
         $S = bitwa_wczytaj_stan($b);
         if ($b['status'] === 'aktywna' && $b['zegar_start_utc'] !== null) {
+            // Doliczanie do „teraz”, najwyżej 600 tików i ok. 5 s pracy na zapytanie (reszta w kolejnych odświeżeniach).
             $cel = min((int) floor(bitwa_czas_teraz($b)), (int) $b['okno_s']);
-            for ($n = min(max(0, $cel - $S['tik']), 600); $n > 0; $n--) bitwa_krok($S);
+            $t0 = microtime(true);
+            for ($n = min(max(0, $cel - $S['tik']), 600); $n > 0; $n--) {
+                bitwa_krok($S);
+                if (microtime(true) - $t0 > 5.0) break;
+            }
         }
         $wynik = $dzialanie ? $dzialanie($S, $b) : null;
         bitwa_zapisz_stan($S);
+        // Okno scenariusza minęło i wszystko doliczone: symulacja kończy się sama (XP liczone jak przy „Zakończ”).
+        if ($b['status'] === 'aktywna' && $S['tik'] >= (int) $b['okno_s']) {
+            $db->prepare("UPDATE mapa_bitwy SET status='zakonczona', koniec_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$id]);
+            $b['status'] = 'zakonczona';
+            bitwa_policz_xp($id);
+            $S['zdarzenia'] = [];
+        }
         $db->commit();
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
@@ -584,7 +630,7 @@ function bitwa_widok(array $b, array $S): array
     $db = polaczenie_bazy();
     $sl = bitwa_slowniki();
     $prof = bitwa_rozkazy_profile();
-    $czas = $b['zegar_start_utc'] !== null ? bitwa_czas_teraz($b) : 0.0;
+    $czas = $b['zegar_start_utc'] !== null ? min(bitwa_czas_teraz($b), (float) $b['okno_s']) : 0.0;
     $jednostki = [];
     foreach ($S['jednostki'] as $j) {
         $p = $sl['profile'][$j['profil']];
@@ -597,13 +643,16 @@ function bitwa_widok(array $b, array $S): array
         $jednostki[] = ['pobor_oslon_proc' => round(100 * $pobor / $p['moc_reaktora_w'], 2), 'stan' => $j['stan'],
             'wejscie_za_s' => $j['stan'] === 'oczekuje' ? round(max(0, $j['wejscie'] - $czas), 1) : null,
             'zasieg_sensorow_km' => $zasieg, 'pobor_sensorow_proc' => bitwa_koszt_sensorow($zasieg), 'zasiegi_sensorow' => BITWA_ZASIEGI_SENSOROW,'id' => $j['id'], 'nazwa' => $j['nazwa'], 'strona' => $j['strona'], 'profil' => $j['profil'], 'x' => round($j['x'], 3), 'y' => round($j['y'], 3),
-            'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000,
+            'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000, 'nr_jednostki' => $j['nr'], 'ai' => !empty($j['ai']),
+            'kurs_cel' => $j['kurs_cel'] ?? null, 'v_cel' => $j['v_cel'] ?? null, 'cel_ognia' => $j['cel_ognia'] ?? null,
+            'v_maks' => BITWA_STALE['v_maks_okretu'][$j['profil']] ?? 0.3, 'obrot_deg_min' => BITWA_STALE['obrot_okretu'][$j['profil']] ?? 60,
+            'ster' => bitwa_ster_dostepny(),
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
             'generatory' => array_map(static fn($g) => $p ? ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
                 'hz_skuteczne' => $g['hz_osiagane'] ? bitwa_hz_skuteczne($g['zyly'], $g['hz_osiagane']) : 0, 'auto' => $g['auto'],
                 'n' => $g['zyly']['n'], 'siatka_k' => $p['siatka'] ?? (int) ceil(sqrt($g['zyly']['n'])), 'hz_min' => $g['hz_min'], 'hz_max' => $g['hz_max'],
-                'martwe_b64' => base64_encode($g['zyly']['martwe']),
+                'martwe_b64' => base64_encode($g['zyly']['martwe']), 'temperatury_b64' => base64_encode($g['zyly']['temperatury']),
                 'obciazenie_proc' => round(100 * $g['obciazenie'] / $c, 1), 'rykoszet_j' => $g['rykoszet'], 'martwe' => bitwa_martwe($g['zyly'])] : [], $j['generatory'])];
     }
     $klucze = [];
@@ -715,7 +764,8 @@ function obsluz_bitwa(string $akcja, bool $post): void
     // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle
     // z rozkazami (PHP inaczej szereguje wszystkie zapytania jednej przeglądarki).
     if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
-    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna()]);
+    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna(),
+        'stanowisko' => bitwa_moje_stanowisko($u)]);
     if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
     if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);
     if (in_array($akcja, ['bitwa_test', 'bitwa_xp_zatwierdz'], true) && !bitwa_mg($u)) blad('Tylko dla MG.', 403);
@@ -802,10 +852,18 @@ function obsluz_bitwa(string $akcja, bool $post): void
             if ($b['status'] !== 'aktywna' || $b['pauza_od_utc'] !== null) blad('Symulacja nie trwa — rozkazy czekają na start lub koniec pauzy.');
             $st = bitwa_stanowiska_widok($u, $b);
             if (!$st['pelny']) {
-                $pulpitRozkazu = isset($w['klucz_id']) ? 'Myśliwce' : (isset($w['jednostka_id']) ? 'Sensory' : (string) ($w['pulpit'] ?? 'Osłony'));
-                if (!in_array($pulpitRozkazu, $st['moje'], true) && !(isset($w['klucz_id']) && array_intersect(['Klucz', 'Eskadra'], $st['moje']))) {
-                    blad("Ten rozkaz wydaje się z pulpitu {$pulpitRozkazu} — nie masz go przydzielonego.", 403);
+                $pulpitRozkazu = (string) ($w['pulpit'] ?? (isset($w['klucz_id']) ? 'Myśliwce' : (isset($w['jednostka_id']) ? 'Sensory' : 'Osłony')));
+                $wolno = in_array($pulpitRozkazu, $st['moje'], true) && !isset($w['klucz_id']);
+                if (isset($w['klucz_id'])) {
+                    // Klucz: pulpit Myśliwce albo przydział „Klucz N” / „Eskadra N” (3 klucze: 1–3, 4–6, …) obejmujący ten klucz.
+                    $q = $db->prepare('SELECT nr FROM bitwy_klucze WHERE id=? AND bitwa_id=?');
+                    $q->execute([(int) $w['klucz_id'], (int) $b['id']]);
+                    $nrK = (int) $q->fetchColumn();
+                    foreach ($st['moje'] as $p) {
+                        if ($p === 'Myśliwce' || $p === "Klucz $nrK" || $p === 'Eskadra ' . (int) ceil($nrK / 3)) $wolno = true;
+                    }
                 }
+                if (!$wolno) blad("Ten rozkaz wydaje się z pulpitu {$pulpitRozkazu} — nie masz go przydzielonego.", 403);
             }
             $uid = substr(preg_replace('/[^A-Za-z0-9-]/', '', (string) ($w['uid'] ?? '')), 0, 36) ?: bin2hex(random_bytes(16));
             $q = $db->prepare('SELECT 1 FROM bitwy_rozkazy WHERE bitwa_id=? AND uid=?');
@@ -832,6 +890,24 @@ function obsluz_bitwa(string $akcja, bool $post): void
                         return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
                     }
                     return ['odmowa' => 'Nie ma takiego klucza.'];
+                }
+                if (isset($w['jednostka_id']) && ($kod === 'ster' || $kod === 'cel_ognia')) {
+                    if (!bitwa_ster_dostepny()) return ['odmowa' => 'Ster i wskazanie celu wymagają migracji 076.'];
+                    foreach ($S['jednostki'] as $j) {
+                        if ($j['id'] !== (int) $w['jednostka_id']) continue;
+                        if (!empty($j['ai'])) return ['odmowa' => 'Tym okrętem dowodzi AI.'];
+                        if ($kod === 'ster') {
+                            $kurs = bitwa_norm180((float) ($w['kurs'] ?? $j['kurs_cel'] ?? $j['kurs']));
+                            $v = max(0.0, min(BITWA_STALE['v_maks_okretu'][$j['profil']] ?? 0.3, (float) ($w['v'] ?? $j['v_cel'] ?? $j['v'])));
+                            $wart = round($kurs, 2) . ';' . round($v, 4);
+                        } else {
+                            $wart = isset($w['cel_nr']) && $w['cel_nr'] !== null && $w['cel_nr'] !== '' ? (string) (int) $w['cel_nr'] : '';
+                        }
+                        $r = bitwa_przyjmij($S, "{$j['nr']}:$kod", $kod, $czas, 'standard', null,
+                            $meta + ['wartosc' => $wart, 'pulpit' => mb_substr((string) ($w['pulpit'] ?? 'Silniki'), 0, 40)]);
+                        return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
+                    }
+                    return ['odmowa' => 'Nie ma takiej jednostki.'];
                 }
                 if (isset($w['jednostka_id']) && $kod === 'sensory_zasieg') {
                     if (!bitwa_sensory_dostepne()) return ['odmowa' => 'Zasięg sensorów wymaga migracji 073.'];

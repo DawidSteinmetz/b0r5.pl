@@ -2,13 +2,16 @@
 // przyciski i ekrany podpięte pod stan bitwy (api/?a=bitwa_stan). Element bez mechaniki jest przygaszony.
 // Warstwy (PULPITY.md 6): 1 — kontrolki i ekrany (bez napisów), 2 — teksty w kroju datapada (var(--czcionka)), więc
 // przełącznik alfabetu (łaciński / Aurebesh) zmienia wszystkie napisy pulpitu naraz.
-// Mechanika: Radar i Sensory; pozostałe pulpity klasy rysują się w całości, bez podpiętych elementów.
+// Wygląd jak wzór assets/wnetrza/isd-konsola-*.svg: metalowa płyta z nitami, ciemne przyciski z ramką i lampką w kolorze
+// typu (PULPITY.md: czerwony wzmocnij, żółty suwak, zielony synchronizacja, niebieski urządzenie, biały polecenie),
+// ekrany w ramkach. Siatki żył (60×60) — lampki z minimalnymi przerwami (prototyp konsoli osłon).
 
 import { h } from '../rdzen/narzedzia.js';
 import { UKLADY, KOLORY, FORMATY, UZBROJENIE } from './pulpity_uklady.js';
 
 // Pulpity z mechaniką (pozostałe rysują się z samym układem). Kolejność = kolejność zakładek.
-export const KONSOLE = ['Radar', 'Sensory', 'Osłony', 'Reaktory', 'Myśliwce', 'Nawigacja', 'Kontrola ognia', 'Klucz', 'Eskadra'];
+export const KONSOLE = ['Radar', 'Sensory', 'Osłony', 'Reaktory', 'Turbolasery', 'Silniki', 'Nawigacja', 'Kontrola ognia', 'Grawitacja',
+  'Myśliwce', 'Klucz', 'Eskadra'];
 export const pulpityKlasy = (klasa) => Object.keys(UKLADY[klasa] || {});
 const NS = 'http://www.w3.org/2000/svg';
 const ZASIEG_SENSOROW_KM = 200; // jak automatyczne osłony w silniku (STALE zasieg_sensorow_km)
@@ -174,39 +177,67 @@ const stopienWGore = (stopnie, hz) => stopnie.find((x) => x >= hz) ?? stopnie[st
 
 // ------------------------------------------------------------------------------------------- rysownik pulpitu
 // Dwie siatki o tej samej geometrii: warstwa kontrolek (kolory, ekrany, kliknięcia) i nad nią warstwa tekstów.
+const BLACHA = '#262d33', SZCZELINA = '#14181b', KRAWEDZ = '#56626b', EKRAN_RAMA = '#11181b', EKRAN_TLO = '#06121a', TURKUS = '#4de2c9';
+// Kolor napisu na ciemnym przycisku (jaśniejszy odcień koloru typu, żeby był czytelny).
+const TEKST_TYPU = { S: '#c9d1d6', R: '#ff8a80', Y: '#ffff99', G: '#99ff99', B: '#aab0ff', W: '#e8eef0' };
 function pulpit(klasa, nazwa, wiazania) {
   const uklad = UKLADY[klasa]?.[nazwa];
   if (!uklad) return h('div.komunikat.blad', `Brak układu pulpitu ${nazwa} dla klasy ${klasa}.`);
   const [K, W] = FORMATY[klasa][nazwa];
-  const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:3px;padding:6px;box-sizing:border-box;`;
+  const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:4px;padding:12px;box-sizing:border-box;`;
   const telefon = K < 13;
   const ramka = h('div', { style: `position:relative;width:100%;max-width:${telefon ? 460 : 1180}px;margin:0 auto;aspect-ratio:${K}/${W};`
-    + 'background:#1d2124;border:1px solid var(--linia);border-radius:6px;container-type:inline-size' });
+    + `background:linear-gradient(180deg,rgba(207,239,255,.13) 0,rgba(207,239,255,0) 30%),${BLACHA};border:3px solid ${KRAWEDZ};border-radius:10px;`
+    + 'box-shadow:inset 0 0 50px rgba(0,0,0,.55),0 6px 20px rgba(0,0,0,.5);box-sizing:border-box;container-type:inline-size' });
+  // nity w narożnikach płyty
+  for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+    ramka.append(h('div', { style: `position:absolute;${x ? 'right' : 'left'}:3px;${y ? 'bottom' : 'top'}:3px;width:6px;height:6px;border-radius:50%;`
+      + `background:${KRAWEDZ};box-shadow:inset -1px -1px 1px rgba(0,0,0,.6)` }));
+  }
   const kontrolki = h('div', { style: geometria + 'position:absolute;inset:0' });
   const teksty = h('div', { style: geometria + `position:absolute;inset:0;pointer-events:none;${CZCIONKA}`, 'aria-hidden': 'true' });
-  const rozmiar = telefon ? 'max(9px,2.6cqw)' : 'max(7px,0.82cqw)';
+  const rozmiar = telefon ? 'max(9px,2.6cqw)' : 'max(7px,0.8cqw)';
   for (const [typ, c, r, tekst, sz, wys, tekstMin] of uklad) {
     const w = wiazania[tekst];
     const aktywny = !!w;
+    const kol = KOLORY[typ];
     const pole = `grid-column:${c}/span ${sz};grid-row:${r}/span ${typ === 'S' ? 7 : wys};`;
+    const lampaKlucza = w?.kolor;
+    const swiatlo = w?.wl ? `,0 0 10px ${kol},inset 0 0 16px ${kol}66` : '';
     const el = h('div', {
-      style: pole + `background:${w?.ekran ? '#0b1012' : (w?.kolor || KOLORY[typ])};border:1px solid #000;border-radius:3px;overflow:hidden;position:relative;`
-        + (aktywny ? '' : 'opacity:.38;') + (w?.klik ? 'cursor:pointer;' : '')
-        + (w?.wl ? 'box-shadow:inset 0 0 0 3px #1d8f7f,0 0 10px rgba(77,226,201,.85);' : ''),
+      style: pole + `background:${w?.ekran ? EKRAN_RAMA : lampaKlucza || SZCZELINA};border:1px solid ${KRAWEDZ};border-radius:5px;overflow:hidden;position:relative;`
+        + `box-shadow:inset 0 0 0 3px ${w?.ekran ? EKRAN_RAMA : lampaKlucza || SZCZELINA},inset 0 0 0 4.5px ${w?.ekran ? KRAWEDZ : kol + '88'}${swiatlo};`
+        + (aktywny ? '' : 'opacity:.42;') + (w?.klik || w?.klikS || w?.klikX ? 'cursor:pointer;' : ''),
       title: aktywny ? tekst : `${tekst} — bez mechaniki (kolejny etap)`, role: w?.klik ? 'button' : null, 'aria-label': tekst,
     });
-    if (w?.klik) el.addEventListener('click', w.klik);
-    // Szary suwak zakresu: górna połowa — maksimum, dolna — minimum.
-    if (w?.klikS) {
-      el.style.cursor = 'pointer';
-      el.addEventListener('click', (ev) => { const r = el.getBoundingClientRect(); w.klikS(ev.clientY - r.top < r.height / 2); });
+    // lampka typu w lewym górnym rogu (świeci mocniej, gdy element jest włączony)
+    if (!w?.ekran && typ !== 'S') {
+      el.append(h('div', { style: `position:absolute;left:7px;top:7px;width:14%;max-width:16px;height:3px;background:${kol};`
+        + `opacity:${w?.wl ? 1 : 0.8};${w?.wl ? `box-shadow:0 0 6px ${kol}` : ''}` }));
     }
-    if (w?.ekran) el.append(w.ekran());
+    // Suwak zakresu: prowadnica z podziałką, górna połowa — maksimum, dolna — minimum.
+    if (typ === 'S') {
+      el.append(h('div', { style: `position:absolute;left:50%;top:9%;bottom:9%;width:8px;transform:translateX(-50%);background:#0c181b;border:1px solid ${KRAWEDZ};border-radius:4px` }),
+        h('div', { style: 'position:absolute;left:22%;right:22%;top:9%;bottom:9%;background:repeating-linear-gradient(180deg,'
+          + `${KRAWEDZ} 0 2px,transparent 2px 4%);-webkit-mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%);mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%)` }));
+    }
+    // Suwak żółty: rowek z podziałką (pozycja z wiązania: w.poz 0…1).
+    if (typ === 'Y' && w?.poz != null) {
+      const pion = (wys || 1) > (sz || 1);
+      el.append(h('div', { style: `position:absolute;${pion ? 'left:50%;top:22%;bottom:12%;width:6px;transform:translateX(-50%)' : 'top:62%;left:12%;right:12%;height:6px'};`
+        + `background:#0c181b;border:1px solid ${kol}99;border-radius:3px` },
+        h('div', { style: `position:absolute;${pion ? `left:-4px;right:-4px;bottom:${Math.round(w.poz * 100)}%;height:5px` : `top:-4px;bottom:-4px;left:${Math.round(w.poz * 100)}%;width:5px`};`
+          + `transform:translate(${pion ? '0,50%' : '-50%,0'});background:${kol};border-radius:2px;box-shadow:0 0 5px ${kol}` })));
+    }
+    if (w?.klik) el.addEventListener('click', w.klik);
+    if (w?.klikS) el.addEventListener('click', (ev) => { const b = el.getBoundingClientRect(); w.klikS(ev.clientY - b.top < b.height / 2); });
+    if (w?.klikX) el.addEventListener('click', (ev) => { const b = el.getBoundingClientRect(); w.klikX(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), (ev.clientY - b.top) / b.height); });
+    if (w?.ekran) el.append(h('div', { style: `position:absolute;inset:5px;background:${EKRAN_TLO};border:1.5px solid ${TURKUS}cc;border-radius:3px;overflow:hidden` }, w.ekran()));
     kontrolki.append(el);
     if (w?.ekran) continue;
     const napis = h('div', { style: pole + `display:flex;flex-direction:column;align-items:center;justify-content:${typ === 'S' ? 'space-between' : 'center'};`
-      + `text-align:center;overflow:hidden;padding:3px;box-sizing:border-box;font-size:${rozmiar};line-height:1.15;`
-      + `color:${w?.kolorTekstu || (typ === 'B' ? '#fff' : '#111')};${typ === 'B' || w?.wl ? 'font-weight:bold;' : ''}${aktywny ? '' : 'opacity:.38;'}` });
+      + `text-align:center;overflow:hidden;padding:${typ === 'S' ? '6px 3px' : '10px 4px 4px'};box-sizing:border-box;font-size:${rozmiar};line-height:1.15;letter-spacing:.03em;`
+      + `color:${w?.kolorTekstu || (lampaKlucza ? '#000' : TEKST_TYPU[typ])};${w?.wl ? 'font-weight:bold;' : ''}${aktywny ? '' : 'opacity:.42;'}` });
     if (typ === 'S') napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')), h('span', w?.etykietaMin ?? (tekstMin || '').replace('suwak: ', '')));
     else napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')));
     teksty.append(napis);
@@ -215,9 +246,75 @@ function pulpit(klasa, nazwa, wiazania) {
   return ramka;
 }
 
+// Siatka lampek (żyły generatora, baterii, porcje reaktora): K kolumn, kolor lampki z funkcji kolor(i) → [r, g, b];
+// każda lampka to mały kwadrat z minimalną przerwą (płótno w wyższej rozdzielczości, ostre piksele).
+function siatkaLampek(n, K, kolor) {
+  const W = Math.ceil(n / K), L = 6;
+  const c = h('canvas', { width: K * L, height: W * L, style: 'width:100%;flex:1;min-height:0;object-fit:contain;display:block;image-rendering:pixelated' });
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#05080c';
+  ctx.fillRect(0, 0, K * L, W * L);
+  for (let i = 0; i < n; i++) {
+    const [r, g, b] = kolor(i);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect((i % K) * L, Math.floor(i / K) * L, L - 1, L - 1);
+  }
+  return c;
+}
+const hsl = (hh, s, l) => {
+  s /= 100; l /= 100;
+  const k = (n) => (n + hh / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+};
+
 // ------------------------------------------------------------------------------------------- ekran radarowy
+// Ikony typów maszyn z góry (dziób w górę, ok. ±7 jednostek): TIE (kula i dwa skrzydła), X-wing (skrzydła w X),
+// Y-wing (kadłub i dwie gondole), A-wing (klin), B-wing (krzyż), bombowiec TIE (dwa kadłuby), prom Lambda.
+const IKONY_MASZYN = {
+  TIE_LN: [['path', { d: 'M-6 -6 L-6 6 M6 -6 L6 6 M-6 0 L6 0', 'stroke-width': 2.2 }], ['circle', { cx: 0, cy: 0, r: 2.6 }]],
+  TIE_IN: [['path', { d: 'M-4 -7 L-7 0 L-4 7 M4 -7 L7 0 L4 7 M-6 0 L6 0', 'stroke-width': 2 }], ['circle', { cx: 0, cy: 0, r: 2.4 }]],
+  TIE_SA: [['path', { d: 'M-7 -6 L-7 6 M7 -6 L7 6 M-7 0 L7 0', 'stroke-width': 2 }], ['ellipse', { cx: -1.8, cy: 0, rx: 2, ry: 3.6 }], ['ellipse', { cx: 2, cy: 0.5, rx: 1.6, ry: 4.2 }]],
+  X_WING: [['path', { d: 'M0 -8 L0 5 M-7 -1 L7 6 M7 -1 L-7 6', 'stroke-width': 2 }]],
+  Y_WING: [['path', { d: 'M0 -8 L0 2 M-5 1 L5 1 M-5 -3 L-5 7 M5 -3 L5 7', 'stroke-width': 2 }]],
+  A_WING: [['path', { d: 'M0 -7 L6 6 L0 3 L-6 6 Z', 'stroke-width': 1.2 }]],
+  B_WING: [['path', { d: 'M0 -8 L0 7 M-7 2 L7 2', 'stroke-width': 2.2 }], ['circle', { cx: 0, cy: -6, r: 2 }]],
+  LAMBDA: [['path', { d: 'M0 -7 L0 5 M-6 3 L0 -2 L6 3', 'stroke-width': 2 }]],
+};
+function ikonaMaszyny(typ, kolor, skala = 1) {
+  const g = svg('g', { transform: `scale(${skala})`, fill: kolor, stroke: kolor, 'stroke-linecap': 'round' });
+  for (const [tag, at] of IKONY_MASZYN[typ] || [['path', { d: 'M0 -6 L5 5 L-5 5Z' }]]) {
+    g.append(svg(tag, { ...at, fill: tag === 'path' && !at.d.endsWith('Z') ? 'none' : kolor }));
+  }
+  return g;
+}
+
+// Prędkość kątowa obiektów (°/s) z dwóch kolejnych odczytów — do przewidywania ruchu po łuku między odczytami.
+export function zapiszZwroty(st, s) {
+  const pam = (st.zwroty ||= new Map());
+  for (const o of [...s.jednostki, ...s.klucze]) {
+    const id = idObiektu(o), p = pam.get(id);
+    if (p && s.czas_s > p.t + 0.2) {
+      const w = (((o.kurs - p.kurs + 540) % 360) - 180) / (s.czas_s - p.t);
+      pam.set(id, { t: s.czas_s, kurs: o.kurs, w: Math.max(-45, Math.min(45, w)) });
+    } else if (!p) pam.set(id, { t: s.czas_s, kurs: o.kurs, w: 0 });
+  }
+}
+// Pozycje przewidziane co krok s przez czas T: ruch z prędkością v po łuku (stała prędkość kątowa w, obrót ≤ 180°).
+function przewidz(o, w, T, krok = 0.5) {
+  const pkt = [[o.x, o.y]];
+  let x = o.x, y = o.y, k = o.kurs || 0, obrot = 0;
+  for (let t = krok; t <= T + 1e-9; t += krok) {
+    if (Math.abs(obrot) < 180) { k += w * krok; obrot += w * krok; }
+    x += o.v * krok * Math.sin(rad(k));
+    y += o.v * krok * Math.cos(rad(k));
+    pkt.push([x, y]);
+  }
+  return { pkt, kurs: k };
+}
+
 function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = null, obiekty = null, sektor = null, tory = false, prognozy = false,
-  tempo = st.tempo, maska = 0, strefy = [], zmarszczki = [] }) {
+  tempo = st.tempo, maska = 0, strefy = [], zmarszczki = [], wiazkaWl = true }) {
   const P = 200;
   const sk = (P - 6) / zasieg;
   const px = (x) => P + (x - srodek.x) * sk, py = (y) => P - (y - srodek.y) * sk;
@@ -259,7 +356,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   const defs = svg('defs');
   defs.append(filtr);
   e.append(defs);
-  const wiazka = svg('g');
+  const wiazka = svg('g', wiazkaWl ? {} : { display: 'none' });
   const smuga = svg('g', { filter: `url(#${idRozmycia})` });
   const PLASTRY = 20, KROK = 3; // 20 plastrów po 3° = 60° poświaty za wiązką
   for (let i = PLASTRY - 1; i >= 0; i--) {
@@ -276,15 +373,20 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   for (const o of obiekty || []) {
     const swoj = o.strona === strona;
     const kolor = swoj ? WLASNY : OBCY;
-    // Przerysowanie bez nowego odczytu (kliknięcie, kółko): kontakt startuje z pozycji przewidzianej na teraz, nie cofa się.
-    const dt = o.v && o !== srodek && !o.statyczny && s._odebrano ? Math.min(10, (Date.now() - s._odebrano) / 1000) : 0;
-    const kk = rad(o.kurs || 0);
-    const x = px(o.x + o.v * dt * Math.sin(kk)), y = py(o.y + o.v * dt * Math.cos(kk));
-    if (x < -10 || y < -10 || x > 2 * P + 10 || y > 2 * P + 10) continue;
+    // Ruch między odczytami: kontakt leci dalej po łuku (prędkość kątowa z dwóch ostatnich odczytów) przez 10 s, aż kolejny
+    // odczyt przerysuje go w prawdziwej pozycji. Przerysowanie bez nowego odczytu startuje z pozycji przewidzianej na teraz.
     const klucz = 'nr' in o;
+    const id = (klucz ? 'k' : 'j') + o.id;
+    const ruchomy = o.v && o !== srodek && !o.statyczny;
+    const w = ruchomy ? (st.zwroty?.get(id)?.w || 0) : 0;
+    const dt = ruchomy && s._odebrano ? Math.min(10, (Date.now() - s._odebrano) / 1000) : 0;
+    const teraz = ruchomy && dt > 0 ? przewidz(o, w, dt, Math.max(0.05, dt / 20)) : { pkt: [[o.x, o.y]], kurs: o.kurs || 0 };
+    const [ox, oy] = teraz.pkt[teraz.pkt.length - 1];
+    const x = px(ox), y = py(oy);
+    if (x < -10 || y < -10 || x > 2 * P + 10 || y > 2 * P + 10) continue;
     if (tory && !o.statyczny) {
-      // Zanikający, rozmyty ogon za kontaktem (tylko obraz na bieżąco — echo nie zdradza ruchu między przejściami wiązki): ostatnie odczyty, im starszy odcinek, tym słabszy i cieńszy.
-      const sl = (st.slady.get((klucz ? 'k' : 'j') + o.id) || []).slice(-16);
+      // Zanikający, rozmyty ogon za kontaktem (tylko obraz na bieżąco — echo nie zdradza ruchu między przejściami wiązki).
+      const sl = (st.slady.get(id) || []).slice(-16);
       const ogon = svg('g', { filter: `url(#${idRozmycia})` });
       for (let i = 1; i < sl.length; i++) {
         const f = i / (sl.length - 1);
@@ -293,39 +395,52 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
       }
       if (sl.length > 1) e.append(ogon);
     }
+    const przod = ruchomy ? przewidz({ ...o, x: ox, y: oy, kurs: teraz.kurs }, w, 10) : null;
     if (prognozy && o.v) {
-      const k = rad(o.kurs || 0);
-      e.append(svg('line', { x1: x, y1: y, x2: px(o.x + o.v * 30 * Math.sin(k)), y2: py(o.y + o.v * 30 * Math.cos(k)), stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
+      const pr = przewidz({ ...o, x: ox, y: oy, kurs: teraz.kurs }, w, 30, 1).pkt;
+      e.append(svg('polyline', { points: pr.map(([a, b]) => `${px(a).toFixed(1)},${py(b).toFixed(1)}`).join(' '), fill: 'none', stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
     }
-    // Ruch między odczytami: kontakt leci dalej po swoim kursie (przewidywanie do 10 s), aż kolejny odczyt z serwera
-    // przerysuje go w prawdziwej pozycji — nie staje, gdy odpowiedź spóźnia się o kilka sekund.
-    const ruch = svg('g');
-    if (o.v && o !== srodek && !o.statyczny) {
-      const k = rad(o.kurs || 0), PRZOD_S = 10;
-      ruch.append(svg('animateTransform', { attributeName: 'transform', type: 'translate', from: '0 0',
-        to: `${(o.v * PRZOD_S * Math.sin(k) * sk).toFixed(3)} ${(-o.v * PRZOD_S * Math.cos(k) * sk).toFixed(3)}`, dur: `${PRZOD_S}s`, fill: 'freeze' }));
+    const sciezka = przod ? 'M0 0 ' + przod.pkt.slice(1).map(([a, b]) => `L${((a - ox) * sk).toFixed(2)} ${(-(b - oy) * sk).toFixed(2)}`).join(' ') : null;
+    // Ikona: animacja po łuku (animateMotion z obrotem wzdłuż toru), opisy obok — ta sama ścieżka bez obrotu.
+    const miejsce = svg('g', { transform: `translate(${x.toFixed(2)} ${y.toFixed(2)})` });
+    const ikona = svg('g', { style: wybierz ? 'cursor:pointer' : '' });
+    const opisy = svg('g');
+    if (sciezka) {
+      ikona.append(svg('animateMotion', { path: sciezka, dur: '10s', fill: 'freeze', rotate: 'auto' }));
+      opisy.append(svg('animateMotion', { path: sciezka, dur: '10s', fill: 'freeze' }));
     }
     // Poświata echa: pełna jasność, gdy wiązka przechodzi nad kontaktem, potem zanik do następnego obrotu.
     if (o !== srodek && o.statyczny) {
       const namiar = ((Math.atan2(x - P, P - y) * 180) / Math.PI + 360) % 360;
       const odPrzejscia = (((katDeg - namiar) % 360) + 360) % 360 / 360 * tempo;
-      ruch.append(svg('animate', { attributeName: 'opacity', values: '1;0.3', keyTimes: '0;1', dur: `${tempo}s`, begin: `-${odPrzejscia.toFixed(2)}s`, repeatCount: 'indefinite' }));
+      miejsce.append(svg('animate', { attributeName: 'opacity', values: '1;0.3', keyTimes: '0;1', dur: `${tempo}s`, begin: `-${odPrzejscia.toFixed(2)}s`, repeatCount: 'indefinite' }));
     }
-    const g = svg('g', { transform: `translate(${x} ${y}) rotate(${o.kurs || 0})`, style: wybierz ? 'cursor:pointer' : '' });
-    if (klucz) g.append(svg('path', { d: 'M0 -6 L5 5 L-5 5Z', fill: kolor }));
-    else {
+    // obrót: przy animacji po torze ikona ustawia się wzdłuż toru (oś +x), więc dziób (−y) obracamy o 90°
+    const obrot = svg('g', { transform: `rotate(${sciezka ? 90 : teraz.kurs})` });
+    if (klucz) {
+      // Klucz: przy dużym powiększeniu ikona typu maszyny, przy bardzo dużym — 4 maszyny w szyku „palce”.
+      if (sk >= 250) {
+        for (const [dx, dy] of [[0, 0], [-0.05, 0.04], [0.05, 0.04], [0.1, 0.08]]) {
+          const m = svg('g', { transform: `translate(${(dx * sk).toFixed(1)} ${(dy * sk).toFixed(1)})` });
+          m.append(ikonaMaszyny(o.typ, kolor, 1.1));
+          obrot.append(m);
+        }
+      } else if (sk >= 15) obrot.append(ikonaMaszyny(o.typ, kolor, sk >= 60 ? 1.5 : 1.1));
+      else obrot.append(svg('path', { d: 'M0 -6 L5 5 L-5 5Z', fill: kolor }));
+    } else {
       // Przy dużym powiększeniu okręt w skali bywa większy od ekranu — wtedy półprzezroczysty, żeby nie zasłaniał kontaktów.
       const rozmiar = Math.max(o === srodek ? 34 : 22, (o.dlugosc_km || 1) * sk);
       const syl = sylwetka(o.profil, kolor, rozmiar);
       if (rozmiar > P * 0.8) syl.setAttribute('opacity', rozmiar > 3 * P ? 0.18 : 0.35);
-      g.append(syl);
+      obrot.append(syl);
     }
-    if (wybierz) g.addEventListener('click', (ev) => { ev.stopPropagation(); wybierz(o); });
-    ruch.append(g);
-    const id = (klucz ? 'k' : 'j') + o.id;
-    if (st.oznaczony === id || st.sledzony === id) ruch.append(svg('circle', { cx: x, cy: y, r: 12, fill: 'none', stroke: st.sledzony === id ? '#ffff99' : '#fff', 'stroke-width': 1.5 }));
-    if (hz && klucz && !swoj) ruch.append(svg('text', { x: x + 8, y: y - 6, fill: '#ffd7a0', 'font-size': 11 }, st.hzPamiec.has(o.id) ? `${st.hzPamiec.get(o.id)} Hz` : '? Hz'));
-    e.append(ruch);
+    ikona.append(obrot);
+    if (wybierz) ikona.addEventListener('click', (ev) => { ev.stopPropagation(); wybierz(o); });
+    if (st.oznaczony === id || st.sledzony === id) opisy.append(svg('circle', { cx: 0, cy: 0, r: 12, fill: 'none', stroke: st.sledzony === id ? '#ffff99' : '#fff', 'stroke-width': 1.5 }));
+    if (hz && klucz && !swoj) opisy.append(svg('text', { x: 8, y: -6, fill: '#ffd7a0', 'font-size': 11 }, st.hzPamiec.has(o.id) ? `${st.hzPamiec.get(o.id)} Hz` : '? Hz'));
+    if (klucz && sk >= 15) opisy.append(svg('text', { x: 10, y: 12, fill: kolor, 'font-size': 9, opacity: 0.85 }, `${o.nr}`));
+    miejsce.append(ikona, opisy);
+    e.append(miejsce);
   }
   return e;
 }
@@ -486,18 +601,16 @@ const lampa = (k, etykieta) => ({ kolor: (LAMPA[k.stan] || LAMPA.hangar)[0], kol
 // Ekran żył generatora: lampka = żyła; świeci, gdy n mod (N/f) = 0 (MECHANIKA 3.1); martwa — ciemnoczerwona.
 function ekranZyl(g, st, akcje, stopnie) {
   const K = g.siatka_k || 60, n = g.n || 3600, f = g.hz_osiagane || 0, krok = f && n % f === 0 ? n / f : 0;
-  const W = Math.ceil(n / K);
   const martwe = Uint8Array.from(atob(g.martwe_b64 || ''), (c) => c.charCodeAt(0));
-  const c = h('canvas', { width: K, height: W, style: 'width:100%;flex:1;min-height:0;image-rendering:pixelated;object-fit:contain;display:block' });
-  const ctx = c.getContext('2d');
-  const obraz = ctx.createImageData(K, W);
-  for (let i = 0; i < n; i++) {
-    const martwa = (martwe[i >> 3] >> (i & 7)) & 1;
-    const swieci = krok && (i + 1) % krok === 0;
-    const [r, gg, b] = martwa ? [122, 31, 31] : swieci ? [77, 226, 201] : [22, 52, 58];
-    obraz.data.set([r, gg, b, 255], i * 4);
-  }
-  ctx.putImageData(obraz, 0, 0);
+  const temp = Uint8Array.from(atob(g.temperatury_b64 || ''), (c) => c.charCodeAt(0));
+  // Jak w prototypie konsoli osłon: świecąca żyła — barwa od turkusu (zimna) do czerwieni (40° do przepalenia),
+  // jasność spada przy przeciążeniu generatora; nieaktywna — ciemna; martwa — ciemnoczerwona.
+  const jasnosc = 10 + 52 * Math.min(1.1, 100 / Math.max(100, g.obciazenie_proc || 0));
+  const c = siatkaLampek(n, K, (i) => {
+    if ((martwe[i >> 3] >> (i & 7)) & 1) return [92, 22, 22];
+    if (krok && (i + 1) % krok === 0) return hsl(190 - Math.min(1, (temp[i] || 0) / 40) * 190, 85, jasnosc);
+    return [16, 26, 34];
+  });
   const cel = st.hzCel[g.id] ?? g.hz_zadane;
   const krokHz = (kier) => () => {
     const i = stopnie.indexOf(cel);
@@ -544,18 +657,12 @@ function reaktory(s, st, akcje) {
   const j = wlasna(s);
   const pobor = j.pobor_oslon_proc || 0;
   const sensory = j.pobor_sensorow_proc || 0;
+  // Siatka 60×60 lampek = porcje mocy reaktora: turkus — osłony, fiolet — sensory, ciemne — wolne.
   const ekran = () => {
-    const e = svg('svg', { viewBox: '0 0 200 200', style: `width:100%;height:100%;display:block;${CZCIONKA}` });
-    for (let i = 0; i < 100; i++) {
-      const x = 12 + (i % 10) * 17.6, y = 12 + Math.floor(i / 10) * 15;
-      e.append(svg('rect', { x, y, width: 15, height: 12, rx: 2,
-        fill: i < Math.round(pobor) ? '#4de2c9' : i < Math.round(pobor + sensory) ? '#c99bff' : 'rgba(77,226,201,.12)' }));
-    }
-    e.append(svg('text', { x: 12, y: 166, fill: '#4de2c9', 'font-size': 9 }, `osłony ${pobor}%`));
-    e.append(svg('text', { x: 80, y: 166, fill: '#c99bff', 'font-size': 9 }, `sensory ${sensory}%`));
-    e.append(svg('text', { x: 12, y: 179, fill: '#cfe', 'font-size': 9 }, `wolne ${(100 - pobor - sensory).toFixed(1)}% · dławienie 100%`));
-    e.append(svg('text', { x: 12, y: 192, fill: 'rgba(207,238,238,.6)', 'font-size': 8 }, 'ciepło, zasobniki — kolejny etap'));
-    return e;
+    const n = 3600, os = Math.round(n * pobor / 100), se = Math.round(n * sensory / 100);
+    return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.7cqw);${CZCIONKA}` },
+      h('div', `osłony ${pobor}% · sensory ${sensory}% · wolne ${(100 - pobor - sensory).toFixed(1)}%`),
+      siatkaLampek(n, 60, (i) => (i < os ? [77, 226, 201] : i < os + se ? [201, 155, 255] : [16, 26, 34])));
   };
   return pulpit(j.profil, 'Reaktory', {
     'REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie': { ekran },
@@ -586,7 +693,7 @@ function kluczPulpit(s, st, akcje, k, naglowekKlik) {
     'EKRAN KLUCZA · klucz zawsze w środku · okręgi 2 / 10 / 30 km (dotknięcie zmienia skalę) · kurs i wektor · cele (dotknij, by wybrać) · okręt macierzysty · inne klucze': {
       klik: () => { st.skalaKlucza = skale[(skale.indexOf(st.skalaKlucza) + 1) % skale.length]; st.zoom.klucz = 1; akcje.odswiez(); },
       ekran: () => powiekszany(st, akcje, 'klucz', (z) => ekranPlot(s, st, { zasieg: st.skalaKlucza / z, srodek,
-        pierscienie: [st.skalaKlucza / 5, st.skalaKlucza / 2, st.skalaKlucza].map((r) => zaokr(r / z)), prognozy: true,
+        pierscienie: [st.skalaKlucza / 5, st.skalaKlucza / 2, st.skalaKlucza].map((r) => zaokr(r / z)), prognozy: true, wiazkaWl: false,
         obiekty: [...[...s.klucze.filter((x) => x.stan === 'w_locie' && x.id !== k.id), ...s.jednostki.filter((x) => x.stan !== 'oczekuje')]
           .filter((o) => !BEZ_SENSOROW.includes(k.typ) || o.strona === k.strona || odl(o, srodek) <= RADAR_WLASNY_KM
             || (j.stan === 'w_bitwie' && odl(o, j) <= RADAR_KM)), srodek] })) },
@@ -657,12 +764,13 @@ function klucz(s, st, akcje) {
 }
 
 // ------------------------------------------------------------------------------------------- Eskadra (3 klucze)
-function eskadra(s, st, akcje) {
+function eskadra(s, st, akcje, stala = null) {
   const j = wlasna(s);
   const klucze = wlasneKlucze(s, j);
   const zoom = klucze.find((k) => k.id === st.zoomKlucz);
   if (zoom) return zblizenie(s, st, akcje, zoom, 'Eskadra');
   const ile = Math.max(1, Math.ceil(klucze.length / 3));
+  if (stala) st.eskadra = stala;
   if (st.eskadra > ile) st.eskadra = 1;
   const moje = klucze.filter((k) => Math.ceil(k.nr / 3) === st.eskadra);
   const lot = moje.filter((k) => k.stan === 'w_locie');
@@ -674,10 +782,10 @@ function eskadra(s, st, akcje) {
   };
   const w = {
     'ESKADRA N · klucze 3/3 · dowódca eskadry · alarm: normalny / żółty / czerwony': {
-      etykieta: `ESKADRA ${st.eskadra} z ${ile} · w locie ${lot.length}/${moje.length} (dotknij — następna eskadra)`,
-      klik: () => { st.eskadra = (st.eskadra % ile) + 1; akcje.odswiez(); } },
+      etykieta: stala ? `ESKADRA ${st.eskadra} · w locie ${lot.length}/${moje.length}` : `ESKADRA ${st.eskadra} z ${ile} · w locie ${lot.length}/${moje.length} (dotknij — następna eskadra)`,
+      klik: stala ? null : () => { st.eskadra = (st.eskadra % ile) + 1; akcje.odswiez(); } },
     'EKRAN ESKADRY · środek eskadry zawsze w środku · okręgi 5 / 15 / 40 km · 3 klucze z kursami · okręt macierzysty · cele i zagrożenia': {
-      ekran: () => powiekszany(st, akcje, 'eskadra', (z) => ekranPlot(s, st, { zasieg: 40 / z, srodek, pierscienie: [5, 15, 40].map((r) => zaokr(r / z)), prognozy: true,
+      ekran: () => powiekszany(st, akcje, 'eskadra', (z) => ekranPlot(s, st, { zasieg: 40 / z, srodek, pierscienie: [5, 15, 40].map((r) => zaokr(r / z)), prognozy: true, wiazkaWl: false,
         obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki] })) },
     'patrol': { klik: wszystkim('patrol') }, 'przechwycenie': { klik: wszystkim('atak') }, 'ATAK ESKADRY': { klik: wszystkim('atak') },
     'eskorta': { etykieta: 'eskorta (ochrona okrętu)', klik: wszystkim('ochrona') }, 'powrót eskadry': { klik: wszystkim('powrot') },
@@ -689,47 +797,205 @@ function eskadra(s, st, akcje) {
   return pulpit(j.profil, 'Eskadra', w);
 }
 
+// ------------------------------------------------------------------------------------------- ster (wspólne)
+// Rozkaz ster: kurs zadany i prędkość zadana (3 s przygotowania). Bez migracji 076 — komunikat.
+const norm180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+const namiarNa = (a, b) => (Math.atan2(b.x - a.x, b.y - a.y) * 180) / Math.PI;
+function ster(akcje, j, pulpitNazwa, { kurs = null, v = null }) {
+  if (!j.ster) return akcje.komunikat('Ster okrętu wymaga migracji 076.');
+  akcje.rozkaz({ jednostka_id: j.id, kod: 'ster', kurs: kurs ?? j.kurs_cel ?? j.kurs, v: v ?? j.v_cel ?? j.v, pulpit: pulpitNazwa });
+}
+const opisSteru = (j) => `kurs ${Math.round(j.kurs)}°${j.kurs_cel != null && Math.abs(norm180(j.kurs_cel - j.kurs)) > 0.5 ? ` → ${Math.round(j.kurs_cel)}°` : ''}`
+  + ` · ${(j.v * 3600).toFixed(0)} km/h${j.v_cel != null && Math.abs(j.v_cel - j.v) > 0.001 ? ` → ${(j.v_cel * 3600).toFixed(0)}` : ''}`;
+
 // ------------------------------------------------------------------------------------------- Nawigacja
 function nawigacja(s, st, akcje) {
   const j = wlasna(s);
-  const obiekty = [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki];
-  const cel = obiekty.find((o) => ('nr' in o ? 'k' : 'j') + o.id === st.celNaw);
+  const obiekty = [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki.filter((x) => x.stan !== 'oczekuje')];
+  const cel = obiekty.find((o) => idObiektu(o) === st.celNaw);
   const d = cel ? odl(cel, j) : null;
   const skala = (km) => ({ wl: st.skalaNaw === km && (st.zoom.nav || 1) === 1, klik: () => { st.skalaNaw = km; st.zoom.nav = 1; akcje.odswiez(); } });
-  return pulpit(j.profil, 'Nawigacja', {
+  const kursCel = j.kurs_cel ?? j.kurs;
+  const skretu = j.kurs_cel != null && Math.abs(norm180(j.kurs_cel - j.kurs)) > 0.5 ? (j.obrot_deg_min || 30) / 60 : 0;
+  const N = 'Nawigacja';
+  const wymagajCelu = (fn) => () => (cel ? fn(cel) : akcje.komunikat('Najpierw wybierz cel na ekranie nawigacji.'));
+  const przechwycenie = (c) => {
+    const vMoja = Math.max(0.05, j.v_maks || 0.27), t = odl(c, j) / vMoja;
+    return namiarNa(j, { x: c.x + (c.v || 0) * t * Math.sin(rad(c.kurs || 0)), y: c.y + (c.v || 0) * t * Math.cos(rad(c.kurs || 0)) });
+  };
+  const ciag = (j.v_cel ?? j.v) / (j.v_maks || 0.27);
+  return pulpit(j.profil, N, {
     'EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy': {
       ekran: () => powiekszany(st, akcje, 'nav', (z) => ekranPlot(s, st, { zasieg: st.skalaNaw / z, srodek: j, pierscienie: [st.skalaNaw / 4, st.skalaNaw / 2, st.skalaNaw].map((r) => zaokr(r / z)),
-        prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty,
-        wybierz: (o) => { st.celNaw = ('nr' in o ? 'k' : 'j') + o.id; akcje.odswiez(); } })) },
+        prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty, wybierz: (o) => { st.celNaw = idObiektu(o); akcje.odswiez(); } })) },
     'skala ekranu: 250 km': skala(250), 'skala ekranu: 500 km': skala(500), 'skala ekranu: 1000 km': skala(1000),
     'synchronizacja z sensorami (kontakty)': { wl: st.syncSensory, klik: () => { st.syncSensory = !st.syncSensory; akcje.odswiez(); } },
     'synchronizacja z radarem (tory jednostek)': { wl: st.tory, klik: () => { st.tory = !st.tory; akcje.odswiez(); } },
-    'odczyt: wektor ruchu (kurs, prędkość)': { etykieta: `wektor: ${Math.round(j.kurs)}° · ${j.v} km/s` },
+    'odczyt: wektor ruchu (kurs, prędkość)': { etykieta: opisSteru(j) },
     'odczyt: zwrot dziobu': { etykieta: `zwrot dziobu: ${Math.round(j.kurs)}°` },
-    'odczyt: prędkość kątowa': { etykieta: 'prędkość kątowa: 0°/s' },
+    'odczyt: prędkość kątowa': { etykieta: `prędkość kątowa: ${skretu.toFixed(2)}°/s` },
+    'odczyt: przeciążenie': { etykieta: 'przeciążenie: 0,0 g (kompensatory)' },
     'wybierz cel / punkt nawigacyjny': { etykieta: cel ? `cel: ${'nr' in cel ? `${cel.strona} ${cel.nr}` : cel.nazwa} (dotknij — wyczyść)` : 'wybierz cel (dotknij na ekranie)',
       klik: () => { st.celNaw = null; akcje.odswiez(); } },
     'odczyt: odległość do celu': { etykieta: d != null ? `do celu: ${km(d)} km` : 'do celu: —' },
     'odczyt: czas do celu (ETA)': { etykieta: d != null && j.v > 0 ? `ETA ${mmss(d / j.v)}` : 'ETA: —' },
+    'kurs na wybrany cel': { klik: wymagajCelu((c) => ster(akcje, j, N, { kurs: namiarNa(j, c) })) },
+    'kurs przechwycenia': { klik: wymagajCelu((c) => ster(akcje, j, N, { kurs: przechwycenie(c), v: j.v_maks })) },
+    'kurs odejścia': { klik: wymagajCelu((c) => ster(akcje, j, N, { kurs: norm180(namiarNa(j, c) + 180), v: j.v_maks })) },
+    'zwrot o 90° w lewo': { klik: () => ster(akcje, j, N, { kurs: norm180(kursCel - 90) }) },
+    'zwrot o 90° w prawo': { klik: () => ster(akcje, j, N, { kurs: norm180(kursCel + 90) }) },
+    'suwak: skręt w lewo (różnica ciągu lewy − prawy)': { etykieta: 'skręt w lewo −30°', klik: () => ster(akcje, j, N, { kurs: norm180(kursCel - 30) }) },
+    'suwak: skręt w prawo (różnica ciągu prawy − lewy)': { etykieta: 'skręt w prawo +30°', klik: () => ster(akcje, j, N, { kurs: norm180(kursCel + 30) }) },
+    'wyrównaj kurs (stabilizacja zwrotu)': { klik: () => ster(akcje, j, N, { kurs: j.kurs }) },
+    'PEŁNE HAMOWANIE': { wl: j.v_cel === 0, klik: () => ster(akcje, j, N, { v: 0 }) },
+    'CAŁA NAPRZÓD': { wl: j.v_cel != null && j.v_cel >= (j.v_maks || 0.27) - 1e-6, klik: () => ster(akcje, j, N, { v: j.v_maks }) },
+    'suwak: ciąg główny (prędkość zadana)': { poz: ciag, etykieta: `ciąg główny: ${Math.round(ciag * 100)}% · ${((j.v_cel ?? j.v) * 3600).toFixed(0)} km/h (dotknij miejsca)`,
+      klikX: (f) => ster(akcje, j, N, { v: Math.round(f * 20) / 20 * (j.v_maks || 0.27) }) },
   });
+}
+
+// ------------------------------------------------------------------------------------------- Silniki
+// Ciąg silników głównych = prędkość zadana (rozkaz ster, jak w Nawigacji); silniki manewrowe — skręt.
+function silniki(s, st, akcje) {
+  const j = wlasna(s);
+  const N = 'Silniki';
+  const vMax = j.v_maks || 0.27;
+  const ciag = (j.v_cel ?? j.v) / vMax, biezacy = j.v / vMax;
+  const kursCel = j.kurs_cel ?? j.kurs;
+  const skret = j.kurs_cel != null ? norm180(j.kurs_cel - j.kurs) : 0;
+  const ekranSilnika = (nazwa, udzial) => () => h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:4px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.75cqw);${CZCIONKA}` },
+    h('div', { style: 'color:#ffd7a0' }, nazwa),
+    h('div', `ciąg ${Math.round(biezacy * udzial * 100)}% · zadany ${Math.round(ciag * udzial * 100)}%`),
+    h('div', { style: 'flex:1;display:flex;align-items:flex-end;gap:2px' }, ...Array.from({ length: 20 }, (_, i) =>
+      h('div', { style: `flex:1;height:${8 + i * 4}%;background:${i < Math.round(biezacy * 20) ? TURKUS : i < Math.round(ciag * 20) ? '#2a6f66' : '#16222a'}` }))),
+    h('div', opisSteru(j)));
+  const manewrowy = (strona) => () => h('div', { style: `display:flex;flex-direction:column;justify-content:center;width:100%;height:100%;padding:4px;box-sizing:border-box;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
+    h('div', { style: 'color:#ffd7a0' }, `manewrowe ${strona}`),
+    h('div', Math.abs(skret) > 0.5 && (skret < 0) === (strona.includes('lew')) ? `pracują · skręt ${Math.round(skret)}°` : 'spoczynek'));
+  const przyciskCiagu = (f) => ({ klik: () => ster(akcje, j, N, { v: f * vMax }) });
+  return pulpit(j.profil, N, {
+    'Silnik główny lewy': { ekran: ekranSilnika('silnik główny lewy', 1) },
+    'Silnik główny prawy': { ekran: ekranSilnika('silnik główny prawy', 1) },
+    'Silnik główny środkowy': { ekran: ekranSilnika('silnik główny środkowy', 1) },
+    'Silnik manewrowy lewy górny': { ekran: manewrowy('lewe górne') }, 'Silnik manewrowy prawy górny': { ekran: manewrowy('prawe górne') },
+    'Silnik manewrowy lewy dolny': { ekran: manewrowy('lewe dolne') }, 'Silnik manewrowy prawy dolny': { ekran: manewrowy('prawe dolne') },
+    'suwak: maksymalny ciąg lewego silnika głównego': { etykieta: `maks. ${(vMax * 3600).toFixed(0)} km/h`, etykietaMin: 'min. 0', klikS: (gora) => ster(akcje, j, N, { v: gora ? vMax : 0 }) },
+    'suwak: maksymalny ciąg prawego silnika głównego': { etykieta: `maks. ${(vMax * 3600).toFixed(0)} km/h`, etykietaMin: 'min. 0', klikS: (gora) => ster(akcje, j, N, { v: gora ? vMax : 0 }) },
+    'suwak: ciąg środkowego silnika głównego': { poz: ciag, etykieta: `ciąg ${Math.round(ciag * 100)}% (dotknij)`,
+      klikX: (f, fy) => ster(akcje, j, N, { v: Math.round((1 - fy) * 20) / 20 * vMax }) },
+    'wyrównaj ciąg silników': { etykieta: 'wyrównaj ciąg (utrzymaj prędkość)', klik: () => ster(akcje, j, N, { v: j.v }) },
+    'równaj ciąg z mocą reaktora': { etykieta: 'ciąg 75% (praca ciągła reaktora)', ...przyciskCiagu(0.75) },
+    'wzmocnij lewy silnik główny': { etykieta: 'wzmocnij — cała naprzód', ...przyciskCiagu(1) },
+    'wzmocnij prawy silnik główny': { etykieta: 'wzmocnij — cała naprzód', ...przyciskCiagu(1) },
+    'wzmocnij środkowy silnik główny': { etykieta: 'wzmocnij — cała naprzód', ...przyciskCiagu(1) },
+    'wzmocnij wszystkie silniki manewrowe': { etykieta: 'stop skrętu (trzymaj kurs)', klik: () => ster(akcje, j, N, { kurs: j.kurs }) },
+    'suwak: trym odchylenia (silniki manewrowe)': { poz: 0.5 + Math.max(-0.5, Math.min(0.5, skret / 180)), etykieta: `odchylenie: ${Math.round(skret)}° (dotknij: ±15°)`,
+      klikX: (f) => ster(akcje, j, N, { kurs: norm180(kursCel + (f < 0.5 ? -15 : 15)) }) },
+  });
+}
+
+// ------------------------------------------------------------------------------------------- Turbolasery
+// Baterie z rozstawienia na kadłubie (dane/uzbrojenie.py): cel w łuku i zasięgu, cel wskazany z Kontroli ognia.
+function punktKadluba(j, x, y) {
+  const dl = j.dlugosc_km || 1, s1 = Math.sin(rad(j.kurs || 0)), c1 = Math.cos(rad(j.kurs || 0));
+  return { x: j.x + s1 * -y * dl + c1 * x * dl, y: j.y + c1 * -y * dl - s1 * x * dl };
+}
+function celeBaterii(s, j, rodzaj) {
+  const wrogie = s.jednostki.filter((x) => x.strona !== j.strona && x.stan === 'w_bitwie');
+  return (UZBROJENIE[j.profil] || []).filter((u) => u[1] === rodzaj).map(([nr, , x, y, lukS, lukP, zasieg, , hz]) => {
+    const dz = punktKadluba(j, x, y);
+    const wLuku = wrogie.filter((w) => odl(dz, w) <= zasieg && Math.abs(norm180(norm180(namiarNa(dz, w) - j.kurs) - lukS)) <= lukP)
+      .sort((a, b) => odl(dz, a) - odl(dz, b));
+    const cel = wLuku.find((w) => w.nr_jednostki === j.cel_ognia) || wLuku[0] || null;
+    return { nr, hz, zasieg, cel, d: cel ? odl(dz, cel) : null, lewa: x < 0 };
+  });
+}
+function turbolasery(s, st, akcje) {
+  const j = wlasna(s);
+  const tl = celeBaterii(s, j, 'turbolaser');
+  const opis = (b) => b ? (b.cel ? `${b.cel.nazwa} · ${km(b.d)} km` : `brak celu w łuku (${b.zasieg} km)`) : '—';
+  const wskazany = s.jednostki.find((x) => x.nr_jednostki === j.cel_ognia && x.strona !== j.strona);
+  const bateria = (lewa) => () => {
+    const b = tl.filter((x) => x.lewa === lewa);
+    const hz = b[0]?.hz || 3600, krok = 3600 / hz, strzela = b.some((x) => x.cel);
+    return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
+      h('div', `bateria ${lewa ? 'lewa' : 'prawa'} · ${hz} Hz · ${strzela ? 'OGIEŃ' : 'czuwanie'}${wskazany ? ` · cel wskazany: ${wskazany.nazwa}` : ''}`),
+      siatkaLampek(3600, 60, (i) => ((i + 1) % krok === 0 ? (strzela ? [255, 120, 90] : [77, 226, 201]) : [16, 26, 34])));
+  };
+  const w = {
+    'WYBRANA BATERIA LEWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz': { ekran: bateria(true) },
+    'WYBRANA BATERIA PRAWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz': { ekran: bateria(false) },
+    'suwak: maksymalna częstotliwość lewej baterii turbolaserów': { etykieta: `maks. ${tl[0]?.hz || 3600} Hz`, etykietaMin: 'min. 1 Hz' },
+    'suwak: maksymalna częstotliwość prawej baterii turbolaserów': { etykieta: `maks. ${tl[0]?.hz || 3600} Hz`, etykietaMin: 'min. 1 Hz' },
+  };
+  for (let i = 1; i <= 4; i++) {
+    const bl = tl.find((b) => b.nr === i), bp = tl.find((b) => b.nr === i + 4);
+    w[`Turbolaser lewy ${i} (8 luf)`] = { wl: !!bl?.cel, etykieta: `TL-L${i} · ${opis(bl)}` };
+    w[`Turbolaser prawy ${i} (8 luf)`] = { wl: !!bp?.cel, etykieta: `TL-P${i} · ${opis(bp)}` };
+  }
+  return pulpit(j.profil, 'Turbolasery', w);
 }
 
 // ------------------------------------------------------------------------------------------- Kontrola ognia
 function kontrolaOgnia(s, st, akcje) {
   const j = wlasna(s);
-  const obce = [...s.klucze.filter((x) => x.stan === 'w_locie' && x.strona !== j.strona), ...s.jednostki.filter((x) => x.strona !== j.strona)];
-  return pulpit(j.profil, 'Kontrola ognia', {
+  const K = 'Kontrola ognia';
+  const obce = [...s.klucze.filter((x) => x.stan === 'w_locie' && x.strona !== j.strona), ...s.jednostki.filter((x) => x.strona !== j.strona && x.stan === 'w_bitwie')];
+  const oznaczony = s.jednostki.find((x) => idObiektu(x) === st.oznaczony && x.strona !== j.strona);
+  const wskazany = s.jednostki.find((x) => x.nr_jednostki === j.cel_ognia && x.strona !== j.strona);
+  const wskaz = (cel) => {
+    if (!j.ster) return akcje.komunikat('Wskazanie celu wymaga migracji 076.');
+    akcje.rozkaz({ jednostka_id: j.id, kod: 'cel_ognia', cel_nr: cel ? cel.nr_jednostki : null, pulpit: K });
+  };
+  const przydziel = () => (oznaczony ? wskaz(oznaczony) : akcje.komunikat('Dotknij okrętu wroga na siatce taktycznej.'));
+  const tl = celeBaterii(s, j, 'turbolaser'), jon = celeBaterii(s, j, 'jon');
+  const stan = () => h('div', { style: `width:100%;height:100%;overflow:auto;padding:4px;box-sizing:border-box;font-size:max(7px,0.72cqw);text-align:left;color:#cfe;${CZCIONKA}` },
+    h('div', { style: 'color:#ffd7a0;margin-bottom:3px' }, `CEL WSKAZANY: ${wskazany ? wskazany.nazwa : 'brak (najbliższy w łuku)'}`),
+    ...[...tl.map((b) => [`TL ${b.lewa ? 'L' : 'P'}${b.lewa ? b.nr : b.nr - 4}`, b]), ...jon.map((b) => [`JON ${b.nr}`, b])].map(([n, b]) =>
+      h('div', { style: `border-bottom:1px solid rgba(255,255,255,.08);color:${b.cel ? '#ff8a80' : '#9fb4c8'}` }, `${n} · ${b.cel ? `${b.cel.nazwa} ${km(b.d)} km` : 'brak celu'}`)));
+  const blokada = { wl: !!wskazany, etykieta: wskazany ? `blokada: ${wskazany.nazwa} (dotknij — zwolnij)` : 'blokada celu (brak)', klik: () => wskaz(null) };
+  return pulpit(j.profil, K, {
     'wskazanie celu: siatka taktyczna': { ekran: () => powiekszany(st, akcje, 'ogien', (z) => ekranPlot(s, st, { zasieg: 50 / z, srodek: j,
-      pierscienie: [10, 25, 50].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { st.oznaczony = ('nr' in o ? 'k' : 'j') + o.id; akcje.odswiez(); },
+      pierscienie: [10, 25, 50].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { st.oznaczony = idObiektu(o); akcje.odswiez(); },
       obiekty: [...obce, j] })) },
+    'stan baterii i dział jonowych': { ekran: stan },
+    'przydziel cel lewej baterii': { klik: przydziel, etykieta: oznaczony ? `przydziel: ${oznaczony.nazwa}` : 'przydziel cel (dotknij okrętu)' },
+    'przydziel cel prawej baterii': { klik: przydziel, etykieta: oznaczony ? `przydziel: ${oznaczony.nazwa}` : 'przydziel cel (dotknij okrętu)' },
+    'wyrównaj baterie na cel': { klik: przydziel },
+    'przydziel cel działom jonowym': { klik: przydziel },
+    'blokada celu lewej baterii': blokada, 'blokada celu prawej baterii': blokada,
+    'suwak: dystans do celu': { etykieta: oznaczony ? `dystans: ${km(odl(oznaczony, j))} km` : 'dystans: —' },
+    'suwak: namiar celu (azymut)': { etykieta: oznaczony ? `namiar: ${wzgledem(j, oznaczony).namiar}°` : 'namiar: —' },
   });
 }
 
-// Konsola o nazwie pulpitu: pulpity z KONSOLE mają mechanikę, pozostałe (Turbolasery, Silniki, Grawitacja) — sam układ.
+// ------------------------------------------------------------------------------------------- Grawitacja
+// Pole pokładowe 1 g; blokada Anchor/Lock nie działa w symulacji bitwy (bez wpływu na walkę) — odczyty.
+function grawitacja(s, st, akcje) {
+  const j = wlasna(s);
+  const sekcje = Object.keys(j.sekcje || {});
+  const ekranPokladow = () => h('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(6, sekcje.length || 1)},1fr);gap:3px;width:100%;height:100%;padding:4px;box-sizing:border-box;font-size:max(7px,0.7cqw);color:#cfe;${CZCIONKA}` },
+    ...sekcje.map((k) => { const v = j.sekcje[k]; return h('div', { style: `background:${v > 75 ? '#163a33' : v > 40 ? '#4a3d12' : '#4a1616'};border-radius:3px;padding:2px` }, `${k}`, h('br'), `${v > 25 ? '1,00' : '0,6'} g`); }));
+  return pulpit(j.profil, 'Grawitacja', {
+    'EKRAN: GRAWITACJA POKŁADÓW · sekcje, przeciążenia, spadki zasilania': { ekran: ekranPokladow },
+    'EKRAN: REFERENCJA · POZYCJA · STABILNOŚĆ blokady': { ekran: () => h('div', { style: `padding:6px;color:#cfe;font-size:max(7px,0.75cqw);${CZCIONKA}` }, 'blokada Anchor/Lock: zwolniona', h('br'), `pozycja: ${km(j.x)} / ${km(j.y)} km`, h('br'), `kurs ${Math.round(j.kurs)}°`) },
+    'odczyt: pobór mocy': { etykieta: 'pobór: 0,4% mocy' }, 'odczyt: sygnatura': { etykieta: 'sygnatura: pole 1 g' },
+    'stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana': { etykieta: 'stan blokady: gotowa' },
+    'tryb codzienny': { wl: true },
+  });
+}
+
+// Konsola o nazwie pulpitu (KONSOLE) albo stanowisko pilota: „Klucz N” (jeden klucz), „Eskadra N” (klucze 3N−2…3N).
 export function konsola(nazwa, s, st, akcje) {
   if (!s.jednostki.length) return h('div.komunikat', 'Brak okrętu w tej symulacji.');
-  const f = { Radar: radar, Sensory: sensory, 'Osłony': oslony, Reaktory: reaktory, 'Myśliwce': mysliwce, Nawigacja: nawigacja,
-    'Kontrola ognia': kontrolaOgnia, Klucz: klucz, Eskadra: eskadra }[nazwa];
+  const nrKlucza = /^Klucz (\d+)$/.exec(nazwa), nrEskadry = /^Eskadra (\d+)$/.exec(nazwa);
+  if (nrKlucza) {
+    const k = wlasneKlucze(s, wlasna(s)).find((x) => x.nr === Number(nrKlucza[1]));
+    return k ? kluczPulpit(s, st, akcje, k, null) : h('div.komunikat', `Klucza ${nrKlucza[1]} nie ma w tej symulacji.`);
+  }
+  if (nrEskadry) return eskadra(s, st, akcje, Number(nrEskadry[1]));
+  const f = { Radar: radar, Sensory: sensory, 'Osłony': oslony, Reaktory: reaktory, Turbolasery: turbolasery, Silniki: silniki, Grawitacja: grawitacja,
+    'Myśliwce': mysliwce, Nawigacja: nawigacja, 'Kontrola ognia': kontrolaOgnia, Klucz: klucz, Eskadra: eskadra }[nazwa];
   if (f) return f(s, st, akcje);
   return h('div', h('div.slaby.maly-tekst', { style: 'margin-bottom:6px' }, 'Ten pulpit nie ma jeszcze mechaniki — widać układ do nauki.'),
     pulpit(wlasna(s).profil, nazwa, {}));

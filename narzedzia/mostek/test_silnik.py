@@ -74,6 +74,13 @@ rowne('determinizm: te same pozycje', [(round(k['x'], 9), round(k['y'], 9)) for 
 c = S.rozegraj('walako_klucze', 6, 120)
 rowne('inne ziarno — inny przebieg', a['zdarzenia'] != c['zdarzenia'], True)
 
+# --- ster okrętu gracza: rozkaz ster (3 s) — skręt z prędkością obrotu profilu i przyspieszenie do prędkości zadanej
+s = S.utworz('walako_atak', 1)
+S.przyjmij_rozkaz(s, '1:ster', 'ster', 5.0, wartosc='90;0.2')
+for _ in range(200): S.krok(s)
+rowne('ster: kurs zadany osiągnięty', round(s['jednostki'][0]['kurs'], 6), 90.0)
+rowne('ster: prędkość zadana osiągnięta', round(s['jednostki'][0]['v'], 6), 0.2)
+
 # --- każdy scenariusz z dane/scenariusze.py buduje się i liczy 10 min bez błędu (nowe scenariusze z PROMPT_SCENARIUSZ.md)
 for sc in S.SCENARIUSZE:
     try:

@@ -885,6 +885,9 @@ function ekranPulpitu() {
   api('bitwa_dostep').then((d) => {
     const jest = !!d?.upowazniony;
     if (jest !== stan.symulacje) { stan.symulacje = jest; if (siatka.isConnected) rysujIkony(siatka); }
+    // Gracz przydzielony do pulpitu w trwającej symulacji: widzi tylko konsolę (bez paska, doku, zegara i ikon).
+    document.documentElement.classList.toggle('tryb-stanowiska', !!d?.stanowisko);
+    if (d?.stanowisko && siatka.isConnected) otworz('symulacje', { bitwa: d.stanowisko.bitwa_id, stanowisko: true });
   }).catch(() => {});
   odswiezZegar();
   rysujSzybkieAkcje();

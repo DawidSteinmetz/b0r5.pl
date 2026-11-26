@@ -490,6 +490,16 @@ Parametry dowódców w `silnik.py` STALE['dowodcy'] (= `api/bitwa_silnik.php` BI
   beczka / zygzak i przelot.
 - Rozkaz klucza `nalot`: prosto na najbliższy okręt wroga, z pominięciem myśliwców (dostępny też dla graczy).
 
+### 11.3 Cele domyślne, ster okrętu, koniec symulacji [R]
+
+- Klucz nigdy nie leci „donikąd”: gdy z rozkazu nie ma celu (nic nie widać), bierze cel z danych wywiadu —
+  najbliższy okręt wroga, potem najbliższy klucz wroga, potem krąży przy okręcie matce. Gracz tylko zmienia rozkaz.
+- Okręt gracza: rozkaz `ster` (konsola Silniki albo Nawigacja, 3 s) ustawia kurs i prędkość zadane; okręt skręca
+  z prędkością obrotu profilu (ISD 30°/min) i zmienia prędkość z przyspieszeniem profilu (ISD 0,002 km/s², maks.
+  0,27 km/s). Rozkaz `cel_ognia` (Kontrola ognia, 2 s) — baterie biorą wskazany okręt, gdy jest w ich łuku i zasięgu.
+- Symulacja kończy się sama, gdy minie okno scenariusza (XP liczone jak przy „Zakończ”); doliczanie zaległych tików
+  ma budżet ok. 5 s na zapytanie (reszta w kolejnych odświeżeniach), więc długa przerwa nie blokuje symulacji.
+
 ### 11.2 Sensory i prędkość maszyn [R]
 
 - TIE (ln, in, sa) nie mają radaru dalekiego zasięgu: klucz widzi cele do 5 km od siebie, dalej tylko te, które są

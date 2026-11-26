@@ -973,3 +973,8 @@ button.potwierdz { color: var(--akcent-2); border-color: var(--akcent-2); box-sh
 .okno-skoku-plan { width: 100%; border-collapse: collapse; font-size: 14px; }
 .okno-skoku-plan td { padding: 5px 0; border-bottom: 1px solid var(--linia); }
 .okno-skoku-plan td:last-child { text-align: right; color: var(--akcent); }
+
+/* Ukryte ikony pulpitu: znika też dolny dok ikon (inaczej zostaje pusty ciemny pasek). */
+html.ukryte-ikony-pulpitu .siatka-aplikacji .ikony-dolne { display: none; }
+/* Tryb stanowiska (gracz przydzielony do pulpitu symulacji): tylko konsola, bez paska i doku. */
+html.tryb-stanowiska #pasek, html.tryb-stanowiska #dok, html.tryb-stanowiska #dok-aplikacja { display: none !important; }

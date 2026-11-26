@@ -113,7 +113,22 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   jej nie przerywa), za nią rozmyta smuga poświaty (60°); kontakt rozbłyskuje, gdy wiązka nad nim przechodzi,
   i przygasa do następnego obrotu; między odczytami kontakty przesuwają się płynnie po kursie; tory to rozmyte,
   zanikające ogony (ostatnie 16 odczytów).
-- Bez mechaniki w silniku: Turbolasery, Silniki, Grawitacja i przygaszone elementy pozostałych pulpitów.
+- **Wygląd** (26.11.2026, wzór `assets/wnetrza/isd-konsola-*.svg`): metalowa płyta z nitami, ciemne przyciski
+  z ramką i lampką w kolorze typu (zasady z rozdz. 1 bez zmian), suwaki zakresu z prowadnicą i podziałką, ekrany
+  w ramkach. Siatki żył 60×60 to lampki z minimalnymi przerwami: świecąca żyła od turkusu (zimna) do czerwieni
+  (gorąca), ciemniejsza przy przeciążeniu generatora; martwa — ciemnoczerwona (prototyp konsoli osłon użytkownika).
+  Ekrany generatorów osłon ISD powiększone do 4×4 kratek.
+- **Klucz, Eskadra** (myśliwce): bez wiązki radaru. Kontakty po łuku (prędkość kątowa z dwóch odczytów), przy
+  dużym powiększeniu ikona typu maszyny (TIE, TIE/in, bombowiec TIE, X-wing, Y-wing, A-wing, B-wing, Lambda),
+  przy bardzo dużym — 4 maszyny klucza w szyku.
+- **Turbolasery** — baterie z rozstawienia na kadłubie: cel w łuku i zasięgu każdej, lampki baterii (Hz).
+  **Silniki** i **Nawigacja** — ster okrętu (rozkaz „ster”: kurs i prędkość zadane, 3 s): ciąg główny, cała naprzód,
+  pełne hamowanie, zwroty, kurs na cel / przechwycenia / odejścia. **Kontrola ognia** — wskazanie celu bateriom
+  (rozkaz „cel_ognia”, 2 s), stan baterii i jonów. **Grawitacja** — odczyty (blokada Anchor/Lock nie działa w bitwie).
+- **Stanowiska pilotów**: MG albo kapitan przydziela graczowi „Klucz N” (jeden klucz) albo „Eskadra N” (klucze
+  3N−2…3N) — pionowy pulpit na telefon. Gracz z przydziałem po zalogowaniu widzi tylko swój pulpit (bez paska,
+  doku, zegara i ikon pulpitu); po końcu symulacji wraca na pulpit.
+- Przygaszone elementy pulpitów nie mają jeszcze mechaniki.
 - Pomiar Hz jest na razie natychmiastowy w zasięgu 200 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
   kolejny etap).
 

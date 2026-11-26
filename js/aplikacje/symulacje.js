@@ -5,7 +5,7 @@
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
-import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, pulpityKlasy } from './konsole.js';
+import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, zapiszZwroty, pulpityKlasy } from './konsole.js';
 
 const DOWODZENIE = { gracze: 'gracze', radus: 'AI: Radus (agresywny)', ackbar: 'AI: Ackbar (defensywny)', calrissian: 'AI: Calrissian (zrównoważony)' };
 const STATUS = { przygotowanie: 'w przygotowaniu', aktywna: 'trwa', zakonczona: 'zakończona', anulowana: 'anulowana' };
@@ -28,6 +28,8 @@ export default {
     let dane = null;
     let zegar = null;
     let koniec = false;
+    // Tryb stanowiska (pulpit systemu otworzył symulację graczowi z przydziałem): tylko konsola, bez listy i nagłówka.
+    const kiosk = !!ctx.parametr?.stanowisko;
 
     const panel = (tytul, ...zawartosc) => h('div.panel', h('h2', tytul), ...zawartosc);
     const para = (etykieta, wartosc) => h('tr', h('td.slaby', { style: 'width:120px;white-space:nowrap' }, etykieta), h('td', wartosc));
@@ -116,7 +118,7 @@ export default {
     // ------------------------------------------------------------------ symulacja
     function otworzSymulacje(id) {
       zatrzymaj();
-      ctx.ustawWstecz?.(() => { lista(); return true; });
+      ctx.ustawWstecz?.(kiosk ? () => true : () => { lista(); return true; });
       // Elementy sterujące tworzone raz (wybór figury i Hz nie gubi się przy odświeżaniu co sekundę).
       const wyborFigury = h('select', { style: 'width:100%;min-height:36px' });
       const wyborRozkazu = h('select', { style: 'width:100%;min-height:36px' });
@@ -197,7 +199,15 @@ export default {
           h('p.slaby.maly-tekst', st.mg ? 'MG przydziela każdego gracza — postać spoza pokładu zostaje teleportowana na mostek.'
             : 'Kapitan przydziela graczy obecnych na pokładzie. Kapitan widzi wszystkie pulpity.'),
           gracze ? null : h('button.przycisk.drugi', { style: 'width:100%;margin-bottom:8px', onclick: wczytajGraczy }, 'Wczytaj graczy do przydziału'),
-          h('table.tabela', pulpityKlasy(st.okret.profil).map(wiersz))));
+          h('table.tabela', pulpityStanowisk(st.okret.profil).map(wiersz))));
+      }
+      // Pulpity do przydziału: pulpity okrętu (bez ogólnych Klucz / Eskadra) oraz każdy klucz i każda eskadra (3 klucze)
+      // graczy osobno — pilot dostaje jeden klucz albo jedną eskadrę na telefonie.
+      function pulpityStanowisk(profil) {
+        const klucze = (ostatni?.klucze || []).filter((k) => !k.ai).map((k) => k.nr).sort((a, b) => a - b);
+        const eskadry = [...new Set(klucze.map((n) => Math.ceil(n / 3)))];
+        return [...pulpityKlasy(profil).filter((p) => p !== 'Klucz' && p !== 'Eskadra'),
+          ...eskadry.map((n) => `Eskadra ${n}`), ...klucze.map((n) => `Klucz ${n}`)];
       }
       async function wczytajGraczy() {
         try { gracze = (await api('bitwa_gracze', undefined, { id })).gracze; rysujStanowiska(true); }
@@ -267,8 +277,18 @@ export default {
         s._odebrano = Date.now(); // chwila odczytu — konsole przewidują ruch od niej
         ostatni = s;
         zapiszSlady(stanKonsol, s);
+        zapiszZwroty(stanKonsol, s);
         const st = s.stanowiska || { pelny: true, moje: [] };
         if (!st.pelny && !st.moje.includes(widok)) widok = st.moje[0] || null;
+        // Gracz ze stanowiskiem widzi tylko swój pulpit: bez nagłówka symulacji, zakładki tylko przy kilku pulpitach.
+        naglowek.hidden = !st.pelny;
+        zakladki.hidden = !st.pelny && st.moje.length < 2;
+        if (!st.pelny && ['zakonczona', 'anulowana'].includes(s.status)) {
+          wyczysc(konsolaEl).append(panel('SYMULACJA ZAKOŃCZONA', h('p.maly-tekst', 'Stanowisko zwolnione. Za chwilę powrót na pulpit.')));
+          konsolaEl.hidden = false;
+          if (kiosk) setTimeout(() => ctx.pulpit?.(), 5000);
+          return;
+        }
         rysujZakladki();
         rysujKonsole();
         rysujStanowiska();
@@ -361,7 +381,8 @@ export default {
     }
 
     w.append(tresc);
-    lista();
+    if (ctx.parametr?.bitwa) otworzSymulacje(Number(ctx.parametr.bitwa));
+    else lista();
     return () => { koniec = true; zatrzymaj(); };
   },
 };

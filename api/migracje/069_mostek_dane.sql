@@ -151,7 +151,9 @@ INSERT INTO rozkazy_profile (kod, nazwa, grupa, przygotowanie_s, dzialanie_s, od
   ('rownaj_reaktor', 'równaj z reaktorem', 'okret', 12, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, NULL),
   ('wyrownaj', 'wyrównaj', 'okret', 12, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'bez kosztu mocy'),
   ('przelacz', 'przełącz zasilanie', 'okret', 2, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'przerwa zasilania 1–3 s'),
-  ('salwa', 'salwa baterii', 'okret', 6, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'ładowanie; bolt leci 5 km/s')
+  ('salwa', 'salwa baterii', 'okret', 6, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'ładowanie; bolt leci 5 km/s'),
+  ('ster', 'ster i ciąg (kurs, prędkość)', 'okret', 3, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'konsola Silniki / Nawigacja: kurs zadany i prędkość zadana'),
+  ('cel_ognia', 'wskazanie celu baterii', 'okret', 2, NULL, 0, NULL, NULL, NULL, 0, 'kadet', 0, 'Kontrola ognia: baterie biorą wskazany okręt, gdy jest w łuku i zasięgu')
 ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), grupa = VALUES(grupa), przygotowanie_s = VALUES(przygotowanie_s), dzialanie_s = VALUES(dzialanie_s), odnowienie_s = VALUES(odnowienie_s), theta_mn = VALUES(theta_mn), theta_wlasna_mn = VALUES(theta_wlasna_mn), predkosc_mn = VALUES(predkosc_mn), ogien_wylaczony = VALUES(ogien_wylaczony), ranga_min = VALUES(ranga_min), ranga_skraca = VALUES(ranga_skraca), opis = VALUES(opis);
 
 -- Scenariusze

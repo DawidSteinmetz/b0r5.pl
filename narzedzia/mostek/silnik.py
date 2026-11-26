@@ -52,6 +52,9 @@ STALE = {
     'jon': {'ISD_I': (4e20, 1, 8), 'MC80': (2e20, 3, 8)},  # [R] bateria jonowa: energia lufy (J), lufy, ładowanie (tiki)
     'torpedy_energia': 8.0, 'torpedy_hz': 1.5,              # [R] torpedy protonowe: energia ×8, Hz ×1,5
     'wycofanie_km': 60.0,           # [R] okręt w odwrocie opuszcza bitwę dalej niż tyle od wrogów
+    # [R] Ster okrętu gracza (konsole Silniki, Nawigacja): prędkość maks. (km/s, ISD 975 km/h) i przyspieszenie (km/s²)
+    'v_maks_okretu': {'ISD_I': 0.27, 'MC80': 0.27, 'ZBIEG': 0.3},
+    'przyspieszenie_okretu': {'ISD_I': 0.002, 'MC80': 0.003, 'ZBIEG': 0.01},
     # [R] Dowódcy AI (MECHANIKA 11): dystans walki okrętu, próg odwrotu (% kadłuba), skłonność kluczy do uników,
     # nalot bombowców: zawsze / gdy torpedy przebiją osłony (hz) / jw., ale tylko bez myśliwców wroga w pobliżu.
     'dowodcy': {
@@ -116,7 +119,7 @@ def przygotowanie(kod, ranga):
     return max(1, math.ceil(c))
 
 
-def przyjmij_rozkaz(stan, kanal, kod, czas_s, ranga='standard', klucz=None):
+def przyjmij_rozkaz(stan, kanal, kod, czas_s, ranga='standard', klucz=None, wartosc=None):
     """Rozkaz odebrany przez serwer (komputer centralny) w chwili czas_s bitwy. Zwraca wpis dziennika albo powód odmowy.
     kanal — co wykonuje (klucz lub system okrętu); nowy rozkaz w przygotowaniu tego samego kanału przerywa poprzedni."""
     r = ROZK[kod]
@@ -140,7 +143,7 @@ def przyjmij_rozkaz(stan, kanal, kod, czas_s, ranga='standard', klucz=None):
     c = przygotowanie(kod, ranga)
     wpis = {'nr': len(dziennik) + 1, 'kanal': kanal, 'kod': kod, 'tik': tik, 'czas_s': czas_s, 'stan': 'przygotowanie',
             'dziala_od': tik + c, 'dziala_do': (tik + c + int(r['d'])) if r['d'] is not None else None,
-            'odnowienie_do': (tik + c + int(r['d'] or 0) + int(r['o'])) if r['o'] else None, 'klucz': klucz}
+            'odnowienie_do': (tik + c + int(r['d'] or 0) + int(r['o'])) if r['o'] else None, 'klucz': klucz, 'wartosc': wartosc}
     dziennik.append(wpis)
     return wpis
 
@@ -200,7 +203,8 @@ def utworz(scenariusz_kod, ziarno):
                         'hz_min': 1, 'hz_max': o['zyly'], 'obciazenie': 0.0, 'rykoszet': 0.0, 'zyly': nowe_zyly(o['zyly']), 'auto': True})
         stan['jednostki'].append({'nr': nr, 'strona': strona, 'profil': prof, 'nazwa': nazwa, 'x': float(x), 'y': float(y),
                                   'kurs': float(kurs), 'v': float(v), 'wejscie': wej + rozrzut(ziarno, wej_r, 'j', nr),
-                                  'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie'})
+                                  'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie',
+                                  'kurs_cel': None, 'v_cel': None, 'cel_ognia': None})
         # wyjście ze skoku później: jednostka czeka w nadprzestrzeni (sensory widzą jej zmarszczkę), nie walczy, nie leci
         if stan['jednostki'][-1]['wejscie'] > 0: stan['jednostki'][-1]['stan'] = 'oczekuje'
         stan['jednostki'][-1]['ai'] = next(t[2] for t in s['strony'] if t[0] == strona) != 'gracze'
@@ -297,6 +301,12 @@ def cel_klucza(stan, k):
         if kt is not None: return kt, STALE['ogon_km'], 'klucz'
         wj = wjw
         if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
+        # nic nie widać: cel domyślny z danych wywiadu — najbliższy okręt wroga, potem klucz wroga, potem okręt matka
+        wj = wrogowie(stan, k['strona'])
+        if wj: return min(wj, key=lambda j: odleglosc(k, j)), STALE['dystans_ataku_km'], 'okret'
+        kt = najblizszy(wrogie_klucze(stan, k['strona']), k, 1e9)
+        if kt is not None: return kt, STALE['ogon_km'], 'klucz'
+        if mac is not None: return mac, STALE['promien_ochrony_km'], 'macierzysta'
         return None, 0.0, None
     if r == 'skan':
         wj = wjw
@@ -354,8 +364,10 @@ def cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg):
     cel, dn = None, None
     for w in wrogowie(stan, j['strona']):
         d = odleglosc(dzialo, w)
-        if d > zasieg or (dn is not None and d >= dn): continue
+        if d > zasieg: continue
         if abs(norm180(norm180(namiar(dzialo, w) - j['kurs']) - luk_s)) > luk_p: continue
+        if w['nr'] == j.get('cel_ognia'): return w, d          # cel wskazany z Kontroli ognia — pierwszeństwo
+        if dn is not None and d >= dn: continue
         cel, dn = w, d
     return cel, dn
 
@@ -551,6 +563,19 @@ def ai_klucza(stan, tik, k):
         przyjmij_rozkaz(stan, kan, 'przelot', tik, k['ranga'], k)
 
 
+def ster_okretu(j):
+    """Okręt gracza: skręt do kursu zadanego z prędkością obrotu z profilu, zmiana prędkości do zadanej
+    z przyspieszeniem profilu (rozkaz ster z konsoli Silniki albo Nawigacja)."""
+    if j.get('kurs_cel') is not None:
+        sil = PROFILE[j['profil']].get('silniki') or {}
+        zwrot = (sil.get('obrot_deg_na_min') or 60) / 60
+        j['kurs'] = norm180(j['kurs'] + max(-zwrot, min(zwrot, norm180(j['kurs_cel'] - j['kurs']))))
+    if j.get('v_cel') is not None:
+        a = STALE['przyspieszenie_okretu'].get(j['profil'], 0.005)
+        cel = max(0.0, min(STALE['v_maks_okretu'].get(j['profil'], 0.3), j['v_cel']))
+        j['v'] = j['v'] + max(-a, min(a, cel - j['v']))
+
+
 def kadlub(j):
     """Średnia ważona integralność kadłuba (sekcje w kolejności alfabetycznej — jak PHP)."""
     udzialy = dict((s, u) for s, _, u in PROFILE[j['profil']]['kadlub'])
@@ -613,6 +638,14 @@ def krok(stan):
                     if w['kod'] == 'powrot' and k['stan'] == 'w_locie': k['stan'] = 'powrot'
             elif w['kod'] in ZMIANA_KURSU:
                 k['kurs_zadany'] = k['kurs'] + ZMIANA_KURSU[w['kod']]
+        if w['kod'] in ('ster', 'cel_ognia'):
+            nr = w['kanal'].split(':')[0]
+            j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
+            if w['kod'] == 'ster':
+                kurs, v = (float(x) for x in w['wartosc'].split(';'))
+                j['kurs_cel'], j['v_cel'] = kurs, v
+            else:
+                j['cel_ognia'] = int(w['wartosc']) if w['wartosc'] else None
         if w['kod'].startswith('przestrojenie'):
             nr, gk = w['kanal'].split(':')
             j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
@@ -651,6 +684,8 @@ def krok(stan):
         if j['ai']:
             ai_okretu(stan, tik, j)
             if j['stan'] != 'w_bitwie': continue
+        else:
+            ster_okretu(j)
         j['x'] += j['v'] * math.sin(radiany(j['kurs']))
         j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów

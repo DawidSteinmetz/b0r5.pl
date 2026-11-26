@@ -248,6 +248,9 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
   instancji: [PROMPT_SCENARIUSZ.md](PROMPT_SCENARIUSZ.md).
 - TIE bez radaru dalekiego zasięgu (radar 5 km + dane okrętu matki), prędkości maszyn z Wookieepedii (ok. 3× wolniej),
   MC80 w „Ataku na Walako” 0,25 km/s (MECHANIKA 11.2; migracja 069 odświeżona).
+- Konsole (26.11.2026, PULPITY 1c, MECHANIKA 11.3; migracja 076, 069 odświeżona): wygląd fizycznego pulpitu, lampki
+  żył, Turbolasery, Silniki, Grawitacja, ster okrętu, wskazanie celu, stanowiska Klucz N / Eskadra N, tryb stanowiska
+  (gracz widzi tylko pulpit), cele domyślne kluczy, koniec symulacji po oknie i budżet doliczania.
 - Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

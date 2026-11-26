@@ -86,16 +86,16 @@ export const UKLADY = {
     3,
     2,
     "GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
-    3,
-    3
+    4,
+    4
    ],
    [
     "B",
-    9,
+    8,
     2,
     "GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura",
-    3,
-    3
+    4,
+    4
    ],
    [
     "R",

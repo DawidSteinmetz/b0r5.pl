@@ -482,7 +482,9 @@ SEKTORY = ('dziob', 'gora_l', 'gora_p', 'dol_l', 'dol_p', 'rufa', 'hangar')
 GRUPY_PD = ('dziob', 'przod_l', 'przod_p', 'bok_l', 'bok_p', 'dol', 'rufa')
 # wzmocnienia uzbrojenia (Turbolasery, Kontrola ognia): +4 do poboru baterii i +0,2 ciepła na tik każde
 WZM_BRONI = ('tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony') + tuple('pd_' + g for g in GRUPY_PD)
-WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI
+# wzmocnienia napędu (Silniki, Nawigacja): +3 do poboru silników i +0,2 ciepła na tik każde
+WZM_SILNIKOW = ('gl_l', 'gl_p', 'gl_s', 'man_lg', 'man_pg', 'man_ld', 'man_pd', 'man_all', 'skret_l', 'skret_p')
+WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI + WZM_SILNIKOW
 SYNC_OSLON = ('sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p')
 NASTAWY = {
     **{'pokr_' + s: 1.0 for s in SEKTORY},
@@ -504,6 +506,13 @@ NASTAWY = {
     'rozrzut_l': 0.5, 'rozrzut_p': 0.5, 'tryb_l': 0.0, 'tryb_p': 0.0, 'czas_zapor': 0.5, 'opoznienie': 0.0, 'elewacja': 0.5,
     'jon_moc': 0.5, 'jon_obezwl': 0.0, 'sync_ko_iff': 0.0, 'sync_ko_sens': 0.0,
     'zapor_do_l': 0.0, 'zapor_do_p': 0.0,   # tik końca ognia zaporowego — ustawia silnik, nie konsola
+    # Silniki: zakres ciągu silników głównych burt, ciąg środkowego, ciąg i wychylenie dysz manewrowych, trymy, synchronizacje
+    'sil_max_l': 1.0, 'sil_min_l': 0.0, 'sil_max_p': 1.0, 'sil_min_p': 0.0, 'sil_srodek': 1.0,
+    'man_lg': 0.5, 'man_pg': 0.5, 'man_ld': 0.5, 'man_pd': 0.5, 'dysza_lg': 0.5, 'dysza_pg': 0.5, 'dysza_ld': 0.5, 'dysza_pd': 0.5,
+    'trym_poch': 0.5, 'trym_odch': 0.5, 'sync_man_l': 0.0, 'sync_man_p': 0.0, 'sync_gl_l_s': 0.0, 'sync_gl_p_s': 0.0,
+    # Nawigacja: zakres prędkości kątowej skrętu w każdą stronę, moc i kąt dysz manewrowych burt, przechył, synchronizacje
+    'skret_max_l': 1.0, 'skret_min_l': 0.0, 'skret_max_p': 1.0, 'skret_min_p': 0.0, 'nav_man_l': 0.5, 'nav_man_p': 0.5,
+    'katdysz_l': 0.5, 'katdysz_p': 0.5, 'przechyl': 0.5, 'sync_nav_l': 0.0, 'sync_nav_p': 0.0,
 }
 GRUPY_WYROWNANIA = {
     'baterie': ('przydz_tl', 'przydz_jon', 'rez_salwa'),
@@ -512,7 +521,28 @@ GRUPY_WYROWNANIA = {
     'oslony': tuple('pokr_' + s for s in SEKTORY),
     'turbolasery': ('tl_hz_max_l', 'tl_hz_min_l', 'tl_hz_max_p', 'tl_hz_min_p') + tuple('pd_kat_' + g for g in GRUPY_PD),
     'ogien': ('tempo_l', 'tempo_min_l', 'tempo_max_l', 'tempo_p', 'tempo_min_p', 'tempo_max_p', 'rozrzut_l', 'rozrzut_p', 'opoznienie', 'elewacja'),
+    'silniki': ('sil_max_l', 'sil_min_l', 'sil_max_p', 'sil_min_p', 'sil_srodek', 'man_lg', 'man_pg', 'man_ld', 'man_pd',
+                'dysza_lg', 'dysza_pg', 'dysza_ld', 'dysza_pd', 'trym_poch', 'trym_odch'),
+    'nawigacja': ('skret_max_l', 'skret_min_l', 'skret_max_p', 'skret_min_p', 'nav_man_l', 'nav_man_p', 'katdysz_l', 'katdysz_p', 'przechyl'),
 }
+
+
+def mnoznik_skretu(stan, j, b):
+    """Prędkość kątowa skrętu w stronę b ('l'/'p') względem profilu: ciąg silników manewrowych burty (Silniki) × moc
+    manewrowych burty (Nawigacja), w zakresie suwaków skrętu; wzmocnienia, synchronizacje i przechył w stronę skrętu."""
+    def n(k): return nast(j, k)
+    f = (0.5 + (n('man_' + b + 'g') + n('man_' + b + 'd')) / 2) * (0.5 + n('nav_man_' + b))
+    f = min(max(f, n('skret_min_' + b)), n('skret_max_' + b))
+    if wzm(stan, j, 'skret_' + b): f *= 1.5
+    if wzm(stan, j, 'man_' + b + 'g'): f *= 1.25
+    if wzm(stan, j, 'man_' + b + 'd'): f *= 1.25
+    if wzm(stan, j, 'man_all'): f *= 1.3
+    if n('sync_man_' + b) >= 0.5: f *= 1.1
+    if n('sync_nav_' + b) >= 0.5: f *= 1.1
+    pr = n('przechyl')
+    if pr < 0.25: f *= 1.15 if b == 'l' else 0.9
+    elif pr > 0.75: f *= 1.15 if b == 'p' else 0.9
+    return f
 
 
 def grupa_pd(nr, x, y):
@@ -581,6 +611,7 @@ def zasilanie(stan, tik, j):
     tl += 2 * (n('sync_tl_os_l') + n('sync_tl_os_p'))
     jon = 10 * n('przydz_jon') * (0.5 + n('jon_moc'))
     sil = 15 * n('przydz_sil')
+    for c in WZM_SILNIKOW: sil += 3 * w(c)
     podst = koszt_sensorow(j.get('zasieg_sensorow', 1000)) + 10 * n('przydz_hiper') + 3 * n('sync_przedni_pr') + 4 * n('pole_komory')
     przel_sil, przel_podst = n('przel_sil_zapas') >= 0.5, n('przel_podst_przedni') >= 0.5
     # reaktor uzbrojenia: najpierw baterie (produkcja w zakresie min…maks), nadwyżka do puli po synchronizacji z rdzeniem
@@ -631,6 +662,7 @@ def zasilanie(stan, tik, j):
     przyrost = (wyk - 0.85) * 2 + 0.5 * w('glowny') + 0.3 * w('generator') + 0.2 * (w('uzbr') + w('przedni') + w('zapas'))
     for s in SEKTORY: przyrost += 0.2 * w(s)
     for c in WZM_BRONI: przyrost += 0.2 * w(c)
+    for c in WZM_SILNIKOW: przyrost += 0.2 * w(c)
     for b in ('l', 'p'):
         if n('tryb_' + b) >= 0.75: przyrost += 0.3
     if przyrost > 0: przyrost *= (1.5 - n('pole_komory')) * (0.8 if n('sync_glowny_pom') >= 0.5 else 1.0)
@@ -798,17 +830,36 @@ def ai_klucza(stan, tik, k):
         przyjmij_rozkaz(stan, kan, 'przelot', tik, k['ranga'], k)
 
 
-def ster_okretu(j):
-    """Okręt gracza: skręt do kursu zadanego z prędkością obrotu z profilu, zmiana prędkości do zadanej
-    z przyspieszeniem profilu (rozkaz ster z konsoli Silniki albo Nawigacja)."""
+def ster_okretu(stan, j):
+    """Okręt gracza: skręt do kursu zadanego z prędkością obrotu z profilu (× mnoznik_skretu), zmiana prędkości do
+    zadanej z przyspieszeniem profilu (rozkaz ster z konsoli Silniki albo Nawigacja). Napęd (MECHANIKA 11.4):
+    ciąg silników głównych burt i środkowego, zakresy min./maks., trym pochylenia (sprawność), wzmocnienia,
+    różnica ciągu burt (dryf zwrotu), trym odchylenia, wychylenie dysz manewrowych (przesuw pod skosem)."""
+    def n(k): return nast(j, k)
     if j.get('kurs_cel') is not None:
         sil = PROFILE[j['profil']].get('silniki') or {}
-        zwrot = (sil.get('obrot_deg_na_min') or 60) / 60
-        j['kurs'] = norm180(j['kurs'] + max(-zwrot, min(zwrot, norm180(j['kurs_cel'] - j['kurs']))))
+        zwrot0 = (sil.get('obrot_deg_na_min') or 60) / 60
+        d = norm180(j['kurs_cel'] - j['kurs'])
+        zwrot = zwrot0 * mnoznik_skretu(stan, j, 'l' if d < 0 else 'p')
+        j['kurs'] = norm180(j['kurs'] + max(-zwrot, min(zwrot, d)))
+    v_maks = STALE['v_maks_okretu'].get(j['profil'], 0.3)
+    ciag = (n('sil_max_l') + n('sil_max_p') + n('sil_srodek')) / 3
+    wzm_v = 1 + 0.1 * (wzm(stan, j, 'gl_l') + wzm(stan, j, 'gl_p') + wzm(stan, j, 'gl_s'))
     if j.get('v_cel') is not None:
-        a = STALE['przyspieszenie_okretu'].get(j['profil'], 0.005)
-        cel = max(0.0, min(STALE['v_maks_okretu'].get(j['profil'], 0.3) * zas(j, 'v'), j['v_cel']))
+        a = STALE['przyspieszenie_okretu'].get(j['profil'], 0.005) * ciag * wzm_v * (1 + 0.1 * (n('sync_gl_l_s') + n('sync_gl_p_s')))
+        v_gora = v_maks * zas(j, 'v') * ciag * wzm_v * (1 - 0.2 * abs(n('trym_poch') - 0.5))
+        cel = max(0.0, min(v_gora, j['v_cel']))
+        cel = max(cel, min(v_gora, v_maks * (n('sil_min_l') + n('sil_min_p')) / 3))
         j['v'] = j['v'] + max(-a, min(a, cel - j['v']))
+    # różnica ciągu burt skręca okręt (więcej z lewej — w prawo), trym odchylenia — stały dryf zwrotu
+    roznica = n('sil_max_l') - n('sil_max_p')
+    if roznica != 0 and j['v'] > 0: j['kurs'] = norm180(j['kurs'] + roznica * 0.3 * j['v'] / v_maks)
+    if n('trym_odch') != 0.5: j['kurs'] = norm180(j['kurs'] + (n('trym_odch') - 0.5) * 0.4)
+    # przesuw pod skosem: dysze manewrowe wychylone na jedną burtę pchają okręt w bok (km/s)
+    vb = 0.02 * ((n('dysza_pg') + n('dysza_pd') + n('katdysz_p')) - (n('dysza_lg') + n('dysza_ld') + n('katdysz_l')))
+    if vb != 0:
+        j['x'] += vb * math.cos(radiany(j['kurs']))
+        j['y'] -= vb * math.sin(radiany(j['kurs']))
 
 
 def kadlub(j):
@@ -935,7 +986,7 @@ def krok(stan):
             ai_okretu(stan, tik, j)
             if j['stan'] != 'w_bitwie': continue
         else:
-            ster_okretu(j)
+            ster_okretu(stan, j)
         j['x'] += j['v'] * math.sin(radiany(j['kurs']))
         j['y'] += j['v'] * math.cos(radiany(j['kurs']))
     # ogień kluczy w osłony okrętów

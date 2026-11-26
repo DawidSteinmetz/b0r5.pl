@@ -3,7 +3,8 @@
 -- pole komory, rezerwy, zakresy reaktora uzbrojenia i generatora mocy, przełączenia zasilania). Brak wiersza = wartość
 -- domyślna z silnika (BITWA_NASTAWY). Ciepło rdzenia i dławienie — stan okrętu w symulacji.
 -- Rozkazy (bitwy_rozkazy): nastawa / synchronizuj / przelacz (wartosc_po „kod=liczba”), wyrownaj (grupa), wzmocnij.
--- Wymaga 068 i odświeżonej 069 (rozkaz „nastawa”).
+-- Wymaga 068 i odświeżonej 069 (rozkaz „nastawa”). Ponowny import kończy się błędem #1060 (kolumna już jest) — to
+-- znaczy, że migracja jest już wgrana; nic nie trzeba robić.
 
 CREATE TABLE IF NOT EXISTS bitwy_nastawy (
   bitwa_jednostka_id BIGINT UNSIGNED NOT NULL,

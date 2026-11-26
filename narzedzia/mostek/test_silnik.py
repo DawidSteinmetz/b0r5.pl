@@ -120,7 +120,8 @@ if '--php' in sys.argv:
                                for j in s['jednostki'] for g in j['generatory']],
                 'sekcje': [v for j in s['jednostki'] for _, v in sorted(j['sekcje'].items())],
                 'zdarzenia': dict(sorted(zd.items())), 'rozkazy': [list(r) for r in rozkazy or []],
-                'zasilanie': [[j['cieplo'], j['dlawienie'], S.zas(j, 'tl_l'), S.zas(j, 'oslona_p'), S.zas(j, 'v')] for j in s['jednostki']]}
+                'zasilanie': [[j['cieplo'], j['dlawienie'], S.zas(j, 'tl_l'), S.zas(j, 'oslona_p'), S.zas(j, 'v')] for j in s['jednostki']],
+                'ruch': [[j['x'], j['y'], j['kurs'], j['v']] for j in s['jednostki']]}
     # nastawy konsol Osłony i Reaktory (MECHANIKA 11.4): przecieki na granicach, wzmocnienia, niedobór mocy, dławienie
     NASTAWY_TEST = [(5, 1, 'n_pokr_gora_l', 'nastawa', 'pokr_gora_l=0.2'), (5, 1, 'n_pokr_dziob', 'nastawa', 'pokr_dziob=0'),
                     (6, 1, 'n_pokr_gora_p', 'nastawa', 'pokr_gora_p=0'), (6, 1, 'n_pokr_dol_p', 'nastawa', 'pokr_dol_p=0.1'),
@@ -141,8 +142,16 @@ if '--php' in sys.argv:
                   (10, 1, 'n_sync_tl_ko_l', 'synchronizuj', 'sync_tl_ko_l=1'), (30, 1, 'wzm_ogien_p', 'wzmocnij', None),
                   (100, 1, 'n_tryb_p', 'nastawa', 'tryb_p=0.5'), (150, 1, 'n_tempo_l', 'nastawa', 'tempo_l=1'), (160, 1, 'wzm_jony', 'wzmocnij', None),
                   (200, 1, 'n_tryb_l', 'nastawa', 'tryb_l=1'), (350, 1, 'wyrownaj_ogien', 'wyrownaj', 'ogien')]
+    # nastawy konsol Silniki i Nawigacja: ciąg burt, dysze, trymy, przechył, wzmocnienia napędu, zakres skrętu
+    RUCH_TEST = [(2, 1, 'ster', 'ster', '45;0.2'), (5, 1, 'n_sil_max_l', 'nastawa', 'sil_max_l=0.6'), (6, 1, 'n_man_lg', 'nastawa', 'man_lg=0.9'),
+                 (20, 1, 'wzm_skret_l', 'wzmocnij', None), (20, 1, 'n_przechyl', 'nastawa', 'przechyl=0'), (30, 1, 'n_dysza_pg', 'nastawa', 'dysza_pg=0.9'),
+                 (40, 1, 'n_trym_odch', 'nastawa', 'trym_odch=0.6'), (50, 1, 'n_sil_min_l', 'nastawa', 'sil_min_l=0.5'),
+                 (50, 1, 'n_trym_poch', 'nastawa', 'trym_poch=0.8'), (60, 1, 'wzm_gl_s', 'wzmocnij', None), (60, 1, 'n_sync_man_l', 'synchronizuj', 'sync_man_l=1'),
+                 (100, 1, 'ster', 'ster', '-90;0.25'), (110, 1, 'n_skret_max_l', 'nastawa', 'skret_max_l=0.6'), (120, 1, 'n_katdysz_l', 'nastawa', 'katdysz_l=0.8'),
+                 (150, 1, 'wzm_man_all', 'wzmocnij', None), (300, 1, 'wyrownaj_silniki', 'wyrownaj', 'silniki')]
     przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420),
-                 przebieg('walako_atak', 3, True, 420, NASTAWY_TEST), przebieg('walako_atak', 3, True, 420, OGIEN_TEST)]
+                 przebieg('walako_atak', 3, True, 420, NASTAWY_TEST), przebieg('walako_atak', 3, True, 420, OGIEN_TEST),
+                 przebieg('walako_atak', 3, True, 420, RUCH_TEST)]
     for pb in przebiegi:
         zs = [[round(x, 2) if isinstance(x, float) else x for x in z] for z in pb['zasilanie']]
         print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}{' + nastawy' if pb['rozkazy'] else ''}: zasilanie {zs}")

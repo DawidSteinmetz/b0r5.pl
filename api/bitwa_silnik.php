@@ -580,8 +580,10 @@ function bitwa_najblizsza(array $S, array $k, array $indeksy): int
 const BITWA_SEKTORY = ['dziob', 'gora_l', 'gora_p', 'dol_l', 'dol_p', 'rufa', 'hangar'];
 const BITWA_GRUPY_PD = ['dziob', 'przod_l', 'przod_p', 'bok_l', 'bok_p', 'dol', 'rufa'];
 const BITWA_WZM_BRONI = ['tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony', 'pd_dziob', 'pd_przod_l', 'pd_przod_p', 'pd_bok_l', 'pd_bok_p', 'pd_dol', 'pd_rufa'];
+const BITWA_WZM_SILNIKOW = ['gl_l', 'gl_p', 'gl_s', 'man_lg', 'man_pg', 'man_ld', 'man_pd', 'man_all', 'skret_l', 'skret_p'];
 const BITWA_WZMOCNIENIA = ['dziob', 'gora_l', 'gora_p', 'dol_l', 'dol_p', 'rufa', 'hangar', 'glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p',
-    'tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony', 'pd_dziob', 'pd_przod_l', 'pd_przod_p', 'pd_bok_l', 'pd_bok_p', 'pd_dol', 'pd_rufa'];
+    'tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony', 'pd_dziob', 'pd_przod_l', 'pd_przod_p', 'pd_bok_l', 'pd_bok_p', 'pd_dol', 'pd_rufa',
+    'gl_l', 'gl_p', 'gl_s', 'man_lg', 'man_pg', 'man_ld', 'man_pd', 'man_all', 'skret_l', 'skret_p'];
 const BITWA_SYNC_OSLON = ['sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p'];
 const BITWA_NASTAWY = [
     'pokr_dziob' => 1.0, 'pokr_gora_l' => 1.0, 'pokr_gora_p' => 1.0, 'pokr_dol_l' => 1.0, 'pokr_dol_p' => 1.0, 'pokr_rufa' => 1.0, 'pokr_hangar' => 1.0,
@@ -601,6 +603,11 @@ const BITWA_NASTAWY = [
     'rozrzut_l' => 0.5, 'rozrzut_p' => 0.5, 'tryb_l' => 0.0, 'tryb_p' => 0.0, 'czas_zapor' => 0.5, 'opoznienie' => 0.0, 'elewacja' => 0.5,
     'jon_moc' => 0.5, 'jon_obezwl' => 0.0, 'sync_ko_iff' => 0.0, 'sync_ko_sens' => 0.0,
     'zapor_do_l' => 0.0, 'zapor_do_p' => 0.0,
+    'sil_max_l' => 1.0, 'sil_min_l' => 0.0, 'sil_max_p' => 1.0, 'sil_min_p' => 0.0, 'sil_srodek' => 1.0,
+    'man_lg' => 0.5, 'man_pg' => 0.5, 'man_ld' => 0.5, 'man_pd' => 0.5, 'dysza_lg' => 0.5, 'dysza_pg' => 0.5, 'dysza_ld' => 0.5, 'dysza_pd' => 0.5,
+    'trym_poch' => 0.5, 'trym_odch' => 0.5, 'sync_man_l' => 0.0, 'sync_man_p' => 0.0, 'sync_gl_l_s' => 0.0, 'sync_gl_p_s' => 0.0,
+    'skret_max_l' => 1.0, 'skret_min_l' => 0.0, 'skret_max_p' => 1.0, 'skret_min_p' => 0.0, 'nav_man_l' => 0.5, 'nav_man_p' => 0.5,
+    'katdysz_l' => 0.5, 'katdysz_p' => 0.5, 'przechyl' => 0.5, 'sync_nav_l' => 0.0, 'sync_nav_p' => 0.0,
 ];
 const BITWA_GRUPY_WYROWNANIA = [
     'baterie' => ['przydz_tl', 'przydz_jon', 'rez_salwa'],
@@ -610,7 +617,28 @@ const BITWA_GRUPY_WYROWNANIA = [
     'turbolasery' => ['tl_hz_max_l', 'tl_hz_min_l', 'tl_hz_max_p', 'tl_hz_min_p', 'pd_kat_dziob', 'pd_kat_przod_l', 'pd_kat_przod_p', 'pd_kat_bok_l',
         'pd_kat_bok_p', 'pd_kat_dol', 'pd_kat_rufa'],
     'ogien' => ['tempo_l', 'tempo_min_l', 'tempo_max_l', 'tempo_p', 'tempo_min_p', 'tempo_max_p', 'rozrzut_l', 'rozrzut_p', 'opoznienie', 'elewacja'],
+    'silniki' => ['sil_max_l', 'sil_min_l', 'sil_max_p', 'sil_min_p', 'sil_srodek', 'man_lg', 'man_pg', 'man_ld', 'man_pd',
+        'dysza_lg', 'dysza_pg', 'dysza_ld', 'dysza_pd', 'trym_poch', 'trym_odch'],
+    'nawigacja' => ['skret_max_l', 'skret_min_l', 'skret_max_p', 'skret_min_p', 'nav_man_l', 'nav_man_p', 'katdysz_l', 'katdysz_p', 'przechyl'],
 ];
+
+// Mnożnik prędkości kątowej skrętu w stronę $b (jak silnik.py mnoznik_skretu).
+function bitwa_mnoznik_skretu(array $S, array $j, string $b): float
+{
+    $n = static fn(string $k): float => bitwa_nast($j, $k);
+    $f = (0.5 + ($n('man_' . $b . 'g') + $n('man_' . $b . 'd')) / 2) * (0.5 + $n('nav_man_' . $b));
+    $f = min(max($f, $n('skret_min_' . $b)), $n('skret_max_' . $b));
+    if (bitwa_wzm($S, $j, 'skret_' . $b)) $f *= 1.5;
+    if (bitwa_wzm($S, $j, 'man_' . $b . 'g')) $f *= 1.25;
+    if (bitwa_wzm($S, $j, 'man_' . $b . 'd')) $f *= 1.25;
+    if (bitwa_wzm($S, $j, 'man_all')) $f *= 1.3;
+    if ($n('sync_man_' . $b) >= 0.5) $f *= 1.1;
+    if ($n('sync_nav_' . $b) >= 0.5) $f *= 1.1;
+    $pr = $n('przechyl');
+    if ($pr < 0.25) $f *= $b === 'l' ? 1.15 : 0.9;
+    elseif ($pr > 0.75) $f *= $b === 'p' ? 1.15 : 0.9;
+    return $f;
+}
 
 function bitwa_grupa_pd(int $nr, float $x, float $y): string
 {
@@ -680,6 +708,7 @@ function bitwa_zasilanie(array &$S, int $tik, int $ji): void
     $tl += 2 * ($n('sync_tl_os_l') + $n('sync_tl_os_p'));
     $jon = 10 * $n('przydz_jon') * (0.5 + $n('jon_moc'));
     $sil = 15 * $n('przydz_sil');
+    foreach (BITWA_WZM_SILNIKOW as $cw) $sil += 3 * $w($cw);
     $podst = bitwa_koszt_sensorow_silnik((int) ($j['zasieg_sensorow'] ?? 1000)) + 10 * $n('przydz_hiper') + 3 * $n('sync_przedni_pr') + 4 * $n('pole_komory');
     $przelSil = $n('przel_sil_zapas') >= 0.5;
     $przelPodst = $n('przel_podst_przedni') >= 0.5;
@@ -735,6 +764,7 @@ function bitwa_zasilanie(array &$S, int $tik, int $ji): void
     $przyrost = ($wyk - 0.85) * 2 + 0.5 * $w('glowny') + 0.3 * $w('generator') + 0.2 * ($w('uzbr') + $w('przedni') + $w('zapas'));
     foreach (BITWA_SEKTORY as $s) $przyrost += 0.2 * $w($s);
     foreach (BITWA_WZM_BRONI as $cw) $przyrost += 0.2 * $w($cw);
+    foreach (BITWA_WZM_SILNIKOW as $cw) $przyrost += 0.2 * $w($cw);
     foreach (['l', 'p'] as $b) if ($n('tryb_' . $b) >= 0.75) $przyrost += 0.3;
     if ($przyrost > 0) $przyrost *= (1.5 - $n('pole_komory')) * ($n('sync_glowny_pom') >= 0.5 ? 0.8 : 1.0);
     $cieplo = min(150.0, max(0.0, $j['cieplo'] + $przyrost));
@@ -943,15 +973,32 @@ function bitwa_ai_klucza(array &$S, int $tik, int $ki): void
 function bitwa_ster_okretu(array &$S, int $ji): void
 {
     $j = $S['jednostki'][$ji];
+    $n = static fn(string $k): float => bitwa_nast($j, $k);
     if (($j['kurs_cel'] ?? null) !== null) {
-        $zwrot = (BITWA_STALE['obrot_okretu'][$j['profil']] ?? 60) / 60;
-        $S['jednostki'][$ji]['kurs'] = bitwa_norm180($j['kurs'] + max(-$zwrot, min($zwrot, bitwa_norm180($j['kurs_cel'] - $j['kurs']))));
+        $zwrot0 = (BITWA_STALE['obrot_okretu'][$j['profil']] ?? 60) / 60;
+        $d = bitwa_norm180($j['kurs_cel'] - $j['kurs']);
+        $zwrot = $zwrot0 * bitwa_mnoznik_skretu($S, $j, $d < 0 ? 'l' : 'p');
+        $j['kurs'] = bitwa_norm180($j['kurs'] + max(-$zwrot, min($zwrot, $d)));
     }
+    $vMaks = BITWA_STALE['v_maks_okretu'][$j['profil']] ?? 0.3;
+    $ciag = ($n('sil_max_l') + $n('sil_max_p') + $n('sil_srodek')) / 3;
+    $wzmV = 1 + 0.1 * (bitwa_wzm($S, $j, 'gl_l') + bitwa_wzm($S, $j, 'gl_p') + bitwa_wzm($S, $j, 'gl_s'));
     if (($j['v_cel'] ?? null) !== null) {
-        $a = BITWA_STALE['przyspieszenie_okretu'][$j['profil']] ?? 0.005;
-        $cel = max(0.0, min((BITWA_STALE['v_maks_okretu'][$j['profil']] ?? 0.3) * bitwa_zas($j, 'v'), $j['v_cel']));
-        $S['jednostki'][$ji]['v'] = $j['v'] + max(-$a, min($a, $cel - $j['v']));
+        $a = (BITWA_STALE['przyspieszenie_okretu'][$j['profil']] ?? 0.005) * $ciag * $wzmV * (1 + 0.1 * ($n('sync_gl_l_s') + $n('sync_gl_p_s')));
+        $vGora = $vMaks * bitwa_zas($j, 'v') * $ciag * $wzmV * (1 - 0.2 * abs($n('trym_poch') - 0.5));
+        $cel = max(0.0, min($vGora, $j['v_cel']));
+        $cel = max($cel, min($vGora, $vMaks * ($n('sil_min_l') + $n('sil_min_p')) / 3));
+        $j['v'] = $j['v'] + max(-$a, min($a, $cel - $j['v']));
     }
+    $roznica = $n('sil_max_l') - $n('sil_max_p');
+    if ($roznica != 0 && $j['v'] > 0) $j['kurs'] = bitwa_norm180($j['kurs'] + $roznica * 0.3 * $j['v'] / $vMaks);
+    if ($n('trym_odch') != 0.5) $j['kurs'] = bitwa_norm180($j['kurs'] + ($n('trym_odch') - 0.5) * 0.4);
+    $vb = 0.02 * (($n('dysza_pg') + $n('dysza_pd') + $n('katdysz_p')) - ($n('dysza_lg') + $n('dysza_ld') + $n('katdysz_l')));
+    if ($vb != 0) {
+        $j['x'] += $vb * cos(bitwa_radiany($j['kurs']));
+        $j['y'] -= $vb * sin(bitwa_radiany($j['kurs']));
+    }
+    foreach (['kurs', 'v', 'x', 'y'] as $k) $S['jednostki'][$ji][$k] = $j[$k];
 }
 
 // Średnia ważona integralność kadłuba (sekcje alfabetycznie — jak silnik.py kadlub).

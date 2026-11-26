@@ -1093,7 +1093,14 @@ function nawigacja(s, st, akcje) {
     return namiarNa(j, { x: c.x + (c.v || 0) * t * Math.sin(rad(c.kurs || 0)), y: c.y + (c.v || 0) * t * Math.cos(rad(c.kurs || 0)) });
   };
   const ciag = (j.v_cel ?? j.v) / (j.v_maks || 0.27);
-  return pulpit(j.profil, N, {
+  const n = nastawyKonsoli(j, st, akcje, N);
+  const obrot = j.obrot_deg_min || 30;
+  // przeciążenie: przyspieszenie liniowe (do prędkości zadanej) i dośrodkowe w skręcie, w g (kompensatory je tłumią)
+  const aLin = j.v_cel != null && Math.abs(j.v_cel - j.v) > 1e-4 ? 0.002 : 0;
+  const przeciazenie = Math.hypot(aLin, j.v * rad(skretu)) * 1000 / 9.81;
+  const przechyl = n.N('przechyl');
+  const w = {
+    ...{
     'EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy': {
       ekran: () => powiekszany(st, akcje, 'nav', (z) => ekranPlot(s, st, { zasieg: st.skalaNaw / z, srodek: j, pierscienie: [st.skalaNaw / 4, st.skalaNaw / 2, st.skalaNaw].map((r) => zaokr(r / z)),
         prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty, wybierz: (o) => { st.celNaw = idObiektu(o); akcje.odswiez(); } })) },
@@ -1120,7 +1127,31 @@ function nawigacja(s, st, akcje) {
     'CAŁA NAPRZÓD': { wl: j.v_cel != null && j.v_cel >= (j.v_maks || 0.27) - 1e-6, klik: () => ster(akcje, j, N, { v: j.v_maks }) },
     'suwak: ciąg główny (prędkość zadana)': { poz: ciag, etykieta: `ciąg główny: ${Math.round(ciag * 100)}% · ${((j.v_cel ?? j.v) * 3600).toFixed(0)} km/h (dotknij miejsca)`,
       klikX: (f) => ster(akcje, j, N, { v: Math.round(f * 20) / 20 * (j.v_maks || 0.27) }) },
-  });
+    },
+    // MECHANIKA 11.4: zakres prędkości kątowej skrętu, moc i kąt dysz manewrowych burt, przechył, wzmocnienia, synchronizacje
+    'suwak: maksymalna prędkość kątowa skrętu w lewo': n.zakres('skret_max_l', 'skret_min_l', 'skręt w lewo maks.', 'min.', (v) => `${Math.round(v * obrot)}°/min`),
+    'suwak: maksymalna prędkość kątowa skrętu w prawo': n.zakres('skret_max_p', 'skret_min_p', 'skręt w prawo maks.', 'min.', (v) => `${Math.round(v * obrot)}°/min`),
+    'wzmocnij skręt w lewo': n.wzmocnij('skret_l', 'wzmocnij skręt w lewo'),
+    'wzmocnij skręt w prawo': n.wzmocnij('skret_p', 'wzmocnij skręt w prawo'),
+    'suwak: moc silników manewrowych lewej burty': n.suwak('nav_man_l', 'manewrowe lewej burty', (v) => `×${(0.5 + v).toFixed(2)}`),
+    'suwak: moc silników manewrowych prawej burty': n.suwak('nav_man_p', 'manewrowe prawej burty', (v) => `×${(0.5 + v).toFixed(2)}`),
+    'suwak: kąt dysz manewrowych lewej burty (przesuw pod skosem)': n.suwak('katdysz_l', 'dysze lewej burty (przesuw w lewo)'),
+    'suwak: kąt dysz manewrowych prawej burty (przesuw pod skosem)': n.suwak('katdysz_p', 'dysze prawej burty (przesuw w prawo)'),
+    'synchronizacja z konsolą silników (ciąg lewej burty)': n.przelacznik('sync_nav_l'),
+    'synchronizacja z konsolą silników (ciąg prawej burty)': n.przelacznik('sync_nav_p'),
+    'trym przechylenia w lewo': { wl: przechyl < 0.25, przelacznik: true, klik: () => n.ustaw('przechyl', przechyl < 0.25 ? 0.5 : 0),
+      etykieta: przechyl < 0.25 ? 'przechył w lewo (skręt w lewo +15%)' : 'trym przechylenia w lewo' },
+    'trym przechylenia w prawo': { wl: przechyl > 0.75, przelacznik: true, klik: () => n.ustaw('przechyl', przechyl > 0.75 ? 0.5 : 1),
+      etykieta: przechyl > 0.75 ? 'przechył w prawo (skręt w prawo +15%)' : 'trym przechylenia w prawo' },
+    'odczyt: przeciążenie': { etykieta: `przeciążenie: ${przeciazenie.toFixed(2)} g (kompensatory)` },
+  };
+  // Skręt różnicą ciągu: dotknięcie suwaka — zwrot od 0° (dół) do 90° (góra) w tę stronę; uchwyt — skręt, który został.
+  const pozostaly = j.kurs_cel != null ? norm180(j.kurs_cel - j.kurs) : 0;
+  w['suwak: skręt w lewo (różnica ciągu lewy − prawy)'] = { poz: Math.min(1, Math.max(0, -pozostaly / 90)), etykieta: `skręt w lewo${pozostaly < -0.5 ? ` · ${Math.round(-pozostaly)}°` : ''}`,
+    ustawPoz: (v) => ster(akcje, j, N, { kurs: norm180(j.kurs - Math.round(v * 90)) }) };
+  w['suwak: skręt w prawo (różnica ciągu prawy − lewy)'] = { poz: Math.min(1, Math.max(0, pozostaly / 90)), etykieta: `skręt w prawo${pozostaly > 0.5 ? ` · ${Math.round(pozostaly)}°` : ''}`,
+    ustawPoz: (v) => ster(akcje, j, N, { kurs: norm180(j.kurs + Math.round(v * 90)) }) };
+  return pulpit(j.profil, N, w);
 }
 
 // ------------------------------------------------------------------------------------------- Silniki
@@ -1142,7 +1173,8 @@ function silniki(s, st, akcje) {
     h('div', { style: 'color:#ffd7a0' }, `manewrowe ${strona}`),
     h('div', Math.abs(skret) > 0.5 && (skret < 0) === (strona.includes('lew')) ? `pracują · skręt ${Math.round(skret)}°` : 'spoczynek'));
   const przyciskCiagu = (f) => ({ klik: () => ster(akcje, j, N, { v: f * vMax }) });
-  return pulpit(j.profil, N, {
+  const n = nastawyKonsoli(j, st, akcje, N);
+  const w = {
     'Silnik główny lewy': { ekran: ekranSilnika('silnik główny lewy', 1) },
     'Silnik główny prawy': { ekran: ekranSilnika('silnik główny prawy', 1) },
     'Silnik główny środkowy': { ekran: ekranSilnika('silnik główny środkowy', 1) },
@@ -1158,9 +1190,39 @@ function silniki(s, st, akcje) {
     'wzmocnij prawy silnik główny': { etykieta: 'wzmocnij — cała naprzód', ...przyciskCiagu(1) },
     'wzmocnij środkowy silnik główny': { etykieta: 'wzmocnij — cała naprzód', ...przyciskCiagu(1) },
     'wzmocnij wszystkie silniki manewrowe': { etykieta: 'stop skrętu (trzymaj kurs)', klik: () => ster(akcje, j, N, { kurs: j.kurs }) },
-    'suwak: trym odchylenia (silniki manewrowe)': { poz: 0.5 + Math.max(-0.5, Math.min(0.5, skret / 180)), etykieta: `odchylenie: ${Math.round(skret)}° (dotknij: ±15°)`,
-      klikX: (f) => ster(akcje, j, N, { kurs: norm180(kursCel + (f < 0.5 ? -15 : 15)) }) },
+  };
+  // MECHANIKA 11.4: zakres ciągu silników głównych burt (różnica burt skręca okręt), silniki manewrowe i dysze, trymy,
+  // wzmocnienia, synchronizacje. Suwak środkowego silnika — prędkość zadana (rozkaz ster).
+  const proc = (v) => `${Math.round(v * 100)}%`;
+  Object.assign(w, {
+    'Silnik główny lewy': { ekran: ekranSilnika(`silnik główny lewy · ${proc(n.N('sil_max_l'))}`, n.N('sil_max_l')) },
+    'Silnik główny prawy': { ekran: ekranSilnika(`silnik główny prawy · ${proc(n.N('sil_max_p'))}`, n.N('sil_max_p')) },
+    'suwak: maksymalny ciąg lewego silnika głównego': n.zakres('sil_max_l', 'sil_min_l', 'ciąg lewego maks.', 'min.'),
+    'suwak: maksymalny ciąg prawego silnika głównego': n.zakres('sil_max_p', 'sil_min_p', 'ciąg prawego maks.', 'min.'),
+    'suwak: trym pochylenia (silniki manewrowe)': n.suwak('trym_poch', 'trym pochylenia (optimum 50%)'),
+    'suwak: trym odchylenia (silniki manewrowe)': n.suwak('trym_odch', 'trym odchylenia (dryf zwrotu)'),
+    'wyrównaj ciąg silników': n.wyrownaj('silniki', 'wyrównaj ciąg silników'),
+    'równaj ciąg z mocą reaktora': { etykieta: `równaj ciąg z mocą reaktora${j.zasil ? ` (silniki ${Math.round(j.zasil.v * 100)}%)` : ''}`,
+      klik: () => ster(akcje, j, N, { v: Math.min(j.v_cel ?? j.v, vMax * Math.min(1, j.zasil?.v ?? 1)) }) },
+    'synchronizacja lewych silników manewrowych z lewym silnikiem głównym': n.przelacznik('sync_man_l'),
+    'synchronizacja prawych silników manewrowych z prawym silnikiem głównym': n.przelacznik('sync_man_p'),
+    'synchronizacja lewego silnika głównego ze środkowym': n.przelacznik('sync_gl_l_s'),
+    'synchronizacja prawego silnika głównego ze środkowym': n.przelacznik('sync_gl_p_s'),
+    'synchronizacja lewego silnika głównego z osłoną rufową': n.przelacznik('sync_rufa_sg_l'),
+    'synchronizacja prawego silnika głównego z osłoną rufową': n.przelacznik('sync_rufa_sg_p'),
+    'wzmocnij lewy silnik główny': n.wzmocnij('gl_l', 'wzmocnij lewy silnik główny'),
+    'wzmocnij prawy silnik główny': n.wzmocnij('gl_p', 'wzmocnij prawy silnik główny'),
+    'wzmocnij środkowy silnik główny': n.wzmocnij('gl_s', 'wzmocnij środkowy silnik główny'),
+    'wzmocnij wszystkie silniki manewrowe': n.wzmocnij('man_all', 'wzmocnij wszystkie manewrowe'),
   });
+  for (const [kod, opis] of [['lg', 'lewego górnego'], ['pg', 'prawego górnego'], ['ld', 'lewego dolnego'], ['pd', 'prawego dolnego']]) {
+    w[`suwak: ciąg ${opis} silnika manewrowego`] = n.suwak('man_' + kod, `ciąg ${opis}`, (v) => `×${(0.5 + v).toFixed(2)}`);
+    w[`suwak: wychylenie dyszy ${opis} silnika manewrowego`] = n.suwak('dysza_' + kod, `dysza ${opis} (50% — prosto)`);
+  }
+  for (const [kod, opis] of [['lg', 'lewy górny'], ['pg', 'prawy górny'], ['ld', 'lewy dolny'], ['pd', 'prawy dolny']]) {
+    w[`wzmocnij ${opis} silnik manewrowy`] = n.wzmocnij('man_' + kod, `wzmocnij ${opis} manewrowy`);
+  }
+  return pulpit(j.profil, N, w);
 }
 
 // ------------------------------------------------------------------------------------------- Turbolasery

@@ -195,6 +195,13 @@ function bitwa_test(): array
             }
             $w[] = ["$nazwa: zasilanie", json_encode($pb['zasilanie']), json_encode($zs), $ok];
         }
+        if (isset($pb['ruch'])) {
+            $ru = [];
+            foreach ($S['jednostki'] as $j) $ru[] = [$j['x'], $j['y'], $j['kurs'], $j['v']];
+            $ok = count($ru) === count($pb['ruch']);
+            foreach ($pb['ruch'] as $i => $r) foreach ([0, 1, 2, 3] as $k) $ok = $ok && abs($ru[$i][$k] - $r[$k]) <= 1e-6 * max(1.0, abs($r[$k]));
+            $w[] = ["$nazwa: ruch okrętów", json_encode($pb['ruch']), json_encode($ru), $ok];
+        }
     }
     return $w;
 }

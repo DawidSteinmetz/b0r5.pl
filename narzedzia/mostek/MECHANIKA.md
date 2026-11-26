@@ -572,6 +572,23 @@ natywny najbliższy częstotliwości bazowej (suwak na konsoli Reaktory, 12 s).
 - Każde wzmocnienie uzbrojenia: +4 do poboru baterii i +0,2 ciepła rdzenia na tik.
 - Namiar i dystans: odczyt oznaczonego celu; dotknięcie oznacza okręt wroga najbliższy wskazanej wartości.
 
+**Silniki i Nawigacja** (okręt gracza; okręty AI manewrują jak dotąd):
+- Prędkość maks. = profil × zasilenie silników × ciąg (średnia: maks. lewego i prawego głównego, środkowy 100%) ×
+  wzmocnienia głównych (+10% każde) × (1 − 0,2 · |trym pochylenia − 0,5|). Przyspieszenie × ciąg × wzmocnienia ×
+  synchronizacje głównych burt ze środkowym (+10% każda). Minimalny ciąg burt wymusza prędkość ≥ profil × (min. L + min. P) / 3.
+  Suwak środkowego silnika to dźwignia prędkości zadanej (rozkaz ster).
+- Różnica maks. ciągu burt skręca okręt: (L − P) × 0,3 °/s × v / v_maks (więcej z lewej — w prawo). Trym odchylenia:
+  stały dryf (t − 0,5) × 0,4 °/s.
+- Prędkość kątowa skrętu w stronę burty: (0,5 + średni ciąg manewrowych burty) × (0,5 + moc manewrowych burty
+  z Nawigacji), w zakresie szarych suwaków skrętu; wzmocnienie skrętu × 1,5, wzmocnienie manewrowego × 1,25 (każdy),
+  wszystkich × 1,3, synchronizacje (manewrowe z głównym, Nawigacja z Silnikami) × 1,1; przechył w stronę skrętu × 1,15,
+  w przeciwną × 0,9.
+- Przesuw pod skosem: dysze manewrowe i kąt dysz burt wychylone od 50% pchają okręt w bok —
+  0,02 × (suma prawych − suma lewych) km/s.
+- Wzmocnienia napędu: +3 do poboru silników, +0,2 ciepła rdzenia na tik. „Wyrównaj ciąg silników” / grupa nawigacja —
+  wartości domyślne; „równaj ciąg z mocą reaktora” obniża prędkość zadaną do tej, którą daje zasilanie silników.
+  Synchronizacje głównych z osłoną rufową to te same co na pulpicie Osłony.
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

@@ -55,11 +55,11 @@ const SYLWETKI = {
 const LINIA = { fill: 'none', stroke: '#0b1013', 'vector-effect': 'non-scaling-stroke' };
 
 // Pełne rysunki z góry (assets/sylwetki, z obrazów od użytkownika: dziób w górę, przezroczyste tło, odcienie szarości):
-// od rozmiaru 40 px okręt rysuje się obrazem w pełnej rozdzielczości, zabarwionym kolorem strony (białe pola → kolor,
-// czarne linie zostają); mniejsze — wektorowy obrys. proporcja = szerokość / długość obrazu.
+// okręt zawsze rysuje się obrazem zabarwionym kolorem strony (białe pola → kolor, czarne linie zostają): do 200 px
+// długości — wersja 200 px (_maly), większy — pełna rozdzielczość. proporcja = szerokość / długość obrazu.
 const RYSUNKI = {
-  ISD_I: { href: new URL('../../assets/sylwetki/isd_i.png', import.meta.url).href, proporcja: 584 / 1047 },
-  MC80: { href: new URL('../../assets/sylwetki/mc80.png', import.meta.url).href, proporcja: 383 / 1008 },
+  ISD_I: { href: new URL('../../assets/sylwetki/isd_i.png', import.meta.url).href, maly: new URL('../../assets/sylwetki/isd_i_maly.png', import.meta.url).href, proporcja: 584 / 1047 },
+  MC80: { href: new URL('../../assets/sylwetki/mc80.png', import.meta.url).href, maly: new URL('../../assets/sylwetki/mc80_maly.png', import.meta.url).href, proporcja: 383 / 1008 },
 };
 let licznikFiltrow = 0;
 function zabarwienie(kolor) {
@@ -75,11 +75,11 @@ export function sylwetka(profil, kolor, rozmiar) {
   const s = SYLWETKI[profil], rys = RYSUNKI[profil];
   const g = svg('g', { transform: `scale(${rozmiar})` });
   if (!s) { g.append(svg('path', { d: 'M0 -0.5 L0.3 0.5 L-0.3 0.5Z', fill: kolor })); return g; }
-  if (rys && rozmiar >= 40) {
+  if (rys) {
     const [id, filtr] = zabarwienie(kolor);
     const defs = svg('defs');
     defs.append(filtr);
-    g.append(defs, svg('image', { href: rys.href, x: -rys.proporcja / 2, y: -0.5, width: rys.proporcja, height: 1,
+    g.append(defs, svg('image', { href: rozmiar > 200 ? rys.href : rys.maly, x: -rys.proporcja / 2, y: -0.5, width: rys.proporcja, height: 1,
       preserveAspectRatio: 'none', filter: `url(#${id})`, style: 'image-rendering:auto' }));
   } else {
     const r = svg('g', { transform: s.transform });

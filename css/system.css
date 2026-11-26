@@ -978,3 +978,7 @@ button.potwierdz { color: var(--akcent-2); border-color: var(--akcent-2); box-sh
 html.ukryte-ikony-pulpitu .siatka-aplikacji .ikony-dolne { display: none; }
 /* Tryb stanowiska (gracz przydzielony do pulpitu symulacji): tylko konsola, bez paska i doku. */
 html.tryb-stanowiska #pasek, html.tryb-stanowiska #dok, html.tryb-stanowiska #dok-aplikacja { display: none !important; }
+html.tryb-stanowiska .widok.widok-mostka-stanowisko { display: grid; place-items: center; overflow: hidden; padding: 0; }
+html.tryb-stanowiska .widok-mostka-stanowisko > .panel-stanowiska { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; }
+html.tryb-stanowiska .panel-stanowiska > div:not([hidden]):not(:empty) { display: grid; place-items: center; width: 100%; height: 100%; margin: 0 !important; }
+.mostek-pulpit, .panel-stanowiska-tresc { display: grid; place-items: center; width: 100%; height: 100%; }

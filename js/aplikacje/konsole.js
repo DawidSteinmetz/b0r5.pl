@@ -232,15 +232,17 @@ function pulpit(klasa, nazwa, wiazania) {
   const [K, W] = FORMATY[klasa][nazwa];
   const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:4px;padding:12px;box-sizing:border-box;`;
   const telefon = K < 13;
+  const kiosk = document.documentElement.classList.contains('tryb-stanowiska');
   // Pulpit ma stałe proporcje siatki (K × W kwadratowych komórek) i dopasowuje się do ekranu: albo całą szerokością,
   // albo wysokością od swojej górnej krawędzi do dołu okna — co pierwsze się skończy.
   const proporcja = K / W;
   const szerokosc = (wys) => `min(100%, ${Math.round(wys * proporcja)}px)`;
-  const ramka = h('div', { style: `position:relative;width:${wysokoscPulpitu ? szerokosc(wysokoscPulpitu) : `min(100%, calc((100dvh - 150px) * ${proporcja.toFixed(4)}))`};`
-    + `aspect-ratio:${K}/${W};min-width:${telefon ? 280 : 320}px;`
+  const ramka = h('div', { style: `position:relative;width:${kiosk ? `min(100%, calc((100dvh - 32px) * ${proporcja.toFixed(4)}))`
+    : wysokoscPulpitu ? szerokosc(wysokoscPulpitu) : `min(100%, calc((100dvh - 150px) * ${proporcja.toFixed(4)}))`};`
+    + `aspect-ratio:${K}/${W};min-width:${kiosk ? '0' : telefon ? 280 : 320}px;`
     + `background:linear-gradient(180deg,rgba(207,239,255,.13) 0,rgba(207,239,255,0) 30%),${BLACHA};border:3px solid ${KRAWEDZ};border-radius:10px;`
     + 'box-shadow:inset 0 0 50px rgba(0,0,0,.55),0 6px 20px rgba(0,0,0,.5);box-sizing:border-box;container-type:inline-size' });
-  requestAnimationFrame(() => {
+  if (!kiosk) requestAnimationFrame(() => {
     if (!ramka.isConnected) return;
     const wys = Math.round(window.innerHeight - Math.max(0, ramka.getBoundingClientRect().top) - 12);
     if (wys > 200 && Math.abs(wys - wysokoscPulpitu) > 2) { wysokoscPulpitu = wys; ramka.style.width = szerokosc(wys); }

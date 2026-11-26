@@ -18,8 +18,9 @@ import nawigacja, { odliczanie } from './aplikacje/nawigacja.js';
 import mapa from './aplikacje/mapa.js';
 import gielda from './aplikacje/gielda.js';
 import symulacje from './aplikacje/symulacje.js';
+import mostek from './aplikacje/mostek.js';
 
-const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, symulacje, ustawienia];
+const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, symulacje, ustawienia];
 
 const html = document.documentElement;
 const pulpit = document.getElementById('pulpit');
@@ -30,6 +31,9 @@ const tytulPaska = document.getElementById('pasek-tytul');
 const stan = {
   uzytkownik: null,
   aplikacja: null,      // { def, sprzataj, wstecz }
+  mostki: [],
+  stanowisko: null,
+  pominAutoStanowisko: false,
 };
 
 // ================================================================
@@ -884,10 +888,19 @@ function ekranPulpitu() {
   if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));
   api('bitwa_dostep').then((d) => {
     const jest = !!d?.upowazniony;
-    if (jest !== stan.symulacje) { stan.symulacje = jest; if (siatka.isConnected) rysujIkony(siatka); }
-    // Gracz przydzielony do pulpitu w trwającej symulacji: widzi tylko konsolę (bez paska, doku, zegara i ikon).
-    document.documentElement.classList.toggle('tryb-stanowiska', !!d?.stanowisko);
-    if (d?.stanowisko && siatka.isConnected) otworz('symulacje', { bitwa: d.stanowisko.bitwa_id, stanowisko: true });
+    const poprzednioSymulacje = stan.symulacje;
+    const mostki = d?.mostki || [];
+    const zmienilySieMostki = JSON.stringify(mostki) !== JSON.stringify(stan.mostki);
+    stan.symulacje = jest;
+    stan.mostki = mostki;
+    stan.stanowisko = d?.stanowisko || mostki.find((x) => !x.pelny) || null;
+    if (siatka.isConnected && (zmienilySieMostki || jest !== poprzednioSymulacje)) rysujIkony(siatka);
+    // Przydzielone stanowisko wyświetla się pełnoekranowo, bez zegara, doku ani ikon aplikacji.
+    document.documentElement.classList.toggle('tryb-stanowiska', !!stan.stanowisko);
+    const pominAuto = stan.pominAutoStanowisko;
+    stan.pominAutoStanowisko = false;
+    if (!pominAuto && d?.stanowisko && siatka.isConnected) otworz('symulacje', { bitwa: d.stanowisko.bitwa_id, stanowisko: true });
+    else if (!pominAuto && stan.stanowisko && siatka.isConnected) otworz('mostek', { okret: stan.stanowisko.obiekt_id, stanowisko: stan.stanowisko.pulpity[0] });
   }).catch(() => {});
   odswiezZegar();
   rysujSzybkieAkcje();
@@ -910,7 +923,8 @@ function zamknijAplikacje() {
 
 function otworz(id, parametr = null) {
   const def = APLIKACJE.find((a) => a.id === id);
-  if (!def || !stan.uzytkownik || !dostepna(def)) return;
+  const kioskSimulacji = id === 'symulacje' && !!parametr?.stanowisko;
+  if (!def || !stan.uzytkownik || (!dostepna(def) && !kioskSimulacji)) return;
   zamknijAplikacje();
   tlo(false);
   tytulPaska.textContent = def.nazwa;
@@ -919,6 +933,8 @@ function otworz(id, parametr = null) {
     uzytkownik: stan.uzytkownik,
     parametr,
     alfabet,
+    get mostki() { return stan.mostki; },
+    otworzApp: (app, param) => otworz(app, param),
     zablokuj: () => wyloguj(),
     pulpit: () => ekranPulpitu(),
     jasnosc: (v) => (v === undefined ? pamiec.czytaj('jasnosc', 100) : ustawJasnosc(v)),
@@ -955,6 +971,7 @@ document.getElementById('dok-dom').addEventListener('click', () => stan.uzytkown
 document.getElementById('dok-blokada').addEventListener('click', () => wyloguj());
 document.getElementById('dok-wstecz').addEventListener('click', () => {
   if (!stan.uzytkownik) return;
+  if (['mostek', 'symulacje'].includes(stan.aplikacja?.def?.id)) stan.pominAutoStanowisko = true;
   if (stan.aplikacja?.wstecz && stan.aplikacja.wstecz()) return;
   ekranPulpitu();
 });

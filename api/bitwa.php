@@ -508,10 +508,15 @@ function mostek_przydziel(array $u, int $obiektId, string $pulpit, string $login
         bitwa_teleport_na_okret($gracz, $obiektId);
         $teleport = true;
     }
+    // Jedno konto obsadza na danym okręcie tylko jedno stanowisko.
+    $db->prepare('DELETE FROM okrety_stanowiska WHERE obiekt_id=? AND LOWER(login)=LOWER(?) AND pulpit<>?')
+        ->execute([$obiektId, (string) $gracz['login'], $pulpit]);
     $db->prepare('INSERT INTO okrety_stanowiska (obiekt_id, pulpit, login, przydzielil) VALUES (?,?,?,?)
         ON DUPLICATE KEY UPDATE login = VALUES(login), przydzielil = VALUES(przydzielil)')
         ->execute([$obiektId, $pulpit, (string) $gracz['login'], (string) ($u['login'] ?? '')]);
     foreach ($trwajace as $jid) {
+        $db->prepare('DELETE FROM bitwy_stanowiska WHERE bitwa_jednostka_id=? AND LOWER(login)=LOWER(?) AND pulpit<>?')
+            ->execute([$jid, (string) $gracz['login'], $pulpit]);
         $db->prepare('INSERT INTO bitwy_stanowiska (bitwa_jednostka_id, pulpit, login) VALUES (?,?,?) ON DUPLICATE KEY UPDATE login = VALUES(login)')
             ->execute([$jid, $pulpit, (string) $gracz['login']]);
     }
@@ -994,8 +999,21 @@ function obsluz_bitwa(string $akcja, bool $post): void
     // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle
     // z rozkazami (PHP inaczej szereguje wszystkie zapytania jednej przeglądarki).
     if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
-    if ($akcja === 'bitwa_dostep') odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna(),
-        'stanowisko' => bitwa_moje_stanowisko($u)]);
+    if ($akcja === 'bitwa_dostep') {
+        $mostki = [];
+        if (bitwa_dostepna()) {
+            foreach (bitwa_okrety_konta($u) as $o) $mostki[] = ['obiekt_id' => (int) $o['id'], 'nazwa' => $o['nazwa'],
+                'profil' => $o['profil_klasy'], 'pelny' => true, 'pulpity' => []];
+            foreach (mostek_moje_stale($u) as $o) {
+                $i = array_search((int) $o['obiekt_id'], array_column($mostki, 'obiekt_id'), true);
+                if ($i !== false) continue;
+                $mostki[] = ['obiekt_id' => (int) $o['obiekt_id'], 'nazwa' => $o['nazwa'], 'profil' => $o['profil'],
+                    'pelny' => false, 'pulpity' => $o['pulpity']];
+            }
+        }
+        odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna(),
+            'stanowisko' => bitwa_moje_stanowisko($u), 'mostki' => $mostki]);
+    }
     if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
     if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);
     if (in_array($akcja, ['bitwa_test', 'bitwa_xp_zatwierdz'], true) && !bitwa_mg($u)) blad('Tylko dla MG.', 403);
@@ -1246,6 +1264,8 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 bitwa_teleport_na_okret($gracz, (int) $okret['obiekt_id']);
                 $teleport = true;
             }
+            $db->prepare('DELETE FROM bitwy_stanowiska WHERE bitwa_jednostka_id=? AND LOWER(login)=LOWER(?) AND pulpit<>?')
+                ->execute([(int) $okret['id'], (string) $gracz['login'], $pulpit]);
             $db->prepare('INSERT INTO bitwy_stanowiska (bitwa_jednostka_id, pulpit, login) VALUES (?,?,?) ON DUPLICATE KEY UPDATE login = VALUES(login)')
                 ->execute([(int) $okret['id'], $pulpit, (string) $gracz['login']]);
             odpowiedz(['ok' => true, 'teleport' => $teleport, 'postac' => $gracz['postac'] ?? $gracz['login']]);

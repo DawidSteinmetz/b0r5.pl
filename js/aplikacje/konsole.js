@@ -308,9 +308,10 @@ function pulpit(klasa, nazwa, wiazania) {
           + `${KRAWEDZ} 0 2px,transparent 2px 4%);-webkit-mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%);mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%)` }));
       if (w?.zakres) {
         const z = w.zakres;
+        const jeden = z.min == null;   // suwak jednej wartości (Hz urządzenia): bez dolnego uchwytu
         el.append(h('div', { style: `position:absolute;left:50%;width:4px;transform:translateX(-50%);background:${TURKUS}88;`
-          + `top:${(9 + 82 * (1 - z.max)).toFixed(1)}%;bottom:${(9 + 82 * z.min).toFixed(1)}%` }));
-        for (const [v, k2] of [[z.max, '#e8eef0'], [z.min, '#9aa4ab']]) {
+          + `top:${(9 + 82 * (1 - z.max)).toFixed(1)}%;bottom:${(9 + 82 * (jeden ? 0 : z.min)).toFixed(1)}%` }));
+        for (const [v, k2] of jeden ? [[z.max, '#e8eef0']] : [[z.max, '#e8eef0'], [z.min, '#9aa4ab']]) {
           el.append(h('div', { style: `position:absolute;left:18%;right:18%;height:10px;top:${(9 + 82 * (1 - v)).toFixed(1)}%;transform:translateY(-50%);`
             + `background:linear-gradient(180deg,${k2},#3a444b);border:1px solid #0b1013;border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.6)` }));
         }
@@ -333,7 +334,7 @@ function pulpit(klasa, nazwa, wiazania) {
       zapiszWcisniecie();
       const b = el.getBoundingClientRect(), v = Math.min(1, Math.max(0, 1 - ((ev.clientY - b.top) / b.height - 0.09) / 0.82));
       const z = w.zakres || { max: 1, min: 0 };
-      w.ustawZakres(v, Math.abs(v - z.max) <= Math.abs(v - z.min) ? 'max' : 'min');
+      w.ustawZakres(v, z.min == null || Math.abs(v - z.max) <= Math.abs(v - z.min) ? 'max' : 'min');
       odswiezPo();
     });
     if (w?.ustawPoz && !w?.klik && !w?.klikX) el.addEventListener('click', (ev) => {
@@ -370,7 +371,8 @@ function pulpit(klasa, nazwa, wiazania) {
 // każda lampka to mały kwadrat z minimalną przerwą (płótno w wyższej rozdzielczości, ostre piksele).
 function siatkaLampek(n, K, kolor) {
   const W = Math.ceil(n / K), L = 6;
-  const c = h('canvas', { width: K * L, height: W * L, style: 'width:100%;flex:1;min-height:0;object-fit:contain;display:block;image-rendering:pixelated' });
+  // lampki obejmują cały ekran urządzenia (kwadrat 60×60, prostokąt 60×20)
+  const c = h('canvas', { width: K * L, height: W * L, style: 'width:100%;height:100%;display:block;image-rendering:pixelated' });
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#05080c';
   ctx.fillRect(0, 0, K * L, W * L);
@@ -381,6 +383,21 @@ function siatkaLampek(n, K, kolor) {
   }
   return c;
 }
+// Stopnie natywne urządzenia o n żyłach (dzielniki n) i suwak, który przeskakuje tylko na nie: połowa — n/2,
+// 1/3 — n/3, 1/4 — n/4 …; 75% przy 3600 żyłach nie istnieje (2700 nie dzieli 3600), więc uchwyt wraca na 1/2 albo 1.
+const dzielnikiN = new Map();
+function stopnieN(n) {
+  if (!dzielnikiN.has(n)) dzielnikiN.set(n, [...Array(n).keys()].map((i) => i + 1).filter((d) => n % d === 0));
+  return dzielnikiN.get(n);
+}
+const najblizszyStopien = (n, v) => stopnieN(n).reduce((a, b) => (Math.abs(b - v * n) < Math.abs(a - v * n) ? b : a), n);
+// Siatka żył urządzenia przy f Hz: świeci co (n/f)-ta żyła (MECHANIKA 3.1); kolor(nrŚwiecącej, ileŚwiecących) albo stały.
+function siatkaHz(n, K, f, kolor, ciemna = [16, 26, 34]) {
+  const krok = f && n % f === 0 ? n / f : 0;
+  let nr = 0;
+  return siatkaLampek(n, K, (i) => (krok && (i + 1) % krok === 0 ? (typeof kolor === 'function' ? kolor(nr++, f) : kolor) : ciemna));
+}
+
 const hsl = (hh, s, l) => {
   s /= 100; l /= 100;
   const k = (n) => (n + hh / 30) % 12, a = s * Math.min(l, 1 - l);
@@ -884,33 +901,18 @@ function nastawyKonsoli(j, st, akcje, pulpitNazwa) {
 
 // ------------------------------------------------------------------------------------------- Osłony
 // Ekran żył generatora: lampka = żyła; świeci, gdy n mod (N/f) = 0 (MECHANIKA 3.1); martwa — ciemnoczerwona.
-function ekranZyl(g, st, akcje, stopnie) {
+function ekranZyl(g) {
   const K = g.siatka_k || 60, n = g.n || 3600, f = g.hz_osiagane || 0, krok = f && n % f === 0 ? n / f : 0;
   const martwe = Uint8Array.from(atob(g.martwe_b64 || ''), (c) => c.charCodeAt(0));
   const temp = Uint8Array.from(atob(g.temperatury_b64 || ''), (c) => c.charCodeAt(0));
   // Jak w prototypie konsoli osłon: świecąca żyła — barwa od turkusu (zimna) do czerwieni (40° do przepalenia),
-  // jasność spada przy przeciążeniu generatora; nieaktywna — ciemna; martwa — ciemnoczerwona.
+  // jasność spada przy przeciążeniu generatora; nieaktywna — ciemna; martwa — ciemnoczerwona. Cały ekran to żyły.
   const jasnosc = 10 + 52 * Math.min(1.1, 100 / Math.max(100, g.obciazenie_proc || 0));
-  const c = siatkaLampek(n, K, (i) => {
+  return siatkaLampek(n, K, (i) => {
     if ((martwe[i >> 3] >> (i & 7)) & 1) return [92, 22, 22];
     if (krok && (i + 1) % krok === 0) return hsl(190 - Math.min(1, (temp[i] || 0) / 40) * 190, 85, jasnosc);
     return [16, 26, 34];
   });
-  const cel = st.hzCel[g.id] ?? g.hz_zadane;
-  const krokHz = (kier) => () => {
-    const i = stopnie.indexOf(cel);
-    st.hzCel[g.id] = stopnie[Math.min(stopnie.length - 1, Math.max(0, (i < 0 ? stopnie.findIndex((x) => x >= cel) : i) + kier))];
-    akcje.odswiez();
-  };
-  const maly = (tekst, fn, wl) => h('button', { type: 'button', onclick: (ev) => { ev.stopPropagation(); fn(); },
-    style: `padding:1px 6px;border:1px solid rgba(77,226,201,.6);border-radius:3px;background:${wl ? '#1d8f7f' : 'rgba(11,16,18,.9)'};color:#cfe;font-size:11px;cursor:pointer;${CZCIONKA}` }, tekst);
-  return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
-    h('div', `${g.hz_osiagane}${g.hz_zadane !== g.hz_osiagane ? ` → ${g.hz_zadane}` : ''} Hz · skuteczne ${g.hz_skuteczne} · obciążenie ${g.obciazenie_proc}% · martwe ${g.martwe}`),
-    c,
-    h('div', { style: 'display:flex;gap:4px;justify-content:center;align-items:center;flex-wrap:wrap' },
-      maly('◀', krokHz(-1)), h('span', `${cel} Hz`), maly('▶', krokHz(1)),
-      maly('USTAW', () => akcje.rozkaz({ generator_id: g.id, kod: 'przestrojenie_reczne', hz: cel, pulpit: 'Osłony' })),
-      maly('AUTO', () => akcje.rozkaz({ generator_id: g.id, kod: 'auto', pulpit: 'Osłony' }), g.auto)));
 }
 
 function oslony(s, st, akcje) {
@@ -919,18 +921,21 @@ function oslony(s, st, akcje) {
   const stopnie = j.stopnie;
   // Szary suwak: zakres trybu automatycznego — dwa uchwyty na skali 0…N Hz (N = liczba żył: 3600 u góry, 1800 w połowie).
   // Dotknięcie przesuwa bliższy uchwyt na najbliższy stopień natywny.
+  // Szary suwak = Hz generatora (jeden uchwyt, tylko stopnie natywne: 3600 u góry, 1800 w połowie, 1200 na 1/3 …);
+  // przestawienie to przestrojenie ręczne (12 s) i wyłącza tryb automatyczny.
   const zakres = (g) => g && ({
-    etykieta: `maks. ${g.hz_max} Hz`, etykietaMin: `min. ${g.hz_min} Hz`,
-    zakres: { max: g.hz_max / (g.n || 3600), min: g.hz_min / (g.n || 3600) },
-    ustawZakres: (wartosc, ktory) => {
-      const hz = stopnie.reduce((a, b) => (Math.abs(b - wartosc * (g.n || 3600)) < Math.abs(a - wartosc * (g.n || 3600)) ? b : a), stopnie[0]);
-      const max = ktory === 'max' ? Math.max(hz, g.hz_min) : g.hz_max, min = ktory === 'min' ? Math.min(hz, g.hz_max) : g.hz_min;
-      akcje.rozkaz({ generator_id: g.id, kod: 'zakres', hz_min: min, hz_max: max, pulpit: 'Osłony' });
+    zakres: { max: (st.hzCel[g.id] ?? g.hz_zadane) / (g.n || 3600), min: null },
+    etykieta: `${g.hz_osiagane}${g.hz_zadane !== g.hz_osiagane ? ` → ${g.hz_zadane}` : ''} Hz${g.auto ? ' · auto' : ''}`, etykietaMin: '',
+    ustawZakres: (wartosc) => {
+      const hz = najblizszyStopien(g.n || 3600, wartosc);
+      st.hzCel[g.id] = hz;
+      akcje.rozkaz({ generator_id: g.id, kod: 'przestrojenie_reczne', hz, pulpit: 'Osłony' });
     },
   });
+  for (const g of [L, P]) if (g && st.hzCel[g.id] === g.hz_zadane) delete st.hzCel[g.id];
   const w = {
-    'GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': L && { ekran: () => ekranZyl(L, st, akcje, stopnie) },
-    'GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': P && { ekran: () => ekranZyl(P, st, akcje, stopnie) },
+    'GENERATOR LEWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': L && { ekran: () => ekranZyl(L) },
+    'GENERATOR PRAWY · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · żyły: świecące / martwe / temperatura': P && { ekran: () => ekranZyl(P) },
     'suwak: maksymalna częstotliwość lewego generatora osłon': zakres(L),
     'suwak: maksymalna częstotliwość prawego generatora osłon': zakres(P),
     'wyrównaj osłony': { etykieta: 'wyrównaj osłony (oba na auto)', klik: () => j.generatory.forEach((g) => akcje.rozkaz({ generator_id: g.id, kod: 'auto', pulpit: 'Osłony' })) },
@@ -1050,6 +1055,38 @@ function reaktory(s, st, akcje) {
     'synchronizacja generatora z reaktorem głównym': 'sync_gen_glowny',
   };
   for (const [tekst, k] of Object.entries(SYNC)) w[tekst] = n.przelacznik(k);
+  // Każdy reaktor i generator to siatka żył: kwadrat 60×60 (3600 żył) albo prostokąt przedniego reaktora 60×20
+  // (1200 żył, maks. 1200 Hz). Hz = nastawa mocy urządzenia, ustawiana suwakiem tylko na stopnie natywne (połowa —
+  // N/2, 1/3 — N/3 …): reaktor główny — częstotliwość bazowa, uzbrojenia — lewy szary suwak, generator mocy — prawy
+  // szary suwak, zapasowy i przedni — ich suwaki mocy. Reaktor główny barwi świecące żyły udziałem odbiorców.
+  const URZ = {
+    glowny: { k: 'czest_bazowa', n: 3600, K: 60 }, uzbr: { k: 'uzbr_max', n: 3600, K: 60 }, generator: { k: 'gen_max', n: 3600, K: 60 },
+    zapas: { k: 'moc_zapas', n: 3600, K: 60 }, przedni: { k: 'moc_przedni', n: 1200, K: 60 },
+  };
+  const hzU = (u) => najblizszyStopien(URZ[u].n, N(URZ[u].k));
+  const kolejnoscGl = z ? (() => {
+    const suma = Math.max(z.zrodla, z.zapotrzebowanie, 1);
+    let c = 0;
+    return [[z.pobor_os, [77, 226, 201]], [z.pobor_bron, [255, 90, 80]], [z.pobor_sil, [230, 236, 240]], [z.pobor_podst, [201, 155, 255]]]
+      .map(([v, k]) => { c += v / suma; return [c, k]; });
+  })() : [];
+  const wolne = j.dlawienie ? [150, 70, 20] : [24, 110, 60];
+  const ekranU = (u, kolor) => () => siatkaHz(URZ[u].n, URZ[u].K, hzU(u), kolor);
+  w['REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie'] = {
+    ekran: ekranU('glowny', (nr, f) => { const u = (nr + 0.5) / f; for (const [g, k] of kolejnoscGl) if (u < g) return k; return wolne; }) };
+  w['Reaktor pomocniczy uzbrojenia'] = { ekran: ekranU('uzbr', [255, 120, 90]) };
+  w['Główny generator mocy'] = { ekran: ekranU('generator', [255, 215, 120]) };
+  w['Zapasowy reaktor silników'] = { ekran: ekranU('zapas', [230, 236, 240]) };
+  w['Przedni reaktor pomocniczy'] = { ekran: ekranU('przedni', [201, 155, 255]) };
+  const suwakHz = (u, opis) => ({ poz: hzU(u) / URZ[u].n, etykieta: `${opis}: ${hzU(u)} Hz`,
+    ustawPoz: (v) => n.ustaw(URZ[u].k, najblizszyStopien(URZ[u].n, v) / URZ[u].n) });
+  const szaryHz = (u, opis) => ({ zakres: { max: hzU(u) / URZ[u].n, min: null }, etykieta: `${opis} ${hzU(u)} Hz`, etykietaMin: '',
+    ustawZakres: (v) => n.ustaw(URZ[u].k, najblizszyStopien(URZ[u].n, v) / URZ[u].n) });
+  w['suwak: maksymalna moc reaktora pomocniczego uzbrojenia'] = szaryHz('uzbr', 'uzbrojenie');
+  w['suwak: maksymalne obciążenie głównego generatora mocy'] = szaryHz('generator', 'generator');
+  w['suwak: częstotliwość bazowa reaktora (wzorzec dla konsol)'] = suwakHz('glowny', 'reaktor główny');
+  w['suwak: moc zapasowego reaktora silników'] = suwakHz('zapas', 'zapasowy');
+  w['suwak: moc przedniego reaktora pomocniczego'] = suwakHz('przedni', 'przedni');
   return pulpit(j.profil, 'Reaktory', w);
 }
 
@@ -1398,10 +1435,8 @@ function turbolasery(s, st, akcje) {
   const stopien = (frac) => dzielniki.find((d) => d >= Math.max(1, frac * N0)) || N0;
   const bateria = (lewa) => () => {
     const b = tl.filter((x) => x.lewa === lewa);
-    const hz = stopien(n.N(lewa ? 'tl_hz_max_l' : 'tl_hz_max_p')), krok = N0 / hz, strzela = b.some((x) => x.cel);
-    return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.72cqw);${CZCIONKA}` },
-      h('div', `bateria ${lewa ? 'lewa' : 'prawa'} · ${hz} Hz · ${strzela ? 'OGIEŃ' : 'czuwanie'}${wskazany ? ` · cel wskazany: ${wskazany.nazwa}` : ''}`),
-      siatkaLampek(N0, Math.round(Math.sqrt(N0)) || 60, (i) => ((i + 1) % krok === 0 ? (strzela ? [255, 120, 90] : [77, 226, 201]) : [16, 26, 34])));
+    const hz = stopien(n.N(lewa ? 'tl_hz_max_l' : 'tl_hz_max_p')), strzela = b.some((x) => x.cel);
+    return siatkaHz(N0, Math.round(Math.sqrt(N0)) || 60, hz, strzela ? [255, 120, 90] : [77, 226, 201]);
   };
   const w = {
     'WYBRANA BATERIA LEWA · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · aktywne żyły = Hz': { ekran: bateria(true) },
@@ -1421,8 +1456,11 @@ function turbolasery(s, st, akcje) {
   // MECHANIKA 11.4: zakres Hz baterii (bez synchronizacji z sensorami — maks.; z nią najniższy stopień ≥ 1,5 × Hz osłony
   // celu w zakresie; niższe Hz — celniej, słabiej), grupy PDLC (kąt pokrycia, wzmocnienia), synchronizacje.
   const hzFmt = (v) => `${stopien(v)} Hz`;
-  w['suwak: maksymalna częstotliwość lewej baterii turbolaserów'] = n.zakres('tl_hz_max_l', 'tl_hz_min_l', 'maks.', 'min.', hzFmt);
-  w['suwak: maksymalna częstotliwość prawej baterii turbolaserów'] = n.zakres('tl_hz_max_p', 'tl_hz_min_p', 'maks.', 'min.', hzFmt);
+  // Szary suwak = Hz baterii (jeden uchwyt, tylko stopnie natywne baterii)
+  for (const [b, tekst] of [['l', 'suwak: maksymalna częstotliwość lewej baterii turbolaserów'], ['p', 'suwak: maksymalna częstotliwość prawej baterii turbolaserów']]) {
+    w[tekst] = { zakres: { max: stopien(n.N('tl_hz_max_' + b)) / N0, min: null }, etykieta: hzFmt(n.N('tl_hz_max_' + b)), etykietaMin: '',
+      ustawZakres: (v) => n.ustaw('tl_hz_max_' + b, najblizszyStopien(N0, v) / N0) };
+  }
   const SYNC = {
     'synchronizacja lewych PDLC z konsolą myśliwców (IFF)': 'sync_tl_iff_l', 'synchronizacja prawych PDLC z konsolą myśliwców (IFF)': 'sync_tl_iff_p',
     'synchronizacja lewej baterii z lewym generatorem osłon': 'sync_tl_os_l', 'synchronizacja prawej baterii z prawym generatorem osłon': 'sync_tl_os_p',

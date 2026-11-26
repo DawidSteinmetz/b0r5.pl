@@ -97,6 +97,13 @@ natywny (rozkaz `zakres`). Wiązki radaru i sensorów: pełny obrót w 6 s. Pauz
 i ruch na ekranach. Ekran ze środkiem w ruchu (klucz, eskadra, okręt) przesuwa otoczenie płynnie, bez skoku co odczyt.
 Reaktor zapala porcje równomiernie po całej siatce 60×60.
 
+**Siatki żył** (26.11.2026): każdy kwadrat urządzenia (generatory osłon, baterie, reaktory i generator mocy — 60×60,
+przedni reaktor — prostokąt 60×20, 1200 żył) to same lampki żył na całej powierzchni, bez opisów i przycisków. Hz
+urządzenia ustawia suwak z jednym uchwytem, który przeskakuje tylko na stopnie natywne (połowa — N/2, 1/3 — N/3,
+1/4 — N/4 …; 75% przy 3600 żyłach nie istnieje): osłony i baterie — szare suwaki po bokach (osłona: przestrojenie
+ręczne 12 s, wyłącza tryb auto); Reaktory — uzbrojenie lewym, generator mocy prawym szarym suwakiem, reaktor główny
+częstotliwością bazową, zapasowy i przedni swoimi suwakami mocy. Reaktor główny barwi świecące żyły udziałem odbiorców.
+
 **Sylwetki** na ekranach według rzutów z góry: ISD (klin, rufa z dwóch trójkątów do bloku silników, nadbudówka
 z kopułami osłon), MC80 (ostry dziób, wąski kadłub, skrzydła z wklęsłą krawędzią natarcia, odchylone do rufy);
 własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ekranie.

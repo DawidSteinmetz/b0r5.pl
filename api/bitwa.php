@@ -445,8 +445,9 @@ function mostek_dostep(array $u, array $okret): array
     return ['mg' => $mg, 'pelny' => $mg || $kapitan || $dowodzi, 'przydziela' => $mg || $kapitan || $dowodzi, 'moje' => $moje, 'przypisane' => $przypisane];
 }
 
-// Okręt w spoczynku jako stan symulacji (bez wroga, zegara i zapisu): ten sam widok co bitwa_stan, żeby konsole
-// wyglądały tak samo. Hangar pełny (profil: mysliwce / 4 klucze), osłony na domyślnych Hz, kadłub 100%.
+// Okręt na co dzień jako stan symulacji (bez zegara i zapisu): ten sam widok co bitwa_stan, żeby konsole wyglądały
+// tak samo — ale ze stanem ze świata: kadłub, żyły osłon, Hz i nastawy z okrety_nastawy, hangar z floty, klucze
+// w locie i kontakty w układzie (lot_reczny_do_widoku).
 function mostek_widok(array $u, int $obiektId): array
 {
     $o = mostek_okret($obiektId);
@@ -458,6 +459,13 @@ function mostek_widok(array $u, int $obiektId): array
     $strona = in_array($o['frakcja'], ['Imperium', 'Rebelia'], true) ? $o['frakcja'] : ($profil === 'MC80' ? 'Rebelia' : 'Imperium');
     $typ = MOSTEK_TYP_MYSLIWCOW[$profil] ?? null;
     $klucze = intdiv($sl['profile'][$profil]['mysliwce'], 4);
+    // Hangar ze świata (MECHANIKA 13.4): tyle kluczy, ile maszyn ma okręt we flocie (tie_liczba / 4, z kluczami w locie).
+    if (tabela_sql_dostepna('mapa_floty_jednostki')) {
+        $qh = polaczenie_bazy()->prepare('SELECT tie_liczba FROM mapa_floty_jednostki WHERE obiekt_id=?');
+        $qh->execute([(int) $o['id']]);
+        $tl = $qh->fetchColumn();
+        if ($tl !== false && $tl !== null) $klucze = intdiv((int) $tl, 4);
+    }
     $sc = ['strony' => [['strona' => $strona, 'dowodzenie' => 'gracze', 'asy_proc' => 0, 'kadeci_proc' => 0]],
         'jednostki' => [['nr' => 1, 'strona' => $strona, 'profil_kod' => $profil, 'nazwa' => $o['nazwa'], 'x_km' => 0, 'y_km' => 0, 'kurs_deg' => 0,
             'predkosc_km_s' => 0, 'wejscie_s' => 0, 'wejscie_rozrzut_s' => 0, 'obiekt_id' => (int) $o['id']]],
@@ -469,6 +477,8 @@ function mostek_widok(array $u, int $obiektId): array
     $S['jednostki'][0]['id'] = 0;
     foreach ($S['jednostki'][0]['generatory'] as $gi => $g) $S['jednostki'][0]['generatory'][$gi]['id'] = $gi + 1;
     foreach ($S['klucze'] as $ki => $k) { $S['klucze'][$ki]['id'] = $ki + 1; $S['klucze'][$ki]['start'] = null; }
+    // Stan ze świata: kadłub, martwe żyły osłon (po bitwach), Hz generatorów, zasięg sensorów i nastawy załogi.
+    if (function_exists('starcie_stan_ze_swiata')) starcie_stan_ze_swiata($S);
     $b = ['id' => 0, 'nazwa' => 'Mostek · ' . $o['nazwa'], 'status' => 'mostek', 'pauza_od_utc' => null, 'zegar_start_utc' => null, 'okno_s' => 0,
         'prowadzacy_login' => null];
     $postacie = [];

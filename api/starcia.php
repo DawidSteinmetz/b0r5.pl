@@ -313,6 +313,7 @@ function starcie_stan_ze_swiata(array &$S): void
         $q = $db->prepare('SELECT kadlub, oslony FROM mapa_obiekty WHERE id=?');
         try { $q->execute([(int) $j['obiekt_id']]); $o = $q->fetch(PDO::FETCH_ASSOC); } catch (Throwable $e) { $o = null; }
         if (!$o) continue;
+        if (function_exists('okret_ustawienia_do_stanu')) okret_ustawienia_do_stanu($S, $ji, (int) $j['obiekt_id']);
         $kadlub = max(1.0, min(100.0, (float) $o['kadlub']));
         foreach (array_keys($j['sekcje']) as $sek) $S['jednostki'][$ji]['sekcje'][$sek] = $kadlub;
         if (!starcia_skutki_dostepne() || (int) $o['oslony'] >= 100) continue;

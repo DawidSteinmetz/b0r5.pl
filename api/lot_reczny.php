@@ -309,11 +309,141 @@ function lot_reczny_do_widoku(array $widok, int $obiektId): array
         'uklad_km' => $r['uklad_kx'] !== null ? [(float) $r['uklad_kx'], (float) $r['uklad_ky']] : null];
     unset($j);
     $widok['realny'] = true;
+    // Etap 4 (MECHANIKA 13.4): klucze w locie i kontakty w układzie względem okrętu (okręt w środku, km, oś y na północ).
+    $tu = $r['planeta_id'] === null && $r['uklad_kx'] !== null ? [(float) $r['uklad_kx'], (float) $r['uklad_ky']]
+        : (function_exists('klucze_obiekt_km') ? klucze_obiekt_km($obiektId, $teraz) : null);
+    if ($tu) {
+        $widok = lot_reczny_klucze_do_widoku($widok, $obiektId, $tu, $teraz);
+        $widok = lot_reczny_kontakty($widok, $obiektId, $tu, $teraz);
+    }
+    return $widok;
+}
+
+// Ustawienia mostka zapisane przy okręcie (okrety_nastawy) w stanie silnika: nastawy pulpitów, Hz generatorów osłon
+// (g<n>_hz, g<n>_auto, g<n>_min, g<n>_max — n od 1), zasięg sensorów (sens_km). Mostek na co dzień i bitwa ze starcia
+// startują z tym, co załoga ustawiła.
+function okret_ustawienia_do_stanu(array &$S, int $ji, int $obiektId): void
+{
+    $n = okret_nastawy($obiektId);
+    if (!$n) return;
+    $j = &$S['jednostki'][$ji];
+    $j['nastawy'] = array_filter($n, static fn($k) => isset(BITWA_NASTAWY[$k]) && !str_starts_with($k, 'zapor_do_') && $k !== 'blokada_od', ARRAY_FILTER_USE_KEY)
+        + ($j['nastawy'] ?? []);
+    foreach ($j['generatory'] as $gi => &$g) {
+        $p = 'g' . ($gi + 1) . '_';
+        $zyly = (int) $g['zyly']['n'];
+        $ok = static fn($hz) => $hz >= 1 && $zyly % (int) $hz === 0;
+        if (isset($n[$p . 'hz']) && $ok($n[$p . 'hz'])) { $g['hz_zadane'] = (int) $n[$p . 'hz']; $g['hz_osiagane'] = (int) $n[$p . 'hz']; }
+        if (isset($n[$p . 'auto'])) $g['auto'] = $n[$p . 'auto'] >= 0.5;
+        if (isset($n[$p . 'min'], $n[$p . 'max']) && $ok($n[$p . 'min']) && $ok($n[$p . 'max']) && $n[$p . 'min'] <= $n[$p . 'max']) {
+            $g['hz_min'] = (int) $n[$p . 'min']; $g['hz_max'] = (int) $n[$p . 'max'];
+        }
+    }
+    unset($g);
+    if (isset($n['sens_km']) && in_array((int) $n['sens_km'], BITWA_ZASIEGI_SENSOROW, true)) $j['zasieg_sensorow'] = (int) $n['sens_km'];
+    unset($j);
+}
+
+// Frakcja jednostki z listy celów (klucze_cele: id, wlasciciel) — kolumna frakcja albo opis właściciela (starcie_frakcja).
+function lot_reczny_frakcja(array $c, ?string $frakcja = null): ?string
+{
+    if ($frakcja === null && !empty($c['id']) && (int) $c['id'] > 0) {
+        try {
+            $q = polaczenie_bazy()->prepare('SELECT frakcja FROM mapa_obiekty WHERE id=?');
+            $q->execute([(int) $c['id']]);
+            $frakcja = $q->fetchColumn() ?: null;
+        } catch (Throwable $e) { $frakcja = null; }
+    }
+    return starcie_frakcja(['frakcja' => $frakcja, 'wlasciciel' => $c['wlasciciel'] ?? '']);
+}
+
+// Kurs nawigacyjny (od północy, zgodnie z zegarem) i prędkość z dwóch pozycji w układzie.
+function lot_reczny_wektor(?array $a, ?array $b, float $dt): array
+{
+    if (!$a || !$b) return [0.0, 0.0];
+    $dx = $b[0] - $a[0]; $dy = $b[1] - $a[1];
+    $d = hypot($dx, $dy);
+    return [$d > 1e-6 ? round(fmod(rad2deg(atan2($dx, $dy)) + 360, 360), 2) : 0.0, round($d / max(1e-6, $dt), 3)];
+}
+
+// Klucze myśliwców okrętu w świecie (mapa_klucze, api/klucze.php) na pulpitach: klucz N mostka = klucz N okrętu
+// (rodzaj TIE). W locie — pozycja z trasy klucza względem okrętu, kurs i prędkość z ruchu; przed startem — odliczanie.
+function lot_reczny_klucze_do_widoku(array $widok, int $obiektId, array $tu, int $teraz): array
+{
+    if (!function_exists('klucze_dostepne') || !klucze_dostepne() || empty($widok['klucze'])) return $widok;
+    $wiersze = [];
+    foreach (klucze_wiersze($obiektId) as $k) if ($k['rodzaj'] === 'tie') $wiersze[(int) $k['numer']] = $k;
+    foreach ($widok['klucze'] as &$kl) {
+        $k = $wiersze[(int) $kl['nr']] ?? null;
+        if (!$k || $kl['z_zewnatrz']) continue;
+        $start = czas_z_utc((string) $k['start_utc']);
+        $kl['mapa_id'] = (int) $k['id'];
+        $kl['maszyny'] = (int) $k['maszyny'];
+        $kl['rozkaz'] = $k['rozkaz'];
+        $kl['rozkaz_nazwa'] = KLUCZ_ROZKAZY[$k['rozkaz']][0] ?? $k['rozkaz'];
+        $kl['cel'] = $k['cel'] ?? null;
+        if ($start > $teraz) { $kl['stan'] = 'hangar'; $kl['start_za_s'] = $start - $teraz; continue; }
+        $p = klucze_km($k, $teraz);
+        if (!$p) continue;
+        [$kurs, $v] = lot_reczny_wektor(klucze_km($k, $teraz - 2), $p, 2.0);
+        $kl['stan'] = $k['rozkaz'] === 'powrot' ? 'powrot' : 'w_locie';
+        $kl['start_za_s'] = null;
+        $kl['x'] = round($p[0] - $tu[0], 3);
+        $kl['y'] = round($p[1] - $tu[1], 3);
+        $kl['kurs'] = $kurs;
+        $kl['v'] = $v;
+    }
+    unset($kl);
+    return $widok;
+}
+
+// Kontakty sensorów i radaru: inne jednostki w układzie (bez tych w hangarach i w nadprzestrzeni, z ruchem NPC) do
+// trzykrotności największego zasięgu sensorów, najbliższe 40. Strona = frakcja (bez frakcji — „nieznana”, obca dla
+// każdego); profil klasy, jeśli jest w danych mechaniki (sylwetka i długość na ekranach).
+function lot_reczny_kontakty(array $widok, int $obiektId, array $tu, int $teraz): array
+{
+    if (!function_exists('klucze_cele')) return $widok;
+    $sl = bitwa_slowniki();
+    $maks = 3 * max(BITWA_ZASIEGI_SENSOROW);
+    $cele = [];
+    foreach (klucze_cele($obiektId) as $c) {
+        $p = klucze_obiekt_km((int) $c['id'], $teraz);
+        if (!$p) continue;
+        $d = hypot($p[0] - $tu[0], $p[1] - $tu[1]);
+        if ($d <= $maks) $cele[] = $c + ['p' => $p, 'd' => $d];
+    }
+    usort($cele, static fn($a, $b) => $a['d'] <=> $b['d']);
+    $cele = array_slice($cele, 0, 40);
+    $dane = [];
+    $ids = array_values(array_filter(array_map(static fn($c) => (int) $c['id'], $cele), static fn($i) => $i > 0));
+    if ($ids) {
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        try {
+            $q = polaczenie_bazy()->prepare("SELECT id, frakcja, profil_klasy FROM mapa_obiekty WHERE id IN ($in)");
+            $q->execute($ids);
+        } catch (Throwable $e) {
+            $q = polaczenie_bazy()->prepare("SELECT id, NULL AS frakcja, profil_klasy FROM mapa_obiekty WHERE id IN ($in)");
+            $q->execute($ids);
+        }
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $dane[(int) $r['id']] = $r;
+    }
+    foreach ($cele as $c) {
+        $id = (int) $c['id'];
+        $r = $dane[$id] ?? [];
+        $profil = isset($r['profil_klasy'], $sl['profile'][$r['profil_klasy']]) ? $r['profil_klasy'] : null;
+        [$kurs, $v] = lot_reczny_wektor(klucze_obiekt_km($id, $teraz - 2), $c['p'], 2.0);
+        $nr = $id > 0 ? 1000000 + $id : 2000000 - $id;
+        $widok['jednostki'][] = ['id' => $nr, 'nr_jednostki' => $nr, 'obiekt_id' => $id > 0 ? $id : null, 'kontakt' => true,
+            'nazwa' => $c['nazwa'], 'strona' => ($id > 0 ? lot_reczny_frakcja($c, $r['frakcja'] ?? null) : null) ?: 'nieznana', 'profil' => $profil ?? 'nieznany',
+            'x' => round($c['p'][0] - $tu[0], 3), 'y' => round($c['p'][1] - $tu[1], 3), 'kurs' => $kurs, 'v' => $v,
+            'dlugosc_km' => $profil ? $sl['profile'][$profil]['dlugosc_m'] / 1000 : 0.1, 'stan' => 'w_bitwie', 'ai' => true,
+            'nastawy' => [], 'generatory' => [], 'sekcje' => [], 'kadlub' => null, 'wzmocnienia' => [], 'cel_ognia' => null];
+    }
     return $widok;
 }
 
 // Rozkaz z konsoli mostka bez symulacji: ster (kurs nawigacyjny, prędkość km/s), nastawy, wyrównania, wzmocnienia.
-// Pozostałe rozkazy (osłony, baterie, klucze) działają tylko w symulacji bitwy.
+// Osłony, sensory i klucze myśliwców — na stanie ze świata (etap 4); ogień i figury kluczy tylko w bitwie.
 function lot_reczny_rozkaz(array $u, int $obiektId, array $w): array
 {
     if (!lot_reczny_dostepny()) return ['odmowa' => 'Sterowanie okrętem z mostka wymaga migracji 079.'];
@@ -362,5 +492,73 @@ function lot_reczny_rozkaz(array $u, int $obiektId, array $w): array
         okret_nastawa_ustaw($obiektId, 'wzo_' . $cel, (float) ($teraz + 36));
         return ['ok' => true, 'dziala_za_s' => 0];
     }
-    return ['odmowa' => 'Ten rozkaz działa tylko w symulacji bitwy — poza nią pulpit ustawia napęd, nastawy i wzmocnienia.'];
+    // Osłony na co dzień: Hz generatora (stopień natywny), tryb automatyczny, zakres automatu — od razu, bez czasu
+    // przestrajania (to liczy dopiero bitwa). Generator: id z widoku = numer od 1.
+    if (isset($w['generator_id'])) {
+        $sl = bitwa_slowniki();
+        $p = $sl['profile'][$o['profil_klasy']] ?? null;
+        $gn = (int) $w['generator_id'];
+        if (!$p || $gn < 1 || $gn > (int) $p['generatory']) return ['odmowa' => 'Nie ma takiego generatora.'];
+        $zyly = (int) $p['zyly'];
+        $pre = "g{$gn}_";
+        if ($kod === 'auto') { okret_nastawa_ustaw($obiektId, $pre . 'auto', 1.0); return ['ok' => true, 'dziala_za_s' => 0]; }
+        if ($kod === 'zakres') {
+            $min = (int) ($w['hz_min'] ?? 1);
+            $max = (int) ($w['hz_max'] ?? $zyly);
+            if ($min < 1 || $max < $min || $zyly % $min !== 0 || $zyly % $max !== 0) return ['odmowa' => 'Zakres musi być parą stopni natywnych, MIN ≤ MAX.'];
+            okret_nastawa_ustaw($obiektId, $pre . 'min', (float) $min);
+            okret_nastawa_ustaw($obiektId, $pre . 'max', (float) $max);
+            return ['ok' => true, 'dziala_za_s' => 0];
+        }
+        $hz = (int) ($w['hz'] ?? 0);
+        if ($hz < 1 || $zyly % $hz !== 0) return ['odmowa' => 'To nie jest stopień natywny generatora.'];
+        okret_nastawa_ustaw($obiektId, $pre . 'hz', (float) $hz);
+        okret_nastawa_ustaw($obiektId, $pre . 'auto', 0.0);
+        return ['ok' => true, 'dziala_za_s' => 0];
+    }
+    if ($kod === 'sensory_zasieg') {
+        $km = (int) ($w['zasieg_km'] ?? 0);
+        if (!in_array($km, BITWA_ZASIEGI_SENSOROW, true)) return ['odmowa' => 'Nieznany poziom zasięgu sensorów.'];
+        okret_nastawa_ustaw($obiektId, 'sens_km', (float) $km);
+        return ['ok' => true, 'dziala_za_s' => 0];
+    }
+    // Myśliwce na co dzień: klucz N pulpitu = klucz N okrętu w świecie (api/klucze.php). Start z hangaru (taśmociąg),
+    // rozkazy patrol / ochrona / atak / skan / powrót; atak i skan na cel wskazany na pulpicie albo najbliższy obcy.
+    if (isset($w['klucz_id'])) {
+        if (!function_exists('klucze_dostepne') || !klucze_dostepne()) return ['odmowa' => 'Klucze myśliwców wymagają migracji 066.'];
+        $nr = (int) $w['klucz_id'];
+        $q = $db->prepare("SELECT id, start_utc FROM mapa_klucze WHERE okret_id=? AND rodzaj='tie' AND numer=?");
+        $q->execute([$obiektId, $nr]);
+        $k = $q->fetch(PDO::FETCH_ASSOC);
+        if ($kod === 'start') {
+            if ($k) return ['odmowa' => "Klucz {$nr} jest już w locie."];
+            if ($nr < 1 || $nr > klucze_hangar($obiektId)['tie']['razem']) return ['odmowa' => 'Okręt nie ma takiego klucza w hangarze.'];
+            $wynik = klucze_start($u, $obiektId, 'tie', 'automat', true, $nr);
+            return ['ok' => true, 'dziala_za_s' => max(0, (int) $wynik['start'] - $teraz), 'nazwa' => $wynik['nazwa']];
+        }
+        if (!$k) return ['odmowa' => "Klucz {$nr} jest w hangarze — najpierw START."];
+        $mapa = ['patrol' => 'patrol', 'ochrona' => 'ochrona', 'atak' => 'atak', 'skan' => 'skan', 'powrot' => 'powrot', 'przechwyc' => 'przechwyc'];
+        if (!isset($mapa[$kod])) return ['odmowa' => 'Figury i manewry klucza działają tylko w bitwie — poza nią: patrol, ochrona, atak, skan, powrót.'];
+        $cel = null;
+        if (in_array($kod, ['atak', 'skan', 'przechwyc'], true)) {
+            $cel = (int) ($w['cel_obiekt_id'] ?? 0) ?: null;
+            if (!$cel) {
+                $tu = klucze_obiekt_km($obiektId, $teraz);
+                $moja = starcie_frakcja($o);
+                $najblizej = null;
+                foreach (klucze_cele($obiektId) as $c) {
+                    if ($kod !== 'skan' && empty($c['npc']) && $moja !== null && lot_reczny_frakcja($c) === $moja) continue;
+                    $p = klucze_obiekt_km((int) $c['id'], $teraz);
+                    if (!$p || !$tu) continue;
+                    $d = hypot($p[0] - $tu[0], $p[1] - $tu[1]);
+                    if ($najblizej === null || $d < $najblizej[1]) $najblizej = [(int) $c['id'], $d];
+                }
+                $cel = $najblizej[0] ?? null;
+            }
+            if (!$cel) return ['odmowa' => 'W układzie nie ma celu dla tego rozkazu.'];
+        }
+        $wynik = klucze_rozkaz_wydaj($u, [(int) $k['id']], $mapa[$kod], $cel, true);
+        return ['ok' => true, 'dziala_za_s' => 0, 'dolot_s' => $wynik['dolot']];
+    }
+    return ['odmowa' => 'Ten rozkaz działa tylko w bitwie — poza nią pulpity ustawiają napęd, osłony, sensory, nastawy, wzmocnienia i klucze myśliwców.'];
 }

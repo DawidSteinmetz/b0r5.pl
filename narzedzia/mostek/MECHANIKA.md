@@ -696,3 +696,16 @@ Zasada (użytkownik): bitwa w świecie gry nie zaskakuje graczy. `api/starcia.ph
   utracone maszyny, poległych pilotów. Do świata wchodzą dopiero po zatwierdzeniu przez MG: kadłub i osłony okrętu
   (% żywych żył), martwe żyły (okrety_zyly), maszyny odjęte z hangaru, polegli piloci usunięci z pokładu (pokład
   uzupełnia potem nowych). XP pilotów MG zatwierdza jak w symulacji.
+- **Pulpity na co dzień (etap 4).** Mostek poza bitwą pokazuje prawdziwy stan okrętu i nim steruje
+  (`api/lot_reczny.php`, `mostek_widok`):
+  - kadłub i martwe żyły osłon ze świata (jak na starcie bitwy);
+  - osłony: Hz generatora (tylko stopnie natywne), tryb auto i zakres automatu zapisane przy okręcie
+    (okrety_nastawy: g<n>_hz, g<n>_auto, g<n>_min, g<n>_max) — działają od razu, czas przestrajania liczy dopiero bitwa;
+    zasięg sensorów (sens_km) tak samo; nastawy, Hz i zasięg przechodzą do bitwy ze starcia;
+  - kontakty radaru i sensorów: inne jednostki w układzie (także ruch NPC, bez jednostek w hangarach
+    i w nadprzestrzeni) do 90 000 km, najbliższe 40, położenie względem okrętu, kurs i prędkość z ruchu; strona z frakcji
+    (bez frakcji — nieznana, obca);
+  - myśliwce: tyle kluczy, ile maszyn w hangarze floty (tie_liczba / 4); klucz N pulpitu to klucz N okrętu na mapie
+    (mapa_klucze, TIE). START wypuszcza go z taśmociągu jak z mapy, w locie pulpit pokazuje jego pozycję i rozkaz;
+    rozkazy patrol, ochrona, atak, skan, powrót (atak i skan — na najbliższy obcy cel w układzie). Figury i manewry
+    klucza, ogień baterii i wskazanie celu działają tylko w bitwie.

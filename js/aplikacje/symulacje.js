@@ -155,6 +155,8 @@ export default {
       let podpisStanowisk = '';
       let gracze = null;
       const stanowiskaEl = h('div');
+      // W symulacji: przydział jednorazowy albo stały (zapis na okręcie — obowiązuje też poza symulacją i w kolejnych).
+      const naStale = h('input', { type: 'checkbox' });
       const stanKonsol = nowyStanKonsol();
       const zakladki = h('div.zakladki');
       const konsolaEl = h('div', { hidden: true, style: 'margin:10px 0' });
@@ -218,6 +220,8 @@ export default {
             + (st.mg ? 'MG przydziela każdego gracza — postać spoza pokładu zostaje teleportowana na mostek.'
               : 'Kapitan przydziela graczy obecnych na pokładzie. Kapitan widzi wszystkie pulpity.')),
           st.stale && st.migracja === false ? h('div.komunikat', 'Stałe stanowiska wymagają migracji 077.') : null,
+          !st.stale && st.okret.obiekt_id && st.stale_migracja ? h('label.maly-tekst', { style: 'display:flex;gap:6px;align-items:center;margin-bottom:8px' }, naStale,
+            'Przydzielaj na stałe (okręt: także poza symulacją i w każdej następnej)') : null,
           gracze ? null : h('button.przycisk.drugi', { style: 'width:100%;margin-bottom:8px', onclick: wczytajGraczy }, 'Wczytaj graczy do przydziału'),
           h('table.tabela', pulpityStanowisk(st.okret.profil).map(wiersz))));
       }
@@ -235,9 +239,11 @@ export default {
       }
       async function przydziel(pulpit, login) {
         try {
-          const r = mostek ? await api('mostek_stanowisko', { okret: mostek, pulpit, login }) : await api('bitwa_stanowisko', { id, pulpit, login });
-          wyczysc(komunikat).append(h('div.komunikat.ok', !login ? `Pulpit ${pulpit} zwolniony.`
-            : r.teleport ? `${r.postac}: teleport na mostek i przydział do pulpitu ${pulpit}.` : `${r.postac}: przydział do pulpitu ${pulpit}.`));
+          const okret = mostek || (naStale.checked ? ostatni?.stanowiska?.okret?.obiekt_id : null);
+          const r = okret ? await api('mostek_stanowisko', { okret, pulpit, login }) : await api('bitwa_stanowisko', { id, pulpit, login });
+          const stale = mostek || naStale.checked ? ' (na stałe)' : '';
+          wyczysc(komunikat).append(h('div.komunikat.ok', !login ? `Pulpit ${pulpit} zwolniony${stale}.`
+            : r.teleport ? `${r.postac}: teleport na mostek i przydział do pulpitu ${pulpit}${stale}.` : `${r.postac}: przydział do pulpitu ${pulpit}${stale}.`));
           if (r.teleport) gracze = null;
           odswiez();
         } catch (e) { wyczysc(komunikat).append(blad(e)); }

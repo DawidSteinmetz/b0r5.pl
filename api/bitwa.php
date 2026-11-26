@@ -856,7 +856,8 @@ function bitwa_stanowiska_widok(array $u, array $b): array
     }
     $postacie = [];
     foreach (uzytkownicy() as $x) $postacie[mb_strtolower((string) $x['login'])] = $x;
-    $out = ['okret' => $okret ? ['nazwa' => $okret['nazwa'], 'profil' => $okret['profil_kod']] : null, 'pelny' => $pelny, 'mg' => $mg, 'kapitan' => $kapitan,
+    $out = ['okret' => $okret ? ['nazwa' => $okret['nazwa'], 'profil' => $okret['profil_kod'], 'obiekt_id' => (int) $okret['obiekt_id']] : null,
+        'stale_migracja' => bitwa_stale_dostepne(), 'pelny' => $pelny, 'mg' => $mg, 'kapitan' => $kapitan,
         'moje' => array_values(array_map(static fn($s) => $s['pulpit'], array_filter($przypisane, static fn($s) => mb_strtolower((string) $s['login']) === $login))),
         'przypisane' => array_map(static fn($s) => ['pulpit' => $s['pulpit'], 'login' => $s['login'],
             'postac' => $postacie[mb_strtolower((string) $s['login'])]['postac'] ?? $s['login']], $przypisane)];

@@ -87,6 +87,16 @@ symulacji okrętu, a jego zmiana przechodzi też na trwające symulacje tego okr
 zostaje jednorazowy (tylko ta symulacja). Gracz ze stałym stanowiskiem widzi aplikację Symulacje i na mostku tylko
 swoje pulpity; w trwającej symulacji jak dotąd — tryb stanowiska po zalogowaniu.
 
+**Obsługa** (26.11.2026): pulpit wypełnia ekran (cała szerokość, wysokość do dołu okna; komórki nie muszą być
+kwadratowe). Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
+urządzenia, tryby i filtry — przełączniki świecące w kolorze typu; pozostałe polecenia — przyciski sprężynowe; żółte
+suwaki — uchwyt w miejscu dotknięcia; szare — dwa uchwyty zakresu), dymek mówi wtedy „bez wpływu na symulację”.
+Wciśnięcie: przycisk i napis zapadają się, sprężynowy wraca, przełącznik zostaje lekko wciśnięty. Szary suwak osłon
+to skala 0…3600 Hz (3600 u góry, 1800 w połowie): dotknięcie przesuwa bliższy uchwyt (maks. / min.) na najbliższy stopień
+natywny (rozkaz `zakres`). Wiązki radaru i sensorów: pełny obrót w 6 s. Pauza i koniec symulacji zatrzymują wiązki
+i ruch na ekranach. Ekran ze środkiem w ruchu (klucz, eskadra, okręt) przesuwa otoczenie płynnie, bez skoku co odczyt.
+Reaktor zapala porcje równomiernie po całej siatce 60×60.
+
 **Sylwetki** na ekranach według rzutów z góry: ISD (klin, rufa z dwóch trójkątów do bloku silników, nadbudówka
 z kopułami osłon), MC80 (ostry dziób, wąski kadłub, skrzydła z wklęsłą krawędzią natarcia, odchylone do rufy);
 własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ekranie.

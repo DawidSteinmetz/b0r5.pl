@@ -16,7 +16,7 @@ export const pulpityKlasy = (klasa) => Object.keys(UKLADY[klasa] || {});
 const NS = 'http://www.w3.org/2000/svg';
 const ZASIEG_SENSOROW_KM = 200; // jak automatyczne osłony w silniku (STALE zasieg_sensorow_km)
 // Radar: do 12 km obraz na bieżąco, 12–60 km echo odświeżane przejściem wiązki. Sensory: od 60 km wzwyż, też wiązką.
-const RADAR_BLISKI_KM = 12, RADAR_KM = 60, TEMPO_SKANU_S = 20;
+const RADAR_BLISKI_KM = 12, RADAR_KM = 60, TEMPO_SKANU_S = 6;
 // TIE bez sensorów dalekiego zasięgu (dane/maszyny.py BEZ_SENSOROW): własny radar 5 km, dalej dane z radaru okrętu matki.
 const BEZ_SENSOROW = ['TIE_LN', 'TIE_IN', 'TIE_SA'], RADAR_WLASNY_KM = 5;
 const kosztSensorow = (km) => Math.round(0.245 * (km / 1000) ** 1.618 * 100) / 100; // jak bitwa_koszt_sensorow()
@@ -114,7 +114,7 @@ export function nowyStanKonsol() {
   return {
     skala: 30, filtry: { wlasne: true, obce: true, klucze: true, okrety: true, pociski: true, nieznane: true },
     sektor: null, tory: true, prognozy: false, oznaczony: null, sledzony: null, zamrozony: false, slady: new Map(),
-    progZblizenia: 30, progKolizji: 10, tempo: 12, syncSensory: false, syncNawigacja: false,
+    progZblizenia: 30, progKolizji: 10, tempo: 6, syncSensory: false, syncNawigacja: false,
     grupa: null, skan: true, kontaktyNormalne: true,
     echo: {}, hzPamiec: new Map(), zmarszczki: new Map(), sladyNad: true,
     zoom: {}, hzCel: {}, klucz: null, wybranyKlucz: null, rozkazMysliwcow: 'atak', eskadra: 1, skalaNaw: 500, skalaKlucza: 10, celNaw: null,
@@ -153,12 +153,24 @@ export function zapiszSlady(st, s) {
   }
 }
 
+// Zegar ekranów: stoi w pauzie i po końcu symulacji (wiązki i ruch zamierają) i rusza od miejsca zatrzymania.
+// ruchStoi — także w przygotowaniu (silnik jeszcze nie liczy), więc kontakty nie odpływają z przewidywania.
+function ustawZegar(st, s) {
+  const teraz = Date.now();
+  const stoi = !!s.pauza || ['zakonczona', 'anulowana'].includes(s.status);
+  if (stoi && st.stoiOd == null) st.stoiOd = teraz;
+  if (!stoi && st.stoiOd != null) { st.przesuniecie = (st.przesuniecie || 0) + teraz - st.stoiOd; st.stoiOd = null; }
+  st.wiazkaStoi = stoi;
+  st.ruchStoi = stoi || s.status === 'przygotowanie';
+}
+const zegar = (st) => ((st.stoiOd ?? Date.now()) - (st.przesuniecie || 0)) / 1000;
+
 // Echo przy przejściu wiązki: kontakt w strefie (wStrefie) jest widoczny w pozycji z chwili, gdy wiązka (obrót co tempo
 // sekund) ostatnio przeszła nad jego namiarem; poza strefą znika przy kolejnym przejściu. Pamięć osobna dla każdej wiązki.
 const idObiektu = (o) => ('nr' in o ? 'k' : 'j') + o.id;
 const namiarOd = (srodek, o) => ((Math.atan2(o.x - srodek.x, o.y - srodek.y) * 180) / Math.PI + 360) % 360;
 function echo(st, kanal, srodek, obiekty, tempo, wStrefie) {
-  const teraz = Date.now() / 1000;
+  const teraz = zegar(st);
   const kat = ((teraz % tempo) / tempo) * 360;
   const pam = (st.echo[kanal] ||= { kat: null, t: 0, obiekty: new Map() });
   const calyObrot = pam.kat === null || teraz - pam.t >= tempo;
@@ -194,15 +206,42 @@ const stopienWGore = (stopnie, hz) => stopnie.find((x) => x >= hz) ?? stopnie[st
 const BLACHA = '#262d33', SZCZELINA = '#14181b', KRAWEDZ = '#56626b', EKRAN_RAMA = '#11181b', EKRAN_TLO = '#06121a', TURKUS = '#4de2c9';
 // Kolor napisu na ciemnym przycisku (jaśniejszy odcień koloru typu, żeby był czytelny).
 const TEKST_TYPU = { S: '#c9d1d6', R: '#ff8a80', Y: '#ffff99', G: '#99ff99', B: '#aab0ff', W: '#e8eef0' };
+// Każdy element pulpitu coś robi. Bez mechaniki w symulacji — stan lokalny konsoli (przełącznik świeci w kolorze typu,
+// przycisk sprężynowy wraca, suwak ma pozycję), zapamiętany na czas sesji przeglądarki; dymek mówi, że to bez wpływu na bitwę.
+const LOKALNE = new Map();
+let biezaceOdswiez = null;
+const WCISNIETE = new Map();
+const PRZELACZNIK_W = /^(tryb|filtr|pokaż|zamroź|blokada|zakłócenia|zakłócanie|alarm|skanuj|załóż|przełącz|wybierz|sektor|skala|śledź|oznacz|kasuj)/i;
+let wysokoscPulpitu = 0;
+function styleAnimacji() {
+  if (document.getElementById('pulpit-animacje')) return;
+  document.head.append(h('style', { id: 'pulpit-animacje' }, `
+.pp { transition: transform .09s ease-out, filter .15s; }
+.pp.wl { transform: translateY(1px) scale(.985); }
+.pp.wcisk { transform: translateY(2px) scale(.94); filter: brightness(1.45); transition: transform .04s, filter .04s; }
+@keyframes pp-sprezyna { 0% { transform: translateY(2px) scale(.94); filter: brightness(1.6); } 100% { transform: none; filter: none; } }
+@keyframes pp-zatrzask { 0% { transform: translateY(2px) scale(.94); filter: brightness(1.8); } 100% { transform: translateY(1px) scale(.985); filter: none; } }
+.pp.sprezyna { animation: pp-sprezyna .32s ease-out both; }
+.pp.zatrzask { animation: pp-zatrzask .32s ease-out both; }`));
+}
+
 function pulpit(klasa, nazwa, wiazania) {
   const uklad = UKLADY[klasa]?.[nazwa];
   if (!uklad) return h('div.komunikat.blad', `Brak układu pulpitu ${nazwa} dla klasy ${klasa}.`);
+  styleAnimacji();
   const [K, W] = FORMATY[klasa][nazwa];
   const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:4px;padding:12px;box-sizing:border-box;`;
   const telefon = K < 13;
-  const ramka = h('div', { style: `position:relative;width:100%;max-width:${telefon ? 460 : 1180}px;margin:0 auto;aspect-ratio:${K}/${W};`
+  // Pulpit wypełnia ekran: cała szerokość i wysokość od swojej górnej krawędzi do dołu okna (komórki nie muszą być kwadratowe).
+  const ramka = h('div', { style: `position:relative;width:100%;height:${wysokoscPulpitu ? wysokoscPulpitu + 'px' : 'calc(100dvh - 150px)'};min-height:${telefon ? 520 : 380}px;`
     + `background:linear-gradient(180deg,rgba(207,239,255,.13) 0,rgba(207,239,255,0) 30%),${BLACHA};border:3px solid ${KRAWEDZ};border-radius:10px;`
     + 'box-shadow:inset 0 0 50px rgba(0,0,0,.55),0 6px 20px rgba(0,0,0,.5);box-sizing:border-box;container-type:inline-size' });
+  requestAnimationFrame(() => {
+    if (!ramka.isConnected) return;
+    const g = ramka.getBoundingClientRect().top + (window.scrollY || 0) - (document.scrollingElement?.scrollTop || 0);
+    const wys = Math.round(window.innerHeight - Math.max(0, g) - 12);
+    if (wys > 200 && Math.abs(wys - wysokoscPulpitu) > 2) { wysokoscPulpitu = wys; ramka.style.height = wys + 'px'; }
+  });
   // nity w narożnikach płyty
   for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
     ramka.append(h('div', { style: `position:absolute;${x ? 'right' : 'left'}:3px;${y ? 'bottom' : 'top'}:3px;width:6px;height:6px;border-radius:50%;`
@@ -212,30 +251,66 @@ function pulpit(klasa, nazwa, wiazania) {
   const teksty = h('div', { style: geometria + `position:absolute;inset:0;pointer-events:none;${CZCIONKA}`, 'aria-hidden': 'true' });
   const rozmiar = telefon ? 'max(9px,2.6cqw)' : 'max(7px,0.8cqw)';
   for (const [typ, c, r, tekst, sz, wys, tekstMin] of uklad) {
-    const w = wiazania[tekst];
-    const aktywny = !!w;
+    const klucz = `${klasa}|${nazwa}|${tekst}`;
+    const wiaz = wiazania[tekst];
+    const interakcja = !!(wiaz?.klik || wiaz?.klikS || wiaz?.klikX || wiaz?.ustawZakres || wiaz?.ustawPoz);
+    // Stan lokalny dla elementów bez mechaniki (i bez własnego kliknięcia): przełącznik, sprężyna, suwak, zakres.
+    let lokalny = false;
+    let w = wiaz;
+    if (!interakcja && !wiaz?.ekran) {
+      lokalny = true;
+      const l = LOKALNE.get(klucz) ?? (typ === 'S' ? { max: 1, min: 0 } : typ === 'Y' ? { poz: 0.5 } : { wl: typ === 'B' });
+      LOKALNE.set(klucz, l);
+      const przelacznik = (typ === 'R' || typ === 'G' || typ === 'B' || (typ === 'W' && PRZELACZNIK_W.test(tekst))) && wiaz?.wl === undefined;
+      w = { ...(wiaz || {}) };
+      if (typ === 'S') {
+        w.zakres = l;
+        w.ustawZakres = (v, ktory) => { l[ktory] = ktory === 'max' ? Math.max(v, l.min) : Math.min(v, l.max); };
+        w.etykieta ??= `${tekst.replace('suwak: ', '')} · ${Math.round(l.max * 100)}%`;
+        w.etykietaMin ??= `${(tekstMin || '').replace('suwak: ', '')} · ${Math.round(l.min * 100)}%`;
+      } else if (typ === 'Y') {
+        w.poz = wiaz?.poz ?? l.poz;
+        w.ustawPoz = (v) => { l.poz = v; };
+      } else if (przelacznik) {
+        w.wl = l.wl;
+        w.klik = () => { l.wl = !l.wl; };
+        w.przelacznik = true;
+      } else w.klik = () => {};
+    }
     const kol = KOLORY[typ];
-    const pole = `grid-column:${c}/span ${sz};grid-row:${r}/span ${typ === 'S' ? 7 : wys};`;
+    const pole = `grid-column:${c}/span ${sz};grid-row:${r}/span ${typ === 'S' ? W : wys};`;
     const lampaKlucza = w?.kolor;
-    const swiatlo = w?.wl ? `,0 0 10px ${kol},inset 0 0 16px ${kol}66` : '';
+    const swiatlo = w?.wl ? `,0 0 12px ${kol},0 0 22px ${kol}66,inset 0 0 18px ${kol}88` : '';
+    const klikalny = !!(w?.klik || w?.klikS || w?.klikX || w?.ustawZakres || w?.ustawPoz);
     const el = h('div', {
-      style: pole + `background:${w?.ekran ? EKRAN_RAMA : lampaKlucza || SZCZELINA};border:1px solid ${KRAWEDZ};border-radius:5px;overflow:hidden;position:relative;`
-        + `box-shadow:inset 0 0 0 3px ${w?.ekran ? EKRAN_RAMA : lampaKlucza || SZCZELINA},inset 0 0 0 4.5px ${w?.ekran ? KRAWEDZ : kol + '88'}${swiatlo};`
-        + (aktywny ? '' : 'opacity:.42;') + (w?.klik || w?.klikS || w?.klikX ? 'cursor:pointer;' : ''),
-      title: aktywny ? tekst : `${tekst} — bez mechaniki (kolejny etap)`, role: w?.klik ? 'button' : null, 'aria-label': tekst,
+      class: 'pp' + (w?.wl && !w?.ekran ? ' wl' : ''),
+      style: pole + `background:${w?.ekran ? EKRAN_RAMA : lampaKlucza || (w?.wl ? kol + '33' : SZCZELINA)};border:1px solid ${KRAWEDZ};border-radius:5px;overflow:hidden;position:relative;`
+        + `box-shadow:inset 0 0 0 3px ${w?.ekran ? EKRAN_RAMA : lampaKlucza || SZCZELINA},inset 0 0 0 4.5px ${w?.ekran ? KRAWEDZ : kol + (w?.wl ? 'ff' : '88')}${swiatlo};`
+        + (klikalny ? 'cursor:pointer;touch-action:manipulation;' : ''),
+      title: lokalny ? `${tekst} — stan konsoli (bez wpływu na symulację)` : tekst, role: klikalny ? 'button' : null, 'aria-label': tekst,
+      'aria-pressed': w?.przelacznik ? String(!!w.wl) : null,
     });
     // lampka typu w lewym górnym rogu (świeci mocniej, gdy element jest włączony)
     if (!w?.ekran && typ !== 'S') {
       el.append(h('div', { style: `position:absolute;left:7px;top:7px;width:14%;max-width:16px;height:3px;background:${kol};`
-        + `opacity:${w?.wl ? 1 : 0.8};${w?.wl ? `box-shadow:0 0 6px ${kol}` : ''}` }));
+        + `opacity:${w?.wl ? 1 : 0.7};${w?.wl ? `box-shadow:0 0 8px ${kol}` : ''}` }));
     }
-    // Suwak zakresu: prowadnica z podziałką, górna połowa — maksimum, dolna — minimum.
+    // Suwak zakresu: prowadnica z podziałką i dwoma uchwytami (górny — maksimum, dolny — minimum), skala od dołu do góry.
     if (typ === 'S') {
       el.append(h('div', { style: `position:absolute;left:50%;top:9%;bottom:9%;width:8px;transform:translateX(-50%);background:#0c181b;border:1px solid ${KRAWEDZ};border-radius:4px` }),
         h('div', { style: 'position:absolute;left:22%;right:22%;top:9%;bottom:9%;background:repeating-linear-gradient(180deg,'
           + `${KRAWEDZ} 0 2px,transparent 2px 4%);-webkit-mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%);mask:linear-gradient(90deg,#000 0 30%,transparent 30% 70%,#000 70%)` }));
+      if (w?.zakres) {
+        const z = w.zakres;
+        el.append(h('div', { style: `position:absolute;left:50%;width:4px;transform:translateX(-50%);background:${TURKUS}88;`
+          + `top:${(9 + 82 * (1 - z.max)).toFixed(1)}%;bottom:${(9 + 82 * z.min).toFixed(1)}%` }));
+        for (const [v, k2] of [[z.max, '#e8eef0'], [z.min, '#9aa4ab']]) {
+          el.append(h('div', { style: `position:absolute;left:18%;right:18%;height:10px;top:${(9 + 82 * (1 - v)).toFixed(1)}%;transform:translateY(-50%);`
+            + `background:linear-gradient(180deg,${k2},#3a444b);border:1px solid #0b1013;border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.6)` }));
+        }
+      }
     }
-    // Suwak żółty: rowek z podziałką (pozycja z wiązania: w.poz 0…1).
+    // Suwak żółty: rowek z podziałką i uchwytem (pozycja w.poz 0…1; pionowy, gdy element jest wyższy niż szerszy).
     if (typ === 'Y' && w?.poz != null) {
       const pion = (wys || 1) > (sz || 1);
       el.append(h('div', { style: `position:absolute;${pion ? 'left:50%;top:22%;bottom:12%;width:6px;transform:translateX(-50%)' : 'top:62%;left:12%;right:12%;height:6px'};`
@@ -243,18 +318,43 @@ function pulpit(klasa, nazwa, wiazania) {
         h('div', { style: `position:absolute;${pion ? `left:-4px;right:-4px;bottom:${Math.round(w.poz * 100)}%;height:5px` : `top:-4px;bottom:-4px;left:${Math.round(w.poz * 100)}%;width:5px`};`
           + `transform:translate(${pion ? '0,50%' : '-50%,0'});background:${kol};border-radius:2px;box-shadow:0 0 5px ${kol}` })));
     }
-    if (w?.klik) el.addEventListener('click', w.klik);
-    if (w?.klikS) el.addEventListener('click', (ev) => { const b = el.getBoundingClientRect(); w.klikS(ev.clientY - b.top < b.height / 2); });
-    if (w?.klikX) el.addEventListener('click', (ev) => { const b = el.getBoundingClientRect(); w.klikX(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), (ev.clientY - b.top) / b.height); });
+    const odswiezPo = () => { if (lokalny) biezaceOdswiez?.(); };
+    const zapiszWcisniecie = () => WCISNIETE.set(klucz, Date.now());
+    if (w?.klik) el.addEventListener('click', (ev) => { zapiszWcisniecie(); w.klik(ev); odswiezPo(); });
+    if (w?.klikS) el.addEventListener('click', (ev) => { zapiszWcisniecie(); const b = el.getBoundingClientRect(); w.klikS(ev.clientY - b.top < b.height / 2); });
+    if (w?.klikX) el.addEventListener('click', (ev) => { zapiszWcisniecie(); const b = el.getBoundingClientRect(); w.klikX(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), (ev.clientY - b.top) / b.height); });
+    if (w?.ustawZakres) el.addEventListener('click', (ev) => {
+      zapiszWcisniecie();
+      const b = el.getBoundingClientRect(), v = Math.min(1, Math.max(0, 1 - ((ev.clientY - b.top) / b.height - 0.09) / 0.82));
+      const z = w.zakres || { max: 1, min: 0 };
+      w.ustawZakres(v, Math.abs(v - z.max) <= Math.abs(v - z.min) ? 'max' : 'min');
+      odswiezPo();
+    });
+    if (w?.ustawPoz && !w?.klik && !w?.klikX) el.addEventListener('click', (ev) => {
+      zapiszWcisniecie();
+      const b = el.getBoundingClientRect(), pion = (wys || 1) > (sz || 1);
+      const v = pion ? 1 - ((ev.clientY - b.top) / b.height - 0.22) / 0.66 : ((ev.clientX - b.left) / b.width - 0.12) / 0.76;
+      w.ustawPoz(Math.min(1, Math.max(0, v)));
+      odswiezPo();
+    });
     if (w?.ekran) el.append(h('div', { style: `position:absolute;inset:5px;background:${EKRAN_TLO};border:1.5px solid ${TURKUS}cc;border-radius:3px;overflow:hidden` }, w.ekran()));
     kontrolki.append(el);
     if (w?.ekran) continue;
-    const napis = h('div', { style: pole + `display:flex;flex-direction:column;align-items:center;justify-content:${typ === 'S' ? 'space-between' : 'center'};`
+    const napis = h('div', { class: 'pp' + (w?.wl ? ' wl' : ''), style: pole + `display:flex;flex-direction:column;align-items:center;justify-content:${typ === 'S' ? 'space-between' : 'center'};`
       + `text-align:center;overflow:hidden;padding:${typ === 'S' ? '6px 3px' : '10px 4px 4px'};box-sizing:border-box;font-size:${rozmiar};line-height:1.15;letter-spacing:.03em;`
-      + `color:${w?.kolorTekstu || (lampaKlucza ? '#000' : TEKST_TYPU[typ])};${w?.wl ? 'font-weight:bold;' : ''}${aktywny ? '' : 'opacity:.42;'}` });
+      + `color:${w?.kolorTekstu || (lampaKlucza ? '#000' : TEKST_TYPU[typ])};${w?.wl ? 'font-weight:bold;' : ''}` });
     if (typ === 'S') napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')), h('span', w?.etykietaMin ?? (tekstMin || '').replace('suwak: ', '')));
     else napis.append(h('span', w?.etykieta ?? tekst.replace('suwak: ', '')));
     teksty.append(napis);
+    // Animacja wciśnięcia: przycisk i napis zapadają się pod palcem; po puszczeniu sprężynowy wraca, przełącznik zostaje
+    // lekko wciśnięty i świeci. Po przerysowaniu (odpowiedź serwera) animacja dokańcza się od miejsca, w którym była.
+    if (klikalny && typ !== 'S') {
+      const wcisk = (on) => { el.classList.toggle('wcisk', on); napis.classList.toggle('wcisk', on); };
+      el.addEventListener('pointerdown', () => wcisk(true));
+      for (const zd of ['pointerup', 'pointerleave', 'pointercancel']) el.addEventListener(zd, () => wcisk(false));
+      const od = Date.now() - (WCISNIETE.get(klucz) || 0);
+      if (od < 320) for (const x of [el, napis]) { x.classList.add(w?.wl ? 'zatrzask' : 'sprezyna'); x.style.animationDelay = `-${od}ms`; }
+    }
   }
   ramka.append(kontrolki, teksty);
   return ramka;
@@ -331,6 +431,18 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   tempo = st.tempo, maska = 0, strefy = [], zmarszczki = [], wiazkaWl = true }) {
   const P = 200;
   const sk = (P - 6) / zasieg;
+  // Środek w ruchu (klucz na telefonie, eskadra, okręt): ekran startuje z pozycji przewidzianej na teraz, a cały „świat”
+  // przesuwa się przeciwnie do toru środka (animateMotion) — środek stoi, otoczenie płynie, bez skoku co odczyt.
+  const dtS = !st.ruchStoi && srodek.v && s._odebrano ? Math.min(10, (Date.now() - s._odebrano) / 1000) : 0;
+  const wS = srodek.v && 'id' in srodek ? (st.zwroty?.get(idObiektu(srodek))?.w || 0) : 0;
+  let ruchSwiata = null;
+  if (!st.ruchStoi && srodek.v) {
+    const t0 = dtS > 0 ? przewidz(srodek, wS, dtS, Math.max(0.05, dtS / 20)) : { pkt: [[srodek.x, srodek.y]], kurs: srodek.kurs || 0 };
+    const [cx, cy] = t0.pkt[t0.pkt.length - 1];
+    const przodS = przewidz({ ...srodek, x: cx, y: cy, kurs: t0.kurs }, wS, 10);
+    ruchSwiata = 'M0 0 ' + przodS.pkt.slice(1).map(([a, b]) => `L${(-(a - cx) * sk).toFixed(2)} ${((b - cy) * sk).toFixed(2)}`).join(' ');
+    srodek = { ...srodek, x: cx, y: cy, kurs: t0.kurs, _baza: srodek };
+  }
   const px = (x) => P + (x - srodek.x) * sk, py = (y) => P - (y - srodek.y) * sk;
   const e = svg('svg', { viewBox: `0 0 ${2 * P} ${2 * P}`, style: `width:100%;height:100%;display:block;${CZCIONKA}` });
   for (const r of pierscienie) {
@@ -362,7 +474,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   }
   // Wiązka omiatania: obraca się płynnie (animacja SVG; faza z zegara, więc przerysowanie co sekundę jej nie przerywa),
   // za nią rozmyta smuga zanikającej poświaty. Kontakty rozbłyskują, gdy wiązka nad nimi przechodzi, i przygasają.
-  const katDeg = (((Date.now() / 1000) % tempo) / tempo) * 360;
+  const katDeg = ((zegar(st) % tempo) / tempo) * 360;
   const R = zasieg * sk;
   const idRozmycia = 'rozmycie' + Math.random().toString(36).slice(2, 9);
   const filtr = svg('filter', { id: idRozmycia, x: '-20%', y: '-20%', width: '140%', height: '140%' });
@@ -380,10 +492,14 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
   }
   wiazka.append(smuga, svg('line', { x1: P, y1: P, x2: P, y2: P - R, stroke: 'rgba(160,255,240,.9)', 'stroke-width': 2, filter: `url(#${idRozmycia})` }),
     svg('line', { x1: P, y1: P, x2: P, y2: P - R, stroke: 'rgba(160,255,240,.9)', 'stroke-width': 1 }));
-  wiazka.append(svg('animateTransform', { attributeName: 'transform', type: 'rotate', from: `${katDeg} ${P} ${P}`, to: `${katDeg + 360} ${P} ${P}`,
+  if (st.wiazkaStoi) wiazka.setAttribute('transform', `rotate(${katDeg} ${P} ${P})`);
+  else wiazka.append(svg('animateTransform', { attributeName: 'transform', type: 'rotate', from: `${katDeg} ${P} ${P}`, to: `${katDeg + 360} ${P} ${P}`,
     dur: `${tempo}s`, repeatCount: 'indefinite' }));
   e.append(wiazka);
   const strona = srodek.strona;
+  const swiat = svg('g');
+  if (ruchSwiata) swiat.append(svg('animateMotion', { path: ruchSwiata, dur: '10s', fill: 'freeze' }));
+  e.append(swiat);
   for (const o of obiekty || []) {
     const swoj = o.strona === strona;
     const kolor = swoj ? WLASNY : OBCY;
@@ -391,7 +507,8 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     // odczyt przerysuje go w prawdziwej pozycji. Przerysowanie bez nowego odczytu startuje z pozycji przewidzianej na teraz.
     const klucz = 'nr' in o;
     const id = (klucz ? 'k' : 'j') + o.id;
-    const ruchomy = o.v && o !== srodek && !o.statyczny;
+    const jestSrodkiem = o === srodek._baza || o === srodek;
+    const ruchomy = o.v && !o.statyczny && !st.ruchStoi && (!jestSrodkiem || ruchSwiata);
     const w = ruchomy ? (st.zwroty?.get(id)?.w || 0) : 0;
     const dt = ruchomy && s._odebrano ? Math.min(10, (Date.now() - s._odebrano) / 1000) : 0;
     const teraz = ruchomy && dt > 0 ? przewidz(o, w, dt, Math.max(0.05, dt / 20)) : { pkt: [[o.x, o.y]], kurs: o.kurs || 0 };
@@ -407,12 +524,12 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
         ogon.append(svg('line', { x1: px(sl[i - 1][0]), y1: py(sl[i - 1][1]), x2: px(sl[i][0]), y2: py(sl[i][1]), stroke: kolor,
           'stroke-opacity': (0.55 * f).toFixed(3), 'stroke-width': (1 + 2.5 * f).toFixed(2), 'stroke-linecap': 'round' }));
       }
-      if (sl.length > 1) e.append(ogon);
+      if (sl.length > 1) swiat.append(ogon);
     }
     const przod = ruchomy ? przewidz({ ...o, x: ox, y: oy, kurs: teraz.kurs }, w, 10) : null;
     if (prognozy && o.v) {
       const pr = przewidz({ ...o, x: ox, y: oy, kurs: teraz.kurs }, w, 30, 1).pkt;
-      e.append(svg('polyline', { points: pr.map(([a, b]) => `${px(a).toFixed(1)},${py(b).toFixed(1)}`).join(' '), fill: 'none', stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
+      swiat.append(svg('polyline', { points: pr.map(([a, b]) => `${px(a).toFixed(1)},${py(b).toFixed(1)}`).join(' '), fill: 'none', stroke: kolor, 'stroke-dasharray': '3 3', 'stroke-width': 1 }));
     }
     const sciezka = przod ? 'M0 0 ' + przod.pkt.slice(1).map(([a, b]) => `L${((a - ox) * sk).toFixed(2)} ${(-(b - oy) * sk).toFixed(2)}`).join(' ') : null;
     // Ikona: animacja po łuku (animateMotion z obrotem wzdłuż toru), opisy obok — ta sama ścieżka bez obrotu.
@@ -424,7 +541,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
       opisy.append(svg('animateMotion', { path: sciezka, dur: '10s', fill: 'freeze' }));
     }
     // Poświata echa: pełna jasność, gdy wiązka przechodzi nad kontaktem, potem zanik do następnego obrotu.
-    if (o !== srodek && o.statyczny) {
+    if (!jestSrodkiem && o.statyczny && !st.wiazkaStoi) {
       const namiar = ((Math.atan2(x - P, P - y) * 180) / Math.PI + 360) % 360;
       const odPrzejscia = (((katDeg - namiar) % 360) + 360) % 360 / 360 * tempo;
       miejsce.append(svg('animate', { attributeName: 'opacity', values: '1;0.3', keyTimes: '0;1', dur: `${tempo}s`, begin: `-${odPrzejscia.toFixed(2)}s`, repeatCount: 'indefinite' }));
@@ -443,7 +560,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
       else obrot.append(svg('path', { d: 'M0 -6 L5 5 L-5 5Z', fill: kolor }));
     } else {
       // Przy dużym powiększeniu okręt w skali bywa większy od ekranu — wtedy półprzezroczysty, żeby nie zasłaniał kontaktów.
-      const rozmiar = Math.max(o === srodek ? 34 : 22, (o.dlugosc_km || 1) * sk);
+      const rozmiar = Math.max(jestSrodkiem ? 34 : 22, (o.dlugosc_km || 1) * sk);
       const syl = sylwetka(o.profil, kolor, rozmiar);
       if (rozmiar > P * 0.8) syl.setAttribute('opacity', rozmiar > 3 * P ? 0.18 : 0.35);
       obrot.append(syl);
@@ -454,7 +571,7 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     if (hz && klucz && !swoj) opisy.append(svg('text', { x: 8, y: -6, fill: '#ffd7a0', 'font-size': 11 }, st.hzPamiec.has(o.id) ? `${st.hzPamiec.get(o.id)} Hz` : '? Hz'));
     if (klucz && sk >= 15) opisy.append(svg('text', { x: 10, y: 12, fill: kolor, 'font-size': 9, opacity: 0.85 }, `${o.nr}`));
     miejsce.append(ikona, opisy);
-    e.append(miejsce);
+    swiat.append(miejsce);
   }
   return e;
 }
@@ -520,7 +637,7 @@ function radar(s, st, akcje) {
     'ALARM ZBLIŻENIA': { kolor: alarm ? '#ff3333' : undefined, wl: alarm, etykieta: alarm ? `ALARM ZBLIŻENIA · < ${st.progZblizenia} km` : 'ALARM ZBLIŻENIA' },
     'suwak: próg alarmu zbliżenia': cyklicznie('progZblizenia', [10, 30, 100, 200], 'próg alarmu (km)'),
     'suwak: próg alarmu kursu kolizyjnego': cyklicznie('progKolizji', [5, 10, 30], 'próg kolizji (km)'),
-    'suwak: tempo omiatania': cyklicznie('tempo', [6, 12, 24], 'omiatanie (s/obrót)'),
+    'suwak: tempo omiatania': cyklicznie('tempo', [3, 6, 12], 'omiatanie (s/obrót)'),
     'synchronizacja z sensorami (dane skanu, Hz celów)': przelacz('syncSensory'),
     'synchronizacja z nawigacją (kurs i prędkość własna)': { ...przelacz('syncNawigacja'), etykieta: st.syncNawigacja ? `kurs ${Math.round(j.kurs)}° · ${j.v} km/s` : undefined },
     'wyślij namiar zagrożenia do osłon': { klik: wyslijDoOslon },
@@ -542,7 +659,7 @@ function sensory(s, st, akcje) {
   const wrogie = s.klucze.filter((k) => k.stan === 'w_locie' && k.strona !== j.strona);
   const zmierzone = wrogie.filter((k) => st.hzPamiec.has(k.id)).map((k) => ({ ...k, hz: st.hzPamiec.get(k.id) }));
   // Zmarszczki: jednostki przed wyjściem ze skoku (widać dobrze) i klucze z zewnątrz (słabo, tylko w połowie zasięgu).
-  const teraz = Date.now() / 1000;
+  const teraz = zegar(st);
   const zmarszczki = st.sladyNad ? [
     ...s.jednostki.filter((x) => x.stan === 'oczekuje' && odl(x, j) <= zasieg).map((x) => ({ o: x, slaba: false, r0: 20, opis: `${x.nazwa} · wyjście za ${mmss(x.wejscie_za_s)}` })),
     ...s.klucze.filter((k) => k.z_zewnatrz && k.stan === 'hangar' && k.start_za_s != null && k.strona !== j.strona && odl(k, j) <= zasieg / 2)
@@ -646,13 +763,14 @@ function oslony(s, st, akcje) {
   const j = wlasna(s);
   const [L, P] = j.generatory;
   const stopnie = j.stopnie;
-  // Szary suwak: zakres trybu automatycznego (MIN / MAX) — górna połowa zmienia maksimum, dolna minimum.
+  // Szary suwak: zakres trybu automatycznego — dwa uchwyty na skali 0…N Hz (N = liczba żył: 3600 u góry, 1800 w połowie).
+  // Dotknięcie przesuwa bliższy uchwyt na najbliższy stopień natywny.
   const zakres = (g) => g && ({
     etykieta: `maks. ${g.hz_max} Hz`, etykietaMin: `min. ${g.hz_min} Hz`,
-    klikS: (gora) => {
-      const nast = (v, filtr) => { const l = stopnie.filter(filtr); return l[(l.indexOf(v) + 1) % l.length] ?? l[0]; };
-      const min = gora ? g.hz_min : nast(g.hz_min, (x) => x <= g.hz_max);
-      const max = gora ? nast(g.hz_max, (x) => x >= g.hz_min) : g.hz_max;
+    zakres: { max: g.hz_max / (g.n || 3600), min: g.hz_min / (g.n || 3600) },
+    ustawZakres: (wartosc, ktory) => {
+      const hz = stopnie.reduce((a, b) => (Math.abs(b - wartosc * (g.n || 3600)) < Math.abs(a - wartosc * (g.n || 3600)) ? b : a), stopnie[0]);
+      const max = ktory === 'max' ? Math.max(hz, g.hz_min) : g.hz_max, min = ktory === 'min' ? Math.min(hz, g.hz_max) : g.hz_min;
       akcje.rozkaz({ generator_id: g.id, kod: 'zakres', hz_min: min, hz_max: max, pulpit: 'Osłony' });
     },
   });
@@ -667,6 +785,13 @@ function oslony(s, st, akcje) {
 }
 
 // ------------------------------------------------------------------------------------------- Reaktory
+// Kolejność zapalania lampek reaktora: równomiernie po całej siatce (ciąg złotego podziału), nie od lewego górnego rogu —
+// k pierwszych lampek tej kolejności to k porcji rozsianych po kwadracie.
+const KOLEJNOSC_REAKTORA = (() => {
+  const n = 3600, ranga = new Int16Array(n);
+  [...Array(n).keys()].sort((a, b) => ((a * 0.6180339887) % 1) - ((b * 0.6180339887) % 1)).forEach((i, r) => { ranga[i] = r; });
+  return ranga;
+})();
 function reaktory(s, st, akcje) {
   const j = wlasna(s);
   const pobor = j.pobor_oslon_proc || 0;
@@ -676,7 +801,7 @@ function reaktory(s, st, akcje) {
     const n = 3600, os = Math.round(n * pobor / 100), se = Math.round(n * sensory / 100);
     return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.7cqw);${CZCIONKA}` },
       h('div', `osłony ${pobor}% · sensory ${sensory}% · wolne ${(100 - pobor - sensory).toFixed(1)}%`),
-      siatkaLampek(n, 60, (i) => (i < os ? [77, 226, 201] : i < os + se ? [201, 155, 255] : [16, 26, 34])));
+      siatkaLampek(n, 60, (i) => { const r = KOLEJNOSC_REAKTORA[i]; return r < os ? [77, 226, 201] : r < os + se ? [201, 155, 255] : [16, 26, 34]; }));
   };
   return pulpit(j.profil, 'Reaktory', {
     'REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie': { ekran },
@@ -748,10 +873,10 @@ function mysliwce(s, st, akcje) {
     'EKRAN: PILOCI · ZAŁOGA · TAŚMOCIĄG': { ekran: () => powiekszany(st, akcje, 'mysliwce', (z) => ekranPlot(s, st, { zasieg: 30 / z, srodek: j,
       pierscienie: [5, 15, 30].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { if ('nr' in o && !o.ai) { st.wybranyKlucz = o.id; akcje.odswiez(); } },
       obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki.filter((x) => x.id !== j.id), j] })) },
-    'taśmociąg lewego pokładu · kolejka i ETA': { ekran: kolejka(1, 9, 'lewy pokład') },
-    'taśmociąg prawego pokładu · kolejka i ETA': { ekran: kolejka(10, 18, 'prawy pokład') },
-    'start klucza (lewy pokład)': { klik: startStrony(1, 9) }, 'start klucza (prawy pokład)': { klik: startStrony(10, 18) },
-    'powrót do hangaru (lewy pokład)': { klik: powrotStrony(1, 9) }, 'powrót do hangaru (prawy pokład)': { klik: powrotStrony(10, 18) },
+    'taśmociąg lewego pokładu · kolejka i ETA': { ekran: kolejka(1, 15, 'lewy pokład') },
+    'taśmociąg prawego pokładu · kolejka i ETA': { ekran: kolejka(16, 30, 'prawy pokład') },
+    'start klucza (lewy pokład)': { klik: startStrony(1, 15) }, 'start klucza (prawy pokład)': { klik: startStrony(16, 30) },
+    'powrót do hangaru (lewy pokład)': { klik: powrotStrony(1, 15) }, 'powrót do hangaru (prawy pokład)': { klik: powrotStrony(16, 30) },
     'rozkaz klucza: patrol · ochrona · atak · skan': { etykieta: `rozkaz: ${nazwyR[st.rozkazMysliwcow]}${wybrany ? ` → klucz ${wybrany.nr}` : ''} (dotknij, by zmienić)`,
       klik: () => { st.rozkazMysliwcow = ROZK[(ROZK.indexOf(st.rozkazMysliwcow) + 1) % ROZK.length]; akcje.odswiez(); } },
     'kurs przechwycenia': { klik: wymagaj((k) => doKlucza(akcje, k, 'atak', 'Myśliwce')) },
@@ -788,7 +913,9 @@ function eskadra(s, st, akcje, stala = null) {
   if (st.eskadra > ile) st.eskadra = 1;
   const moje = klucze.filter((k) => Math.ceil(k.nr / 3) === st.eskadra);
   const lot = moje.filter((k) => k.stan === 'w_locie');
-  const srodek = lot.length ? { x: lot.reduce((a, k) => a + k.x, 0) / lot.length, y: lot.reduce((a, k) => a + k.y, 0) / lot.length, kurs: 0, strona: j.strona } : j;
+  const sr = (f) => lot.reduce((a, k) => a + f(k), 0) / lot.length;
+  const srodek = lot.length ? { x: sr((k) => k.x), y: sr((k) => k.y), v: Math.hypot(sr((k) => k.v * Math.sin(rad(k.kurs))), sr((k) => k.v * Math.cos(rad(k.kurs)))),
+    kurs: (Math.atan2(sr((k) => k.v * Math.sin(rad(k.kurs))), sr((k) => k.v * Math.cos(rad(k.kurs)))) * 180) / Math.PI, strona: j.strona } : j;
   const wszystkim = (kod) => () => {
     const cel = moje.filter((k) => k.stan === 'w_locie' || (kod !== 'powrot' && k.stan === 'powrot'));
     if (!cel.length) return akcje.komunikat('Żaden klucz eskadry nie jest w locie.');
@@ -1006,6 +1133,8 @@ function grawitacja(s, st, akcje) {
 // Konsola o nazwie pulpitu (KONSOLE) albo stanowisko pilota: „Klucz N” (jeden klucz), „Eskadra N” (klucze 3N−2…3N).
 export function konsola(nazwa, s, st, akcje) {
   if (!s.jednostki.length) return h('div.komunikat', 'Brak okrętu w tej symulacji.');
+  ustawZegar(st, s);
+  biezaceOdswiez = akcje.odswiez;
   const nrKlucza = /^Klucz (\d+)$/.exec(nazwa), nrEskadry = /^Eskadra (\d+)$/.exec(nazwa);
   if (nrKlucza) {
     const k = wlasneKlucze(s, wlasna(s)).find((x) => x.nr === Number(nrKlucza[1]));

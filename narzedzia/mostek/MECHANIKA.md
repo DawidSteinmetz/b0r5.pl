@@ -609,6 +609,19 @@ Na konsolach (obraz, bez wpływu na wynik silnika):
   rozdzielczości), zasięg i czas integracji skanu nadprzestrzeni, tryb bierny (widać tylko emitujących, bez pomiaru Hz).
   Zmarszczki widzi też Nawigacja po synchronizacji z sensorami; „wyślij Hz do kontroli ognia” włącza automatyczne Hz baterii.
 
+**Myśliwce:** odstęp startów z taśmociągu = 60 s / ((0,5 + tempo w zakresie) × 2 przy wzmocnionym taśmociągu pokładu
+klucza (1–15 lewy, dalej prawy) × 1,25 z załogą wezwaną × 1,25 / 1,5 przy alarmie żółtym / czerwonym), co najmniej 5 s.
+Alarm normalny / żółty / czerwony od razu wysyła do startu 1 / 4 / wszystkie klucze z hangaru; kolejność startu według
+składu (kadeci najpierw … asy najpierw); START bez wybranego klucza podrywa ustawioną liczbę kluczy (w zakresie).
+Synchronizacja z sensorami: klucze okrętu strzelają do kluczy wroga z θ × 0,9; IFF z Kontrolą ognia — jak na Kontroli ognia.
+
+**Grawitacja:** blokada Anchor/Lock — po założeniu okręt hamuje (0,01 km/s na tik), po 10 / (0,5 + siła blokady) s
+(od razu przy wzmocnionym polu blokady) stoi; skręca tylko z synchronizacją z nawigacją; utrzymana blokada to stabilna
+platforma ognia (θ baterii × 0,9, × 0,85 przy wzmocnieniu). Pole pokładowe (1 g = 50%, w zakresie): θ baterii × (1 + 0,2 ×
+|pole − 0,5|); zasilanie grawitacji < 30% bez synchronizacji z reaktorem — pole × 0,7 i θ × 1,1; wzmocniona grawitacja
+θ × 0,95. Pobór: blokada 10 × siła, pole i zasilanie ± 4 × (n − 0,5) (synchronizacja z reaktorem połowę), rezerwa blokady
+10 × n. „Równaj pole z reaktorem” — pole = częstotliwość bazowa; odniesienie (inny okręt) — odległość, namiar i kurs na nie.
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

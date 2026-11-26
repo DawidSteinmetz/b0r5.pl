@@ -344,6 +344,8 @@ def strzal_w_klucz(stan, tik, k, t):
     ft, fk = figura(stan, kanal_klucza(t)), figura(stan, kanal_klucza(k))
     geom = 0.5 + 2 * abs(math.sin(radiany(t['kurs'] - k['kurs'])))
     theta = m['theta'] / 1000 * geom * (ROZK[ft]['theta'] if ft and ROZK[ft]['theta'] else 1) * (ROZK[fk]['theta_wl'] if fk and ROZK[fk]['theta_wl'] else 1)
+    mac = next((x for x in stan['jednostki'] if x['nr'] == k['macierzysta']), None)
+    if mac is not None and nast(mac, 'sync_mysl_sens') >= 0.5: theta *= 0.9
     p = celnosc(theta, odleglosc(k, t), mt['przekroj'])
     kan = kanal_klucza(k)
     for i in range(k['maszyny']):
@@ -402,6 +404,7 @@ def ogien_okretu(stan, tik, j):
         if n('sync_tl_ko_' + bb) >= 0.5: th *= 0.85
         if n('sync_ko_sens') >= 0.5: th *= 0.9
         if nast(cel, 'zaklocanie') >= 0.5: th *= 1.25
+        th *= mnoznik_platformy(stan, j)
         pojedynczy = 0.25 <= tryb < 0.75
         if pojedynczy: th *= 0.7
         if tryb >= 0.75: th *= 1.5
@@ -488,7 +491,7 @@ WZM_BRONI = ('tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony') + tuple('pd_
 # wzmocnienia napędu (Silniki, Nawigacja): +3 do poboru silników i +0,2 ciepła na tik każde
 WZM_SILNIKOW = ('gl_l', 'gl_p', 'gl_s', 'man_lg', 'man_pg', 'man_ld', 'man_pd', 'man_all', 'skret_l', 'skret_p')
 # wzmocnienia sensorów i radaru: +2 do poboru systemów podstawowych i +0,2 ciepła na tik każde
-WZM_SENSOROW = ('radar_tx', 'radar_rx', 'skan_nad', 'skan_rozdz')
+WZM_SENSOROW = ('radar_tx', 'radar_rx', 'skan_nad', 'skan_rozdz', 'grawitacja', 'blokada', 'tasma_l', 'tasma_p')
 WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI + WZM_SILNIKOW + WZM_SENSOROW
 SYNC_OSLON = ('sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p')
 NASTAWY = {
@@ -526,6 +529,13 @@ NASTAWY = {
     'radar_zasieg_max': 1.0, 'radar_zasieg_min': 0.0, 'radar_rx': 0.5, 'radar_czul_max': 1.0, 'radar_czul_min': 0.5,
     'prog_zblizenia': 0.3, 'prog_kolizji': 0.3333, 'radar_tempo': 0.3333, 'radar_tlumienie': 0.0, 'radar_zrodlo': 0.0,
     'sens_pasmo': 0.5, 'sens_hz_max': 1.0, 'sens_hz_min': 0.0, 'sens_integr': 0.5, 'sens_probki': 0.5, 'skan_min': 0.0, 'skan_poziom': 0.0,
+    # Myśliwce: tempo taśmociągu (z zakresem), alarm (0 normalny, 0,5 żółty, 1 czerwony), załoga wezwana, liczba kluczy
+    # do poderwania (z zakresem) i skład (kolejność startu: kadeci … asy) — dwa ostatnie tylko konsola; synchronizacja z sensorami
+    'tasma_tempo': 0.5, 'tasma_min': 0.0, 'tasma_max': 1.0, 'alarm_mysl': 0.0, 'zaloga': 0.0,
+    'ile_kluczy': 0.0, 'ile_min': 0.0, 'ile_max': 1.0, 'sklad': 0.5, 'sync_mysl_sens': 0.0,
+    # Grawitacja: pole pokładowe (z zakresem) i jego zasilanie, blokada Anchor/Lock (moc z zakresem, rezerwa), synchronizacje
+    'pole': 0.5, 'pole_min': 0.0, 'pole_max': 1.0, 'grav_zasil': 0.5, 'blokada': 0.0, 'blokada_od': 0.0,
+    'blokada_moc': 0.5, 'blokada_min': 0.0, 'blokada_max': 1.0, 'blokada_rez': 0.0, 'sync_grav_reak': 0.0, 'sync_grav_nav': 0.0,
 }
 GRUPY_WYROWNANIA = {
     'baterie': ('przydz_tl', 'przydz_jon', 'rez_salwa'),
@@ -538,7 +548,44 @@ GRUPY_WYROWNANIA = {
                 'dysza_lg', 'dysza_pg', 'dysza_ld', 'dysza_pd', 'trym_poch', 'trym_odch'),
     'nawigacja': ('skret_max_l', 'skret_min_l', 'skret_max_p', 'skret_min_p', 'nav_man_l', 'nav_man_p', 'katdysz_l', 'katdysz_p', 'przechyl'),
     'sensory': ('sens_pasmo', 'sens_hz_max', 'sens_hz_min', 'sens_integr', 'sens_probki', 'sens_nad', 'skan_min'),
+    'grawitacja': ('pole', 'pole_min', 'pole_max', 'grav_zasil'),
 }
+
+
+def interwal_tasmy(stan, k):
+    """Odstęp startów z taśmociągu okrętu matki klucza (s): tasma_s / (tempo w zakresie × wzmocnienie pokładu klucza
+    (1–15 lewy, dalej prawy) × załoga wezwana × alarm żółty / czerwony)."""
+    j = next((x for x in stan['jednostki'] if x['nr'] == k['macierzysta']), None)
+    if j is None: return STALE['tasma_s']
+    def n(c): return nast(j, c)
+    mult = 0.5 + min(max(n('tasma_tempo'), n('tasma_min')), n('tasma_max'))
+    if wzm(stan, j, 'tasma_l' if k['nr'] <= 15 else 'tasma_p'): mult *= 2.0
+    if n('zaloga') >= 0.5: mult *= 1.25
+    a = n('alarm_mysl')
+    if a >= 0.75: mult *= 1.5
+    elif a >= 0.25: mult *= 1.25
+    return max(5, int(zaokr(STALE['tasma_s'] / mult)))
+
+
+def stan_blokady(stan, j):
+    """Blokada Anchor/Lock: 'zwolniona', 'stabilizowanie' (10 / (0,5 + moc) s od założenia) albo 'utrzymana'
+    (od razu przy wzmocnionym polu blokady)."""
+    if nast(j, 'blokada') < 0.5: return 'zwolniona'
+    moc = min(max(nast(j, 'blokada_moc'), nast(j, 'blokada_min')), nast(j, 'blokada_max'))
+    if wzm(stan, j, 'blokada') or stan['tik'] - nast(j, 'blokada_od') >= 10 / (0.5 + moc): return 'utrzymana'
+    return 'stabilizowanie'
+
+
+def mnoznik_platformy(stan, j):
+    """Celność baterii okrętu od pokładu: blokada utrzymana (stabilna platforma) × 0,9 (× 0,85 wzmocniona), pole
+    pokładowe daleko od 1 g × (1 + 0,2 · |pole − 0,5|), słabe zasilanie grawitacji bez synchronizacji z reaktorem × 1,1,
+    wzmocniona grawitacja pokładowa × 0,95."""
+    def n(c): return nast(j, c)
+    f = 1 + 0.2 * abs(min(max(n('pole'), n('pole_min')), n('pole_max')) - 0.5)
+    if stan_blokady(stan, j) == 'utrzymana': f *= 0.85 if wzm(stan, j, 'blokada') else 0.9
+    if n('grav_zasil') < 0.3 and n('sync_grav_reak') < 0.5: f *= 1.1
+    if wzm(stan, j, 'grawitacja'): f *= 0.95
+    return f
 
 
 def mnoznik_skretu(stan, j, b):
@@ -629,6 +676,8 @@ def zasilanie(stan, tik, j):
     podst = koszt_sensorow(j.get('zasieg_sensorow', 1000)) + 10 * n('przydz_hiper') + 3 * n('sync_przedni_pr') + 4 * n('pole_komory')
     podst += 4 * (n('radar_moc') - 0.5) + 4 * (n('sens_nad') - 0.5) - 2 * (1 - n('radar_aktywny')) - 2 * (1 - n('sens_aktywny')) + 6 * n('zaklocanie')
     for c in WZM_SENSOROW: podst += 2 * w(c)
+    moc_bl = min(max(n('blokada_moc'), n('blokada_min')), n('blokada_max'))
+    podst += 10 * moc_bl * n('blokada') + 4 * (n('pole') - 0.5) + 4 * (n('grav_zasil') - 0.5) * (0.5 if n('sync_grav_reak') >= 0.5 else 1.0) + 10 * n('blokada_rez')
     podst = max(0.0, podst)
     przel_sil, przel_podst = n('przel_sil_zapas') >= 0.5, n('przel_podst_przedni') >= 0.5
     # reaktor uzbrojenia: najpierw baterie (produkcja w zakresie min…maks), nadwyżka do puli po synchronizacji z rdzeniem
@@ -856,6 +905,14 @@ def ster_okretu(stan, j):
     ciąg silników głównych burt i środkowego, zakresy min./maks., trym pochylenia (sprawność), wzmocnienia,
     różnica ciągu burt (dryf zwrotu), trym odchylenia, wychylenie dysz manewrowych (przesuw pod skosem)."""
     def n(k): return nast(j, k)
+    bl = stan_blokady(stan, j)
+    if bl != 'zwolniona':
+        # Anchor/Lock: okręt hamuje (stabilizowanie) i stoi (utrzymana); skręt tylko z synchronizacją z nawigacją
+        j['v'] = 0.0 if bl == 'utrzymana' else max(0.0, j['v'] - 0.01)
+        if n('sync_grav_nav') >= 0.5 and j.get('kurs_cel') is not None:
+            zw = ((PROFILE[j['profil']].get('silniki') or {}).get('obrot_deg_na_min') or 60) / 60
+            j['kurs'] = norm180(j['kurs'] + max(-zw, min(zw, norm180(j['kurs_cel'] - j['kurs']))))
+        return
     if j.get('kurs_cel') is not None:
         sil = PROFILE[j['profil']].get('silniki') or {}
         zwrot0 = (sil.get('obrot_deg_na_min') or 60) / 60
@@ -938,7 +995,7 @@ def krok(stan):
                 if w['kod'] == 'start':
                     if k['stan'] == 'hangar' and k['start'] is None:
                         m = k['macierzysta']
-                        k['start'] = max(tik, stan['tasma'].get(m, -10 ** 9) + STALE['tasma_s'])
+                        k['start'] = max(tik, stan['tasma'].get(m, -10 ** 9) + interwal_tasmy(stan, k))
                         stan['tasma'][m] = k['start']
                 else:
                     k['rozkaz'] = w['kod']
@@ -962,6 +1019,8 @@ def krok(stan):
             else:
                 k, v = w['wartosc'].split('=')
                 j['nastawy'][k] = float(v)
+                if k == 'blokada' and float(v) >= 0.5:
+                    j['nastawy']['blokada_od'] = float(tik)
                 if k.startswith('tryb_') and float(v) >= 0.75:
                     j['nastawy']['zapor_do_' + k[-1]] = float(tik + 10 + int(zaokr(50 * nast(j, 'czas_zapor'))))
         if w['kod'].startswith('przestrojenie'):

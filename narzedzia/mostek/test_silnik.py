@@ -155,9 +155,18 @@ if '--php' in sys.argv:
                     (2, 2, 'n_zaklocanie', 'nastawa', 'zaklocanie=1'), (3, 1, 'n_radar_moc', 'nastawa', 'radar_moc=1'),
                     (4, 1, 'n_sync_radar_ko', 'synchronizuj', 'sync_radar_ko=1'), (4, 1, 'n_sync_radar_iff', 'synchronizuj', 'sync_radar_iff=1'),
                     (20, 1, 'wzm_radar_tx', 'wzmocnij', None), (25, 1, 'wzm_skan_nad', 'wzmocnij', None), (200, 1, 'n_sens_aktywny', 'nastawa', 'sens_aktywny=1')]
+    # Myśliwce i Grawitacja: synchronizacja kluczy z sensorami, alarm i załoga (taśmociąg), blokada Anchor/Lock z jazdą,
+    # pole pokładowe, słabe zasilanie grawitacji, wzmocnienia
+    MYSL_GRAW_TEST = [(1, 1, 'n_sync_mysl_sens', 'synchronizuj', 'sync_mysl_sens=1'), (1, 1, 'n_alarm_mysl', 'nastawa', 'alarm_mysl=1'),
+                      (1, 1, 'n_zaloga', 'nastawa', 'zaloga=1'), (2, 1, 'ster', 'ster', '30;0.2'), (3, 1, 'n_pole', 'nastawa', 'pole=0.9'),
+                      (4, 1, 'n_grav_zasil', 'nastawa', 'grav_zasil=0.1'), (40, 1, 'n_blokada', 'nastawa', 'blokada=1'),
+                      (40, 1, 'n_blokada_moc', 'nastawa', 'blokada_moc=0.8'), (60, 1, 'n_sync_grav_nav', 'synchronizuj', 'sync_grav_nav=1'),
+                      (70, 1, 'ster', 'ster', '-60;0.2'), (90, 1, 'wzm_blokada', 'wzmocnij', None), (100, 1, 'wzm_grawitacja', 'wzmocnij', None),
+                      (250, 1, 'n_blokada', 'nastawa', 'blokada=0')]
     przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420),
                  przebieg('walako_atak', 3, True, 420, NASTAWY_TEST), przebieg('walako_atak', 3, True, 420, OGIEN_TEST),
-                 przebieg('walako_atak', 3, True, 420, RUCH_TEST), przebieg('walako_atak', 3, True, 420, SENSORY_TEST)]
+                 przebieg('walako_atak', 3, True, 420, RUCH_TEST), przebieg('walako_atak', 3, True, 420, SENSORY_TEST),
+                 przebieg('walako_klucze', 5, True, 300, MYSL_GRAW_TEST), przebieg('walako_atak', 3, True, 420, MYSL_GRAW_TEST)]
     for pb in przebiegi:
         zs = [[round(x, 2) if isinstance(x, float) else x for x in z] for z in pb['zasilanie']]
         print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}{' + nastawy' if pb['rozkazy'] else ''}: zasilanie {zs}")

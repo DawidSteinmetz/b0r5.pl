@@ -87,8 +87,8 @@ symulacji okrętu, a jego zmiana przechodzi też na trwające symulacje tego okr
 zostaje jednorazowy (tylko ta symulacja). Gracz ze stałym stanowiskiem widzi aplikację Symulacje i na mostku tylko
 swoje pulpity; w trwającej symulacji jak dotąd — tryb stanowiska po zalogowaniu.
 
-**Obsługa** (26.11.2026): pulpit wypełnia ekran (cała szerokość, wysokość do dołu okna; komórki nie muszą być
-kwadratowe). Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
+**Obsługa** (26.11.2026): pulpit ma stałe proporcje siatki (kwadratowe komórki) i dopasowuje się do ekranu
+szerokością albo wysokością (do dołu okna) — co pierwsze się skończy. Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
 urządzenia, tryby i filtry — przełączniki świecące w kolorze typu; pozostałe polecenia — przyciski sprężynowe; żółte
 suwaki — uchwyt w miejscu dotknięcia; szare — dwa uchwyty zakresu), dymek mówi wtedy „bez wpływu na symulację”.
 Wciśnięcie: przycisk i napis zapadają się, sprężynowy wraca, przełącznik zostaje lekko wciśnięty. Szary suwak osłon

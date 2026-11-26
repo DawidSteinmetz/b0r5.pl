@@ -232,15 +232,18 @@ function pulpit(klasa, nazwa, wiazania) {
   const [K, W] = FORMATY[klasa][nazwa];
   const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:4px;padding:12px;box-sizing:border-box;`;
   const telefon = K < 13;
-  // Pulpit wypełnia ekran: cała szerokość i wysokość od swojej górnej krawędzi do dołu okna (komórki nie muszą być kwadratowe).
-  const ramka = h('div', { style: `position:relative;width:100%;height:${wysokoscPulpitu ? wysokoscPulpitu + 'px' : 'calc(100dvh - 150px)'};min-height:${telefon ? 520 : 380}px;`
+  // Pulpit ma stałe proporcje siatki (K × W kwadratowych komórek) i dopasowuje się do ekranu: albo całą szerokością,
+  // albo wysokością od swojej górnej krawędzi do dołu okna — co pierwsze się skończy.
+  const proporcja = K / W;
+  const szerokosc = (wys) => `min(100%, ${Math.round(wys * proporcja)}px)`;
+  const ramka = h('div', { style: `position:relative;width:${wysokoscPulpitu ? szerokosc(wysokoscPulpitu) : `min(100%, calc((100dvh - 150px) * ${proporcja.toFixed(4)}))`};`
+    + `aspect-ratio:${K}/${W};min-width:${telefon ? 280 : 320}px;`
     + `background:linear-gradient(180deg,rgba(207,239,255,.13) 0,rgba(207,239,255,0) 30%),${BLACHA};border:3px solid ${KRAWEDZ};border-radius:10px;`
     + 'box-shadow:inset 0 0 50px rgba(0,0,0,.55),0 6px 20px rgba(0,0,0,.5);box-sizing:border-box;container-type:inline-size' });
   requestAnimationFrame(() => {
     if (!ramka.isConnected) return;
-    const g = ramka.getBoundingClientRect().top + (window.scrollY || 0) - (document.scrollingElement?.scrollTop || 0);
-    const wys = Math.round(window.innerHeight - Math.max(0, g) - 12);
-    if (wys > 200 && Math.abs(wys - wysokoscPulpitu) > 2) { wysokoscPulpitu = wys; ramka.style.height = wys + 'px'; }
+    const wys = Math.round(window.innerHeight - Math.max(0, ramka.getBoundingClientRect().top) - 12);
+    if (wys > 200 && Math.abs(wys - wysokoscPulpitu) > 2) { wysokoscPulpitu = wys; ramka.style.width = szerokosc(wys); }
   });
   // nity w narożnikach płyty
   for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
@@ -1104,10 +1107,27 @@ function mysliwce(s, st, akcje) {
     `${opis}: ` + (strona(od, doN).filter((k) => k.stan === 'hangar' && k.start_za_s != null).sort((a, b) => a.start_za_s - b.start_za_s)
       .map((k) => `K${k.nr} ${mmss(k.start_za_s)}`).join(' · ') || 'pusta'));
   const startStrony = (od, doN) => () => {
-    const k = strona(od, doN).find((x) => x.stan === 'hangar' && x.start_za_s == null);
+    const k = wHangarze(strona(od, doN))[0];
     if (k) doKlucza(akcje, k, 'start', 'Myśliwce'); else akcje.komunikat('Na tym pokładzie nie ma klucza czekającego na start.');
   };
   const powrotStrony = (od, doN) => () => strona(od, doN).filter((k) => k.stan === 'w_locie').forEach((k) => doKlucza(akcje, k, 'powrot', 'Myśliwce'));
+  // MECHANIKA 11.4 (Myśliwce): skład — kolejność startu (kadeci … asy), liczba kluczy do poderwania (w zakresie), alarm
+  // (normalny 1 / żółty 4 / czerwony wszystkie gotowe klucze startują; żółty i czerwony przyspieszają taśmociąg).
+  const n = nastawyKonsoli(j, st, akcje, 'Myśliwce');
+  const N = n.N;
+  const RANGI_KOL = { kadet: 0, standard: 1, as: 2 };
+  const wHangarze = (lista) => lista.filter((k) => k.stan === 'hangar' && k.start_za_s == null)
+    .sort((a, b) => (N('sklad') < 0.4 ? RANGI_KOL[a.ranga] - RANGI_KOL[b.ranga] : N('sklad') > 0.6 ? RANGI_KOL[b.ranga] - RANGI_KOL[a.ranga] : 0) || a.nr - b.nr);
+  const ileKluczy = Math.max(1, Math.round(Math.min(Math.max(N('ile_kluczy'), N('ile_min')), N('ile_max')) * klucze.length));
+  const poderwij = (ile) => {
+    const do_startu = wHangarze(klucze).slice(0, ile);
+    if (!do_startu.length) return akcje.komunikat('Brak kluczy gotowych do startu w hangarze.');
+    do_startu.forEach((k) => doKlucza(akcje, k, 'start', 'Myśliwce'));
+  };
+  const alarm = N('alarm_mysl');
+  const alarmBtn = (v, ile, opis) => ({ wl: Math.abs(alarm - v) < 0.25, przelacznik: true, etykieta: opis, klik: () => { n.ustaw('alarm_mysl', v); poderwij(ile); } });
+  const interwal = Math.round(60 / ((0.5 + Math.min(Math.max(N('tasma_tempo'), N('tasma_min')), N('tasma_max'))) * (N('zaloga') >= 0.5 ? 1.25 : 1)
+    * (alarm >= 0.75 ? 1.5 : alarm >= 0.25 ? 1.25 : 1)));
   const w = {
     'EKRAN: PILOCI · ZAŁOGA · TAŚMOCIĄG': { ekran: () => powiekszany(st, akcje, 'mysliwce', (z) => ekranPlot(s, st, { zasieg: 30 / z, srodek: j,
       pierscienie: [5, 15, 30].map((r) => zaokr(r / z)), prognozy: true, wybierz: (o) => { if ('nr' in o && !o.ai) { st.wybranyKlucz = o.id; akcje.odswiez(); } },
@@ -1120,12 +1140,24 @@ function mysliwce(s, st, akcje) {
       klik: () => { st.rozkazMysliwcow = ROZK[(ROZK.indexOf(st.rozkazMysliwcow) + 1) % ROZK.length]; akcje.odswiez(); } },
     'kurs przechwycenia': { klik: wymagaj((k) => doKlucza(akcje, k, 'atak', 'Myśliwce')) },
     'wstrzymaj / zawróć': { etykieta: 'wstrzymaj / zawróć (ochrona okrętu)', klik: wymagaj((k) => doKlucza(akcje, k, 'ochrona', 'Myśliwce')) },
-    'START': { etykieta: wybrany ? (wybrany.stan === 'hangar' ? `START klucza ${wybrany.nr}` : `WYKONAJ: ${st.rozkazMysliwcow} → klucz ${wybrany.nr}`) : 'START',
-      klik: wymagaj((k) => doKlucza(akcje, k, k.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce')) },
+    'START': { etykieta: wybrany ? (wybrany.stan === 'hangar' ? `START klucza ${wybrany.nr}` : `WYKONAJ: ${st.rozkazMysliwcow} → klucz ${wybrany.nr}`) : `START ${ileKluczy} kluczy`,
+      klik: () => (wybrany ? doKlucza(akcje, wybrany, wybrany.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce') : poderwij(ileKluczy)) },
+    'suwak: maksymalna liczba kluczy do poderwania': n.zakres('ile_max', 'ile_min', 'kluczy maks.', 'min.', (v) => `${Math.round(v * klucze.length)}`),
+    'suwak: liczba kluczy do poderwania': n.suwak('ile_kluczy', 'do poderwania', () => `${ileKluczy}`),
+    'suwak: skład załogi (asy · standardowi · kadeci)': n.suwak('sklad', 'kolejność startu', (v) => (v < 0.4 ? 'kadeci najpierw' : v > 0.6 ? 'asy najpierw' : 'po kolei')),
+    'suwak: maksymalne tempo taśmociągu': { ...n.zakres('tasma_tempo', 'tasma_min', 'taśmociąg', 'min.'), etykieta: `taśmociąg: co ${interwal} s` },
+    'wzmocnij taśmociąg lewego pokładu startowego': n.wzmocnij('tasma_l', 'wzmocnij taśmociąg lewego pokładu'),
+    'wzmocnij taśmociąg prawego pokładu startowego': n.wzmocnij('tasma_p', 'wzmocnij taśmociąg prawego pokładu'),
+    'ALARM: normalny (1 klucz gotowy)': alarmBtn(0, 1, 'ALARM: normalny (1 klucz)'),
+    'ALARM: żółty (4 klucze gotowe)': alarmBtn(0.5, 4, 'ALARM: żółty (4 klucze)'),
+    'ALARM: czerwony (wszystkie klucze)': alarmBtn(1, klucze.length, 'ALARM: czerwony (wszystkie)'),
+    'wezwij załogę i pilotów': n.przelacznik('zaloga', N('zaloga') >= 0.5 ? 'załoga na stanowiskach (taśmociąg szybciej)' : 'wezwij załogę i pilotów'),
+    'synchronizacja IFF z kontrolą ognia': n.przelacznik('sync_ko_iff'),
+    'synchronizacja z sensorami (Hz celów)': n.przelacznik('sync_mysl_sens'),
   };
   for (let n = 1; n <= 30; n++) {  // układ Walako: 30 gniazd (1–15 lewy pokład, 16–30 prawy)
     const k = klucze.find((x) => x.nr === n);
-    if (!k) continue;
+    if (!k) { w[`Klucz ${n}`] = { etykieta: `gniazdo ${n} · puste` }; continue; }
     w[`Klucz ${n}`] = { ...lampa(k, `Klucz ${n} · ${opisLampy(k)}`), wl: st.wybranyKlucz === k.id,
       klik: () => { if (st.wybranyKlucz === k.id) st.zoomKlucz = k.id; else st.wybranyKlucz = k.id; akcje.odswiez(); } };
   }
@@ -1491,18 +1523,65 @@ function kontrolaOgnia(s, st, akcje) {
 }
 
 // ------------------------------------------------------------------------------------------- Grawitacja
-// Pole pokładowe 1 g; blokada Anchor/Lock nie działa w symulacji bitwy (bez wpływu na walkę) — odczyty.
+// MECHANIKA 11.4: blokada Anchor/Lock (okręt hamuje i stoi; stabilna platforma ognia; skręt tylko z synchronizacją
+// z nawigacją), pole pokładowe i jego zasilanie (celność baterii, pobór), wzmocnienia, odniesienie dla pozycji.
 function grawitacja(s, st, akcje) {
   const j = wlasna(s);
+  const K = 'Grawitacja';
+  const n = nastawyKonsoli(j, st, akcje, K);
+  const N = n.N;
   const sekcje = Object.keys(j.sekcje || {});
+  const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+  const pole = clamp(N('pole'), N('pole_min'), N('pole_max'));
+  const mocBl = clamp(N('blokada_moc'), N('blokada_min'), N('blokada_max'));
+  const wz = j.wzmocnienia || {};
+  const blokada = N('blokada') >= 0.5;
+  const stab = 10 / (0.5 + mocBl);
+  const odZal = (s.tik ?? 0) - (j.nastawy?.blokada_od ?? 0);
+  const stanBl = !blokada ? 'zwolniona' : wz.blokada?.stan === 'dziala' || odZal >= stab ? 'utrzymana' : 'stabilizowanie';
+  const slabe = N('grav_zasil') < 0.3 && N('sync_grav_reak') < 0.5;
+  const g = 2 * pole * (slabe ? 0.7 : 1);
+  const pobor = 10 * mocBl * (blokada ? 1 : 0) + 4 * (pole - 0.5) + 4 * (N('grav_zasil') - 0.5) * (N('sync_grav_reak') >= 0.5 ? 0.5 : 1) + 10 * N('blokada_rez');
+  const inne = s.jednostki.filter((x) => x.id !== j.id && x.stan === 'w_bitwie');
+  const ref = inne.find((x) => idObiektu(x) === st.grawRef);
   const ekranPokladow = () => h('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(6, sekcje.length || 1)},1fr);gap:3px;width:100%;height:100%;padding:4px;box-sizing:border-box;font-size:max(7px,0.7cqw);color:#cfe;${CZCIONKA}` },
-    ...sekcje.map((k) => { const v = j.sekcje[k]; return h('div', { style: `background:${v > 75 ? '#163a33' : v > 40 ? '#4a3d12' : '#4a1616'};border-radius:3px;padding:2px` }, `${k}`, h('br'), `${v > 25 ? '1,00' : '0,6'} g`); }));
-  return pulpit(j.profil, 'Grawitacja', {
+    ...sekcje.map((k) => {
+      const v = j.sekcje[k], gs = g * (v > 25 ? 1 : 0.6);
+      return h('div', { style: `background:${Math.abs(gs - 1) < 0.15 && v > 75 ? '#163a33' : Math.abs(gs - 1) < 0.4 && v > 40 ? '#4a3d12' : '#4a1616'};border-radius:3px;padding:2px` },
+        `${k}`, h('br'), `${gs.toFixed(2).replace('.', ',')} g`);
+    }));
+  const ekranRef = () => h('div', { style: `padding:6px;color:#cfe;font-size:max(7px,0.75cqw);line-height:1.5;${CZCIONKA}` },
+    h('div', { style: `color:${stanBl === 'utrzymana' ? '#99ff99' : stanBl === 'stabilizowanie' ? '#ffd27a' : '#9fb4c8'}` },
+      `blokada Anchor/Lock: ${stanBl}${stanBl === 'stabilizowanie' ? ` (${Math.max(0, Math.ceil(stab - odZal))} s)` : ''}`),
+    `odniesienie: ${ref ? `${ref.nazwa} · ${km(odl(ref, j))} km · namiar ${wzgledem(j, ref).namiar}°` : 'brak (pozycja własna)'}`, h('br'),
+    `pozycja: ${km(j.x)} / ${km(j.y)} km · kurs ${Math.round(j.kurs)}° · ${(j.v * 3600).toFixed(0)} km/h`, h('br'),
+    `pole pokładowe ${g.toFixed(2).replace('.', ',')} g${slabe ? ' · słabe zasilanie' : ''}`);
+  const opisStanu = { etykieta: `stan blokady: ${stanBl}` };
+  return pulpit(j.profil, K, {
     'EKRAN: GRAWITACJA POKŁADÓW · sekcje, przeciążenia, spadki zasilania': { ekran: ekranPokladow },
-    'EKRAN: REFERENCJA · POZYCJA · STABILNOŚĆ blokady': { ekran: () => h('div', { style: `padding:6px;color:#cfe;font-size:max(7px,0.75cqw);${CZCIONKA}` }, 'blokada Anchor/Lock: zwolniona', h('br'), `pozycja: ${km(j.x)} / ${km(j.y)} km`, h('br'), `kurs ${Math.round(j.kurs)}°`) },
-    'odczyt: pobór mocy': { etykieta: 'pobór: 0,4% mocy' }, 'odczyt: sygnatura': { etykieta: 'sygnatura: pole 1 g' },
-    'stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana': { etykieta: 'stan blokady: gotowa' },
-    'tryb codzienny': { wl: true },
+    'EKRAN: REFERENCJA · POZYCJA · STABILNOŚĆ blokady': { ekran: ekranRef },
+    'odczyt: pobór mocy': { etykieta: `pobór: ${pobor.toFixed(1)} porcji` },
+    'odczyt: sygnatura': { etykieta: blokada ? 'sygnatura: studnia grawitacyjna (wysoka)' : `sygnatura: pole ${g.toFixed(2).replace('.', ',')} g` },
+    'stan blokady: gotowa · stabilizowanie · utrzymana · zakłócona · zwalniana': opisStanu,
+    'suwak: maksymalna siła pola pokładowego': n.zakres('pole_max', 'pole_min', 'pole maks.', 'min.', (v) => `${(2 * v).toFixed(1)} g`),
+    'suwak: siła pola pokładowego': n.suwak('pole', 'pole pokładowe (1 g = 50%)', (v) => `${(2 * clamp(v, N('pole_min'), N('pole_max'))).toFixed(2)} g`),
+    'suwak: maksymalna moc blokady Anchor/Lock': n.zakres('blokada_max', 'blokada_min', 'blokada maks.', 'min.'),
+    'suwak: siła pola blokady': n.suwak('blokada_moc', 'siła blokady', () => `stabilizacja ${Math.round(stab)} s`),
+    'suwak: zasilanie grawitacji pokładowej': n.suwak('grav_zasil', 'zasilanie grawitacji'),
+    'suwak: rezerwa mocy blokady': n.suwak('blokada_rez', 'rezerwa blokady', (v) => `${Math.round(10 * v)} porcji`),
+    'wzmocnij grawitację pokładową': n.wzmocnij('grawitacja', 'wzmocnij grawitację pokładową'),
+    'wzmocnij pole blokady': n.wzmocnij('blokada', 'wzmocnij pole blokady (od razu utrzymana)'),
+    'ZAŁÓŻ / ZWOLNIJ BLOKADĘ': { wl: blokada, przelacznik: true, etykieta: blokada ? 'ZWOLNIJ BLOKADĘ' : 'ZAŁÓŻ BLOKADĘ', klik: () => n.ustaw('blokada', blokada ? 0 : 1) },
+    'tryb codzienny': { wl: !blokada, przelacznik: true, klik: () => n.ustaw('blokada', 0) },
+    'tryb Anchor / Lock': { wl: blokada, przelacznik: true, klik: () => n.ustaw('blokada', 1) },
+    'równaj pole z częstotliwością reaktora': { etykieta: 'równaj pole z reaktorem', klik: () => n.ustaw('pole', N('czest_bazowa')) },
+    'wyrównaj pole w sekcjach': n.wyrownaj('grawitacja', 'wyrównaj pole w sekcjach'),
+    'synchronizacja z reaktorem (zasilanie pokładowe)': n.przelacznik('sync_grav_reak'),
+    'synchronizacja z konsolą nawigacji (pozycja)': n.przelacznik('sync_grav_nav'),
+    'wybierz ciało / punkt odniesienia': { etykieta: ref ? `odniesienie: ${ref.nazwa} (dotknij — następne)` : 'wybierz punkt odniesienia',
+      klik: () => { const i = inne.findIndex((x) => idObiektu(x) === st.grawRef); st.grawRef = i + 1 < inne.length ? idObiektu(inne[i + 1]) : null; akcje.odswiez(); } },
+    'ustaw pozycję względem odniesienia': { etykieta: ref ? `kurs na ${ref.nazwa}` : 'ustaw pozycję (wybierz odniesienie)',
+      klik: () => (ref ? ster(akcje, j, K, { kurs: namiarNa(j, ref) }) : akcje.komunikat('Najpierw wybierz punkt odniesienia.')) },
   });
 }
 

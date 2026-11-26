@@ -589,6 +589,26 @@ natywny najbliższy częstotliwości bazowej (suwak na konsoli Reaktory, 12 s).
   wartości domyślne; „równaj ciąg z mocą reaktora” obniża prędkość zadaną do tej, którą daje zasilanie silników.
   Synchronizacje głównych z osłoną rufową to te same co na pulpicie Osłony.
 
+**Radar i Sensory** — nastawy wspólne dla mostka (każdy gracz widzi to samo). W silniku:
+- tryb bierny radaru / sensorów: −2 poboru systemów podstawowych każdy; sensory bierne — osłony w trybie auto mierzą
+  Hz wroga tylko do 60 km (zamiast 200);
+- zakłócanie: baterie wroga strzelające w ten okręt θ × 1,25; +6 poboru, +0,1 ciepła rdzenia na tik;
+- moc nadajnika radaru i zasięg skanu nadprzestrzeni: pobór ± 4 × (n − 0,5); wzmocnienia (nadajnik, odbiornik, skan
+  nadprzestrzeni, rozdzielczość): +2 poboru i +0,2 ciepła każde;
+- synchronizacje radaru z Kontrolą ognia i IFF z myśliwcami: θ obrony punktowej × 0,9 i × 0,95.
+
+Na konsolach (obraz, bez wpływu na wynik silnika):
+- Radar: zasięg = 60 km × maks. zasięgu × (0,5 + moc nadajnika) × 1,5 przy wzmocnieniu × 0,9 przy tłumieniu zakłóceń;
+  klucze do zasięgu × czułość (0,5 + wzmocnienie odbiornika, ograniczone suwakiem czułości, × 1,3 przy wzmocnieniu);
+  bliskie echa poniżej min. × 12 km wytłumione; próg szumu < 30% bez tłumienia — fałszywe echa przy każdym obrocie;
+  tryb bierny — bez wiązki, tylko 12 km. Progi alarmu: zbliżenie 0…100 km, kurs kolizyjny (najmniejsza odległość
+  w 120 s) 0…30 km; alarm się potwierdza dotknięciem. Tempo omiatania 3…12 s. „Wskaż źródło” — linie do emitujących
+  okrętów wroga; „wyślij namiar do turbolaserów” — wskazanie najbliższego okrętu wroga bateriom.
+- Sensory: moc skanu (szary suwak maks. = poziom zasięgu, min. — tylko okręty), pasmo (niskie: klucze do pełnego
+  zasięgu; wysokie: mniejsza elipsa), pasmo Hz i liczba próbek (błąd pomiaru ±10 % × (1 − próbki), 0 przy wzmocnionej
+  rozdzielczości), zasięg i czas integracji skanu nadprzestrzeni, tryb bierny (widać tylko emitujących, bez pomiaru Hz).
+  Zmarszczki widzi też Nawigacja po synchronizacji z sensorami; „wyślij Hz do kontroli ognia” włącza automatyczne Hz baterii.
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

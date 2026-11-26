@@ -149,9 +149,15 @@ if '--php' in sys.argv:
                  (50, 1, 'n_trym_poch', 'nastawa', 'trym_poch=0.8'), (60, 1, 'wzm_gl_s', 'wzmocnij', None), (60, 1, 'n_sync_man_l', 'synchronizuj', 'sync_man_l=1'),
                  (100, 1, 'ster', 'ster', '-90;0.25'), (110, 1, 'n_skret_max_l', 'nastawa', 'skret_max_l=0.6'), (120, 1, 'n_katdysz_l', 'nastawa', 'katdysz_l=0.8'),
                  (150, 1, 'wzm_man_all', 'wzmocnij', None), (300, 1, 'wyrownaj_silniki', 'wyrownaj', 'silniki')]
+    # Radar i Sensory: sensory bierne (osłony auto mierzą tylko do 60 km), zakłócanie (także krążownika wroga), moc
+    # nadajnika, synchronizacje radaru z obroną punktową, wzmocnienia sensorów
+    SENSORY_TEST = [(1, 1, 'n_sens_aktywny', 'nastawa', 'sens_aktywny=0'), (2, 1, 'n_zaklocanie', 'nastawa', 'zaklocanie=1'),
+                    (2, 2, 'n_zaklocanie', 'nastawa', 'zaklocanie=1'), (3, 1, 'n_radar_moc', 'nastawa', 'radar_moc=1'),
+                    (4, 1, 'n_sync_radar_ko', 'synchronizuj', 'sync_radar_ko=1'), (4, 1, 'n_sync_radar_iff', 'synchronizuj', 'sync_radar_iff=1'),
+                    (20, 1, 'wzm_radar_tx', 'wzmocnij', None), (25, 1, 'wzm_skan_nad', 'wzmocnij', None), (200, 1, 'n_sens_aktywny', 'nastawa', 'sens_aktywny=1')]
     przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420),
                  przebieg('walako_atak', 3, True, 420, NASTAWY_TEST), przebieg('walako_atak', 3, True, 420, OGIEN_TEST),
-                 przebieg('walako_atak', 3, True, 420, RUCH_TEST)]
+                 przebieg('walako_atak', 3, True, 420, RUCH_TEST), przebieg('walako_atak', 3, True, 420, SENSORY_TEST)]
     for pb in przebiegi:
         zs = [[round(x, 2) if isinstance(x, float) else x for x in z] for z in pb['zasilanie']]
         print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}{' + nastawy' if pb['rozkazy'] else ''}: zasilanie {zs}")

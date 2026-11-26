@@ -401,6 +401,7 @@ def ogien_okretu(stan, tik, j):
         th = theta * (0.5 + 0.5 * hz_b / hz) * ((0.5 + r) if cel['v'] <= 0.05 else (1.5 - r)) * (1 + abs(n('elewacja') - 0.5))
         if n('sync_tl_ko_' + bb) >= 0.5: th *= 0.85
         if n('sync_ko_sens') >= 0.5: th *= 0.9
+        if nast(cel, 'zaklocanie') >= 0.5: th *= 1.25
         pojedynczy = 0.25 <= tryb < 0.75
         if pojedynczy: th *= 0.7
         if tryb >= 0.75: th *= 1.5
@@ -445,6 +446,8 @@ def obrona_punktowa(stan, tik, j):
         theta = theta * kat
         if nast(j, 'sync_tl_iff_' + ('l' if x < 0 else 'p')) >= 0.5: theta *= 0.8
         if nast(j, 'sync_ko_iff') >= 0.5: theta *= 0.9
+        if nast(j, 'sync_radar_ko') >= 0.5: theta *= 0.9
+        if nast(j, 'sync_radar_iff') >= 0.5: theta *= 0.95
         if wzm(stan, j, 'pd_' + g): theta /= 1.5
         gx, gy = j['x'] + s * (-y) * dl + c * x * dl, j['y'] + c * (-y) * dl - s * x * dl
         dzialko = {'x': gx, 'y': gy}
@@ -484,7 +487,9 @@ GRUPY_PD = ('dziob', 'przod_l', 'przod_p', 'bok_l', 'bok_p', 'dol', 'rufa')
 WZM_BRONI = ('tl_l', 'tl_p', 'ogien_l', 'ogien_p', 'salwa', 'jony') + tuple('pd_' + g for g in GRUPY_PD)
 # wzmocnienia napędu (Silniki, Nawigacja): +3 do poboru silników i +0,2 ciepła na tik każde
 WZM_SILNIKOW = ('gl_l', 'gl_p', 'gl_s', 'man_lg', 'man_pg', 'man_ld', 'man_pd', 'man_all', 'skret_l', 'skret_p')
-WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI + WZM_SILNIKOW
+# wzmocnienia sensorów i radaru: +2 do poboru systemów podstawowych i +0,2 ciepła na tik każde
+WZM_SENSOROW = ('radar_tx', 'radar_rx', 'skan_nad', 'skan_rozdz')
+WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p') + WZM_BRONI + WZM_SILNIKOW + WZM_SENSOROW
 SYNC_OSLON = ('sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p')
 NASTAWY = {
     **{'pokr_' + s: 1.0 for s in SEKTORY},
@@ -513,6 +518,14 @@ NASTAWY = {
     # Nawigacja: zakres prędkości kątowej skrętu w każdą stronę, moc i kąt dysz manewrowych burt, przechył, synchronizacje
     'skret_max_l': 1.0, 'skret_min_l': 0.0, 'skret_max_p': 1.0, 'skret_min_p': 0.0, 'nav_man_l': 0.5, 'nav_man_p': 0.5,
     'katdysz_l': 0.5, 'katdysz_p': 0.5, 'przechyl': 0.5, 'sync_nav_l': 0.0, 'sync_nav_p': 0.0,
+    # Radar i Sensory — w silniku: tryb aktywny (emisja; bierny oszczędza moc, sensory bierne mierzą Hz tylko do 60 km),
+    # zakłócanie (θ baterii wroga × 1,25, koszt mocy i ciepła), moc nadajnika i zasięg skanu nadprzestrzeni (pobór),
+    # synchronizacje radaru z obroną punktową; reszta to obraz na konsolach (zasięg, czułość, szum, alarmy, pomiar Hz)
+    'radar_aktywny': 1.0, 'sens_aktywny': 1.0, 'zaklocanie': 0.0, 'radar_moc': 0.5, 'sens_nad': 0.5,
+    'sync_radar_ko': 0.0, 'sync_radar_iff': 0.0, 'sync_sens_nav': 0.0,
+    'radar_zasieg_max': 1.0, 'radar_zasieg_min': 0.0, 'radar_rx': 0.5, 'radar_czul_max': 1.0, 'radar_czul_min': 0.5,
+    'prog_zblizenia': 0.3, 'prog_kolizji': 0.3333, 'radar_tempo': 0.3333, 'radar_tlumienie': 0.0, 'radar_zrodlo': 0.0,
+    'sens_pasmo': 0.5, 'sens_hz_max': 1.0, 'sens_hz_min': 0.0, 'sens_integr': 0.5, 'sens_probki': 0.5, 'skan_min': 0.0, 'skan_poziom': 0.0,
 }
 GRUPY_WYROWNANIA = {
     'baterie': ('przydz_tl', 'przydz_jon', 'rez_salwa'),
@@ -524,6 +537,7 @@ GRUPY_WYROWNANIA = {
     'silniki': ('sil_max_l', 'sil_min_l', 'sil_max_p', 'sil_min_p', 'sil_srodek', 'man_lg', 'man_pg', 'man_ld', 'man_pd',
                 'dysza_lg', 'dysza_pg', 'dysza_ld', 'dysza_pd', 'trym_poch', 'trym_odch'),
     'nawigacja': ('skret_max_l', 'skret_min_l', 'skret_max_p', 'skret_min_p', 'nav_man_l', 'nav_man_p', 'katdysz_l', 'katdysz_p', 'przechyl'),
+    'sensory': ('sens_pasmo', 'sens_hz_max', 'sens_hz_min', 'sens_integr', 'sens_probki', 'sens_nad', 'skan_min'),
 }
 
 
@@ -613,6 +627,9 @@ def zasilanie(stan, tik, j):
     sil = 15 * n('przydz_sil')
     for c in WZM_SILNIKOW: sil += 3 * w(c)
     podst = koszt_sensorow(j.get('zasieg_sensorow', 1000)) + 10 * n('przydz_hiper') + 3 * n('sync_przedni_pr') + 4 * n('pole_komory')
+    podst += 4 * (n('radar_moc') - 0.5) + 4 * (n('sens_nad') - 0.5) - 2 * (1 - n('radar_aktywny')) - 2 * (1 - n('sens_aktywny')) + 6 * n('zaklocanie')
+    for c in WZM_SENSOROW: podst += 2 * w(c)
+    podst = max(0.0, podst)
     przel_sil, przel_podst = n('przel_sil_zapas') >= 0.5, n('przel_podst_przedni') >= 0.5
     # reaktor uzbrojenia: najpierw baterie (produkcja w zakresie min…maks), nadwyżka do puli po synchronizacji z rdzeniem
     bron = tl + jon
@@ -663,6 +680,8 @@ def zasilanie(stan, tik, j):
     for s in SEKTORY: przyrost += 0.2 * w(s)
     for c in WZM_BRONI: przyrost += 0.2 * w(c)
     for c in WZM_SILNIKOW: przyrost += 0.2 * w(c)
+    for c in WZM_SENSOROW: przyrost += 0.2 * w(c)
+    przyrost += 0.1 * n('zaklocanie')
     for b in ('l', 'p'):
         if n('tryb_' + b) >= 0.75: przyrost += 0.3
     if przyrost > 0: przyrost *= (1.5 - n('pole_komory')) * (0.8 if n('sync_glowny_pom') >= 0.5 else 1.0)
@@ -764,10 +783,11 @@ def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz, zx
 def ai_oslony(stan, tik, j):
     """Tryb automatyczny osłon (3.6): po pomiarze Hz wroga stroi generator do najbliższego stopnia natywnego ≥ Hz lasera
     w zakresie suwaków MIN/MAX. Pomiar: klucze wroga w zasięgu sensorów (200 km) — maksimum Hz."""
+    zasieg = STALE['zasieg_sensorow_km'] if nast(j, 'sens_aktywny') >= 0.5 else 60.0   # sensory bierne: tylko strefa radaru
     for gen in j['generatory']:
         if not gen['auto']: continue
-        hz = [hz_klucza(k) for k in stan['klucze'] if k['strona'] != j['strona'] and k['stan'] == 'w_locie' and odleglosc(k, j) < STALE['zasieg_sensorow_km']]
-        hz += [max(u[7] for u in TL[w['profil']]) for w in wrogowie(stan, j['strona']) if TL.get(w['profil']) and odleglosc(w, j) < STALE['zasieg_sensorow_km']]
+        hz = [hz_klucza(k) for k in stan['klucze'] if k['strona'] != j['strona'] and k['stan'] == 'w_locie' and odleglosc(k, j) < zasieg]
+        hz += [max(u[7] for u in TL[w['profil']]) for w in wrogowie(stan, j['strona']) if TL.get(w['profil']) and odleglosc(w, j) < zasieg]
         if not hz: continue
         cel = stopien_w_gore(gen['zyly']['n'], max(hz)) or gen['hz_max']
         cel = min(max(cel, gen['hz_min']), gen['hz_max'])

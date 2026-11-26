@@ -429,7 +429,7 @@ function przewidz(o, w, T, krok = 0.5) {
 }
 
 function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = null, obiekty = null, sektor = null, tory = false, prognozy = false,
-  tempo = st.tempo, maska = 0, strefy = [], zmarszczki = [], wiazkaWl = true }) {
+  tempo = st.tempo, maska = 0, strefy = [], zmarszczki = [], wiazkaWl = true, linie = [] }) {
   const P = 200;
   const sk = (P - 6) / zasieg;
   // Środek w ruchu (klucz na telefonie, eskadra, okręt): ekran startuje z pozycji przewidzianej na teraz, a cały „świat”
@@ -468,6 +468,10 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
     g.append(svg('animate', { attributeName: 'opacity', values: z.slaba ? '0.45;0.15;0.45' : '0.9;0.4;0.9', dur: '2s', repeatCount: 'indefinite' }));
     g.append(svg('text', { x: x + r + 3, y: y + 4, fill: '#d9c2ff', 'font-size': 10 }, z.opis));
     e.append(g);
+  }
+  // Linie do źródeł emisji (Radar → zakłócenia: wskaż źródło)
+  for (const o of linie) {
+    e.append(svg('line', { x1: P, y1: P, x2: px(o.x), y2: py(o.y), stroke: '#c99bff', 'stroke-width': 1, 'stroke-dasharray': '2 4', opacity: 0.8 }));
   }
   if (sektor) {
     const a0 = rad((srodek.kurs || 0) + sektor[0]), a1 = rad((srodek.kurs || 0) + sektor[1]), R = zasieg * sk;
@@ -580,10 +584,31 @@ function ekranPlot(s, st, { zasieg, srodek, pierscienie, hz = false, wybierz = n
 // ------------------------------------------------------------------------------------------- Radar
 function radar(s, st, akcje) {
   const j = wlasna(s);
-  // Co widzi radar: do 12 km na bieżąco, 12–60 km echo z ostatniego przejścia wiązki, dalej nic (to zasięg sensorów).
+  // MECHANIKA 11.4 (Radar): nastawy wspólne dla mostka (SQL). Zasięg = 60 km × maks. zasięgu × (0,5 + moc nadajnika)
+  // × wzmocnienie nadajnika (×1,5) × tłumienie zakłóceń (×0,9); klucze widać do zasięg × czułość odbiornika; bliskie echa
+  // poniżej min. × 12 km wytłumione; niski próg szumu bez tłumienia — fałszywe echa; tryb bierny — tylko 12 km na bieżąco.
+  const n = nastawyKonsoli(j, st, akcje, 'Radar');
+  const N = n.N;
+  const wz = j.wzmocnienia || {};
+  const dziala = (c) => wz[c]?.stan === 'dziala';
+  st.tempo = Math.round(3 + 9 * N('radar_tempo'));
+  const aktywny = N('radar_aktywny') >= 0.5;
+  const tlumienie = N('radar_tlumienie') >= 0.5;
+  const R = Math.max(RADAR_BLISKI_KM, RADAR_KM * N('radar_zasieg_max') * (0.5 + N('radar_moc')) * (dziala('radar_tx') ? 1.5 : 1) * (tlumienie ? 0.9 : 1));
+  const minD = RADAR_BLISKI_KM * N('radar_zasieg_min');
+  const czulosc = Math.min(1, Math.min(N('radar_czul_max'), 0.5 + N('radar_rx')) * (dziala('radar_rx') ? 1.3 : 1));
   const wszystkie = [...s.klucze.filter((k) => k.stan === 'w_locie'), ...s.jednostki.filter((x) => x.id !== j.id && x.stan !== 'oczekuje')];
-  const blisko = wszystkie.filter((o) => odl(o, j) <= RADAR_BLISKI_KM);
-  const dalej = echo(st, 'radar', j, wszystkie, st.tempo, (o) => { const d = odl(o, j); return d > RADAR_BLISKI_KM && d <= RADAR_KM; });
+  const blisko = wszystkie.filter((o) => { const d = odl(o, j); return d <= RADAR_BLISKI_KM && d >= minD; });
+  const dalej = aktywny ? echo(st, 'radar', j, wszystkie, st.tempo, (o) => { const d = odl(o, j); return d > RADAR_BLISKI_KM && d <= ('nr' in o ? R * czulosc : R); }) : [];
+  // fałszywe echa szumu: nowe przy każdym obrocie wiązki
+  const szum = [];
+  if (aktywny && !tlumienie && N('radar_czul_min') < 0.3) {
+    const obrotNr = Math.floor(zegar(st) / st.tempo);
+    for (let i = 0; i < Math.round((0.3 - N('radar_czul_min')) * 20); i++) {
+      const a = ((obrotNr * 7919 + i * 104729) % 360) * Math.PI / 180, d = RADAR_BLISKI_KM + ((obrotNr * 31 + i * 97) % 100) / 100 * (R - RADAR_BLISKI_KM);
+      szum.push({ id: `szum${i}`, x: j.x + d * Math.sin(a), y: j.y + d * Math.cos(a), kurs: 0, v: 0, strona: 'nieznany', statyczny: true, dlugosc_km: 0.05 });
+    }
+  }
   const znane = [...blisko, ...dalej.filter((o) => !blisko.some((b) => idObiektu(b) === idObiektu(o)))];
   const wrogie = znane.filter((o) => 'nr' in o && o.strona !== j.strona);
   const obce = znane.filter((o) => o.strona !== j.strona);
@@ -596,7 +621,7 @@ function radar(s, st, akcje) {
     if (klucz && !f.klucze) return false;
     if (!klucz && !f.okrety) return false;
     return true;
-  });
+  }).concat(f.nieznane ? szum : []);
   const zagrozenia = (burta) => obce.map((o) => ({ o, w: wzgledem(j, o) })).filter((x) => x.w.burta === burta).sort((a, b) => a.w.d - b.w.d).slice(0, 6);
   const lista = (burta) => () => h('div', { style: `width:100%;height:100%;overflow:auto;padding:4px;box-sizing:border-box;font-size:max(7px,0.75cqw);text-align:left;color:#cfe;${CZCIONKA}` },
     h('div', { style: 'color:#ffd7a0;margin-bottom:3px' }, `ZAGROŻENIA ${burta.toUpperCase()} BURTY`),
@@ -604,7 +629,17 @@ function radar(s, st, akcje) {
       `${'nr' in o ? `${o.strona} ${o.nr} ${o.typ}` : o.nazwa} · ${w.namiar > 0 ? '+' : ''}${w.namiar}° · ${km(w.d)} km`
       + ('nr' in o && o.v ? ` · ogień za ${mmss(Math.max(0, (w.d - ZASIEG_OGNIA_KM) / o.v))}` : ''))),
     zagrozenia(burta).length ? null : h('div', { style: 'opacity:.6' }, 'brak'));
-  const alarm = obce.some((o) => odl(o, j) <= st.progZblizenia);
+  st.progZblizenia = Math.round(100 * N('prog_zblizenia'));
+  const progKolizji = 30 * N('prog_kolizji');
+  // kurs kolizyjny: najmniejsza odległość w ciągu 120 s ruchu po prostej (względem okrętu) poniżej progu
+  const cpa = (o) => {
+    const vx = (o.v || 0) * Math.sin(rad(o.kurs || 0)) - j.v * Math.sin(rad(j.kurs)), vy = (o.v || 0) * Math.cos(rad(o.kurs || 0)) - j.v * Math.cos(rad(j.kurs));
+    const dx = o.x - j.x, dy = o.y - j.y, vv = vx * vx + vy * vy;
+    const tt = vv > 0 ? Math.max(0, Math.min(120, -(dx * vx + dy * vy) / vv)) : 0;
+    return Math.hypot(dx + vx * tt, dy + vy * tt);
+  };
+  const kolizja = obce.some((o) => cpa(o) <= progKolizji);
+  const alarm = obce.some((o) => odl(o, j) <= st.progZblizenia) || kolizja;
   const sektor = { 'sektor dziobowy lewej burty': [-90, 0], 'sektor dziobowy prawej burty': [0, 90], 'sektor rufowy lewej burty': [180, 270], 'sektor rufowy prawej burty': [90, 180] };
   const przelacz = (klucz) => ({ wl: st[klucz], klik: () => { st[klucz] = !st[klucz]; akcje.odswiez(); } });
   const filtr = (k) => ({ wl: f[k], klik: () => { f[k] = !f[k]; akcje.odswiez(); } });
@@ -624,7 +659,9 @@ function radar(s, st, akcje) {
     'EKRAN RADARU · sylwetka ISD zawsze w środku · bliski zasięg 12 km na bieżąco · średni do 60 km odświeżany wiązką · kontakty IFF (własne, obce, nieznane) · klucze jako jeden symbol · tory i prognozy torów · pociski': {
       ekran: () => powiekszany(st, akcje, 'radar', (z) => ekranPlot(s, st, { zasieg: st.skala / z, srodek: j, pierscienie: [st.skala / 4 / z, st.skala / 2 / z, st.skala / z].map(zaokr),
         hz: st.syncSensory, wybierz, obiekty: [...widoczne, j], sektor: st.sektor ? sektor[st.sektor] : null, tory: st.tory, prognozy: st.prognozy,
-        strefy: [{ r: RADAR_BLISKI_KM, opis: 'na bieżąco' }, { r: RADAR_KM, opis: 'granica radaru' }] })) },
+        wiazkaWl: aktywny, linie: N('radar_zrodlo') >= 0.5 ? obce.filter((o) => !('nr' in o) && ((o.nastawy?.radar_aktywny ?? 1) >= 0.5 || (o.nastawy?.zaklocanie ?? 0) >= 0.5)) : [],
+        strefy: [{ r: RADAR_BLISKI_KM, opis: aktywny ? 'na bieżąco' : 'tryb bierny' }, ...(aktywny ? [{ r: R, opis: `granica radaru ${Math.round(R)} km` }] : []),
+          ...(minD > 0.5 ? [{ r: minD, opis: 'tłumienie' }] : [])] })) },
     'skala: 12 km': skala(12), 'skala: 30 km': skala(30), 'skala: 60 km': skala(60),
     'odczyt: kontakty obce': { etykieta: `kontakty obce: ${obce.length}` },
     'odczyt: kontakty własne': { etykieta: `kontakty własne: ${wlasne.length}` },
@@ -635,10 +672,37 @@ function radar(s, st, akcje) {
     'oznacz kontakt': { etykieta: st.oznaczony ? 'oznaczony (dotknij kontaktu)' : 'oznacz kontakt (dotknij na ekranie)', klik: () => { st.oznaczony = null; akcje.odswiez(); } },
     'śledź kontakt (tor)': { wl: !!st.sledzony, klik: () => { st.sledzony = st.sledzony ? null : st.oznaczony; st.tory = true; akcje.odswiez(); } },
     'pokaż tory': przelacz('tory'), 'pokaż prognozy torów': przelacz('prognozy'),
-    'ALARM ZBLIŻENIA': { kolor: alarm ? '#ff3333' : undefined, wl: alarm, etykieta: alarm ? `ALARM ZBLIŻENIA · < ${st.progZblizenia} km` : 'ALARM ZBLIŻENIA' },
-    'suwak: próg alarmu zbliżenia': cyklicznie('progZblizenia', [10, 30, 100, 200], 'próg alarmu (km)'),
-    'suwak: próg alarmu kursu kolizyjnego': cyklicznie('progKolizji', [5, 10, 30], 'próg kolizji (km)'),
-    'suwak: tempo omiatania': cyklicznie('tempo', [3, 6, 12], 'omiatanie (s/obrót)'),
+    // alarm: dotknięcie potwierdza (wycisza) do chwili, aż zmieni się zestaw zagrożeń
+    'ALARM ZBLIŻENIA': (() => {
+      const podpis = obce.filter((o) => odl(o, j) <= st.progZblizenia || cpa(o) <= progKolizji).map(idObiektu).sort().join(',');
+      const wyciszony = alarm && st.alarmPotwierdzony === podpis;
+      return { kolor: alarm && !wyciszony ? '#ff3333' : undefined, wl: alarm && !wyciszony,
+        etykieta: !alarm ? 'ALARM ZBLIŻENIA' : wyciszony ? 'alarm potwierdzony' : kolizja ? `KURS KOLIZYJNY · < ${progKolizji.toFixed(0)} km` : `ALARM ZBLIŻENIA · < ${st.progZblizenia} km`,
+        klik: () => { st.alarmPotwierdzony = alarm ? podpis : null; akcje.odswiez(); } };
+    })(),
+    'suwak: próg alarmu zbliżenia': n.suwak('prog_zblizenia', 'próg alarmu', (v) => `${Math.round(100 * v)} km`),
+    'suwak: próg alarmu kursu kolizyjnego': n.suwak('prog_kolizji', 'próg kolizji', (v) => `${Math.round(30 * v)} km`),
+    'suwak: tempo omiatania': n.suwak('radar_tempo', 'omiatanie', (v) => `${Math.round(3 + 9 * v)} s/obrót`),
+    'suwak: maksymalny zasięg radaru': { ...n.zakres('radar_zasieg_max', 'radar_zasieg_min', '', ''),
+      etykieta: `zasięg ${Math.round(R)} km`, etykietaMin: `tłumienie < ${minD.toFixed(1)} km` },
+    'suwak: maksymalna czułość odbiornika': { ...n.zakres('radar_czul_max', 'radar_czul_min', '', ''),
+      etykieta: `czułość ${Math.round(czulosc * 100)}%`, etykietaMin: `próg szumu ${Math.round(N('radar_czul_min') * 100)}%${szum.length ? ' · SZUM' : ''}` },
+    'suwak: moc nadajnika': n.suwak('radar_moc', 'moc nadajnika', (v) => `×${(0.5 + v).toFixed(2)}`),
+    'suwak: wzmocnienie odbiornika': n.suwak('radar_rx', 'wzmocnienie odbiornika', (v) => `×${(0.5 + v).toFixed(2)}`),
+    'wzmocnij nadajnik (zasięg)': n.wzmocnij('radar_tx', 'wzmocnij nadajnik (zasięg ×1,5)'),
+    'wzmocnij odbiornik (czułość)': n.wzmocnij('radar_rx', 'wzmocnij odbiornik (czułość ×1,3)'),
+    'zakłócenia: tłumienie': n.przelacznik('radar_tlumienie', 'zakłócenia: tłumienie (bez szumu, zasięg ×0,9)'),
+    'zakłócenia: wskaż źródło': n.przelacznik('radar_zrodlo', 'zakłócenia: wskaż źródło emisji'),
+    'synchronizacja IFF z konsolą myśliwców': n.przelacznik('sync_radar_iff'),
+    'synchronizacja z kontrolą ognia (przydział celów)': n.przelacznik('sync_radar_ko'),
+    'tryb bierny (nasłuch)': { wl: !aktywny, przelacznik: true, klik: () => n.ustaw('radar_aktywny', 0), etykieta: aktywny ? 'tryb bierny (nasłuch)' : 'TRYB BIERNY · tylko 12 km' },
+    'tryb aktywny (emisja)': { wl: aktywny, przelacznik: true, klik: () => n.ustaw('radar_aktywny', 1) },
+    'wyślij namiar zagrożenia do turbolaserów': { klik: () => {
+      const cel = obce.filter((o) => !('nr' in o)).sort((a, b) => odl(a, j) - odl(b, j))[0];
+      if (!cel) return akcje.komunikat('Brak okrętu wroga na radarze.');
+      if (!j.ster) return akcje.komunikat('Wskazanie celu wymaga migracji 076.');
+      akcje.rozkaz({ jednostka_id: j.id, kod: 'cel_ognia', cel_nr: cel.nr_jednostki, pulpit: 'Radar' });
+    } },
     'synchronizacja z sensorami (dane skanu, Hz celów)': przelacz('syncSensory'),
     'synchronizacja z nawigacją (kurs i prędkość własna)': { ...przelacz('syncNawigacja'), etykieta: st.syncNawigacja ? `kurs ${Math.round(j.kurs)}° · ${j.v} km/s` : undefined },
     'wyślij namiar zagrożenia do osłon': { klik: wyslijDoOslon },
@@ -650,26 +714,53 @@ function radar(s, st, akcje) {
 }
 
 // ------------------------------------------------------------------------------------------- Sensory
-function sensory(s, st, akcje) {
-  const j = wlasna(s);
-  const zasieg = j.zasieg_sensorow_km || 1000;
-  // Skan od 60 km do zasięgu (moc sensorów), odświeżany wiązką co TEMPO_SKANU_S s; Hz zmierzone zostają w pamięci.
-  const wszystkie = [...s.klucze.filter((k) => k.stan === 'w_locie'), ...s.jednostki.filter((x) => x.id !== j.id && x.stan !== 'oczekuje')];
-  const wSkanie = echo(st, 'skan', j, wszystkie, TEMPO_SKANU_S, (o) => { const d = odl(o, j); return d >= RADAR_KM && d <= zasieg; });
-  for (const o of wSkanie) if ('nr' in o && o.strona !== j.strona) st.hzPamiec.set(o.id, o.hz);
-  const wrogie = s.klucze.filter((k) => k.stan === 'w_locie' && k.strona !== j.strona);
-  const zmierzone = wrogie.filter((k) => st.hzPamiec.has(k.id)).map((k) => ({ ...k, hz: st.hzPamiec.get(k.id) }));
-  // Zmarszczki: jednostki przed wyjściem ze skoku (widać dobrze) i klucze z zewnątrz (słabo, tylko w połowie zasięgu).
+// Zmarszczki nadprzestrzeni z nastaw sensorów: zasięg = zasięg skanu × (0,5 + zasięg J), klucze z zewnątrz do połowy
+// (pełny przy wzmocnionym skanie nadprzestrzeni); elipsa maleje z czasem integracji i pasmem; pojawia się po 4 × czas
+// integracji s obserwacji. Te same zmarszczki widzi Nawigacja po synchronizacji z sensorami.
+function zmarszczkiSensorow(s, st, j) {
+  const N = (k) => (st.nastawyCzeka?.[k]?.v ?? j.nastawy?.[k] ?? 0);
+  if (!st.sladyNad) return [];
+  const zasieg = (j.zasieg_sensorow_km || 1000) * (0.5 + N('sens_nad'));
+  const wzmNad = j.wzmocnienia?.skan_nad?.stan === 'dziala';
   const teraz = zegar(st);
-  const zmarszczki = st.sladyNad ? [
+  const integr = N('sens_integr'), pasmo = N('sens_pasmo');
+  return [
     ...s.jednostki.filter((x) => x.stan === 'oczekuje' && odl(x, j) <= zasieg).map((x) => ({ o: x, slaba: false, r0: 20, opis: `${x.nazwa} · wyjście za ${mmss(x.wejscie_za_s)}` })),
-    ...s.klucze.filter((k) => k.z_zewnatrz && k.stan === 'hangar' && k.start_za_s != null && k.strona !== j.strona && odl(k, j) <= zasieg / 2)
-      .map((k) => ({ o: k, slaba: true, r0: 40, opis: `klucze? · ${mmss(k.start_za_s)}` })),
+    ...s.klucze.filter((k) => k.z_zewnatrz && k.stan === 'hangar' && k.start_za_s != null && k.strona !== j.strona && odl(k, j) <= zasieg / (wzmNad ? 1 : 2))
+      .map((k) => ({ o: k, slaba: !wzmNad, r0: 40, opis: `klucze? · ${mmss(k.start_za_s)}` })),
   ].map(({ o, slaba, r0, opis }) => {
     const id = idObiektu(o);
     if (!st.zmarszczki.has(id)) st.zmarszczki.set(id, teraz);
-    return { x: o.x, y: o.y, slaba, opis, r: r0 / (1 + (teraz - st.zmarszczki.get(id)) / 10) };
-  }) : [];
+    const t = teraz - st.zmarszczki.get(id);
+    if (t < 4 * integr) return null;
+    return { x: o.x, y: o.y, slaba, opis, r: (r0 * (1.5 - pasmo) * (wzmNad ? 0.5 : 1)) / (1 + t / (10 * (1.5 - integr))) };
+  }).filter(Boolean);
+}
+
+function sensory(s, st, akcje) {
+  const j = wlasna(s);
+  const zasieg = j.zasieg_sensorow_km || 1000;
+  // MECHANIKA 11.4 (Sensory): skan od 60 km do zasięgu (moc sensorów), wiązka 6 s. Tryb bierny — widać tylko emitujących
+  // (radar aktywny albo zakłócanie), bez pomiaru Hz. Pasmo: niskie — małe cele daleko, wysokie — mniejsza elipsa. Hz
+  // mierzone tylko w paśmie Hz (dolna…górna granica), z błędem zależnym od liczby próbek (0 przy wzmocnionej rozdzielczości).
+  const n = nastawyKonsoli(j, st, akcje, 'Sensory');
+  const N = n.N;
+  const aktywny = N('sens_aktywny') >= 0.5;
+  const rozdz = j.wzmocnienia?.skan_rozdz?.stan === 'dziala';
+  const zasiegKluczy = zasieg * Math.min(1, 1.5 - N('sens_pasmo')) * (rozdz ? 1.2 : 1);
+  const wszystkie = [...s.klucze.filter((k) => k.stan === 'w_locie' && N('skan_min') < 0.5), ...s.jednostki.filter((x) => x.id !== j.id && x.stan !== 'oczekuje')]
+    .filter((o) => aktywny || (!('nr' in o) && o.strona !== j.strona && ((o.nastawy?.radar_aktywny ?? 1) >= 0.5 || (o.nastawy?.zaklocanie ?? 0) >= 0.5)));
+  const wSkanie = echo(st, 'skan', j, wszystkie, TEMPO_SKANU_S, (o) => { const d = odl(o, j); return d >= RADAR_KM && d <= ('nr' in o ? zasiegKluczy : zasieg); });
+  const hash = (x) => { let hh = 2166136261; for (const c of String(x)) hh = Math.imul(hh ^ c.charCodeAt(0), 16777619); return ((hh >>> 0) % 1000) / 1000; };
+  if (aktywny && st.skan) for (const o of wSkanie) {
+    if (!('nr' in o) || o.strona === j.strona) continue;
+    if (o.hz < N('sens_hz_min') * 3600 || o.hz > N('sens_hz_max') * 3600) continue;
+    const blad = rozdz ? 0 : (hash(o.id) - 0.5) * 0.2 * (1 - N('sens_probki'));
+    st.hzPamiec.set(o.id, Math.round(o.hz * (1 + blad)));
+  }
+  const wrogie = s.klucze.filter((k) => k.stan === 'w_locie' && k.strona !== j.strona);
+  const zmierzone = wrogie.filter((k) => st.hzPamiec.has(k.id)).map((k) => ({ ...k, hz: st.hzPamiec.get(k.id) }));
+  const zmarszczki = zmarszczkiSensorow(s, st, j);
   const poziomy = j.zasiegi_sensorow || [1000, 3000, 10000, 30000];
   const moc = { etykieta: `zasięg ${zasieg} km · ${kosztSensorow(zasieg)} porcji`,
     klik: () => akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[(poziomy.indexOf(zasieg) + 1) % poziomy.length], pulpit: 'Sensory' }) };
@@ -708,8 +799,28 @@ function sensory(s, st, akcje) {
     'EKRAN SKANU · przestrzeń normalna (kontakty, elipsa błędu, sygnatura) i nadprzestrzeń (zmarszczki wejścia, odcinki skoków, prognoza wyjścia)': {
       ekran: () => powiekszany(st, akcje, 'skan', (z) => ekranPlot(s, st, { zasieg: zasieg / z, srodek: j, pierscienie: [RADAR_KM, zasieg / 2, zasieg].map((r) => zaokr(r / z)),
         tempo: TEMPO_SKANU_S, maska: RADAR_KM, hz: st.skan, zmarszczki, obiekty: st.kontaktyNormalne ? [...wSkanie, j] : [j] })) },
-    'suwak: przydział mocy sensorów': moc,
-    'suwak: zasięg J skanu nadprzestrzeni (koszt k·J^1,618)': moc,
+    'suwak: przydział mocy sensorów': { ...moc, poz: Math.max(0, poziomy.indexOf(zasieg)) / (poziomy.length - 1),
+      ustawPoz: (v) => akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[Math.round(v * (poziomy.length - 1))], pulpit: 'Sensory' }) },
+    'suwak: maksymalna moc skanu': { zakres: { max: Math.max(0, poziomy.indexOf(zasieg)) / (poziomy.length - 1), min: N('skan_min') },
+      ustawZakres: (v, ktory) => (ktory === 'max'
+        ? akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[Math.round(v * (poziomy.length - 1))], pulpit: 'Sensory' })
+        : n.ustaw('skan_min', v)),
+      etykieta: `moc skanu: ${zasieg} km`, etykietaMin: N('skan_min') >= 0.5 ? 'min.: tylko okręty' : 'min.: wszystkie cele' },
+    'suwak: zasięg J skanu nadprzestrzeni (koszt k·J^1,618)': n.suwak('sens_nad', 'zasięg skanu nadprzestrzeni', (v) => `${Math.round(zasieg * (0.5 + v))} km`),
+    'suwak: pasmo skanu (niskie: małe cele · wysokie: dokładna pozycja)': n.suwak('sens_pasmo', 'pasmo skanu', (v) => (v < 0.4 ? 'niskie' : v > 0.6 ? 'wysokie' : 'średnie')),
+    'suwak: górna granica pasma skanu (Hz)': n.zakres('sens_hz_max', 'sens_hz_min', 'pasmo Hz do', 'od', (v) => `${Math.round(v * 3600)} Hz`),
+    'suwak: czas integracji skanu nadprzestrzeni': n.suwak('sens_integr', 'czas integracji', (v) => `${(4 * v).toFixed(1)} s`),
+    'suwak: liczba próbek pomiaru Hz': n.suwak('sens_probki', 'próbki Hz', (v) => `±${Math.round(10 * (1 - v))}%`),
+    'wzmocnij skan nadprzestrzeni': n.wzmocnij('skan_nad', 'wzmocnij skan nadprzestrzeni'),
+    'wzmocnij rozdzielczość skanu przestrzeni normalnej': n.wzmocnij('skan_rozdz', 'wzmocnij rozdzielczość skanu'),
+    'tryb bierny (nasłuch)': { wl: !aktywny, przelacznik: true, klik: () => n.ustaw('sens_aktywny', 0), etykieta: aktywny ? 'tryb bierny (nasłuch)' : 'TRYB BIERNY · tylko emitujący' },
+    'tryb aktywny (emisja)': { wl: aktywny, przelacznik: true, klik: () => n.ustaw('sens_aktywny', 1) },
+    'zakłócanie (walka elektroniczna)': n.przelacznik('zaklocanie', N('zaklocanie') >= 0.5 ? 'ZAKŁÓCANIE · baterie wroga −celność' : 'zakłócanie (walka elektroniczna)'),
+    'wyrównaj czułość sensorów': n.wyrownaj('sensory', 'wyrównaj czułość sensorów'),
+    'synchronizacja z konsolą nawigacji (prognoza wyjścia)': n.przelacznik('sync_sens_nav'),
+    'synchronizacja z kontrolą ognia (cele)': n.przelacznik('sync_ko_sens'),
+    'wyślij Hz celu do kontroli ognia': { etykieta: 'wyślij Hz celów do baterii (auto Hz)', wl: N('sync_tl_sens') >= 0.5,
+      klik: () => n.ustaw('sync_tl_sens', N('sync_tl_sens') >= 0.5 ? 0 : 1) },
     'odczyt: koszt skanu (porcje)': { etykieta: `koszt: ${kosztSensorow(zasieg)} porcji` },
     'filtr: ślady nadprzestrzenne': { wl: st.sladyNad, klik: () => { st.sladyNad = !st.sladyNad; akcje.odswiez(); } },
     'EKRAN: WIDMO Hz GRUP CELÓW · baza i bieżący odczyt · wykryte skany wroga': { ekran: widmo },
@@ -1103,7 +1214,8 @@ function nawigacja(s, st, akcje) {
     ...{
     'EKRAN NAWIGACJI · sylwetka ISD zawsze w środku, w skali · okręgi odległości 250 / 500 / 1000 km · wektor ruchu osobno od zwrotu dziobu · inne jednostki (własne, obce, nieznane) · kurs zadany i punkt docelowy': {
       ekran: () => powiekszany(st, akcje, 'nav', (z) => ekranPlot(s, st, { zasieg: st.skalaNaw / z, srodek: j, pierscienie: [st.skalaNaw / 4, st.skalaNaw / 2, st.skalaNaw].map((r) => zaokr(r / z)),
-        prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty, wybierz: (o) => { st.celNaw = idObiektu(o); akcje.odswiez(); } })) },
+        prognozy: true, tory: st.tory, hz: st.syncSensory, obiekty, wybierz: (o) => { st.celNaw = idObiektu(o); akcje.odswiez(); },
+        zmarszczki: (j.nastawy?.sync_sens_nav ?? 0) >= 0.5 ? zmarszczkiSensorow(s, st, j) : [] })) },
     'skala ekranu: 250 km': skala(250), 'skala ekranu: 500 km': skala(500), 'skala ekranu: 1000 km': skala(1000),
     'synchronizacja z sensorami (kontakty)': { wl: st.syncSensory, klik: () => { st.syncSensory = !st.syncSensory; akcje.odswiez(); } },
     'synchronizacja z radarem (tory jednostek)': { wl: st.tory, klik: () => { st.tory = !st.tory; akcje.odswiez(); } },

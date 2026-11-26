@@ -204,7 +204,7 @@ def utworz(scenariusz_kod, ziarno):
         stan['jednostki'].append({'nr': nr, 'strona': strona, 'profil': prof, 'nazwa': nazwa, 'x': float(x), 'y': float(y),
                                   'kurs': float(kurs), 'v': float(v), 'wejscie': wej + rozrzut(ziarno, wej_r, 'j', nr),
                                   'generatory': gen, 'sekcje': {sk: 100.0 for sk in sorted(x[0] for x in p['kadlub'])}, 'stan': 'w_bitwie',
-                                  'kurs_cel': None, 'v_cel': None, 'cel_ognia': None})
+                                  'kurs_cel': None, 'v_cel': None, 'cel_ognia': None, 'nastawy': {}, 'cieplo': 0.0, 'dlawienie': False})
         # wyjście ze skoku później: jednostka czeka w nadprzestrzeni (sensory widzą jej zmarszczkę), nie walczy, nie leci
         if stan['jednostki'][-1]['wejscie'] > 0: stan['jednostki'][-1]['stan'] = 'oczekuje'
         stan['jednostki'][-1]['ai'] = next(t[2] for t in s['strony'] if t[0] == strona) != 'gracze'
@@ -378,7 +378,8 @@ def ogien_okretu(stan, tik, j):
     Jon — energia trafień obciąża generator osłon celu (brown-out), bez uszkodzeń kadłuba i żył."""
     b = PROFILE[j['profil']].get('baterie') or {}
     for nr, x, y, luk_s, luk_p, zasieg, theta, hz in TL.get(j['profil'], []):
-        if (tik + nr) % b.get('ladowanie_tiki', 6): continue
+        # tempo z bilansu mocy (przydział, niedobór, wzmocnienie burty): przy 1 — ładowanie z profilu
+        if (tik + nr) % max(2, int(zaokr(b.get('ladowanie_tiki', 6) / max(0.05, zas(j, 'tl_l' if x < 0 else 'tl_p'))))): continue
         dzialo = punkt_na_kadlubie(j, x, y)
         cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
         if cel is None: continue
@@ -387,10 +388,10 @@ def ogien_okretu(stan, tik, j):
         trafienia = sum(1 for i in range(b.get('lufy', 0)) if los(stan['ziarno'], tik, 'tl', kan, i) < p)
         if trafienia:
             gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
-            trafienie_oslony(stan, tik, cel, gen, trafienia * W_ENERGIA_ZYLY * hz, hz, f'{j["nazwa"]} TL {nr}', kan)
+            trafienie_oslony(stan, tik, cel, gen, trafienia * W_ENERGIA_ZYLY * hz, hz, f'{j["nazwa"]} TL {nr}', kan, dzialo['x'], dzialo['y'])
     energia, lufy, ladowanie = STALE['jon'].get(j['profil'], (0, 0, 8))
     for nr, x, y, luk_s, luk_p, zasieg, theta, hz in JON.get(j['profil'], []):
-        if (tik + nr) % ladowanie: continue
+        if (tik + nr) % max(2, int(zaokr(ladowanie / max(0.05, zas(j, 'jon'))))): continue
         dzialo = punkt_na_kadlubie(j, x, y)
         cel, dn = cel_baterii(stan, j, dzialo, luk_s, luk_p, zasieg)
         if cel is None: continue
@@ -400,7 +401,7 @@ def ogien_okretu(stan, tik, j):
         if trafienia:
             gen = generator_od_strony(cel, dzialo['x'], dzialo['y'])
             gen['obciazenie'] += trafienia * energia
-            c = pojemnosc(PROFILE[cel['profil']])
+            c = pojemnosc(PROFILE[cel['profil']]) * mnoznik_oslony(cel, gen)
             if gen['obciazenie'] > c:
                 gen['rykoszet'] += gen['obciazenie'] - c
                 gen['obciazenie'] = c
@@ -440,6 +441,152 @@ def hz_klucza(k):
     return MASZ[k['typ']]['hz'] * (1 + STALE['dryf_k'][k['ranga']] * k['moc'])
 
 
+# ------------------------------------------------------------------------------------------------------------ zasilanie
+# Nastawy konsol Osłony i Reaktory (MECHANIKA 11.4) — suwaki 0…1 i przełączniki 0/1; wartości domyślne nie zmieniają
+# przebiegu bitwy (bilans mocy ma zapas, osłony bez przecieków). Ustawia je rozkaz nastawa / synchronizuj / przelacz
+# (wartość „kod=liczba”), grupy wraca do domyślnych rozkaz wyrownaj; wzmocnienia to rozkazy wzmocnij (12 s działania).
+SEKTORY = ('dziob', 'gora_l', 'gora_p', 'dol_l', 'dol_p', 'rufa', 'hangar')
+WZMOCNIENIA = SEKTORY + ('glowny', 'generator', 'uzbr', 'przedni', 'zapas', 'burta_l', 'burta_p')
+SYNC_OSLON = ('sync_os_tl_l', 'sync_os_tl_p', 'sync_os_pr_l', 'sync_os_pr_p', 'sync_rufa_sg_l', 'sync_rufa_sg_p', 'sync_rufa_sm_l', 'sync_rufa_sm_p')
+NASTAWY = {
+    **{'pokr_' + s: 1.0 for s in SEKTORY},
+    **{k: 0.0 for k in SYNC_OSLON},
+    'przydz_tl': 0.5, 'przydz_jon': 0.5, 'przydz_sil': 0.5, 'przydz_os': 1.0, 'przydz_hiper': 0.0,
+    'moc_przedni': 0.5, 'moc_zapas': 0.5, 'czest_gen': 0.5, 'napiecie_gen': 0.5, 'gestosc': 0.5, 'pole_komory': 0.5,
+    'czest_bazowa': 0.5, 'rez_salwa': 0.0, 'rez_awaryjna': 0.0, 'uzbr_min': 0.0, 'uzbr_max': 1.0, 'gen_min': 0.0, 'gen_max': 1.0,
+    'sync_przedni_pr': 0.0, 'sync_zapas_sil': 0.0, 'sync_uzbr_tl_l': 0.0, 'sync_uzbr_tl_p': 0.0, 'sync_gen_sil': 0.0, 'sync_gen_os': 0.0,
+    'sync_uzbr_glowny': 0.0, 'sync_glowny_pom': 0.0, 'sync_glowny_gen': 0.0, 'sync_gen_glowny': 0.0,
+    'przel_sil_zapas': 0.0, 'przel_podst_przedni': 0.0,
+}
+GRUPY_WYROWNANIA = {
+    'baterie': ('przydz_tl', 'przydz_jon', 'rez_salwa'),
+    'reaktory': ('moc_przedni', 'moc_zapas', 'uzbr_min', 'uzbr_max', 'gen_min', 'gen_max'),
+    'dystrybucja': ('przydz_tl', 'przydz_jon', 'przydz_sil', 'przydz_os', 'przydz_hiper', 'rez_salwa', 'rez_awaryjna'),
+    'oslony': tuple('pokr_' + s for s in SEKTORY),
+}
+
+
+def nast(j, k):
+    return j['nastawy'].get(k, NASTAWY[k])
+
+
+def wzm(stan, j, cel):
+    """1.0, gdy działa wzmocnienie celu (rozkaz wzmocnij na kanale „nr:wzm_cel”), inaczej 0.0."""
+    return 1.0 if f'{j["nr"]}:wzm_{cel}' in stan.get('_dziala', ()) else 0.0
+
+
+def zas(j, k):
+    return j.get('zasil', {}).get(k, 1.0)
+
+
+def koszt_sensorow(km):
+    return math.floor(0.245 * (km / 1000) ** 1.618 * 100 + 0.5) / 100
+
+
+def zasilanie(stan, tik, j):
+    """Bilans mocy okrętu na tik (MECHANIKA 11.4; jednostki: % mocy nominalnej rdzenia). Źródła: rdzeń (gęstość
+    hipermaterii, sprawność generatora mocy, wzmocnienia, dławienie), reaktor uzbrojenia (najpierw baterie), przedni
+    reaktor (do puli albo tylko systemy podstawowe), zapasowy (silniki po przełączeniu, połowa do puli po synchronizacji).
+    Niedobór dzielony proporcjonalnie; synchronizacje generatora z osłonami / silnikami dają im pierwszeństwo, rezerwa
+    na salwę — bateriom. Wynik (mnożniki) w j['zasil']; ciepło rdzenia i dławienie w j['cieplo'], j['dlawienie']."""
+    def n(k): return nast(j, k)
+    def w(c): return wzm(stan, j, c)
+    p = PROFILE[j['profil']]
+    spraw = 1 - 0.2 * (abs(n('czest_gen') - 0.5) + abs(n('napiecie_gen') - 0.5)) + 0.03 * n('sync_glowny_gen') + 0.03 * n('sync_gen_glowny')
+    glowny = 100 * (0.8 + 0.4 * n('gestosc')) * (1 + 0.15 * w('glowny')) * (1 + 0.1 * w('generator')) * spraw * (0.7 if j['dlawienie'] else 1.0)
+    uzbr = 15 * (1 + 0.3 * w('uzbr'))
+    przedni = 20 * n('moc_przedni') * (1 + 0.3 * w('przedni'))
+    zapas = 20 * n('moc_zapas') * (1 + 0.3 * w('zapas'))
+    # odbiorcy
+    os = 0.0
+    for g in j['generatory']: os += g['hz_osiagane'] * moc_zyly(p)
+    os = 100 * os / p['reaktor']['moc_W'] if j['generatory'] else 0.0
+    for s in SEKTORY: os += 4 * w(s) + 2 * n('pokr_' + s)
+    for k in SYNC_OSLON: os += n(k)
+    os_dozw = min(os, 100 * n('przydz_os'))
+    tl = 20 * n('przydz_tl') + 5 * (w('burta_l') + w('burta_p'))
+    jon = 10 * n('przydz_jon')
+    sil = 15 * n('przydz_sil')
+    podst = koszt_sensorow(j.get('zasieg_sensorow', 1000)) + 10 * n('przydz_hiper') + 3 * n('sync_przedni_pr') + 4 * n('pole_komory')
+    przel_sil, przel_podst = n('przel_sil_zapas') >= 0.5, n('przel_podst_przedni') >= 0.5
+    # reaktor uzbrojenia: najpierw baterie (produkcja w zakresie min…maks), nadwyżka do puli po synchronizacji z rdzeniem
+    bron = tl + jon
+    z_uzbr = max(min(bron, uzbr * n('uzbr_max')), uzbr * n('uzbr_min'))
+    z_uzbr_bron = min(z_uzbr, bron)
+    c = pojemnosc(p) if j['generatory'] else 0.0
+    alarm = any(g['obciazenie'] > 0.9 * c for g in j['generatory'])
+    pula = glowny * n('gen_max') - (0.0 if alarm else 20 * n('rez_awaryjna'))
+    if not przel_podst: pula += przedni
+    if not przel_sil and n('sync_zapas_sil') >= 0.5: pula += 0.5 * zapas
+    if n('sync_uzbr_glowny') >= 0.5: pula += z_uzbr - z_uzbr_bron
+    pula = max(0.0, pula)
+    pop = {'os': os_dozw, 'bron': bron - z_uzbr_bron, 'sil': 0.0 if przel_sil else sil, 'podst': 0.0 if przel_podst else podst}
+    dost = {'os': 0.0, 'bron': 0.0, 'sil': 0.0, 'podst': 0.0}
+    reszta = pula
+    pierwsze = [k for k, s in (('os', 'sync_gen_os'), ('sil', 'sync_gen_sil')) if n(s) >= 0.5]
+    for k in pierwsze:
+        d = min(pop[k], reszta)
+        dost[k] = d
+        reszta -= d
+    d = min(pop['bron'], 10 * n('rez_salwa'), reszta)
+    dost['bron'] += d
+    reszta -= d
+    pozostale = [k for k in ('os', 'bron', 'sil', 'podst') if k not in pierwsze]
+    potrz = 0.0
+    for k in pozostale: potrz += pop[k] - dost[k]
+    if potrz <= reszta:
+        for k in pozostale: dost[k] = pop[k]
+    else:
+        f = reszta / potrz
+        for k in pozostale: dost[k] += (pop[k] - dost[k]) * f
+    def frac(k): return dost[k] / pop[k] if pop[k] > 0 else 1.0
+    f_os = frac('os') * (os_dozw / os if os > 0 else 1.0)
+    f_bron = (z_uzbr_bron + dost['bron']) / bron if bron > 0 else 1.0
+    f_sil = (min(1.0, zapas / sil) if sil > 0 else 1.0) if przel_sil else frac('sil')
+    f_podst = (min(1.0, przedni / podst) if podst > 0 else 1.0) if przel_podst else frac('podst')
+    zas_ = {'os': f_os, 'bron': f_bron, 'sil': f_sil, 'podst': f_podst, 'jon': 10 * n('przydz_jon') / 5 * f_bron,
+            'v': min(1.2, 15 * n('przydz_sil') / 7.5 * f_sil),
+            'zrodla': pula, 'zapotrzebowanie': pop['os'] + pop['bron'] + pop['sil'] + pop['podst'], 'uzyte': dost['os'] + dost['bron'] + dost['sil'] + dost['podst'],
+            'pobor_os': dost['os'], 'pobor_bron': dost['bron'] + z_uzbr_bron, 'pobor_sil': dost['sil'], 'pobor_podst': dost['podst']}
+    for b in ('l', 'p'):
+        zas_['tl_' + b] = 20 * n('przydz_tl') / 10 * (1.0 if n('sync_uzbr_tl_' + b) >= 0.5 else f_bron) * (1 + 0.1 * w('burta_' + b))
+        zas_['oslona_' + b] = f_os * (1 + 0.08 * (n('sync_os_tl_' + b) + n('sync_os_pr_' + b))) * (1 + 0.1 * w('burta_' + b))
+    j['zasil'] = zas_
+    # ciepło rdzenia: rośnie przy wykorzystaniu > 85% i we wzmocnieniach, pole komory i synchronizacja z pomocniczymi je tłumią
+    wyk = max(n('gen_min'), min(1.0, zas_['uzyte'] / pula)) if pula > 0 else 1.0
+    przyrost = (wyk - 0.85) * 2 + 0.5 * w('glowny') + 0.3 * w('generator') + 0.2 * (w('uzbr') + w('przedni') + w('zapas'))
+    for s in SEKTORY: przyrost += 0.2 * w(s)
+    if przyrost > 0: przyrost *= (1.5 - n('pole_komory')) * (0.8 if n('sync_glowny_pom') >= 0.5 else 1.0)
+    j['cieplo'] = min(150.0, max(0.0, j['cieplo'] + przyrost))
+    if not j['dlawienie'] and j['cieplo'] >= 100:
+        j['dlawienie'] = True
+        stan['zdarzenia'].append((tik, 'dlawienie', j['nazwa'], 'start'))
+    elif j['dlawienie'] and j['cieplo'] < 60:
+        j['dlawienie'] = False
+        stan['zdarzenia'].append((tik, 'dlawienie', j['nazwa'], 'koniec'))
+
+
+def sektor_trafienia(stan, tik, j, x, y, ziarno_klucz):
+    """Sektor osłony, w który trafia strzał z punktu (x, y): dziób, rufa, hangar albo góra / dół burty (wysokość — los)."""
+    kat = radiany(j['kurs'])
+    dx, dy = x - j['x'], y - j['y']
+    wzdl = dx * math.sin(kat) + dy * math.cos(kat)
+    w_bok = dx * math.cos(kat) - dy * math.sin(kat)
+    r = wzdl / (math.hypot(dx, dy) or 1)
+    if r > 0.7: return 'dziob', 'p' if w_bok >= 0 else 'l'
+    if r < -0.7: return 'rufa', 'p' if w_bok >= 0 else 'l'
+    burta = 'p' if w_bok >= 0 else 'l'
+    if los(stan['ziarno'], tik, 'pion', ziarno_klucz) < 0.5: return 'gora_' + burta, burta
+    if abs(r) < 0.3: return 'hangar', burta
+    return 'dol_' + burta, burta
+
+
+def mnoznik_oslony(j, gen):
+    """Pojemność generatora × bilans mocy osłon (burta generatora: pierwsza połowa listy — lewa)."""
+    i = j['generatory'].index(gen)
+    return zas(j, 'oslona_' + ('l' if i < max(1, len(j['generatory']) // 2) else 'p'))
+
+
 def generator_od_strony(j, x, y):
     """Który generator przyjmuje trafienie z punktu (x, y): ISD 2 — burta lewa/prawa; MC80 6 — burta × dziób/śródokręcie/rufa."""
     kat = radiany(j['kurs'])
@@ -456,13 +603,24 @@ def generator_od_strony(j, x, y):
     return j['generatory'][burta * na_burte + czesc]
 
 
-def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz):
-    """Filtr (3.2), pojemność i rykoszet (3.4), uszkodzenia żył i kadłuba (3.5, W13)."""
+def trafienie_oslony(stan, tik, j, gen, energia, hz_l, sprawca, ziarno_klucz, zx, zy):
+    """Filtr (3.2), pojemność i rykoszet (3.4), uszkodzenia żył i kadłuba (3.5, W13); sektor osłony (MECHANIKA 11.4):
+    przeciek na granicy sektora przy pokryciu < 100%, wzmocnienie sektora, synchronizacje rufy, pojemność z bilansu mocy."""
     p = PROFILE[j['profil']]
     hz_o = hz_skuteczne(gen['zyly'], gen['hz_osiagane']) if gen['hz_osiagane'] else 0
     do_kadluba, do_gen = filtr(energia, hz_o, hz_l) if hz_o else (energia, 0.0)
+    sektor, burta = sektor_trafienia(stan, tik, j, zx, zy, ziarno_klucz)
+    pokr = nast(j, 'pokr_' + sektor)
+    if pokr < 1 and do_gen > 0 and los(stan['ziarno'], tik, 'granica', ziarno_klucz) < 0.2:
+        przeciek = do_gen * 0.5 * (1 - pokr)
+        do_gen -= przeciek
+        do_kadluba += przeciek
+    if wzm(stan, j, sektor): do_kadluba *= 0.6
+    if sektor == 'rufa':
+        if nast(j, 'sync_rufa_sg_' + burta) >= 0.5: do_kadluba *= 0.9
+        if nast(j, 'sync_rufa_sm_' + burta) >= 0.5: do_kadluba *= 0.9
     gen['obciazenie'] += do_gen
-    c = pojemnosc(p)
+    c = pojemnosc(p) * mnoznik_oslony(j, gen)
     if gen['obciazenie'] > c:
         gen['rykoszet'] += gen['obciazenie'] - c
         gen['obciazenie'] = c
@@ -572,7 +730,7 @@ def ster_okretu(j):
         j['kurs'] = norm180(j['kurs'] + max(-zwrot, min(zwrot, norm180(j['kurs_cel'] - j['kurs']))))
     if j.get('v_cel') is not None:
         a = STALE['przyspieszenie_okretu'].get(j['profil'], 0.005)
-        cel = max(0.0, min(STALE['v_maks_okretu'].get(j['profil'], 0.3), j['v_cel']))
+        cel = max(0.0, min(STALE['v_maks_okretu'].get(j['profil'], 0.3) * zas(j, 'v'), j['v_cel']))
         j['v'] = j['v'] + max(-a, min(a, cel - j['v']))
 
 
@@ -622,7 +780,9 @@ def krok(stan):
         if j['stan'] == 'oczekuje' and tik >= j['wejscie']:
             j['stan'] = 'w_bitwie'
             stan['zdarzenia'].append((tik, 'wejscie', j['strona'], j['nazwa']))
-    for w in aktywuj_rozkazy(stan, tik):
+    nowe = aktywuj_rozkazy(stan, tik)
+    stan['_dziala'] = {w['kanal'] for w in stan['rozkazy'] if w['stan'] == 'dziala'}
+    for w in nowe:
         if w['klucz'] is not None:                       # akcja NPC: figura lub rozkaz zaczął działać → XP (W7)
             k = w['klucz']
             k['akcje'] += 1
@@ -646,6 +806,14 @@ def krok(stan):
                 j['kurs_cel'], j['v_cel'] = kurs, v
             else:
                 j['cel_ognia'] = int(w['wartosc']) if w['wartosc'] else None
+        if w['kod'] in ('nastawa', 'synchronizuj', 'przelacz', 'wyrownaj'):
+            nr = w['kanal'].split(':')[0]
+            j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
+            if w['kod'] == 'wyrownaj':
+                for k in GRUPY_WYROWNANIA[w['wartosc']]: j['nastawy'][k] = NASTAWY[k]
+            else:
+                k, v = w['wartosc'].split('=')
+                j['nastawy'][k] = float(v)
         if w['kod'].startswith('przestrojenie'):
             nr, gk = w['kanal'].split(':')
             j = next(x for x in stan['jednostki'] if str(x['nr']) == nr)
@@ -680,6 +848,9 @@ def krok(stan):
         k['x'] += v * math.sin(radiany(k['kurs']))
         k['y'] += v * math.cos(radiany(k['kurs']))
     for j in stan['jednostki']:
+        if j['stan'] == 'w_bitwie': zasilanie(stan, tik, j)
+        else: j.pop('zasil', None)
+    for j in stan['jednostki']:
         if j['stan'] != 'w_bitwie': continue
         if j['ai']:
             ai_okretu(stan, tik, j)
@@ -708,7 +879,8 @@ def krok(stan):
             torp = fig == 'torpedy' and k['typ'] in TORPEDY
             gen = generator_od_strony(cel, k['x'], k['y'])
             trafienie_oslony(stan, tik, cel, gen, m['energia'] * k['maszyny'] * (STALE['torpedy_energia'] if torp else 1),
-                             hz_klucza(k) * (STALE['torpedy_hz'] if torp else 1), f'{k["strona"]} {k["nr"]}' + (' torpedy' if torp else ''), kanal_klucza(k))
+                             hz_klucza(k) * (STALE['torpedy_hz'] if torp else 1), f'{k["strona"]} {k["nr"]}' + (' torpedy' if torp else ''), kanal_klucza(k),
+                             k['x'], k['y'])
     for j in stan['jednostki']:
         if j['stan'] == 'w_bitwie': obrona_punktowa(stan, tik, j)
     for j in stan['jednostki']:

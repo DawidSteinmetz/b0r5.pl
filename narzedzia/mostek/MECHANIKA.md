@@ -510,6 +510,45 @@ Parametry dowódców w `silnik.py` STALE['dowodcy'] (= `api/bitwa_silnik.php` BI
 
 ---
 
+## 11.4 Osłony i zasilanie — nastawy konsol [R, 26.11.2026]
+
+Pulpity Osłony i Reaktory mają mechanikę w silniku (`silnik.py`: `NASTAWY`, `zasilanie`, `sektor_trafienia`; port
+`api/bitwa_silnik.php`; stan w `bitwy_nastawy` i `bitwy_jednostki.cieplo_reaktora / dlawienie`, migracja 078).
+Wszystkie liczby robocze [R]. **Wartości domyślne nie zmieniają przebiegu bitwy** (wektory zgodności bez zmian).
+
+**Rozkazy:** suwak — `nastawa` (2 s), synchronizacja — `synchronizuj` (12 s, przełącznik), przełączenie zasilania —
+`przelacz` (2 s, przełącznik), `wyrownaj` (12 s, grupa wraca do wartości domyślnych: baterie, reaktory, dystrybucja),
+`wzmocnij` (3 s przygotowania, działa 12 s, odnowienie 24 s; przycisk sprężynowy, świeci, gdy działa).
+
+**Bilans mocy** (jednostki: % mocy nominalnej rdzenia, liczony w każdym tiku):
+- źródła: rdzeń 100 × (0,8 + 0,4·gęstość hipermaterii) × sprawność generatora (1 − 0,2·odchyłka częstotliwości
+  i napięcia od 50%, +3% za każdą synchronizację rdzeń–generator) × wzmocnienia (rdzeń +15%, generator +10%) ×
+  0,7 przy dławieniu, ograniczony suwakiem „maks. obciążenie generatora”; reaktor uzbrojenia 15 (+30% wzmocniony)
+  — najpierw baterie, w zakresie min…maks., nadwyżka do puli tylko po synchronizacji z rdzeniem; przedni reaktor
+  20 × moc (do puli albo — po przełączeniu — tylko systemy podstawowe); zapasowy 20 × moc (silniki po przełączeniu,
+  połowa do puli po synchronizacji z silnikiem środkowym); rezerwa awaryjna (do 20) wstrzymana, dopóki któryś
+  generator osłon nie przekroczy 90% pojemności;
+- odbiorcy: osłony (pobór żył + 2 × pokrycie każdego z 7 sektorów + 4 za wzmocniony sektor + 1 za synchronizację;
+  limit — suwak „przydział mocy dla osłon”), baterie (turbolasery 20 × przydział, +5 za wzmocnioną burtę; jony
+  10 × przydział), silniki 15 × przydział, systemy podstawowe (sensory, hipernapęd 10 × przydział, pole komory 4 ×,
+  promienie ściągające 3);
+- niedobór: dzielony proporcjonalnie; synchronizacja generatora z konsolą osłon / silników daje im pierwszeństwo,
+  rezerwa na salwę (do 10) — bateriom.
+
+**Skutki:** tempo salwy baterii = przydział / bazowy × zasilenie (synchronizacja reaktora uzbrojenia z baterią burty
+— burta poza niedoborem; wzmocnione zasilanie burty +10%); pojemność generatora osłon × zasilenie osłon (+8% za
+synchronizację z baterią i z promieniem ściągającym tej burty, +10% przy wzmocnionej burcie); prędkość maks. okrętu
+× zasilenie silników (do ×1,2).
+
+**Sektory osłon:** strzał trafia w dziób, rufę albo burtę (górną lub dolną — los; dół przy śródokręciu to hangar).
+Pokrycie granic < 100%: 20% trafień w sektor wypada na styk — przecieka 50% × (1 − pokrycie) energii zatrzymanej przez
+osłonę. Wzmocniony sektor: do kadłuba 60% energii. Rufa: każda synchronizacja z silnikami tej burty — ×0,9.
+
+**Ciepło rdzenia** (0…150%): rośnie przy wykorzystaniu puli > 85% (+2 × nadwyżka na tik) i we wzmocnieniach, maleje
+poniżej. Pole komory (0…1) mnoży przyrost przez 1,5 − pole, synchronizacja rdzenia z pomocniczymi × 0,8. Od 100% —
+dławienie (rdzeń daje 70%), koniec poniżej 60%. „Równaj częstotliwość z reaktorem” stroi oba generatory osłon na stopień
+natywny najbliższy częstotliwości bazowej (suwak na konsoli Reaktory, 12 s).
+
 ## 12. Decyzje do podjęcia (wspólne)
 
 | # | Pytanie | Propozycja |

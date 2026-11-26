@@ -728,6 +728,43 @@ const wlasneKlucze = (s, j) => s.klucze.filter((k) => k.strona === j.strona && !
 const doKlucza = (akcje, k, kod, pulpit) => akcje.rozkaz({ klucz_id: k.id, kod, pulpit });
 const lampa = (k, etykieta) => ({ kolor: (LAMPA[k.stan] || LAMPA.hangar)[0], kolorTekstu: (LAMPA[k.stan] || LAMPA.hangar)[1], etykieta });
 
+// ------------------------------------------------------------------------------------------- nastawy (Osłony, Reaktory)
+// MECHANIKA 11.4: suwaki 0…1 i przełączniki okrętu (rozkaz nastawa / synchronizuj / przelacz, 2–12 s przygotowania),
+// wzmocnienia (rozkaz wzmocnij: 3 s, działa 12 s, odnowienie 24 s) i wyrównania grup. Do czasu odpowiedzi serwera
+// konsola pokazuje wartość wysłaną (czekającą), żeby suwak nie wracał na chwilę na stare miejsce.
+const r4 = (v) => Math.round(v * 10000) / 10000;
+function nastawyKonsoli(j, st, akcje, pulpitNazwa) {
+  const serwer = j.nastawy || {};
+  const czeka = (st.nastawyCzeka ||= {});
+  for (const [k, c] of Object.entries(czeka)) if (Math.abs((serwer[k] ?? -1) - c.v) < 1e-6 || Date.now() - c.t > 20000) delete czeka[k];
+  const N = (k) => czeka[k]?.v ?? serwer[k] ?? 0;
+  const brak = () => akcje.komunikat('Nastawy osłon i reaktorów wymagają migracji 078 na serwerze.');
+  const ustaw = (k, v) => {
+    if (!j.nastawy_mozliwe) return brak();
+    czeka[k] = { v: r4(v), t: Date.now() };
+    akcje.rozkaz({ jednostka_id: j.id, kod: 'nastawa', nastawa: k, wartosc: r4(v), pulpit: pulpitNazwa });
+    akcje.odswiez();
+  };
+  const proc = (v) => `${Math.round(v * 100)}%`;
+  return {
+    N, ustaw,
+    przelacznik: (k, opis) => ({ wl: N(k) >= 0.5, przelacznik: true, klik: () => ustaw(k, N(k) >= 0.5 ? 0 : 1),
+      etykieta: opis ? `${opis}${czeka[k] ? ' …' : ''}` : undefined }),
+    suwak: (k, opis, fmt = proc) => ({ poz: N(k), ustawPoz: (v) => ustaw(k, v), etykieta: `${opis}: ${fmt(N(k))}${czeka[k] ? ' …' : ''}` }),
+    zakres: (kMax, kMin, opisMax, opisMin, fmt = proc) => ({ zakres: { max: N(kMax), min: N(kMin) },
+      ustawZakres: (v, ktory) => (ktory === 'max' ? ustaw(kMax, Math.max(v, N(kMin))) : ustaw(kMin, Math.min(v, N(kMax)))),
+      etykieta: `${opisMax} ${fmt(N(kMax))}`, etykietaMin: `${opisMin} ${fmt(N(kMin))}` }),
+    wzmocnij: (cel, opis) => {
+      const s = j.wzmocnienia?.[cel];
+      const stan = !s ? '' : s.stan === 'dziala' ? ` · aktywne ${Math.ceil(s.za_s)} s` : s.stan === 'przygotowanie' ? ` · za ${Math.ceil(s.za_s)} s` : ` · odnowienie ${Math.ceil(s.za_s)} s`;
+      return { wl: s?.stan === 'dziala', etykieta: `${opis}${stan}`, klik: () => (j.nastawy_mozliwe
+        ? akcje.rozkaz({ jednostka_id: j.id, kod: 'wzmocnij', cel, pulpit: pulpitNazwa }) : brak()) };
+    },
+    wyrownaj: (grupa, opis) => ({ etykieta: opis, klik: () => (j.nastawy_mozliwe
+      ? akcje.rozkaz({ jednostka_id: j.id, kod: 'wyrownaj', grupa, pulpit: pulpitNazwa }) : brak()) }),
+  };
+}
+
 // ------------------------------------------------------------------------------------------- Osłony
 // Ekran żył generatora: lampka = żyła; świeci, gdy n mod (N/f) = 0 (MECHANIKA 3.1); martwa — ciemnoczerwona.
 function ekranZyl(g, st, akcje, stopnie) {
@@ -781,6 +818,26 @@ function oslony(s, st, akcje) {
     'suwak: maksymalna częstotliwość prawego generatora osłon': zakres(P),
     'wyrównaj osłony': { etykieta: 'wyrównaj osłony (oba na auto)', klik: () => j.generatory.forEach((g) => akcje.rozkaz({ generator_id: g.id, kod: 'auto', pulpit: 'Osłony' })) },
   };
+  // Sektory osłon (MECHANIKA 11.4): pokrycie granic (przeciek na styku sektorów, koszt mocy), wzmocnienia (12 s: mniej
+  // energii przebija do kadłuba w tym sektorze, ciepło rdzenia), synchronizacje (pojemność generatora burty, rufa).
+  const n = nastawyKonsoli(j, st, akcje, 'Osłony');
+  const SEKT = { dziob: 'osłony dziobowej', dol_l: 'dolnej osłony lewej burty', gora_l: 'górnej osłony lewej burty', rufa: 'osłony rufowej',
+    hangar: 'osłony hangarów', gora_p: 'górnej osłony prawej burty', dol_p: 'dolnej osłony prawej burty' };
+  for (const [s, opis] of Object.entries(SEKT)) w[`suwak: stopień pokrycia granic ${opis}`] = n.suwak('pokr_' + s, `pokrycie granic ${opis}`);
+  const WZM = { dziob: 'wzmocnij osłony dziobowe', gora_l: 'wzmocnij górne osłony lewej burty', gora_p: 'wzmocnij górne osłony prawej burty',
+    dol_l: 'wzmocnij dolne osłony lewej burty', dol_p: 'wzmocnij dolne osłony prawej burty', rufa: 'wzmocnij osłony rufowe', hangar: 'wzmocnij osłonę hangaru' };
+  for (const [cel, tekst] of Object.entries(WZM)) w[tekst] = n.wzmocnij(cel, tekst);
+  const SYNC = {
+    'synchronizacja z lewą baterią turbolaserów': 'sync_os_tl_l', 'synchronizacja z prawą baterią turbolaserów': 'sync_os_tl_p',
+    'synchronizacja z lewym promieniem ściągającym': 'sync_os_pr_l', 'synchronizacja z prawym promieniem ściągającym': 'sync_os_pr_p',
+    'synchronizacja osłony rufowej z lewym silnikiem głównym': 'sync_rufa_sg_l', 'synchronizacja osłony rufowej z prawym silnikiem głównym': 'sync_rufa_sg_p',
+    'synchronizacja osłony rufowej z lewymi silnikami manewrowymi': 'sync_rufa_sm_l', 'synchronizacja osłony rufowej z prawymi silnikami manewrowymi': 'sync_rufa_sm_p',
+  };
+  for (const [tekst, k] of Object.entries(SYNC)) w[tekst] = n.przelacznik(k);
+  // Równaj z reaktorem: oba generatory na stopień natywny najbliższy częstotliwości bazowej z konsoli Reaktory (12 s).
+  const bazowa = stopnie.reduce((a, b) => (Math.abs(b - n.N('czest_bazowa') * 3600) < Math.abs(a - n.N('czest_bazowa') * 3600) ? b : a), stopnie[0]);
+  w['równaj częstotliwość z reaktorem'] = { etykieta: `równaj z reaktorem (${bazowa} Hz)`,
+    klik: () => j.generatory.forEach((g) => akcje.rozkaz({ generator_id: g.id, kod: 'przestrojenie_reczne', hz: bazowa, pulpit: 'Osłony' })) };
   return pulpit(j.profil, 'Osłony', w);
 }
 
@@ -794,19 +851,89 @@ const KOLEJNOSC_REAKTORA = (() => {
 })();
 function reaktory(s, st, akcje) {
   const j = wlasna(s);
-  const pobor = j.pobor_oslon_proc || 0;
-  const sensory = j.pobor_sensorow_proc || 0;
-  // Siatka 60×60 lampek = porcje mocy reaktora: turkus — osłony, fiolet — sensory, ciemne — wolne.
+  const n = nastawyKonsoli(j, st, akcje, 'Reaktory');
+  const z = j.zasil;
+  const N = n.N;
+  // Siatka 60×60 = moc rdzenia i reaktorów (porcje rozsiane po kwadracie): turkus — osłony, czerwień — baterie,
+  // biel — silniki, fiolet — sensory i systemy podstawowe, ciemna zieleń — wolne, ciemne — poza mocą dostępną.
+  // Przy dławieniu wolne porcje gasną na pomarańczowo; ciepło rdzenia w nagłówku.
   const ekran = () => {
-    const n = 3600, os = Math.round(n * pobor / 100), se = Math.round(n * sensory / 100);
+    const nn = 3600;
+    if (!z) {
+      const pobor = j.pobor_oslon_proc || 0, os = Math.round(nn * pobor / 100);
+      return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.7cqw);${CZCIONKA}` },
+        h('div', `osłony ${pobor}%`), siatkaLampek(nn, 60, (i) => (KOLEJNOSC_REAKTORA[i] < os ? [77, 226, 201] : [16, 26, 34])));
+    }
+    const skala = nn / Math.max(100, z.zrodla, z.zapotrzebowanie);
+    const progi = [[z.pobor_os, [77, 226, 201]], [z.pobor_bron, [255, 90, 80]], [z.pobor_sil, [230, 236, 240]], [z.pobor_podst, [201, 155, 255]]];
+    let suma = 0;
+    const granice = progi.map(([v, k]) => { suma += v * skala; return [suma, k]; });
+    const dostepne = z.zrodla * skala;
+    const wolne = j.dlawienie ? [150, 70, 20] : [24, 70, 40];
+    const niedobor = z.zapotrzebowanie > z.uzyte + 0.01;
     return h('div', { style: `display:flex;flex-direction:column;width:100%;height:100%;padding:3px;box-sizing:border-box;gap:3px;color:#cfe;font-size:max(7px,0.7cqw);${CZCIONKA}` },
-      h('div', `osłony ${pobor}% · sensory ${sensory}% · wolne ${(100 - pobor - sensory).toFixed(1)}%`),
-      siatkaLampek(n, 60, (i) => { const r = KOLEJNOSC_REAKTORA[i]; return r < os ? [77, 226, 201] : r < os + se ? [201, 155, 255] : [16, 26, 34]; }));
+      h('div', `moc ${z.zrodla.toFixed(0)} · pobór ${z.uzyte.toFixed(0)} · osłony ${z.pobor_os.toFixed(0)} · baterie ${z.pobor_bron.toFixed(0)} · silniki ${z.pobor_sil.toFixed(0)}`
+        + ` · systemy ${z.pobor_podst.toFixed(0)}`),
+      h('div', { style: `color:${j.dlawienie ? '#ff9a50' : j.cieplo > 70 ? '#ffd27a' : '#9fe8c8'}` },
+        `ciepło rdzenia ${Math.round(j.cieplo || 0)}%${j.dlawienie ? ' · DŁAWIENIE (70% mocy)' : ''}${niedobor ? ' · NIEDOBÓR MOCY' : ''}`),
+      siatkaLampek(nn, 60, (i) => {
+        const r = KOLEJNOSC_REAKTORA[i];
+        for (const [g, k] of granice) if (r < g) return k;
+        return r < dostepne ? wolne : [16, 26, 34];
+      }));
   };
-  return pulpit(j.profil, 'Reaktory', {
+  const procent = (k, mnoznik) => (v) => `${Math.round(v * mnoznik)}`;
+  const w = {
     'REAKTOR GŁÓWNY (jonizacji słonecznej I-a2b) · SIATKA 60×60 (3600 lampek) · ekran dynamiczny · porcje mocy, ciepło, dławienie': { ekran },
-    'suwak: przydział mocy dla osłon': { etykieta: `osłony: ${pobor}% mocy` },
-  });
+    // zakresy: reaktor uzbrojenia (min — produkcja wymuszona, maks. — górna granica), generator mocy (udział rdzenia w puli)
+    'suwak: maksymalna moc reaktora pomocniczego uzbrojenia': n.zakres('uzbr_max', 'uzbr_min', 'uzbrojenie maks.', 'min.'),
+    'suwak: maksymalne obciążenie głównego generatora mocy': n.zakres('gen_max', 'gen_min', 'generator maks.', 'min.'),
+    'suwak: przydział mocy dla turbolaserów': n.suwak('przydz_tl', 'turbolasery', procent('przydz_tl', 20)),
+    'suwak: przydział mocy dla dział jonowych': n.suwak('przydz_jon', 'działa jonowe', procent('przydz_jon', 10)),
+    'suwak: przydział mocy dla silników jonowych': n.suwak('przydz_sil', 'silniki jonowe', procent('przydz_sil', 15)),
+    'suwak: przydział mocy dla osłon': n.suwak('przydz_os', 'osłony (limit)', procent('przydz_os', 100)),
+    'suwak: przydział mocy dla hipernapędu': n.suwak('przydz_hiper', 'hipernapęd', procent('przydz_hiper', 10)),
+    'suwak: moc przedniego reaktora pomocniczego': n.suwak('moc_przedni', 'moc przedniego', procent('moc_przedni', 20)),
+    'suwak: moc zapasowego reaktora silników': n.suwak('moc_zapas', 'moc zapasowego', procent('moc_zapas', 20)),
+    'suwak: częstotliwość wyjściowa generatora': n.suwak('czest_gen', 'częstotliwość generatora (optimum 50%)'),
+    'suwak: napięcie wyjściowe generatora': n.suwak('napiecie_gen', 'napięcie generatora (optimum 50%)'),
+    'suwak: gęstość hipermaterii w komorze': n.suwak('gestosc', 'gęstość hipermaterii'),
+    'suwak: siła pola zamykającego komory': n.suwak('pole_komory', 'pole komory (chłodzi)'),
+    'suwak: częstotliwość bazowa reaktora (wzorzec dla konsol)': n.suwak('czest_bazowa', 'częstotliwość bazowa', (v) => `${Math.round(v * 3600)} Hz`),
+    'suwak: rezerwa mocy na salwę': n.suwak('rez_salwa', 'rezerwa na salwę', procent('rez_salwa', 10)),
+    'suwak: rezerwa mocy awaryjnej': n.suwak('rez_awaryjna', 'rezerwa awaryjna', procent('rez_awaryjna', 20)),
+    'wzmocnij reaktor główny': n.wzmocnij('glowny', 'wzmocnij reaktor główny'),
+    'wzmocnij główny generator mocy': n.wzmocnij('generator', 'wzmocnij generator mocy'),
+    'wzmocnij reaktor pomocniczy uzbrojenia': n.wzmocnij('uzbr', 'wzmocnij reaktor uzbrojenia'),
+    'wzmocnij przedni reaktor pomocniczy': n.wzmocnij('przedni', 'wzmocnij przedni reaktor'),
+    'wzmocnij zapasowy reaktor silników': n.wzmocnij('zapas', 'wzmocnij zapasowy reaktor'),
+    'wzmocnij zasilanie lewej burty': n.wzmocnij('burta_l', 'wzmocnij zasilanie lewej burty'),
+    'wzmocnij zasilanie prawej burty': n.wzmocnij('burta_p', 'wzmocnij zasilanie prawej burty'),
+    'przełącz silniki na zasilanie zapasowe': n.przelacznik('przel_sil_zapas', N('przel_sil_zapas') >= 0.5 ? 'silniki na zasilaniu zapasowym' : 'przełącz silniki na zasilanie zapasowe'),
+    'przełącz systemy podstawowe na przedni reaktor': n.przelacznik('przel_podst_przedni', N('przel_podst_przedni') >= 0.5 ? 'systemy podstawowe na przednim reaktorze' : 'przełącz systemy podstawowe na przedni reaktor'),
+    'wyrównaj zasilanie baterii': n.wyrownaj('baterie', 'wyrównaj zasilanie baterii'),
+    'wyrównaj obciążenie reaktorów': n.wyrownaj('reaktory', 'wyrównaj obciążenie reaktorów'),
+    'wyrównaj dystrybucję mocy': n.wyrownaj('dystrybucja', 'wyrównaj dystrybucję mocy'),
+    // urządzenia: odczyt mocy (jednostki: % mocy nominalnej rdzenia)
+    'Przedni reaktor pomocniczy': { wl: N('moc_przedni') > 0, etykieta: `przedni reaktor · ${Math.round(20 * N('moc_przedni'))}${N('przel_podst_przedni') >= 0.5 ? ' · systemy podstawowe' : ' · do puli'}` },
+    'Reaktor pomocniczy uzbrojenia': { wl: true, etykieta: `reaktor uzbrojenia · 15 · baterie ${z ? Math.round(z.bron * 100) : 100}%` },
+    'Główny generator mocy': { wl: true, etykieta: `generator mocy · pula ${z ? Math.round(z.zrodla) : '—'}` },
+    'Zapasowy reaktor silników': { wl: N('moc_zapas') > 0, etykieta: `zapasowy · ${Math.round(20 * N('moc_zapas'))}${N('przel_sil_zapas') >= 0.5 ? ' · zasila silniki' : N('sync_zapas_sil') >= 0.5 ? ' · połowa do puli' : ' · w gotowości'}` },
+  };
+  const SYNC = {
+    'synchronizacja przedniego reaktora z promieniami ściągającymi': 'sync_przedni_pr',
+    'synchronizacja zapasowego reaktora z silnikiem głównym środkowym': 'sync_zapas_sil',
+    'synchronizacja reaktora uzbrojenia z lewą baterią turbolaserów': 'sync_uzbr_tl_l',
+    'synchronizacja reaktora uzbrojenia z prawą baterią turbolaserów': 'sync_uzbr_tl_p',
+    'synchronizacja generatora z konsolą silników': 'sync_gen_sil',
+    'synchronizacja generatora z konsolą osłon': 'sync_gen_os',
+    'synchronizacja reaktora uzbrojenia z reaktorem głównym': 'sync_uzbr_glowny',
+    'synchronizacja reaktora głównego z reaktorami pomocniczymi': 'sync_glowny_pom',
+    'synchronizacja reaktora głównego z generatorem mocy': 'sync_glowny_gen',
+    'synchronizacja generatora z reaktorem głównym': 'sync_gen_glowny',
+  };
+  for (const [tekst, k] of Object.entries(SYNC)) w[tekst] = n.przelacznik(k);
+  return pulpit(j.profil, 'Reaktory', w);
 }
 
 // ------------------------------------------------------------------------------------------- Klucz (zbliżenie)

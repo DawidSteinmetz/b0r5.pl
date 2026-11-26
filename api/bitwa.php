@@ -150,10 +150,15 @@ function bitwa_test(): array
     $w[] = ['zegar z trwającą pauzą', 3.0, bitwa_czas(110.0, 100.0, 2.0, 105.0), bitwa_czas(110.0, 100.0, 2.0, 105.0) === 3.0];
     // Całe przebiegi scenariusza: ta sama pętla tików co w Pythonie (pozycje z tolerancją 1e-6 — różnice bibliotek sin/cos).
     foreach (BITWA_WEKTORY['przebiegi'] ?? [] as $pb) {
-        $nazwa = "przebieg {$pb['kod']}/{$pb['ziarno']}" . ($pb['auto'] ? '' : ' (osłony ręczne)');
+        $nazwa = "przebieg {$pb['kod']}/{$pb['ziarno']}" . ($pb['auto'] ? '' : ' (osłony ręczne)') . (!empty($pb['rozkazy']) ? ' + nastawy' : '');
         $S = bitwa_stan_ze_scenariusza(bitwa_scenariusz_dane($pb['kod']), (int) $pb['ziarno']);
         if (!$pb['auto']) foreach ($S['jednostki'] as $ji => $j) foreach (array_keys($j['generatory']) as $gi) $S['jednostki'][$ji]['generatory'][$gi]['auto'] = false;
-        for ($i = 0; $i < $pb['tiki']; $i++) bitwa_krok($S);
+        for ($i = 0; $i < $pb['tiki']; $i++) {
+            foreach ($pb['rozkazy'] ?? [] as [$tk, $nrJ, $kanal, $kodR, $wart]) {
+                if ($tk === $S['tik']) bitwa_przyjmij($S, "$nrJ:$kanal", $kodR, (float) $tk, 'standard', null, ['wartosc' => $wart]);
+            }
+            bitwa_krok($S);
+        }
         $roznica = null;
         foreach ($pb['klucze'] as $i => [$st, $nr, $stan, $ranga, $x, $y, $akcje]) {
             $k = $S['klucze'][$i] ?? null;
@@ -180,6 +185,16 @@ function bitwa_test(): array
         foreach ($S['zdarzenia'] as $z) $zd[$z['rodzaj']] = ($zd[$z['rodzaj']] ?? 0) + 1;
         ksort($zd, SORT_STRING);
         $w[] = ["$nazwa: zdarzenia", json_encode($pb['zdarzenia']), json_encode($zd), $zd == $pb['zdarzenia']];
+        if (isset($pb['zasilanie'])) {
+            $zs = [];
+            foreach ($S['jednostki'] as $j) $zs[] = [$j['cieplo'], $j['dlawienie'], bitwa_zas($j, 'tl_l'), bitwa_zas($j, 'oslona_p'), bitwa_zas($j, 'v')];
+            $ok = count($zs) === count($pb['zasilanie']);
+            foreach ($pb['zasilanie'] as $i => $z) {
+                $ok = $ok && $zs[$i][1] === $z[1];
+                foreach ([0, 2, 3, 4] as $k) $ok = $ok && abs($zs[$i][$k] - $z[$k]) <= 1e-9 * max(1.0, abs($z[$k]));
+            }
+            $w[] = ["$nazwa: zasilanie", json_encode($pb['zasilanie']), json_encode($zs), $ok];
+        }
     }
     return $w;
 }
@@ -265,6 +280,17 @@ function bitwa_ster_dostepny(): bool
     static $jest = null;
     if ($jest === null) {
         try { polaczenie_bazy()->query('SELECT kurs_cel_deg FROM bitwy_jednostki LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+// Migracja 078 (nastawy konsol Osłony i Reaktory, ciepło rdzenia).
+function bitwa_nastawy_dostepne(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT kod FROM bitwy_nastawy LIMIT 0'); polaczenie_bazy()->query('SELECT cieplo_reaktora FROM bitwy_jednostki LIMIT 0'); $jest = true; }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
@@ -657,7 +683,17 @@ function bitwa_wczytaj_stan(array $b): array
             'wejscie' => (int) $r['wejscie_tik'], 'generatory' => $gen, 'sekcje' => $sek, 'stan' => $r['stan'], 'obiekt_id' => $r['obiekt_id'],
             'zasieg_sensorow' => (int) ($r['zasieg_sensorow_km'] ?? 1000), 'ai' => ($dowodzenie[$r['strona']] ?? 'gracze') !== 'gracze',
             'kurs_cel' => isset($r['kurs_cel_deg']) ? (float) $r['kurs_cel_deg'] : null, 'v_cel' => isset($r['v_cel_km_s']) ? (float) $r['v_cel_km_s'] : null,
-            'cel_ognia' => isset($r['cel_ognia_nr']) ? (int) $r['cel_ognia_nr'] : null];
+            'cel_ognia' => isset($r['cel_ognia_nr']) ? (int) $r['cel_ognia_nr'] : null,
+            'nastawy' => [], 'cieplo' => (float) ($r['cieplo_reaktora'] ?? 0), 'dlawienie' => (bool) (int) ($r['dlawienie'] ?? 0)];
+    }
+    if (bitwa_nastawy_dostepne()) {
+        $q = $db->prepare('SELECT n.bitwa_jednostka_id, n.kod, n.wartosc FROM bitwy_nastawy n JOIN bitwy_jednostki j ON j.id = n.bitwa_jednostka_id WHERE j.bitwa_id=?');
+        $q->execute([$id]);
+        $poId = [];
+        foreach ($S['jednostki'] as $ji => $j) $poId[$j['id']] = $ji;
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            if (isset($poId[(int) $r['bitwa_jednostka_id']]) && isset(BITWA_NASTAWY[$r['kod']])) $S['jednostki'][$poId[(int) $r['bitwa_jednostka_id']]]['nastawy'][$r['kod']] = (float) $r['wartosc'];
+        }
     }
     $indeksKlucza = [];
     $q = $db->prepare('SELECT * FROM bitwy_klucze WHERE bitwa_id=? ORDER BY id');
@@ -698,7 +734,14 @@ function bitwa_zapisz_stan(array $S): void
     $idJednostki = [];
     $updSens = bitwa_sensory_dostepne() ? $db->prepare('UPDATE bitwy_jednostki SET zasieg_sensorow_km=? WHERE id=?') : null;
     $updSter = bitwa_ster_dostepny() ? $db->prepare('UPDATE bitwy_jednostki SET kurs_cel_deg=?, v_cel_km_s=?, cel_ognia_nr=? WHERE id=?') : null;
+    $nastawy = bitwa_nastawy_dostepne();
+    $updCieplo = $nastawy ? $db->prepare('UPDATE bitwy_jednostki SET cieplo_reaktora=?, dlawienie=? WHERE id=?') : null;
+    $insN = $nastawy ? $db->prepare('INSERT INTO bitwy_nastawy (bitwa_jednostka_id, kod, wartosc) VALUES (?,?,?) ON DUPLICATE KEY UPDATE wartosc = VALUES(wartosc)') : null;
     foreach ($S['jednostki'] as $j) {
+        if ($updCieplo) {
+            $updCieplo->execute([$j['cieplo'] ?? 0.0, !empty($j['dlawienie']) ? 1 : 0, $j['id']]);
+            foreach ($j['nastawy'] ?? [] as $k => $v) $insN->execute([$j['id'], $k, $v]);
+        }
         $idJednostki[$j['nr']] = $j['id'];
         if ($updSens) $updSens->execute([(int) ($j['zasieg_sensorow'] ?? 1000), $j['id']]);
         if ($updSter) $updSter->execute([$j['kurs_cel'] ?? null, $j['v_cel'] ?? null, $j['cel_ognia'] ?? null, $j['id']]);
@@ -786,7 +829,15 @@ function bitwa_widok(array $b, array $S): array
     $prof = bitwa_rozkazy_profile();
     $czas = $b['zegar_start_utc'] !== null ? min(bitwa_czas_teraz($b), (float) $b['okno_s']) : 0.0;
     $jednostki = [];
-    foreach ($S['jednostki'] as $j) {
+    foreach ($S['jednostki'] as $ji => $j) {
+        // Bilans mocy liczy silnik w każdym tiku; bez doliczonego tiku (pauza, mostek) — z kopii stanu, bez zapisu.
+        if (!isset($j['zasil']) && $j['stan'] === 'w_bitwie') {
+            $T = $S;
+            $T['_dziala'] = [];
+            foreach (array_keys($T['aktywne']) as $i) if ($T['rozkazy'][$i]['stan'] === 'dziala') $T['_dziala'][$T['rozkazy'][$i]['kanal']] = true;
+            bitwa_zasilanie($T, (int) $S['tik'], $ji);
+            $j['zasil'] = $T['jednostki'][$ji]['zasil'];
+        }
         $p = $sl['profile'][$j['profil']];
         $kadlub = 0.0;
         foreach ($j['sekcje'] as $sek => $v) $kadlub += $v * ($p['kadlub'][$sek] ?? 0);
@@ -800,7 +851,9 @@ function bitwa_widok(array $b, array $S): array
             'kurs' => round($j['kurs'], 2), 'v' => $j['v'], 'dlugosc_km' => $p['dlugosc_m'] / 1000, 'nr_jednostki' => $j['nr'], 'ai' => !empty($j['ai']),
             'kurs_cel' => $j['kurs_cel'] ?? null, 'v_cel' => $j['v_cel'] ?? null, 'cel_ognia' => $j['cel_ognia'] ?? null,
             'v_maks' => BITWA_STALE['v_maks_okretu'][$j['profil']] ?? 0.3, 'obrot_deg_min' => BITWA_STALE['obrot_okretu'][$j['profil']] ?? 60,
-            'ster' => bitwa_ster_dostepny(),
+            'ster' => bitwa_ster_dostepny(), 'nastawy_mozliwe' => bitwa_nastawy_dostepne(),
+            'nastawy' => ($j['nastawy'] ?? []) + BITWA_NASTAWY, 'zasil' => $j['zasil'] ?? null, 'cieplo' => round((float) ($j['cieplo'] ?? 0), 2),
+            'dlawienie' => !empty($j['dlawienie']), 'wzmocnienia' => bitwa_wzmocnienia_widok($S, $j, $czas),
             'kadlub' => round($kadlub, 3), 'sekcje' => array_map(static fn($v) => round($v, 3), $j['sekcje']),
             'stopnie' => array_values(array_filter(bitwa_stopnie($p['zyly']), static fn($s) => $s >= 100)),
             'generatory' => array_map(static fn($g) => $p ? ['id' => $g['id'], 'kod' => $g['kod'], 'hz_zadane' => $g['hz_zadane'], 'hz_osiagane' => $g['hz_osiagane'],
@@ -837,6 +890,21 @@ function bitwa_widok(array $b, array $S): array
     return ['id' => (int) $b['id'], 'nazwa' => $b['nazwa'], 'status' => $b['status'], 'pauza' => $b['pauza_od_utc'] !== null, 'czas_s' => round($czas, 2),
         'tik' => $S['tik'], 'okno_s' => (int) $b['okno_s'], 'prowadzacy' => $b['prowadzacy_login'], 'jednostki' => $jednostki, 'klucze' => $klucze,
         'zdarzenia' => $q->fetchAll(PDO::FETCH_ASSOC), 'figury' => $figury];
+}
+
+// Wzmocnienia okrętu do widoku: cel → stan (przygotowanie / dziala / odnowienie) i sekundy do zmiany.
+function bitwa_wzmocnienia_widok(array $S, array $j, float $czas): array
+{
+    $out = [];
+    foreach (BITWA_WZMOCNIENIA as $cel) {
+        $idx = $S['po_kanale']["{$j['nr']}:wzm_$cel"] ?? [];
+        if (!$idx) continue;
+        $w = $S['rozkazy'][end($idx)];
+        if ($w['stan'] === 'przygotowanie') $out[$cel] = ['stan' => 'przygotowanie', 'za_s' => round(max(0, $w['dziala_od'] - $czas), 1)];
+        elseif ($w['stan'] === 'dziala') $out[$cel] = ['stan' => 'dziala', 'za_s' => round(max(0, ($w['dziala_do'] ?? 0) - $czas), 1)];
+        elseif ($w['odnowienie_do'] && $czas < $w['odnowienie_do'] && $w['stan'] !== 'przerwany') $out[$cel] = ['stan' => 'odnowienie', 'za_s' => round($w['odnowienie_do'] - $czas, 1)];
+    }
+    return $out;
 }
 
 // Stanowiska symulacji i to, co widzi konto: pełny podgląd (MG, prowadzący, kapitan) albo tylko swoje pulpity.
@@ -1061,6 +1129,39 @@ function obsluz_bitwa(string $akcja, bool $post): void
                         }
                         $r = bitwa_przyjmij($S, "{$j['nr']}:$kod", $kod, $czas, 'standard', null,
                             $meta + ['wartosc' => $wart, 'pulpit' => mb_substr((string) ($w['pulpit'] ?? 'Silniki'), 0, 40)]);
+                        return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
+                    }
+                    return ['odmowa' => 'Nie ma takiej jednostki.'];
+                }
+                if (isset($w['jednostka_id']) && in_array($kod, ['nastawa', 'synchronizuj', 'przelacz', 'wyrownaj', 'wzmocnij'], true)) {
+                    // Konsole Osłony i Reaktory (MECHANIKA 11.4): kanał „nr:n_kod” (nastawa), „nr:wzm_cel”, „nr:wyrownaj_grupa”.
+                    if (!bitwa_nastawy_dostepne()) return ['odmowa' => 'Nastawy osłon i reaktorów wymagają migracji 078.'];
+                    foreach ($S['jednostki'] as $j) {
+                        if ($j['id'] !== (int) $w['jednostka_id']) continue;
+                        if (!empty($j['ai'])) return ['odmowa' => 'Tym okrętem dowodzi AI.'];
+                        $pulpitR = mb_substr((string) ($w['pulpit'] ?? 'Reaktory'), 0, 40);
+                        if ($kod === 'wzmocnij') {
+                            $cel = (string) ($w['cel'] ?? '');
+                            if (!in_array($cel, BITWA_WZMOCNIENIA, true)) return ['odmowa' => 'Nieznany cel wzmocnienia.'];
+                            $kanal = "{$j['nr']}:wzm_$cel";
+                            $wart = null;
+                        } elseif ($kod === 'wyrownaj') {
+                            $grupa = (string) ($w['grupa'] ?? '');
+                            if (!isset(BITWA_GRUPY_WYROWNANIA[$grupa])) return ['odmowa' => 'Nieznana grupa wyrównania.'];
+                            $kanal = "{$j['nr']}:wyrownaj_$grupa";
+                            $wart = $grupa;
+                        } else {
+                            $k = (string) ($w['nastawa'] ?? '');
+                            if (!isset(BITWA_NASTAWY[$k])) return ['odmowa' => 'Nieznana nastawa.'];
+                            $czyPrzel = str_starts_with($k, 'przel_');
+                            $czySync = str_starts_with($k, 'sync_');
+                            $kod = $czyPrzel ? 'przelacz' : ($czySync ? 'synchronizuj' : 'nastawa');
+                            $v = max(0.0, min(1.0, (float) ($w['wartosc'] ?? 0)));
+                            if ($czyPrzel || $czySync) $v = $v >= 0.5 ? 1.0 : 0.0;
+                            $kanal = "{$j['nr']}:n_$k";
+                            $wart = $k . '=' . round($v, 4);
+                        }
+                        $r = bitwa_przyjmij($S, $kanal, $kod, $czas, 'standard', null, $meta + ['wartosc' => $wart, 'pulpit' => $pulpitR]);
                         return is_array($r) ? $r : ['dziala_za_s' => round($S['rozkazy'][$r]['dziala_od'] - $czas, 1)];
                     }
                     return ['odmowa' => 'Nie ma takiej jednostki.'];

@@ -55,6 +55,7 @@ r('wyrownaj', 'wyrównaj', 'okret', 12, None, skraca=0, opis='bez kosztu mocy')
 r('przelacz', 'przełącz zasilanie', 'okret', 2, None, skraca=0, opis='przerwa zasilania 1–3 s')
 r('salwa', 'salwa baterii', 'okret', 6, None, skraca=0, opis='ładowanie; bolt leci 5 km/s')
 r('ster', 'ster i ciąg (kurs, prędkość)', 'okret', 3, None, skraca=0, opis='konsola Silniki / Nawigacja: kurs zadany i prędkość zadana')
+r('nastawa', 'nastawa konsoli (suwak)', 'okret', 2, None, skraca=0, opis='Osłony, Reaktory: suwak 0…1 (MECHANIKA 12)')
 r('cel_ognia', 'wskazanie celu baterii', 'okret', 2, None, skraca=0, opis='Kontrola ognia: baterie biorą wskazany okręt, gdy jest w łuku i zasięgu')
 
 ROZKAZY = R

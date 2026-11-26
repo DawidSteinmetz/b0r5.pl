@@ -103,12 +103,15 @@ if '--php' in sys.argv:
     hz = [hz_wektor(3600, 1800, [1, 2]), hz_wektor(3600, 3600, [1, 2]), hz_wektor(2187, 729, [2, 5, 6]),
           hz_wektor(2187, 2187, []), hz_wektor(3600, 1, [3599])]
     fl = [(1.0, 900, 1200, filtr(1.0, 900, 1200)[0]), (1.0, 2187, 3600, filtr(1.0, 2187, 3600)[0]), (1.0, 3600, 2187, 0.0)]
-    def przebieg(kod, ziarno, auto, tiki):
+    def przebieg(kod, ziarno, auto, tiki, rozkazy=None):
         s = S.utworz(kod, ziarno)
         if not auto:
             for j in s['jednostki']:
                 for g in j['generatory']: g['auto'] = False
-        for _ in range(tiki): S.krok(s)
+        for _ in range(tiki):
+            for tk, nr, kanal, kod_r, wart in rozkazy or []:
+                if tk == s['tik']: S.przyjmij_rozkaz(s, f'{nr}:{kanal}', kod_r, tk, wartosc=wart)
+            S.krok(s)
         zd = {}
         for z in s['zdarzenia']: zd[z[1]] = zd.get(z[1], 0) + 1
         return {'kod': kod, 'ziarno': ziarno, 'auto': auto, 'tiki': tiki,
@@ -116,13 +119,26 @@ if '--php' in sys.argv:
                 'generatory': [[g['hz_osiagane'], sum(bin(x).count('1') for x in g['zyly']['martwe']), g['obciazenie'], g['rykoszet']]
                                for j in s['jednostki'] for g in j['generatory']],
                 'sekcje': [v for j in s['jednostki'] for _, v in sorted(j['sekcje'].items())],
-                'zdarzenia': dict(sorted(zd.items()))}
-    przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420)]
+                'zdarzenia': dict(sorted(zd.items())), 'rozkazy': [list(r) for r in rozkazy or []],
+                'zasilanie': [[j['cieplo'], j['dlawienie'], S.zas(j, 'tl_l'), S.zas(j, 'oslona_p'), S.zas(j, 'v')] for j in s['jednostki']]}
+    # nastawy konsol Osłony i Reaktory (MECHANIKA 11.4): przecieki na granicach, wzmocnienia, niedobór mocy, dławienie
+    NASTAWY_TEST = [(5, 1, 'n_pokr_gora_l', 'nastawa', 'pokr_gora_l=0.2'), (5, 1, 'n_pokr_dziob', 'nastawa', 'pokr_dziob=0'),
+                    (6, 1, 'n_pokr_gora_p', 'nastawa', 'pokr_gora_p=0'), (6, 1, 'n_pokr_dol_p', 'nastawa', 'pokr_dol_p=0.1'),
+                    (10, 1, 'wzm_glowny', 'wzmocnij', None), (12, 1, 'wzm_gora_p', 'wzmocnij', None), (15, 1, 'n_gestosc', 'nastawa', 'gestosc=1'),
+                    (20, 1, 'n_przydz_tl', 'nastawa', 'przydz_tl=0.9'), (25, 1, 'n_sync_gen_os', 'synchronizuj', 'sync_gen_os=1'),
+                    (40, 1, 'n_przydz_os', 'nastawa', 'przydz_os=0.3'), (45, 1, 'n_gen_max', 'nastawa', 'gen_max=0.35'),
+                    (50, 1, 'n_gen_min', 'nastawa', 'gen_min=1'), (50, 1, 'n_pole_komory', 'nastawa', 'pole_komory=0'),
+                    (60, 1, 'n_przel_sil_zapas', 'przelacz', 'przel_sil_zapas=1'), (70, 1, 'n_sync_rufa_sg_l', 'synchronizuj', 'sync_rufa_sg_l=1'),
+                    (80, 1, 'wzm_burta_p', 'wzmocnij', None), (120, 1, 'wzm_glowny', 'wzmocnij', None), (300, 1, 'wyrownaj_baterie', 'wyrownaj', 'baterie')]
+    przebiegi = [przebieg('walako_klucze', 5, True, 200), przebieg('walako_klucze', 9, False, 300), przebieg('walako_atak', 3, True, 420),
+                 przebieg('walako_atak', 3, True, 420, NASTAWY_TEST)]
     for pb in przebiegi:
-        print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}: zdarzenia {pb['zdarzenia']}, generatory {[g[:2] for g in pb['generatory']]}, "
-              f"sekcje min {min(pb['sekcje']):.4f}")
+        zs = [[round(x, 2) if isinstance(x, float) else x for x in z] for z in pb['zasilanie']]
+        print(f"  przebieg {pb['kod']}/{pb['ziarno']}/auto={pb['auto']}{' + nastawy' if pb['rozkazy'] else ''}: zasilanie {zs}")
+        print(f"    zdarzenia {pb['zdarzenia']}, generatory {[g[:2] for g in pb['generatory']]}, sekcje min {min(pb['sekcje']):.4f}")
 
     def php_w(x):
+        if x is None: return 'null'
         if isinstance(x, bool): return 'true' if x else 'false'
         if isinstance(x, int): return str(x)
         if isinstance(x, float): return repr(x)

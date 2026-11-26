@@ -312,9 +312,16 @@ function lot_reczny_do_widoku(array $widok, int $obiektId): array
     // Etap 4 (MECHANIKA 13.4): klucze w locie i kontakty w układzie względem okrętu (okręt w środku, km, oś y na północ).
     $tu = $r['planeta_id'] === null && $r['uklad_kx'] !== null ? [(float) $r['uklad_kx'], (float) $r['uklad_ky']]
         : (function_exists('klucze_obiekt_km') ? klucze_obiekt_km($obiektId, $teraz) : null);
-    if ($tu) {
-        $widok = lot_reczny_klucze_do_widoku($widok, $obiektId, $tu, $teraz);
-        $widok = lot_reczny_kontakty($widok, $obiektId, $tu, $teraz);
+    // Błąd albo nieliczbowa pozycja w kluczach / kontaktach nie może położyć mostka (pusta odpowiedź JSON): mostek
+    // działa dalej bez nich, a przyczyna idzie do widoku (blad_swiata).
+    if ($tu && lot_reczny_skonczone($tu)) {
+        foreach (['lot_reczny_klucze_do_widoku', 'lot_reczny_kontakty'] as $f) {
+            try {
+                $nowy = $f($widok, $obiektId, $tu, $teraz);
+                if (json_encode($nowy, JSON_UNESCAPED_UNICODE) === false) throw new RuntimeException(json_last_error_msg());
+                $widok = $nowy;
+            } catch (Throwable $e) { $widok['blad_swiata'][] = $f . ': ' . $e->getMessage(); }
+        }
     }
     return $widok;
 }
@@ -357,10 +364,15 @@ function lot_reczny_frakcja(array $c, ?string $frakcja = null): ?string
     return starcie_frakcja(['frakcja' => $frakcja, 'wlasciciel' => $c['wlasciciel'] ?? '']);
 }
 
+function lot_reczny_skonczone(?array $p): bool
+{
+    return $p !== null && isset($p[0], $p[1]) && is_finite((float) $p[0]) && is_finite((float) $p[1]);
+}
+
 // Kurs nawigacyjny (od północy, zgodnie z zegarem) i prędkość z dwóch pozycji w układzie.
 function lot_reczny_wektor(?array $a, ?array $b, float $dt): array
 {
-    if (!$a || !$b) return [0.0, 0.0];
+    if (!lot_reczny_skonczone($a) || !lot_reczny_skonczone($b)) return [0.0, 0.0];
     $dx = $b[0] - $a[0]; $dy = $b[1] - $a[1];
     $d = hypot($dx, $dy);
     return [$d > 1e-6 ? round(fmod(rad2deg(atan2($dx, $dy)) + 360, 360), 2) : 0.0, round($d / max(1e-6, $dt), 3)];
@@ -384,7 +396,7 @@ function lot_reczny_klucze_do_widoku(array $widok, int $obiektId, array $tu, int
         $kl['cel'] = $k['cel'] ?? null;
         if ($start > $teraz) { $kl['stan'] = 'hangar'; $kl['start_za_s'] = $start - $teraz; continue; }
         $p = klucze_km($k, $teraz);
-        if (!$p) continue;
+        if (!lot_reczny_skonczone($p)) continue;
         [$kurs, $v] = lot_reczny_wektor(klucze_km($k, $teraz - 2), $p, 2.0);
         $kl['stan'] = $k['rozkaz'] === 'powrot' ? 'powrot' : 'w_locie';
         $kl['start_za_s'] = null;
@@ -408,7 +420,7 @@ function lot_reczny_kontakty(array $widok, int $obiektId, array $tu, int $teraz)
     $cele = [];
     foreach (klucze_cele($obiektId) as $c) {
         $p = klucze_obiekt_km((int) $c['id'], $teraz);
-        if (!$p) continue;
+        if (!lot_reczny_skonczone($p)) continue;
         $d = hypot($p[0] - $tu[0], $p[1] - $tu[1]);
         if ($d <= $maks) $cele[] = $c + ['p' => $p, 'd' => $d];
     }
@@ -434,7 +446,7 @@ function lot_reczny_kontakty(array $widok, int $obiektId, array $tu, int $teraz)
         [$kurs, $v] = lot_reczny_wektor(klucze_obiekt_km($id, $teraz - 2), $c['p'], 2.0);
         $nr = $id > 0 ? 1000000 + $id : 2000000 - $id;
         $widok['jednostki'][] = ['id' => $nr, 'nr_jednostki' => $nr, 'obiekt_id' => $id > 0 ? $id : null, 'kontakt' => true,
-            'nazwa' => $c['nazwa'], 'strona' => ($id > 0 ? lot_reczny_frakcja($c, $r['frakcja'] ?? null) : null) ?: 'nieznana', 'profil' => $profil ?? 'nieznany',
+            'nazwa' => mb_convert_encoding((string) $c['nazwa'], 'UTF-8', 'UTF-8'), 'strona' => ($id > 0 ? lot_reczny_frakcja($c, $r['frakcja'] ?? null) : null) ?: 'nieznana', 'profil' => $profil ?? 'nieznany',
             'x' => round($c['p'][0] - $tu[0], 3), 'y' => round($c['p'][1] - $tu[1], 3), 'kurs' => $kurs, 'v' => $v,
             'dlugosc_km' => $profil ? $sl['profile'][$profil]['dlugosc_m'] / 1000 : 0.1, 'stan' => 'w_bitwie', 'ai' => true,
             'nastawy' => [], 'generatory' => [], 'sekcje' => [], 'kadlub' => null, 'wzmocnienia' => [], 'cel_ognia' => null];

@@ -203,8 +203,11 @@ export default {
         },
         komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat', tekst)),
       };
-      const ekran = pulpitAktywny ? konsola(pulpitAktywny, stanOkretu, stanKonsol, akcje)
-        : h('div.komunikat', st.pelny ? `Brak układów konsol dla profilu ${st.okret?.profil || aktywny?.profil || 'nieznanego'}.`
+      // Błąd rysowania konsoli nie może zostawić pustego mostka: pokazuje się zamiast pulpitu.
+      let ekran;
+      try { ekran = pulpitAktywny ? konsola(pulpitAktywny, stanOkretu, stanKonsol, akcje) : null; }
+      catch (e) { console.error(e); ekran = h('div.komunikat.blad', `Pulpit ${pulpitAktywny} nie dał się narysować: ${e.message}`); }
+      ekran ||= h('div.komunikat', st.pelny ? `Brak układów konsol dla profilu ${st.okret?.profil || aktywny?.profil || 'nieznanego'}.`
           : 'To stanowisko nie jest już przydzielone.');
       const ramka = h('div.mostek-pulpit', ekran);
       // Okręt w trwającej bitwie (starcie): pulpity działają w bitwie — stanowisko przechodzi do niej samo, dowódca
@@ -215,6 +218,7 @@ export default {
       const zawartosc = [
         kiosk ? null : panel('MOSTEK · ' + aktywny.nazwa, przywrocListe, doBitwy,
           st.pelny ? h('p.slaby.maly-tekst', 'Pełny dostęp dowódcy. Wybierz pulpit lub zarządzaj przydziałami załogi.') : null,
+          stanOkretu.blad_swiata ? h('div.komunikat', `Część stanu ze świata nie wczytała się: ${stanOkretu.blad_swiata.join('; ')}`) : null,
           rysujAdmin(stanOkretu), pasek, komunikat),
         ramka,
       ];
@@ -235,6 +239,9 @@ export default {
         }
       } catch (e) {
         wyczysc(komunikat).append(blad(e));
+        // Pierwszy odczyt się nie udał — panelu mostka jeszcze nie ma, więc błąd idzie na ekran (inaczej byłoby pusto).
+        if (!stanOkretu) wyczysc(trescMostka).append(panel('MOSTEK · ' + (aktywny?.nazwa || ''),
+          kiosk ? null : h('button.przycisk.drugi.maly', { onclick: pokazListe }, '← Mostki'), komunikat));
         if (kiosk && (e.kod === 403 || e.kod === 404)) setTimeout(() => ctx.pulpit?.(), 1200);
       } finally {
         wToku = false;

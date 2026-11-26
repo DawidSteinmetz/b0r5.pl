@@ -176,6 +176,8 @@ function starcia_aktualizuj(): void
         }
         if ($s['status'] === 'umowione' && czas_z_utc((string) $s['termin_utc']) <= $teraz) starcie_otworz_bitwe($s);
     }
+    $db->exec("UPDATE starcia s JOIN mapa_bitwy b ON b.id = s.bitwa_id SET s.status='zakonczone', s.zakonczono_utc=UTC_TIMESTAMP()
+        WHERE s.status='bitwa' AND b.status IN ('zakonczona','anulowana')");
 }
 
 // Termin walki: bitwa rozgrywana silnikiem (jak symulacja) na prawdziwych okrętach starcia — okręty obu stron w układzie
@@ -250,6 +252,10 @@ function starcie_otworz_bitwe(array $s): void
             'kurs_deg' => round($kurs, 2), 'predkosc_km_s' => 0, 'wejscie_s' => (int) $x['wejscie'], 'wejscie_rozrzut_s' => 0, 'obiekt_id' => $oid, 'z_mapy' => 1];
         $typ = MOSTEK_TYP_MYSLIWCOW[$profil] ?? null;
         $ile = intdiv((int) $sl['profile'][$profil]['mysliwce'], 4);
+        $qt = $db->prepare('SELECT tie_liczba FROM mapa_floty_jednostki WHERE obiekt_id=? AND tie_liczba IS NOT NULL');
+        $qt->execute([$oid]);
+        $tie = $qt->fetchColumn();
+        if ($tie !== false) $ile = intdiv((int) $tie, 4);      // maszyny w hangarze okrętu w świecie gry
         if ($typ && isset($sl['maszyny'][$typ]) && $ile > 0) {
             $sc['klucze'][] = ['strona' => $strona, 'typ_maszyny' => $typ, 'liczba_kluczy' => $ile, 'jednostka_nr' => $nr, 'start_s' => (int) $x['wejscie'] + 30,
                 'start_rozrzut_s' => 20, 'x_km' => null, 'y_km' => null, 'rozkaz' => 'ochrona', 'fala' => $nr];
@@ -264,7 +270,8 @@ function starcie_otworz_bitwe(array $s): void
             $db->prepare('INSERT INTO bitwy_scenariusze_strony (scenariusz_kod, strona, kolor, dowodzenie, rola, asy_proc, kadeci_proc) VALUES (?,?,?,?,?,?,?)
                 ON DUPLICATE KEY UPDATE dowodzenie=VALUES(dowodzenie)')->execute([$sc['kod'], $st['strona'], $st['kolor'], $st['dowodzenie'], $st['rola'], 5, 35]);
         }
-        $bitwa = bitwa_utworz_z_danych($sc, $sc['kod'], $s['nazwa'], 'rzeczywista', null, (int) $s['planeta_id'], $sc['odprawa'], true, 'aktywna');
+        $bitwa = bitwa_utworz_z_danych($sc, $sc['kod'], $s['nazwa'], 'rzeczywista', null, (int) $s['planeta_id'], $sc['odprawa'], true, 'aktywna',
+            static fn(array &$S) => starcie_stan_ze_swiata($S));
         // zegar od terminu walki
         $db->prepare('UPDATE mapa_bitwy SET zegar_start_utc=? WHERE id=?')->execute([bitwa_utc((float) $termin), $bitwa]);
     } else {
@@ -280,6 +287,106 @@ function starcie_otworz_bitwe(array $s): void
             ->execute([$bitwa, $oid, $strona, $strona === 'Imperium' ? '#9fb4c8' : '#ff6b55']);
     }
     $db->prepare("UPDATE starcia SET status='bitwa', bitwa_id=? WHERE id=?")->execute([$bitwa, $id]);
+}
+
+// ------------------------------------------------------------------------------------------------ skutki (etap 3)
+// Bitwa zaczyna się ze stanem okrętów ze świata: kadłub (mapa_obiekty.kadlub, %) we wszystkich sekcjach, martwe żyły
+// osłon zapisane po poprzedniej bitwie (okrety_zyly — tylko gdy osłony < 100%, stocznia przywraca 100%). Po bitwie
+// MG zatwierdza skutki: kadłub i osłony (% żywych żył), martwe żyły, utracone maszyny (tie_liczba floty), polegli
+// piloci (zestrzeleni — usunięci z pokładu; pokład uzupełnia potem nowych). Migracja 081.
+
+function starcia_skutki_dostepne(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT skutki_utc FROM starcia LIMIT 0'); polaczenie_bazy()->query('SELECT martwe FROM okrety_zyly LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function starcie_stan_ze_swiata(array &$S): void
+{
+    $db = polaczenie_bazy();
+    foreach ($S['jednostki'] as $ji => $j) {
+        if (empty($j['obiekt_id'])) continue;
+        $q = $db->prepare('SELECT kadlub, oslony FROM mapa_obiekty WHERE id=?');
+        try { $q->execute([(int) $j['obiekt_id']]); $o = $q->fetch(PDO::FETCH_ASSOC); } catch (Throwable $e) { $o = null; }
+        if (!$o) continue;
+        $kadlub = max(1.0, min(100.0, (float) $o['kadlub']));
+        foreach (array_keys($j['sekcje']) as $sek) $S['jednostki'][$ji]['sekcje'][$sek] = $kadlub;
+        if (!starcia_skutki_dostepne() || (int) $o['oslony'] >= 100) continue;
+        $qz = $db->prepare('SELECT kod, liczba, martwe FROM okrety_zyly WHERE obiekt_id=?');
+        $qz->execute([(int) $j['obiekt_id']]);
+        $zapis = [];
+        foreach ($qz->fetchAll(PDO::FETCH_ASSOC) as $z) $zapis[$z['kod']] = $z;
+        foreach ($j['generatory'] as $gi => $g) {
+            $z = $zapis[$g['kod']] ?? null;
+            if ($z && (int) $z['liczba'] === (int) $g['zyly']['n'] && strlen((string) $z['martwe']) === strlen($g['zyly']['martwe'])) {
+                $S['jednostki'][$ji]['generatory'][$gi]['zyly']['martwe'] = (string) $z['martwe'];
+            }
+        }
+    }
+}
+
+// Skutki bitwy dla każdego okrętu ze świata: kadłub przed i po (%), osłony po (% żywych żył), utracone maszyny, polegli.
+function starcie_skutki(int $bitwaId): array
+{
+    $db = polaczenie_bazy();
+    $sl = bitwa_slowniki();
+    $q = $db->prepare('SELECT j.id, j.obiekt_id, j.nazwa, j.profil_kod, j.stan, o.kadlub AS kadlub_przed, o.oslony AS oslony_przed FROM bitwy_jednostki j
+        JOIN mapa_obiekty o ON o.id = j.obiekt_id WHERE j.bitwa_id=? AND j.obiekt_id IS NOT NULL');
+    $q->execute([$bitwaId]);
+    $out = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $j) {
+        $p = $sl['profile'][$j['profil_kod']] ?? null;
+        $qs = $db->prepare('SELECT sekcja, integralnosc FROM bitwy_sekcje WHERE bitwa_jednostka_id=?');
+        $qs->execute([(int) $j['id']]);
+        $kadlub = 0.0;
+        foreach ($qs->fetchAll(PDO::FETCH_KEY_PAIR) as $sek => $v) $kadlub += (float) $v * ($p['kadlub'][$sek] ?? 0);
+        $qg = $db->prepare('SELECT s.kod, z.liczba, z.martwe FROM bitwy_systemy s JOIN bitwy_zyly z ON z.system_id = s.id WHERE s.bitwa_jednostka_id=?');
+        $qg->execute([(int) $j['id']]);
+        $zyly = $qg->fetchAll(PDO::FETCH_ASSOC);
+        $wszystkie = 0; $martwe = 0;
+        foreach ($zyly as $z) { $wszystkie += (int) $z['liczba']; $martwe += bitwa_martwe(['martwe' => (string) $z['martwe']]); }
+        $qk = $db->prepare('SELECT COALESCE(SUM(4 - GREATEST(0, maszyny)), 0) FROM bitwy_klucze WHERE bitwa_id=? AND macierzysta_id=?');
+        $qk->execute([$bitwaId, (int) $j['id']]);
+        $qp = $db->prepare("SELECT p.pilot_id, p.imie FROM bitwy_piloci p JOIN bitwy_klucze k ON k.id = p.bitwa_klucz_id
+            WHERE k.bitwa_id=? AND k.macierzysta_id=? AND p.stan='zestrzelony' AND p.pilot_id IS NOT NULL");
+        $qp->execute([$bitwaId, (int) $j['id']]);
+        $out[] = ['obiekt_id' => (int) $j['obiekt_id'], 'nazwa' => $j['nazwa'], 'stan' => $j['stan'],
+            'kadlub_przed' => (int) $j['kadlub_przed'], 'kadlub_po' => (int) round($kadlub), 'oslony_przed' => (int) $j['oslony_przed'],
+            'oslony_po' => $wszystkie ? (int) floor(100 * ($wszystkie - $martwe) / $wszystkie) : (int) $j['oslony_przed'],
+            'maszyny_utracone' => (int) $qk->fetchColumn(), 'polegli' => $qp->fetchAll(PDO::FETCH_ASSOC), 'zyly' => $zyly];
+    }
+    return $out;
+}
+
+function starcie_zatwierdz_skutki(array $s): array
+{
+    if (!starcia_skutki_dostepne()) blad('Skutki bitew wymagają migracji 081.');
+    if (!$s['bitwa_id']) blad('To starcie nie miało bitwy silnikiem.');
+    if ($s['skutki_utc'] !== null) blad('Skutki tej bitwy są już zatwierdzone.');
+    $db = polaczenie_bazy();
+    $skutki = starcie_skutki((int) $s['bitwa_id']);
+    $db->beginTransaction();
+    try {
+        foreach ($skutki as $o) {
+            $db->prepare('UPDATE mapa_obiekty SET kadlub=?, oslony=? WHERE id=?')->execute([max(0, min(100, $o['kadlub_po'])), max(0, min(100, $o['oslony_po'])), $o['obiekt_id']]);
+            foreach ($o['zyly'] as $z) {
+                $db->prepare('INSERT INTO okrety_zyly (obiekt_id, kod, liczba, martwe) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE liczba=VALUES(liczba), martwe=VALUES(martwe)')
+                    ->execute([$o['obiekt_id'], $z['kod'], (int) $z['liczba'], (string) $z['martwe']]);
+            }
+            if ($o['maszyny_utracone'] > 0) {
+                $db->prepare('UPDATE mapa_floty_jednostki SET tie_liczba = GREATEST(0, tie_liczba - ?) WHERE obiekt_id=? AND tie_liczba IS NOT NULL')
+                    ->execute([$o['maszyny_utracone'], $o['obiekt_id']]);
+            }
+            foreach ($o['polegli'] as $p) $db->prepare('DELETE FROM mapa_piloci WHERE id=?')->execute([(int) $p['pilot_id']]);
+        }
+        $db->prepare('UPDATE starcia SET skutki_utc=? WHERE id=?')->execute([czas_utc(czas_teraz()), $s['id']]);
+        $db->commit();
+    } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
+    return array_map(static fn($o) => array_diff_key($o, ['zyly' => 1]), $skutki);
 }
 
 // ------------------------------------------------------------------------------------------------ widok i rozkazy
@@ -320,7 +427,10 @@ function starcia_moje(array $u): array
         $out[] = ['id' => $id, 'nazwa' => $s['nazwa'], 'status' => $s['status'], 'agresor' => $s['agresor_frakcja'], 'obronca' => $s['obronca_frakcja'],
             'pauza_od' => czas_z_utc((string) $s['pauza_od_utc']), 'termin' => $s['termin_utc'] ? czas_z_utc((string) $s['termin_utc']) : null,
             'bitwa_id' => $s['bitwa_id'] !== null ? (int) $s['bitwa_id'] : null, 'moja_strona' => $mg ? 'mg' : starcie_moja_strona($u, $id),
-            'uczestnicy' => $ucz, 'propozycje' => $prop, 'skoki' => $qk->fetchAll(PDO::FETCH_KEY_PAIR)];
+            'uczestnicy' => $ucz, 'propozycje' => $prop, 'skoki' => $qk->fetchAll(PDO::FETCH_KEY_PAIR),
+            'skutki' => $s['bitwa_id'] && starcia_skutki_dostepne() && in_array($s['status'], ['bitwa', 'zakonczone'], true)
+                ? array_map(static fn($o) => array_diff_key($o, ['zyly' => 1]) + ['polegli' => array_column($o['polegli'], 'imie')], starcie_skutki((int) $s['bitwa_id'])) : null,
+            'skutki_zatwierdzone' => starcia_skutki_dostepne() && ($s['skutki_utc'] ?? null) !== null];
     }
     return $out;
 }
@@ -377,6 +487,15 @@ function obsluz_starcia(string $akcja, bool $post, array $u): void
             starcie_zwolnij_skoki($s, null);
             $db->prepare("UPDATE starcia SET status='anulowane', zakonczono_utc=? WHERE id=?")->execute([czas_utc(czas_teraz()), $id]);
             odpowiedz(['ok' => true]);
+        case 'starcie_skutki':
+            // MG: skutki bitwy wchodzą do świata (kadłub, osłony, żyły, maszyny, polegli).
+            if (!$mg) blad('Skutki zatwierdza MG.', 403);
+            if ($s['bitwa_id']) {
+                $qb = $db->prepare('SELECT status FROM mapa_bitwy WHERE id=?');
+                $qb->execute([$s['bitwa_id']]);
+                if ($qb->fetchColumn() === 'aktywna') blad('Najpierw zakończ bitwę.');
+            }
+            odpowiedz(['ok' => true, 'skutki' => starcie_zatwierdz_skutki($s)]);
         case 'starcie_zakoncz':
             // MG: koniec bitwy (znacznik na mapie znika z radaru).
             if (!$mg) blad('Bitwę kończy MG.', 403);

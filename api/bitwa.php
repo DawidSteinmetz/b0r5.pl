@@ -596,12 +596,14 @@ function bitwa_utworz(array $u, string $scenariusz, ?int $obiektId): int
 // Bitwa z gotowych danych scenariusza ($sc: strony, jednostki z obiekt_id, klucze): symulacja albo bitwa rzeczywista
 // (starcie w realnej grze — api/starcia.php). $graczeWHangarze: klucze stron graczy czekają w hangarze na START.
 function bitwa_utworz_z_danych(array $sc, string $scenariusz, string $nazwa, string $rodzaj, ?string $prowadzacy, ?int $planeta, string $opis,
-    bool $graczeWHangarze = false, string $status = 'przygotowanie'): int
+    bool $graczeWHangarze = false, string $status = 'przygotowanie', ?callable $stanStartowy = null): int
 {
     $db = polaczenie_bazy();
     $ziarno = random_int(1, 2147483646);
     $S = bitwa_stan_ze_scenariusza($sc, $ziarno);
     if ($graczeWHangarze) foreach ($S['klucze'] as $ki => $k) if (!$k['ai']) $S['klucze'][$ki]['start'] = null;
+    // Bitwa rzeczywista: stan okrętów ze świata (kadłub, martwe żyły osłon) — api/starcia.php.
+    if ($stanStartowy) $stanStartowy($S);
     $sl = bitwa_slowniki();
 
     // Piloci z pokładu (mapa_piloci) w kluczach stron prowadzonych przez graczy: 4 na klucz, ranga klucza = prowadzący.
@@ -1009,7 +1011,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
 {
     $akcje = ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze', 'bitwa_symulacje', 'bitwa_stan', 'bitwa_utworz', 'bitwa_start', 'bitwa_pauza',
         'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze', 'mostek_stan', 'mostek_gracze', 'mostek_stanowisko', 'mostek_rozkaz',
-        'starcia_lista', 'starcie_propozycja', 'starcie_akceptuj', 'starcie_anuluj', 'starcie_zakoncz'];
+        'starcia_lista', 'starcie_propozycja', 'starcie_akceptuj', 'starcie_anuluj', 'starcie_zakoncz', 'starcie_skutki'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle

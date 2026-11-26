@@ -690,3 +690,9 @@ Zasada (użytkownik): bitwa w świecie gry nie zaskakuje graczy. `api/starcia.ph
   dowodzi sama (klucze czekają w hangarze na START), strona bez graczy — SI Calrissian. Zegar od terminu, okno 4 h,
   pauza i koniec — MG. Pulpity: stanowisko przechodzi do bitwy samo (z aplikacji Mostek też), dowódca dostaje
   przejście „Do bitwy” w aplikacjach Mostek i Starcia. Okręty bez profilu klasy nie walczą w silniku (rozstrzyga MG).
+- **Skutki (etap 3, migracja 081).** Bitwa zaczyna się ze stanem okrętów ze świata: kadłub (% w każdej sekcji), martwe
+  żyły osłon z poprzedniej bitwy (gdy osłony < 100% — stocznia przywraca 100%), liczba kluczy z maszyn w hangarze
+  (tie_liczba / 4). Po końcu bitwy (MG albo okno 4 h) aplikacja Starcia pokazuje skutki: kadłub i osłony przed i po,
+  utracone maszyny, poległych pilotów. Do świata wchodzą dopiero po zatwierdzeniu przez MG: kadłub i osłony okrętu
+  (% żywych żył), martwe żyły (okrety_zyly), maszyny odjęte z hangaru, polegli piloci usunięci z pokładu (pokład
+  uzupełnia potem nowych). XP pilotów MG zatwierdza jak w symulacji.

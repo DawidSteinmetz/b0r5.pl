@@ -56,12 +56,21 @@ export default {
       const mgPrzyciski = mg ? h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' },
         otwarte ? h('button.przycisk.drugi', { onclick: () => confirm('Odwołać starcie? Czas wróci do normy, skoki skończą się po pauzie.') && wyslij('starcie_anuluj', { id: s.id }) }, 'Odwołaj starcie') : null,
         s.status === 'bitwa' ? h('button.przycisk.drugi', { onclick: () => confirm('Zakończyć bitwę?') && wyslij('starcie_zakoncz', { id: s.id }) }, 'Zakończ bitwę') : null) : null;
+      // Skutki bitwy (etap 3): podgląd dla uczestników, zatwierdzenie przez MG po końcu bitwy.
+      const skutki = s.skutki?.length ? h('div', { style: 'margin-top:10px' },
+        h('div.slaby.maly-tekst', s.skutki_zatwierdzone ? 'Skutki bitwy (zatwierdzone — w świecie gry):' : 'Skutki bitwy (czekają na zatwierdzenie MG):'),
+        h('table.tabela', h('tr', h('th', 'Okręt'), h('th', 'Kadłub'), h('th', 'Osłony'), h('th', 'Maszyny'), h('th', 'Polegli')),
+          s.skutki.map((o) => h('tr', h('td', o.nazwa), h('td', `${o.kadlub_przed}% → ${o.kadlub_po}%`), h('td', `${o.oslony_przed}% → ${o.oslony_po}%`),
+            h('td', o.maszyny_utracone ? `−${o.maszyny_utracone}` : '—'), h('td.maly-tekst', o.polegli.join(', ') || '—')))),
+        mg && !s.skutki_zatwierdzone && s.status === 'zakonczone'
+          ? h('button.przycisk', { style: 'margin-top:8px', onclick: () => confirm('Zatwierdzić skutki? Uszkodzenia, straty maszyn i polegli piloci wejdą do świata gry.')
+            && wyslij('starcie_skutki', { id: s.id }) }, 'Zatwierdź skutki bitwy') : null) : null;
       const doBitwy = s.status === 'bitwa' && s.bitwa_id ? h('button.przycisk', { style: 'margin-top:8px', onclick: () => ctx.otworzApp?.('symulacje', { bitwa: s.bitwa_id }) }, 'Do bitwy') : null;
       return panel(s.nazwa.toUpperCase(),
         s.status === 'negocjacja' ? h('p.maly-tekst', 'Skok atakującego zatrzymał czas w hiperprzestrzeni. Ustalcie termin walki — wyjście ze skoku nastąpi w umówionym '
           + 'terminie. Obrońca może w tym czasie opuścić układ: starcie się skończy, a czas wróci do normy. Posiłki skaczące teraz do układu wyskoczą '
           + 'o tyle po terminie, o ile miały wyskoczyć po początku pauzy.') : null,
-        strony, propozycje ? h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Propozycje terminu:') : null, propozycje, zaproponuj, doBitwy, mgPrzyciski);
+        strony, propozycje ? h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Propozycje terminu:') : null, propozycje, zaproponuj, doBitwy, skutki, mgPrzyciski);
     }
 
     async function odswiez() {

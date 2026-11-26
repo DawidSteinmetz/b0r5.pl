@@ -265,7 +265,7 @@ function pulpit(klasa, nazwa, wiazania) {
     // urządzenie (B) z odczytem z symulacji to wskaźnik — nie dostaje stanu lokalnego
     if (!interakcja && !wiaz?.ekran && !(typ === 'B' && wiaz)) {
       lokalny = true;
-      const l = LOKALNE.get(klucz) ?? (typ === 'S' ? { max: 1, min: 0 } : typ === 'Y' ? { poz: 0.5 } : { wl: typ === 'B' });
+      const l = LOKALNE.get(klucz) ?? (typ === 'S' ? { max: 1, min: null } : typ === 'Y' ? { poz: 0.5 } : { wl: typ === 'B' });
       LOKALNE.set(klucz, l);
       const przelacznik = (typ === 'R' || typ === 'G' || typ === 'B' || (typ === 'W' && PRZELACZNIK_W.test(tekst))) && wiaz?.wl === undefined;
       w = { ...(wiaz || {}) };
@@ -273,7 +273,7 @@ function pulpit(klasa, nazwa, wiazania) {
         w.zakres = l;
         w.ustawZakres = (v, ktory) => { l[ktory] = ktory === 'max' ? Math.max(v, l.min) : Math.min(v, l.max); };
         w.etykieta ??= `${tekst.replace('suwak: ', '')} · ${Math.round(l.max * 100)}%`;
-        w.etykietaMin ??= `${(tekstMin || '').replace('suwak: ', '')} · ${Math.round(l.min * 100)}%`;
+        w.etykietaMin ??= '';
       } else if (typ === 'Y') {
         w.poz = wiaz?.poz ?? l.poz;
         w.ustawPoz = (v) => { l.poz = v; };
@@ -706,9 +706,9 @@ function radar(s, st, akcje) {
     'suwak: próg alarmu kursu kolizyjnego': n.suwak('prog_kolizji', 'próg kolizji', (v) => `${Math.round(30 * v)} km`),
     'suwak: tempo omiatania': n.suwak('radar_tempo', 'omiatanie', (v) => `${Math.round(3 + 9 * v)} s/obrót`),
     'suwak: maksymalny zasięg radaru': { ...n.zakres('radar_zasieg_max', 'radar_zasieg_min', '', ''),
-      etykieta: `zasięg ${Math.round(R)} km`, etykietaMin: `tłumienie < ${minD.toFixed(1)} km` },
+      etykieta: `zasięg ${Math.round(R)} km`, etykietaMin: '' },
     'suwak: maksymalna czułość odbiornika': { ...n.zakres('radar_czul_max', 'radar_czul_min', '', ''),
-      etykieta: `czułość ${Math.round(czulosc * 100)}%`, etykietaMin: `próg szumu ${Math.round(N('radar_czul_min') * 100)}%${szum.length ? ' · SZUM' : ''}` },
+      etykieta: `czułość ${Math.round(czulosc * 100)}%${szum.length ? ' · SZUM' : ''}`, etykietaMin: '' },
     'suwak: moc nadajnika': n.suwak('radar_moc', 'moc nadajnika', (v) => `×${(0.5 + v).toFixed(2)}`),
     'suwak: wzmocnienie odbiornika': n.suwak('radar_rx', 'wzmocnienie odbiornika', (v) => `×${(0.5 + v).toFixed(2)}`),
     'wzmocnij nadajnik (zasięg)': n.wzmocnij('radar_tx', 'wzmocnij nadajnik (zasięg ×1,5)'),
@@ -823,11 +823,9 @@ function sensory(s, st, akcje) {
         tempo: TEMPO_SKANU_S, maska: RADAR_KM, hz: st.skan, zmarszczki, obiekty: st.kontaktyNormalne ? [...wSkanie, j] : [j] })) },
     'suwak: przydział mocy sensorów': { ...moc, poz: Math.max(0, poziomy.indexOf(zasieg)) / (poziomy.length - 1),
       ustawPoz: (v) => akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[Math.round(v * (poziomy.length - 1))], pulpit: 'Sensory' }) },
-    'suwak: maksymalna moc skanu': { zakres: { max: Math.max(0, poziomy.indexOf(zasieg)) / (poziomy.length - 1), min: N('skan_min') },
-      ustawZakres: (v, ktory) => (ktory === 'max'
-        ? akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[Math.round(v * (poziomy.length - 1))], pulpit: 'Sensory' })
-        : n.ustaw('skan_min', v)),
-      etykieta: `moc skanu: ${zasieg} km`, etykietaMin: N('skan_min') >= 0.5 ? 'min.: tylko okręty' : 'min.: wszystkie cele' },
+    'suwak: maksymalna moc skanu': { zakres: { max: Math.max(0, poziomy.indexOf(zasieg)) / (poziomy.length - 1), min: null },
+      ustawZakres: (v) => akcje.rozkaz({ jednostka_id: j.id, kod: 'sensory_zasieg', zasieg_km: poziomy[Math.round(v * (poziomy.length - 1))], pulpit: 'Sensory' }),
+      etykieta: `moc skanu: ${zasieg} km`, etykietaMin: '' },
     'suwak: zasięg J skanu nadprzestrzeni (koszt k·J^1,618)': n.suwak('sens_nad', 'zasięg skanu nadprzestrzeni', (v) => `${Math.round(zasieg * (0.5 + v))} km`),
     'suwak: pasmo skanu (niskie: małe cele · wysokie: dokładna pozycja)': n.suwak('sens_pasmo', 'pasmo skanu', (v) => (v < 0.4 ? 'niskie' : v > 0.6 ? 'wysokie' : 'średnie')),
     'suwak: górna granica pasma skanu (Hz)': n.zakres('sens_hz_max', 'sens_hz_min', 'pasmo Hz do', 'od', (v) => `${Math.round(v * 3600)} Hz`),
@@ -885,9 +883,9 @@ function nastawyKonsoli(j, st, akcje, pulpitNazwa) {
     przelacznik: (k, opis) => ({ wl: N(k) >= 0.5, przelacznik: true, klik: () => ustaw(k, N(k) >= 0.5 ? 0 : 1),
       etykieta: opis ? `${opis}${czeka[k] ? ' …' : ''}` : undefined }),
     suwak: (k, opis, fmt = proc) => ({ poz: N(k), ustawPoz: (v) => ustaw(k, v), etykieta: `${opis}: ${fmt(N(k))}${czeka[k] ? ' …' : ''}` }),
-    zakres: (kMax, kMin, opisMax, opisMin, fmt = proc) => ({ zakres: { max: N(kMax), min: N(kMin) },
-      ustawZakres: (v, ktory) => (ktory === 'max' ? ustaw(kMax, Math.max(v, N(kMin))) : ustaw(kMin, Math.min(v, N(kMax)))),
-      etykieta: `${opisMax} ${fmt(N(kMax))}`, etykietaMin: `${opisMin} ${fmt(N(kMin))}` }),
+    // szary suwak: jeden (górny) uchwyt — wartość maks.; dolna granica zostaje na wartości domyślnej
+    zakres: (kMax, kMin, opisMax, opisMin, fmt = proc) => ({ zakres: { max: N(kMax), min: null },
+      ustawZakres: (v) => ustaw(kMax, v), etykieta: `${opisMax} ${fmt(N(kMax))}`, etykietaMin: '' }),
     wzmocnij: (cel, opis) => {
       const s = j.wzmocnienia?.[cel];
       const stan = !s ? '' : s.stan === 'dziala' ? ` · aktywne ${Math.ceil(s.za_s)} s` : s.stan === 'przygotowanie' ? ` · za ${Math.ceil(s.za_s)} s` : ` · odnowienie ${Math.ceil(s.za_s)} s`;
@@ -1157,7 +1155,7 @@ function mysliwce(s, st, akcje) {
   const RANGI_KOL = { kadet: 0, standard: 1, as: 2 };
   const wHangarze = (lista) => lista.filter((k) => k.stan === 'hangar' && k.start_za_s == null)
     .sort((a, b) => (N('sklad') < 0.4 ? RANGI_KOL[a.ranga] - RANGI_KOL[b.ranga] : N('sklad') > 0.6 ? RANGI_KOL[b.ranga] - RANGI_KOL[a.ranga] : 0) || a.nr - b.nr);
-  const ileKluczy = Math.max(1, Math.round(Math.min(Math.max(N('ile_kluczy'), N('ile_min')), N('ile_max')) * klucze.length));
+  const ileKluczy = Math.round(Math.min(N('ile_kluczy'), N('ile_max')) * klucze.length);
   const poderwij = (ile) => {
     const do_startu = wHangarze(klucze).slice(0, ile);
     if (!do_startu.length) return akcje.komunikat('Brak kluczy gotowych do startu w hangarze.');
@@ -1180,7 +1178,8 @@ function mysliwce(s, st, akcje) {
     'kurs przechwycenia': { klik: wymagaj((k) => doKlucza(akcje, k, 'atak', 'Myśliwce')) },
     'wstrzymaj / zawróć': { etykieta: 'wstrzymaj / zawróć (ochrona okrętu)', klik: wymagaj((k) => doKlucza(akcje, k, 'ochrona', 'Myśliwce')) },
     'START': { etykieta: wybrany ? (wybrany.stan === 'hangar' ? `START klucza ${wybrany.nr}` : `WYKONAJ: ${st.rozkazMysliwcow} → klucz ${wybrany.nr}`) : `START ${ileKluczy} kluczy`,
-      klik: () => (wybrany ? doKlucza(akcje, wybrany, wybrany.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce') : poderwij(ileKluczy)) },
+      klik: () => (wybrany ? doKlucza(akcje, wybrany, wybrany.stan === 'hangar' ? 'start' : st.rozkazMysliwcow, 'Myśliwce')
+        : ileKluczy ? poderwij(ileKluczy) : akcje.komunikat('Ustaw liczbę kluczy do poderwania (suwak) albo wybierz klucz.')) },
     'suwak: maksymalna liczba kluczy do poderwania': n.zakres('ile_max', 'ile_min', 'kluczy maks.', 'min.', (v) => `${Math.round(v * klucze.length)}`),
     'suwak: liczba kluczy do poderwania': n.suwak('ile_kluczy', 'do poderwania', () => `${ileKluczy}`),
     'suwak: skład załogi (asy · standardowi · kadeci)': n.suwak('sklad', 'kolejność startu', (v) => (v < 0.4 ? 'kadeci najpierw' : v > 0.6 ? 'asy najpierw' : 'po kolei')),

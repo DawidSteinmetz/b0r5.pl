@@ -1141,6 +1141,8 @@ function floty_aktualizuj_ruch(): void
     if (!tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) return;
     // Lot ręczny z mostka (api/lot_reczny.php) — przed domknięciem manewrów, by kurs z mapy przejął ster.
     if (function_exists('lot_reczny_aktualizuj')) lot_reczny_aktualizuj();
+    // Starcia (api/starcia.php): ucieczka obrońcy, termin walki.
+    if (function_exists('starcia_aktualizuj')) starcia_aktualizuj();
     floty_domknij_manewry();
     floty_aktualizuj_loty();
     // Jednostka przypisana do planety stoi na współrzędnych jej układu (porządkuje dawne przesunięcia,
@@ -1508,7 +1510,9 @@ function floty_rozkaz(string $login, array $w): array
         array_sum(array_column($wyliczone, 'x1')) / $ile, array_sum(array_column($wyliczone, 'y1')) / $ile, $najpozniej,
         'flota', (string) $rozkazId, $ile === 1 ? 'Sygnatura: ' . $pierwsza['nazwa'] : "Zgrupowanie: {$ile} jednostek",
         array_column($wyliczone, 'id'), $wejscie);
-    return ['ok' => true, 'rozkaz_id' => $rozkazId, 'cel' => ['x' => $x, 'y' => $y], 'eta' => $najpozniej, 'wejscie' => $wejscie,
+    // Skok do układu z wrogimi okrętami (albo z otwartym starciem): czas w hiperprzestrzeni staje do umówienia terminu.
+    $starcie = function_exists('starcie_po_skoku') ? starcie_po_skoku($rozkazId) : null;
+    return ['ok' => true, 'rozkaz_id' => $rozkazId, 'starcie' => $starcie, 'cel' => ['x' => $x, 'y' => $y], 'eta' => $najpozniej, 'wejscie' => $wejscie,
         'manewr_s' => $punktOd - $teraz, 'punkt_s' => $wejscie - $punktOd, 'tryb' => $tryb, 'wariant' => $wariant,
         'jednostki' => array_map(static fn($j) => ['id' => $j['id'],'nazwa' => $j['nazwa'],'szum_stopnie' => $j['kat'],'eta' => $j['eta']], $wyliczone)];
 }

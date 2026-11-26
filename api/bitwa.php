@@ -26,6 +26,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/bitwa_wektory.php';
 require_once __DIR__ . '/bitwa_silnik.php';
 require_once __DIR__ . '/lot_reczny.php';
+require_once __DIR__ . '/starcia.php';
 
 const BITWA_RANGA_PRZYGOTOWANIE = ['kadet' => 1, 'standard' => 0, 'as' => -1];
 
@@ -994,12 +995,15 @@ function bitwa_policz_xp(int $id): array
 function obsluz_bitwa(string $akcja, bool $post): void
 {
     $akcje = ['bitwa_dostep', 'bitwa_test', 'bitwa_scenariusze', 'bitwa_symulacje', 'bitwa_stan', 'bitwa_utworz', 'bitwa_start', 'bitwa_pauza',
-        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze', 'mostek_stan', 'mostek_gracze', 'mostek_stanowisko', 'mostek_rozkaz'];
+        'bitwa_rozkaz', 'bitwa_zakoncz', 'bitwa_xp_zatwierdz', 'bitwa_stanowisko', 'bitwa_gracze', 'mostek_stan', 'mostek_gracze', 'mostek_stanowisko', 'mostek_rozkaz',
+        'starcia_lista', 'starcie_propozycja', 'starcie_akceptuj', 'starcie_anuluj', 'starcie_zakoncz'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     // Bitwa nic nie zapisuje w sesji: zwolnienie blokady sesji pozwala konsolom odpytywać co sekundę równolegle
     // z rozkazami (PHP inaczej szereguje wszystkie zapytania jednej przeglądarki).
     if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
+    // Starcia (api/starcia.php): uczestnicy obu stron i MG, bez uprawnień do symulacji.
+    if (str_starts_with($akcja, 'starci')) obsluz_starcia($akcja, $post, $u);
     if ($akcja === 'bitwa_dostep') {
         $mostki = [];
         if (bitwa_dostepna()) {
@@ -1013,7 +1017,8 @@ function obsluz_bitwa(string $akcja, bool $post): void
             }
         }
         odpowiedz(['upowazniony' => bitwa_upowazniony($u), 'mg' => bitwa_mg($u), 'migracja' => bitwa_dostepna(),
-            'stanowisko' => bitwa_moje_stanowisko($u), 'mostki' => $mostki]);
+            'stanowisko' => bitwa_moje_stanowisko($u), 'mostki' => $mostki,
+            'starcia' => function_exists('starcia_moje') ? starcia_moje($u) : []]);
     }
     if (!bitwa_dostepna()) blad('Symulacje bitew wymagają migracji 068 i 069.');
     if (!bitwa_upowazniony($u)) blad('Brak uprawnień do symulacji bitew.', 403);

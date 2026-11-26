@@ -19,8 +19,9 @@ import mapa from './aplikacje/mapa.js';
 import gielda from './aplikacje/gielda.js';
 import symulacje from './aplikacje/symulacje.js';
 import mostek from './aplikacje/mostek.js';
+import starcia from './aplikacje/starcia.js';
 
-const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, symulacje, ustawienia];
+const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, starcia, symulacje, ustawienia];
 
 const html = document.documentElement;
 const pulpit = document.getElementById('pulpit');
@@ -32,6 +33,7 @@ const stan = {
   uzytkownik: null,
   aplikacja: null,      // { def, sprzataj, wstecz }
   mostki: [],
+  starcia: [],
   stanowisko: null,
   pominAutoStanowisko: false,
 };
@@ -893,6 +895,18 @@ function ekranPulpitu() {
     const zmienilySieMostki = JSON.stringify(mostki) !== JSON.stringify(stan.mostki);
     stan.symulacje = jest;
     stan.mostki = mostki;
+    // Starcia: nowe (czas stoi, trzeba ustalić termin) otwierają aplikację Starcia raz — to powiadomienie dla obu stron.
+    const starciaNowe = (d?.starcia || []).filter((s) => s.status === 'negocjacja');
+    const zmienilySieStarcia = JSON.stringify((d?.starcia || []).map((s) => [s.id, s.status])) !== JSON.stringify((stan.starcia || []).map((s) => [s.id, s.status]));
+    stan.starcia = d?.starcia || [];
+    if (zmienilySieStarcia && siatka.isConnected) rysujIkony(siatka);
+    const widziane = pamiec.czytaj('starcia_widziane', []);
+    const nieznane = starciaNowe.filter((s) => !widziane.includes(s.id));
+    if (nieznane.length && siatka.isConnected && !d?.stanowisko) {
+      pamiec.zapisz('starcia_widziane', [...widziane, ...nieznane.map((s) => s.id)].slice(-50));
+      otworz('starcia');
+      return;
+    }
     stan.stanowisko = d?.stanowisko || mostki.find((x) => !x.pelny) || null;
     if (siatka.isConnected && (zmienilySieMostki || jest !== poprzednioSymulacje)) rysujIkony(siatka);
     // Przydzielone stanowisko wyświetla się pełnoekranowo, bez zegara, doku ani ikon aplikacji.

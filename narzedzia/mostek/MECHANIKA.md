@@ -664,3 +664,22 @@ Ruch — te same zasady co w symulacji (11.4, Silniki i Nawigacja), w skali ukł
 
 Decyzje dotyczące jednej klasy (dawne nr 4 i 15 — ISD; nowe — MC80) są w profilach. Numeracja zachowana z wersji
 z 25.11.2026.
+
+---
+
+## 13. Starcia w realnej grze [U zasada, R liczby, 26.11.2026]
+
+Zasada (użytkownik): bitwa w świecie gry nie zaskakuje graczy. `api/starcia.php`, aplikacja Starcia, migracja 080.
+- **Pauza przy skoku agresora.** Skok do układu, w którym są okręty wrogiej frakcji (Imperium ↔ Rebelia), otwiera
+  starcie: w hiperprzestrzeni staje czas — skok trwa dłużej, niż powinien, dopóki strony nie umówią terminu walki.
+- **Powiadomienie i termin.** Gracze obu stron (wydający skok, dowódcy flot obu stron) dostają powiadomienie —
+  aplikacja Starcia otwiera się sama przy nowym starciu — i dogadują termin: jedna strona proponuje, druga przyjmuje.
+  MG może termin ustalić od razu albo starcie odwołać. Obrona bez graczy (NPC): termin ustala MG.
+- **Ucieczka obrońcy.** Do terminu obrońca może opuścić układ; gdy nie zostanie w nim żaden wrogi okręt, starcie się
+  kończy, a czas wraca do normy: zatrzymane skoki kończą się po swoim czasie wydłużonym o pauzę.
+- **Posiłki i atak z kilku stron.** Każdy skok do układu z otwartym starciem (posiłki obrońcy, druga flota atakującego
+  z innego kierunku) też jest zatrzymany i wyskoczy o tyle po terminie, o ile miał wyskoczyć po początku pauzy
+  (posiłki „1 h po ataku” — 1 h po umówionym terminie).
+- **Termin.** Wyjście atakujących ze skoku następuje w terminie; starcie przechodzi w bitwę na mapie (mapa_bitwy,
+  rodzaj rzeczywista, uczestnicy — okręty obu stron w układzie). Rozegranie jej silnikiem bitwy na prawdziwych
+  okrętach (osłony, baterie, klucze, piloci; skutki w świecie po zatwierdzeniu MG) — następny etap.

@@ -290,7 +290,7 @@ function starcie_otworz_bitwe(array $s): void
 }
 
 // ------------------------------------------------------------------------------------------------ skutki (etap 3)
-// Bitwa zaczyna się ze stanem okrętów ze świata: kadłub (mapa_obiekty.kadlub, %) we wszystkich sekcjach, martwe żyły
+// Bitwa zaczyna się ze stanem okrętów ze świata: kadłub (mapa_naped_jednostki.kadlub, %) we wszystkich sekcjach, martwe żyły
 // osłon zapisane po poprzedniej bitwie (okrety_zyly — tylko gdy osłony < 100%, stocznia przywraca 100%). Po bitwie
 // MG zatwierdza skutki: kadłub i osłony (% żywych żył), martwe żyły, utracone maszyny (tie_liczba floty), polegli
 // piloci (zestrzeleni — usunięci z pokładu; pokład uzupełnia potem nowych). Migracja 081.
@@ -310,8 +310,13 @@ function starcie_stan_ze_swiata(array &$S): void
     $db = polaczenie_bazy();
     foreach ($S['jednostki'] as $ji => $j) {
         if (empty($j['obiekt_id'])) continue;
-        $q = $db->prepare('SELECT kadlub, oslony FROM mapa_obiekty WHERE id=?');
-        try { $q->execute([(int) $j['obiekt_id']]); $o = $q->fetch(PDO::FETCH_ASSOC); } catch (Throwable $e) { $o = null; }
+        // Kadłub i osłony jednostki: mapa_naped_jednostki (migracja 019); bez wiersza — 100%.
+        try {
+            $q = $db->prepare('SELECT COALESCE(n.kadlub, 100) AS kadlub, COALESCE(n.oslony, 100) AS oslony FROM mapa_obiekty o
+                LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = o.id WHERE o.id=?');
+            $q->execute([(int) $j['obiekt_id']]);
+            $o = $q->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) { $o = ['kadlub' => 100, 'oslony' => 100]; }
         if (!$o) continue;
         if (function_exists('okret_ustawienia_do_stanu')) okret_ustawienia_do_stanu($S, $ji, (int) $j['obiekt_id']);
         $kadlub = max(1.0, min(100.0, (float) $o['kadlub']));
@@ -335,8 +340,8 @@ function starcie_skutki(int $bitwaId): array
 {
     $db = polaczenie_bazy();
     $sl = bitwa_slowniki();
-    $q = $db->prepare('SELECT j.id, j.obiekt_id, j.nazwa, j.profil_kod, j.stan, o.kadlub AS kadlub_przed, o.oslony AS oslony_przed FROM bitwy_jednostki j
-        JOIN mapa_obiekty o ON o.id = j.obiekt_id WHERE j.bitwa_id=? AND j.obiekt_id IS NOT NULL');
+    $q = $db->prepare('SELECT j.id, j.obiekt_id, j.nazwa, j.profil_kod, j.stan, COALESCE(n.kadlub, 100) AS kadlub_przed, COALESCE(n.oslony, 100) AS oslony_przed FROM bitwy_jednostki j
+        JOIN mapa_obiekty o ON o.id = j.obiekt_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = o.id WHERE j.bitwa_id=? AND j.obiekt_id IS NOT NULL');
     $q->execute([$bitwaId]);
     $out = [];
     foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $j) {
@@ -373,7 +378,7 @@ function starcie_zatwierdz_skutki(array $s): array
     $db->beginTransaction();
     try {
         foreach ($skutki as $o) {
-            $db->prepare('UPDATE mapa_obiekty SET kadlub=?, oslony=? WHERE id=?')->execute([max(0, min(100, $o['kadlub_po'])), max(0, min(100, $o['oslony_po'])), $o['obiekt_id']]);
+            $db->prepare('UPDATE mapa_naped_jednostki SET kadlub=?, oslony=? WHERE obiekt_id=?')->execute([max(0, min(100, $o['kadlub_po'])), max(0, min(100, $o['oslony_po'])), $o['obiekt_id']]);
             foreach ($o['zyly'] as $z) {
                 $db->prepare('INSERT INTO okrety_zyly (obiekt_id, kod, liczba, martwe) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE liczba=VALUES(liczba), martwe=VALUES(martwe)')
                     ->execute([$o['obiekt_id'], $z['kod'], (int) $z['liczba'], (string) $z['martwe']]);

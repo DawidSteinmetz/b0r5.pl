@@ -1,5 +1,6 @@
 // Symulacje bitew: scenariusze, tworzenie i prowadzenie symulacji (instancje bez trwałych skutków), podgląd na żywo,
-// rozkazy dla kluczy i osłon, XP pilotów po zakończeniu, test silnika dla MG.
+// rozkazy dla kluczy i osłon, XP pilotów po zakończeniu, test silnika dla MG. Mostek bez symulacji: pulpity okrętu
+// w spoczynku (api/?a=mostek_stan) — kapitan podchodzi do każdego, gracz ze stałym stanowiskiem do swoich.
 // Widoczna tylko dla upoważnionych (MG i dowodzący okrętem z profilem klasy) — api/?a=bitwa_dostep.
 // Mechanika i plan wdrożenia: narzedzia/mostek/ (MECHANIKA.md, WDROZENIE.md, PULPITY.md).
 
@@ -57,11 +58,26 @@ export default {
             + 'piloci z pokładu dostają 0,5 XP za każdą akcję (as ×0,5, kadet ×1,5) po zatwierdzeniu przez MG.'),
           h('table.tabela', para('Twoje okręty', okrety.length ? h('div', okrety.map((o) => h('div', `${o.nazwa} · ${o.profil_klasy}`))) : 'brak')),
           dane.silnik ? null : h('div.komunikat', 'Prowadzenie symulacji wymaga migracji 070 i 072.')),
+        mostki(okrety),
         sym.length ? panel('TWOJE SYMULACJE', h('table.tabela', sym.map((s) => h('tr',
           h('td', h('div', s.nazwa), h('div.slaby.maly-tekst', `${STATUS[s.status] || s.status}${s.pauza ? ' · pauza' : ''} · ${mmss(s.czas_s)} z ${mmss(s.okno_s)}`)),
           h('td', { style: 'text-align:right' }, h('button.przycisk.drugi.maly', { onclick: () => otworzSymulacje(s.id) }, 'Otwórz')))))) : null,
         ...dane.scenariusze.map((s) => scenariusz(s, okrety)),
         dane.mg ? test() : null);
+    }
+
+    // Mostek bez symulacji: okręty, którymi dowodzisz (wszystkie pulpity), i Twoje stałe stanowiska.
+    function mostki(okrety) {
+      const stale = (dane.stale || []).filter((x) => !okrety.some((o) => Number(o.id) === x.obiekt_id));
+      if (!okrety.length && !stale.length) return null;
+      const wiersz = (nazwa, opis, obiektId) => h('tr', h('td', h('div', nazwa), h('div.slaby.maly-tekst', opis)),
+        h('td', { style: 'text-align:right' }, h('button.przycisk.drugi.maly', { onclick: () => otworzSymulacje(null, obiektId) }, 'Podejdź do pulpitów')));
+      return panel('MOSTEK',
+        h('p.maly-tekst', 'Pulpity okrętu bez symulacji: okręt w spoczynku, bez wroga i zegara — do nauki i przydziału stałych stanowisk. '
+          + 'Rozkazy działają dopiero w symulacji.'),
+        h('table.tabela', ...okrety.map((o) => wiersz(o.nazwa, `${o.profil_klasy} · wszystkie pulpity`, Number(o.id))),
+          ...stale.map((x) => wiersz(x.nazwa, `${x.profil} · Twoje stanowisko: ${x.pulpity.join(', ')}`, x.obiekt_id))),
+        dane.stale_migracja === false ? h('div.slaby.maly-tekst', { style: 'margin-top:6px' }, 'Stałe stanowiska po migracji 077.') : null);
     }
 
     function scenariusz(s, okrety) {
@@ -116,7 +132,8 @@ export default {
     }
 
     // ------------------------------------------------------------------ symulacja
-    function otworzSymulacje(id) {
+    // id — symulacja; mostek — id okrętu z mapy (mostek bez symulacji, id = null).
+    function otworzSymulacje(id, mostek = null) {
       zatrzymaj();
       ctx.ustawWstecz?.(kiosk ? () => true : () => { lista(); return true; });
       // Elementy sterujące tworzone raz (wybór figury i Hz nie gubi się przy odświeżaniu co sekundę).
@@ -133,7 +150,7 @@ export default {
       let ostatni = null;
       // Widoki: przegląd albo konsola mostka. MG, prowadzący i kapitan widzą wszystko; gracz ze stanowiskiem — tylko
       // przypisane mu pulpity (bitwy_stanowiska); bez przydziału czeka na niego.
-      let widok = 'przeglad';
+      let widok = mostek ? null : 'przeglad';
       let podpisZakladek = '';
       let podpisStanowisk = '';
       let gracze = null;
@@ -144,13 +161,14 @@ export default {
       const przeglad = h('div');
       const akcjeKonsoli = {
         odswiez: () => rysujKonsole(),
-        rozkaz: (dane) => rozkaz(dane),
+        rozkaz: (dane) => (mostek ? wyczysc(komunikat).append(h('div.komunikat', 'Mostek bez symulacji — rozkaz nie ma skutku. Rozkazy działają w symulacji.'))
+          : rozkaz(dane)),
         komunikat: (tekst) => wyczysc(komunikat).append(h('div.komunikat.blad', tekst)),
       };
       function rysujKonsole() {
         if (!ostatni) return;
         const st = ostatni.stanowiska || { pelny: true, moje: [] };
-        przeglad.hidden = !(st.pelny && widok === 'przeglad');
+        przeglad.hidden = !!mostek || !(st.pelny && widok === 'przeglad');
         konsolaEl.hidden = !przeglad.hidden ? true : false;
         if (!przeglad.hidden) return;
         if (!widok) {
@@ -165,7 +183,7 @@ export default {
         const profil = st.okret?.profil || ostatni?.jednostki?.[0]?.profil;
         if (!st.pelny) return st.moje.map((k) => [k, k]);
         const inne = pulpityKlasy(profil).filter((k) => !KONSOLE.includes(k));
-        return [['przeglad', 'Przegląd'], ...KONSOLE.map((k) => [k, k]), ...inne.map((k) => [k, k])];
+        return [...(mostek ? [] : [['przeglad', 'Przegląd']]), ...KONSOLE.map((k) => [k, k]), ...inne.map((k) => [k, k])];
       }
       function rysujZakladki() {
         const lista = listaWidokow();
@@ -196,8 +214,10 @@ export default {
               przypisany[pulpit] ? h('button.przycisk.drugi.maly', { onclick: () => przydziel(pulpit, '') }, 'Zwolnij') : null)));
         };
         wyczysc(stanowiskaEl).append(panel('STANOWISKA · ' + st.okret.nazwa,
-          h('p.slaby.maly-tekst', st.mg ? 'MG przydziela każdego gracza — postać spoza pokładu zostaje teleportowana na mostek.'
-            : 'Kapitan przydziela graczy obecnych na pokładzie. Kapitan widzi wszystkie pulpity.'),
+          h('p.slaby.maly-tekst', (st.stale ? 'Stałe stanowiska: przydział obowiązuje poza symulacją i w każdej symulacji tego okrętu. ' : '')
+            + (st.mg ? 'MG przydziela każdego gracza — postać spoza pokładu zostaje teleportowana na mostek.'
+              : 'Kapitan przydziela graczy obecnych na pokładzie. Kapitan widzi wszystkie pulpity.')),
+          st.stale && st.migracja === false ? h('div.komunikat', 'Stałe stanowiska wymagają migracji 077.') : null,
           gracze ? null : h('button.przycisk.drugi', { style: 'width:100%;margin-bottom:8px', onclick: wczytajGraczy }, 'Wczytaj graczy do przydziału'),
           h('table.tabela', pulpityStanowisk(st.okret.profil).map(wiersz))));
       }
@@ -210,12 +230,12 @@ export default {
           ...eskadry.map((n) => `Eskadra ${n}`), ...klucze.map((n) => `Klucz ${n}`)];
       }
       async function wczytajGraczy() {
-        try { gracze = (await api('bitwa_gracze', undefined, { id })).gracze; rysujStanowiska(true); }
+        try { gracze = (await api(mostek ? 'mostek_gracze' : 'bitwa_gracze', undefined, mostek ? { okret: mostek } : { id })).gracze; rysujStanowiska(true); }
         catch (e) { wyczysc(komunikat).append(blad(e)); }
       }
       async function przydziel(pulpit, login) {
         try {
-          const r = await api('bitwa_stanowisko', { id, pulpit, login });
+          const r = mostek ? await api('mostek_stanowisko', { okret: mostek, pulpit, login }) : await api('bitwa_stanowisko', { id, pulpit, login });
           wyczysc(komunikat).append(h('div.komunikat.ok', !login ? `Pulpit ${pulpit} zwolniony.`
             : r.teleport ? `${r.postac}: teleport na mostek i przydział do pulpitu ${pulpit}.` : `${r.postac}: przydział do pulpitu ${pulpit}.`));
           if (r.teleport) gracze = null;
@@ -280,6 +300,7 @@ export default {
         zapiszZwroty(stanKonsol, s);
         const st = s.stanowiska || { pelny: true, moje: [] };
         if (!st.pelny && !st.moje.includes(widok)) widok = st.moje[0] || null;
+        if (mostek && st.pelny && !widok) widok = KONSOLE[0];
         // Gracz ze stanowiskiem widzi tylko swój pulpit: bez nagłówka symulacji, zakładki tylko przy kilku pulpitach.
         naglowek.hidden = !st.pelny;
         zakladki.hidden = !st.pelny && st.moje.length < 2;
@@ -292,6 +313,13 @@ export default {
         rysujZakladki();
         rysujKonsole();
         rysujStanowiska();
+        if (mostek) {
+          wyczysc(naglowek).append(panel(s.nazwa.toUpperCase(), h('p.slaby.maly-tekst',
+            'Okręt w spoczynku, bez symulacji: pulpity pokazują okręt (osłony na domyślnych Hz, hangar pełny), rozkazy nie mają skutku.')));
+          naglowek.hidden = false;
+          if (!st.pelny && !st.moje.length) wyczysc(konsolaEl).append(panel('STANOWISKO', h('p.maly-tekst', 'Nie masz już stanowiska na tym mostku.')));
+          return;
+        }
         const trwa = s.status === 'aktywna' && !s.pauza;
         wyczysc(naglowek).append(panel(s.nazwa,
           h('table.tabela',
@@ -361,7 +389,8 @@ export default {
         const t0 = Date.now();
         let nastepne = 1000;
         try {
-          const { stan } = await api('bitwa_stan', undefined, { id });
+          const { stan } = mostek ? await api('mostek_stan', undefined, { okret: mostek }) : await api('bitwa_stan', undefined, { id });
+          if (mostek) nastepne = 15000; // okręt w spoczynku: odczyt tylko po zmiany przydziałów
           rysuj(stan);
           if (['zakonczona', 'anulowana'].includes(stan.status)) nastepne = null;
           else if (komunikat.querySelector('.blad-sieci')) wyczysc(komunikat);
@@ -375,8 +404,8 @@ export default {
         if (nastepne !== null && !koniec) zegar = setTimeout(odswiez, Math.max(0, nastepne - (Date.now() - t0)));
       }
 
-      przeglad.append(stanowiskaEl, panel('RADAR', radar), okrety, klucze, zdarzenia);
-      wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, przeglad, wynikXp);
+      przeglad.append(...(mostek ? [] : [stanowiskaEl]), panel('RADAR', radar), okrety, klucze, zdarzenia);
+      wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, ...(mostek ? [stanowiskaEl] : []), przeglad, wynikXp);
       odswiez();
     }
 

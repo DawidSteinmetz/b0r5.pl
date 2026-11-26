@@ -67,7 +67,7 @@ Gracz nie widzi tików (MECHANIKA.md, zasada 4): odliczanie to czas gry w minuta
 
 Konsola w symulacji (aplikacja Symulacje → zakładka z nazwą pulpitu) to ten sam układ co arkusz i wydruk:
 `python pulpity_js.py` eksportuje `uklady/` do `js/aplikacje/pulpity_uklady.js`, a `js/aplikacje/konsole.js` rysuje
-siatkę 13×9 i podpina elementy pod stan bitwy **po tekście elementu** (zmiana tekstu w układzie = zmiana powiązania).
+siatkę układu (13×9; wariant ISD „Walako” — `uklady/isd_i_walako.py` — szerszy i niższy 13×7; telefon 5×9) i podpina elementy pod stan bitwy **po tekście elementu** (zmiana tekstu w układzie = zmiana powiązania).
 Element bez mechaniki jest przygaszony (dymek „bez mechaniki”), włączony przełącznik ma ramkę w kolorze akcentu.
 Pulpit to dwie siatki o tej samej geometrii: warstwa kontrolek (kolory, ekrany, kliknięcia) i nad nią **warstwa
 tekstów** w kroju `var(--czcionka)` — przełącznik alfabetu (łaciński / Aurebesh) zmienia naraz wszystkie napisy pulpitu,
@@ -78,6 +78,14 @@ także opisy na ekranach. Każdy pulpit klasy da się otworzyć; bez mechaniki w
   (ten sam zapis pozycji co przestawienie postaci w panelu MG, pomieszczenie „Mostek główny”);
 - kapitan (dowódca floty okrętu) przydziela pulpity graczom obecnym na pokładzie i sam widzi wszystkie pulpity;
 - gracz z przydziałem widzi w symulacji tylko swoje pulpity i wydaje rozkazy tylko z nich; bez przydziału czeka.
+
+**Stałe stanowiska i mostek bez symulacji** (26.11.2026, migracja 077, `okrety_stanowiska`): Symulacje → panel
+„MOSTEK” → „Podejdź do pulpitów” otwiera pulpity okrętu w spoczynku (bez wroga i zegara; osłony na domyślnych Hz,
+hangar pełny, kadłub 100%; rozkazy nie mają skutku). Dowodzący okrętem, kapitan floty i MG widzą każdy pulpit
+i pod pulpitem panel „STANOWISKA” — przydział jest **stały**: obowiązuje poza symulacją, kopiuje się do każdej nowej
+symulacji okrętu, a jego zmiana przechodzi też na trwające symulacje tego okrętu. Przydział w panelu samej symulacji
+zostaje jednorazowy (tylko ta symulacja). Gracz ze stałym stanowiskiem widzi aplikację Symulacje i na mostku tylko
+swoje pulpity; w trwającej symulacji jak dotąd — tryb stanowiska po zalogowaniu.
 
 **Sylwetki** na ekranach według rzutów z góry: ISD (klin, rufa z dwóch trójkątów do bloku silników, nadbudówka
 z kopułami osłon), MC80 (ostry dziób, wąski kadłub, skrzydła z wklęsłą krawędzią natarcia, odchylone do rufy);

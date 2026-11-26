@@ -251,6 +251,8 @@ niemal wszystkie komendy mają czas wykonania, więc wcześniej rozkazany unik d
 - Konsole (26.11.2026, PULPITY 1c, MECHANIKA 11.3; migracja 076, 069 odświeżona): wygląd fizycznego pulpitu, lampki
   żył, Turbolasery, Silniki, Grawitacja, ster okrętu, wskazanie celu, stanowiska Klucz N / Eskadra N, tryb stanowiska
   (gracz widzi tylko pulpit), cele domyślne kluczy, koniec symulacji po oknie i budżet doliczania.
+- Pulpity ISD „Walako” (26.11.2026): układy z poprawionego arkusza użytkownika (`uklady/isd_i_walako.py`, 13×7),
+  poprzednie w `uklady/isd_i.py`. Stałe stanowiska i mostek bez symulacji (PULPITY 1c; migracja 077).
 - Ograniczenia (stare, częściowo nieaktualne): myśliwce strzelają tylko w okręty (walka klucz na klucz i broń okrętu — W17 i liczby θ), więc TIE
   w „Szkoleniu” nie mają celu i lecą prosto; AI nabija dużo akcji (W9).
 

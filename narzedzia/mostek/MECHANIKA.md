@@ -637,6 +637,9 @@ Ruch — te same zasady co w symulacji (11.4, Silniki i Nawigacja), w skali ukł
   przesuw w bok 0,074 × v_maks × (suma prawych − suma lewych); blokada Anchor/Lock zatrzymuje okręt;
 - ręczne przejmuje: ciąg przerywa lot autopilota i schodzi z orbity (okręt rusza z punktu planety w układzie); nowy lot
   z mapy zeruje ciąg ręczny, a kurs wydany z mapy staje się kursem zadanym; między układami — tylko autopilot.
+- bez ciągu okręt obraca się w miejscu (także na orbicie — miejsce na orbicie bez zmian); z ciągiem schodzi z orbity;
+- flota leci za okrętem z mostka: okręty tej samej floty stojące w tym samym miejscu (ta sama orbita albo punkt układu),
+  bez własnego lotu, dostają jego pozycję i kurs (mapa rozstawia je w szyku), na orbicie obracają się razem z nim;
 - Pozycja i kurs liczone leniwie przy każdym odczycie ruchu (krok 1 s w rozpędzie i skręcie do kursu zadanego, potem
   łuk albo prosta w zamkniętej postaci); zapis w mapa_obiekty (uklad_kx, uklad_ky, kurs_deg).
 

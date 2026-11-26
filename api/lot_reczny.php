@@ -99,21 +99,23 @@ function lot_reczny_przelicz(int $id): void
     // Kurs wydany z mapy po ostatnim przeliczeniu staje się kursem zadanym lotu ręcznego.
     $kursCel = $r['kurs_cel_deg'] !== null ? (float) $r['kurs_cel_deg'] : null;
     if ($r['manewr_do_utc'] !== null && $r['manewr_cel'] !== null && czas_z_utc((string) $r['manewr_od_utc']) >= $od) $kursCel = 90 - (float) $r['manewr_cel'];
-    // Okręt stoi (bez ciągu i prędkości) na orbicie albo w punkcie układu bez trymów: tylko chwila przeliczenia.
+    // Bez ciągu i prędkości okręt zostaje tam, gdzie jest (na orbicie albo w punkcie układu) — obraca się tylko do
+    // kursu zadanego i trymem; przesuw dyszami tylko poza orbitą. Bez kursu zadanego i trymów — tylko chwila przeliczenia.
     $ruch = (float) $r['v_kms'] > 0 || (float) $r['v_cel_kms'] > 0;
-    if (!$ruch && ($r['planeta_id'] !== null || $kursCel === null)) {
-        $n0 = okret_nastawy($id);
-        $trymy = abs(($n0['trym_odch'] ?? 0.5) - 0.5) > 1e-9 || array_sum(array_map(static fn($k) => abs(($n0[$k] ?? 0.5) - 0.5),
-            ['dysza_pg', 'dysza_pd', 'katdysz_p', 'dysza_lg', 'dysza_ld', 'katdysz_l'])) > 1e-9;
-        if ($r['planeta_id'] !== null || !$trymy) {
-            $db->prepare('UPDATE okrety_lot_reczny SET kurs_cel_deg=?, ostatnio_utc=? WHERE obiekt_id=?')->execute([$kursCel, czas_utc($teraz), $id]);
-            return;
-        }
+    $n0 = okret_nastawy($id);
+    $trymOdch = abs(($n0['trym_odch'] ?? 0.5) - 0.5) > 1e-9;
+    $dysze = array_sum(array_map(static fn($k) => abs(($n0[$k] ?? 0.5) - 0.5), ['dysza_pg', 'dysza_pd', 'katdysz_p', 'dysza_lg', 'dysza_ld', 'katdysz_l'])) > 1e-9;
+    $naOrbicie = $r['planeta_id'] !== null && !$ruch;
+    if (!$ruch && $kursCel === null && !$trymOdch && ($naOrbicie || !$dysze)) {
+        $db->prepare('UPDATE okrety_lot_reczny SET kurs_cel_deg=NULL, ostatnio_utc=? WHERE obiekt_id=?')->execute([czas_utc($teraz), $id]);
+        return;
     }
-    // Zejście z orbity: punkt planety w układzie (km od słońca).
-    $kx = $r['uklad_kx'] !== null ? (float) $r['uklad_kx'] : null;
-    $ky = $r['uklad_ky'] !== null ? (float) $r['uklad_ky'] : null;
-    if ($r['planeta_id'] !== null) {
+    $poprzednio = ['planeta_id' => $r['planeta_id'] !== null ? (int) $r['planeta_id'] : null,
+        'kx' => $r['uklad_kx'] !== null ? (float) $r['uklad_kx'] : null, 'ky' => $r['uklad_ky'] !== null ? (float) $r['uklad_ky'] : null, 'x' => $r['x'], 'y' => $r['y']];
+    // Zejście z orbity (tylko z ciągiem): punkt planety w układzie (km od słońca).
+    $kx = $r['uklad_kx'] !== null ? (float) $r['uklad_kx'] : ($naOrbicie ? 0.0 : null);
+    $ky = $r['uklad_ky'] !== null ? (float) $r['uklad_ky'] : ($naOrbicie ? 0.0 : null);
+    if ($r['planeta_id'] !== null && !$naOrbicie) {
         $k = function_exists('floty_planeta_km') ? floty_planeta_km((int) $r['planeta_id'], $teraz) : null;
         if (!$k) { $zeruj(); return; }
         [$kx, $ky] = $k;
@@ -136,11 +138,11 @@ function lot_reczny_przelicz(int $id): void
     $cel = max(0.0, min($vGora, $vCel));
     $cel = max($cel, min($vGora, $vMaks * ($n('sil_min_l') + $n('sil_min_p')) / 3));
     $blokada = $n('blokada') >= 0.5;
-    if ($blokada) $cel = 0.0;
+    if ($blokada || $naOrbicie) $cel = 0.0;
     $roznica = $n('sil_max_l') - $n('sil_max_p');
     $trym = ($n('trym_odch') - 0.5) * 0.4;      // °/s
     $vb = 0.02 / 0.27 * $vMaks * (($n('dysza_pg') + $n('dysza_pd') + $n('katdysz_p')) - ($n('dysza_lg') + $n('dysza_ld') + $n('katdysz_l')));
-    if ($blokada) $vb = 0.0;
+    if ($blokada || $naOrbicie) $vb = 0.0;
     $T = max(0, $teraz - $od);
     $t = 0.0;
     $kroki = 0;
@@ -179,10 +181,53 @@ function lot_reczny_przelicz(int $id): void
             $kurs = bitwa_norm180($kurs + $omega * $R);
         }
     }
-    $db->prepare('UPDATE mapa_obiekty SET uklad_kx=?, uklad_ky=?, kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
-        ->execute([round($kx, 1), round($ky, 1), round(fmod(fmod(90 - $kurs, 360) + 360, 360), 3), $id]);
+    $kursMapy = round(fmod(fmod(90 - $kurs, 360) + 360, 360), 3);
+    if ($naOrbicie) {
+        // Na orbicie: tylko obrót dziobu (miejsce na orbicie bez zmian).
+        $db->prepare('UPDATE mapa_obiekty SET kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
+            ->execute([$kursMapy, $id]);
+    } else {
+        $db->prepare('UPDATE mapa_obiekty SET uklad_kx=?, uklad_ky=?, kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
+            ->execute([round($kx, 1), round($ky, 1), $kursMapy, $id]);
+    }
     $db->prepare('UPDATE okrety_lot_reczny SET v_kms=?, kurs_cel_deg=?, ostatnio_utc=? WHERE obiekt_id=?')
         ->execute([$v, $kursCel, czas_utc($teraz), $id]);
+    lot_reczny_flota_za_okretem($id, $poprzednio, $naOrbicie ? null : [round($kx, 1), round($ky, 1)], $kursMapy);
+}
+
+// Flota za okrętem: okręty tej samej floty, które stały w tym samym miejscu (ta sama orbita albo ten sam punkt
+// układu) i nie lecą same (autopilot, własny lot ręczny), lecą za okrętem z mostka — ta sama pozycja i kurs; mapa
+// rozstawia je w szyku floty. Na orbicie (bez ciągu) tylko obracają się razem z nim.
+function lot_reczny_flota_za_okretem(int $id, array $poprzednio, ?array $k, float $kursMapy): void
+{
+    if (!tabela_sql_dostepna('mapa_floty_jednostki')) return;
+    $db = polaczenie_bazy();
+    try {
+        $q = $db->prepare('SELECT o.id, o.planeta_id, o.uklad_kx, o.uklad_ky, o.x, o.y, o.lot_do_utc, r.v_kms, r.v_cel_kms
+            FROM mapa_floty_jednostki f1 JOIN mapa_floty_jednostki f2 ON f2.flota_id = f1.flota_id AND f2.obiekt_id <> f1.obiekt_id
+            JOIN mapa_obiekty o ON o.id = f2.obiekt_id LEFT JOIN okrety_lot_reczny r ON r.obiekt_id = o.id
+            WHERE f1.obiekt_id = ? AND o.aktywny = 1');
+        $q->execute([$id]);
+        $wiersze = $q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) { return; }
+    foreach ($wiersze as $o) {
+        if ($o['lot_do_utc'] !== null || (float) ($o['v_kms'] ?? 0) > 0 || (float) ($o['v_cel_kms'] ?? 0) > 0) continue;
+        if ((string) $o['x'] !== (string) $poprzednio['x'] || (string) $o['y'] !== (string) $poprzednio['y']) continue;
+        $tuSamo = $poprzednio['planeta_id'] !== null
+            ? (int) $o['planeta_id'] === $poprzednio['planeta_id']
+            : $o['planeta_id'] === null && $o['uklad_kx'] !== null && $poprzednio['kx'] !== null
+                && hypot((float) $o['uklad_kx'] - $poprzednio['kx'], (float) $o['uklad_ky'] - $poprzednio['ky']) < 50000;
+        if (!$tuSamo) continue;
+        if ($k === null) {
+            $db->prepare('UPDATE mapa_obiekty SET kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL, manewr_od_utc=NULL, manewr_do_utc=NULL WHERE id=?')
+                ->execute([$kursMapy, $o['id']]);
+            continue;
+        }
+        $db->prepare('UPDATE mapa_obiekty SET planeta_id=NULL, uklad_kx=?, uklad_ky=?, kurs_deg=?, kurs_start_deg=NULL, kurs_cel_deg=NULL,
+            manewr_od_utc=NULL, manewr_do_utc=NULL' . (function_exists('floty_orbita_dostepna') && floty_orbita_dostepna() ? ', orbita_deg=NULL' : '')
+            . (function_exists('floty_nawigacja_dostepna') && floty_nawigacja_dostepna() ? ', podejscie=NULL' : '') . ' WHERE id=?')
+            ->execute([$k[0], $k[1], $kursMapy, $o['id']]);
+    }
 }
 
 // Widok mostka bez symulacji (mostek_widok): ruch prawdziwego okrętu i jego nastawy zamiast stanu w spoczynku.

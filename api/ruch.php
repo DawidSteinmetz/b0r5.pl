@@ -271,6 +271,8 @@ function mapa_kurs_pola(array $r): array
     }
     // Punkt w układzie (km od słońca), gdy jednostka nie stoi przy planecie.
     if (($r['uklad_kx'] ?? null) !== null) $w['uklad_k'] = [(float) $r['uklad_kx'], (float) $r['uklad_ky']];
+    // Lot ręczny z mostka (api/lot_reczny.php): stan i parametry ruchu — tablet przelicza go płynnie między odczytami.
+    if (isset($r['id']) && function_exists('lot_reczny_mapa') && ($rk = lot_reczny_mapa((int) $r['id']))) $w['reczny'] = $rk;
     if (!empty($r['manewr_do_utc']) && $r['kurs_cel_deg'] !== null) {
         $w['manewr'] = ['od' => czas_z_utc((string) $r['manewr_od_utc']), 'do' => czas_z_utc((string) $r['manewr_do_utc']),
             'start' => (float) $r['kurs_start_deg'], 'cel' => (float) $r['kurs_cel_deg']];

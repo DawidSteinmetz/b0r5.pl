@@ -76,6 +76,66 @@ function lot_reczny_wiersz(int $obiektId): ?array
     return $q->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
+// Parametry ruchu z nastaw (jak silnik.py ster_okretu): prędkość maks., obrót, przyspieszenie, prędkość docelowa,
+// różnica ciągu burt, trym odchylenia (°/s), przesuw dyszami (km/s). Wspólne dla przeliczenia i mapy (lot_reczny_mapa).
+function lot_reczny_parametry(array $S, array $j, array $r, bool $naOrbicie): array
+{
+    $n = static fn(string $k): float => bitwa_nast($j, $k);
+    $w = static fn(string $c): float => bitwa_wzm($S, $j, $c);
+    $vMaks = lot_reczny_v_maks((float) $r['g']);
+    $ciag = ($n('sil_max_l') + $n('sil_max_p') + $n('sil_srodek')) / 3;
+    $wzmV = 1 + 0.1 * ($w('gl_l') + $w('gl_p') + $w('gl_s'));
+    $a = $vMaks / LOT_RECZNY_ROZPED_S * $ciag * $wzmV * (1 + 0.1 * ($n('sync_gl_l_s') + $n('sync_gl_p_s')));
+    $vGora = $vMaks * $ciag * $wzmV * (1 - 0.2 * abs($n('trym_poch') - 0.5));
+    $cel = max(0.0, min($vGora, (float) $r['v_cel_kms']));
+    $cel = max($cel, min($vGora, $vMaks * ($n('sil_min_l') + $n('sil_min_p')) / 3));
+    $blokada = $n('blokada') >= 0.5;
+    if ($blokada || $naOrbicie) $cel = 0.0;
+    $vb = 0.02 / 0.27 * $vMaks * (($n('dysza_pg') + $n('dysza_pd') + $n('katdysz_p')) - ($n('dysza_lg') + $n('dysza_ld') + $n('katdysz_l')));
+    return ['v_maks' => $vMaks, 'obrot' => (float) $r['obrot'] ?: 90.0, 'a' => $a, 'cel' => $cel, 'blokada' => $blokada,
+        'roznica' => $n('sil_max_l') - $n('sil_max_p'), 'trym' => ($n('trym_odch') - 0.5) * 0.4, 'vb' => $blokada || $naOrbicie ? 0.0 : $vb,
+        'ml' => bitwa_mnoznik_skretu($S, $j, 'l'), 'mp' => bitwa_mnoznik_skretu($S, $j, 'p')];
+}
+
+// Lot ręczny dla mapy (api/ruch.php mapa_kurs_pola): stan z chwili ostatniego przeliczenia i parametry ruchu, żeby
+// tablet przesuwał i obracał znacznik płynnie między odczytami (te same wzory, js/aplikacje/mapa.js recznyTeraz).
+// Okręty floty lecące za okrętem z mostka (ta sama pozycja, bez własnego lotu) dostają jego wpis.
+function lot_reczny_mapa(int $obiektId): ?array
+{
+    static $wpisy = null;
+    if ($wpisy === null) {
+        $wpisy = [];
+        if (!lot_reczny_dostepny()) return null;
+        try {
+            $ids = polaczenie_bazy()->query('SELECT obiekt_id FROM okrety_lot_reczny WHERE v_kms > 0 OR v_cel_kms > 0 OR kurs_cel_deg IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Throwable $e) { return null; }
+        $teraz = czas_teraz();
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            $r = lot_reczny_wiersz($id);
+            if (!$r || $r['ostatnio_utc'] === null || $r['lot_do_utc'] !== null) continue;
+            $naOrbicie = $r['planeta_id'] !== null;
+            if (!$naOrbicie && $r['uklad_kx'] === null) continue;
+            [$S, $j] = lot_reczny_stan($id, $teraz);
+            $p = lot_reczny_parametry($S, $j, $r, $naOrbicie);
+            $wpis = ['t0' => czas_z_utc((string) $r['ostatnio_utc']), 'kurs' => 90 - (float) $r['kurs_deg'], 'v' => (float) $r['v_kms'],
+                'kurs_cel' => $r['kurs_cel_deg'] !== null ? (float) $r['kurs_cel_deg'] : null, 'orbita' => $naOrbicie,
+                'k' => $naOrbicie ? null : [(float) $r['uklad_kx'], (float) $r['uklad_ky']]] + $p;
+            unset($wpis['blokada']);
+            $wpisy[$id] = $wpis;
+            if (tabela_sql_dostepna('mapa_floty_jednostki')) {
+                $q = polaczenie_bazy()->prepare('SELECT o.id FROM mapa_floty_jednostki f1 JOIN mapa_floty_jednostki f2 ON f2.flota_id = f1.flota_id AND f2.obiekt_id <> f1.obiekt_id
+                    JOIN mapa_obiekty o ON o.id = f2.obiekt_id LEFT JOIN okrety_lot_reczny r ON r.obiekt_id = o.id
+                    WHERE f1.obiekt_id = ? AND o.aktywny = 1 AND o.lot_do_utc IS NULL AND COALESCE(r.v_kms, 0) = 0 AND COALESCE(r.v_cel_kms, 0) = 0
+                      AND o.x <=> ? AND o.y <=> ? AND o.planeta_id <=> ? AND o.uklad_kx <=> ? AND o.uklad_ky <=> ?');
+                $q->execute([$id, $r['x'], $r['y'], $r['planeta_id'], $r['uklad_kx'], $r['uklad_ky']]);
+                foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $f) $wpisy[(int) $f] ??= $wpis;
+            }
+        }
+    }
+    return $wpisy[$obiektId] ?? null;
+}
+
 // Przelicza ruch okrętów w locie ręcznym do „teraz” (wszystkich albo jednego).
 function lot_reczny_aktualizuj(?int $tylko = null): void
 {
@@ -126,23 +186,10 @@ function lot_reczny_przelicz(int $id): void
     [$S, $j] = lot_reczny_stan($id, $teraz);
     $n = static fn(string $k): float => bitwa_nast($j, $k);
     $w = static fn(string $c): float => bitwa_wzm($S, $j, $c);
-    $vMaks = lot_reczny_v_maks((float) $r['g']);
     $kurs = 90 - (float) $r['kurs_deg'];        // nawigacyjny
     $v = (float) $r['v_kms'];
-    $vCel = (float) $r['v_cel_kms'];
-    $obrot = (float) $r['obrot'] ?: 90.0;
-    $ciag = ($n('sil_max_l') + $n('sil_max_p') + $n('sil_srodek')) / 3;
-    $wzmV = 1 + 0.1 * ($w('gl_l') + $w('gl_p') + $w('gl_s'));
-    $a = $vMaks / LOT_RECZNY_ROZPED_S * $ciag * $wzmV * (1 + 0.1 * ($n('sync_gl_l_s') + $n('sync_gl_p_s')));
-    $vGora = $vMaks * $ciag * $wzmV * (1 - 0.2 * abs($n('trym_poch') - 0.5));
-    $cel = max(0.0, min($vGora, $vCel));
-    $cel = max($cel, min($vGora, $vMaks * ($n('sil_min_l') + $n('sil_min_p')) / 3));
-    $blokada = $n('blokada') >= 0.5;
-    if ($blokada || $naOrbicie) $cel = 0.0;
-    $roznica = $n('sil_max_l') - $n('sil_max_p');
-    $trym = ($n('trym_odch') - 0.5) * 0.4;      // °/s
-    $vb = 0.02 / 0.27 * $vMaks * (($n('dysza_pg') + $n('dysza_pd') + $n('katdysz_p')) - ($n('dysza_lg') + $n('dysza_ld') + $n('katdysz_l')));
-    if ($blokada || $naOrbicie) $vb = 0.0;
+    ['v_maks' => $vMaks, 'obrot' => $obrot, 'a' => $a, 'cel' => $cel, 'blokada' => $blokada, 'roznica' => $roznica, 'trym' => $trym, 'vb' => $vb]
+        = lot_reczny_parametry($S, $j, $r, $naOrbicie);
     $T = max(0, $teraz - $od);
     $t = 0.0;
     $kroki = 0;

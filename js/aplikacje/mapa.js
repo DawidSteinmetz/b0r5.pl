@@ -27,8 +27,35 @@ const ZOOM_MAKS = 1e16; // ISD (1,6 km) ok. 500 px
 // Mieszanie logarytmiczne: schemat (f = 0) → rzeczywista wielkość (f = 1), bez przeskoków.
 const mieszajLog = (a, b, f) => (f <= 0 ? a : f >= 1 ? b : Math.exp(Math.log(Math.max(a, 1e-6)) * (1 - f) + Math.log(Math.max(b, 1e-6)) * f));
 
+// Lot ręczny z mostka (api/lot_reczny.php, MECHANIKA 11.5): stan z chwili odczytu i parametry ruchu — te same wzory co
+// serwer (krok 1 s: skręt do kursu zadanego, rozpęd, łuk z różnicy ciągu burt i trymu, przesuw dyszami), więc znacznik
+// płynie i obraca się między odczytami. Kurs nawigacyjny (od północy, zgodnie z zegarem) → mapy: 90 − kurs.
+const norm180 = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+export function recznyTeraz(o, t = teraz()) {
+  const r = o.reczny;
+  const T = Math.max(0, Math.min(180, t - r.t0));
+  let kurs = r.kurs, v = r.v, kc = r.kurs_cel, kx = r.k ? r.k[0] : 0, ky = r.k ? r.k[1] : 0;
+  for (let s = 0; s < T; s += 1) {
+    const dt = Math.min(1, T - s);
+    if (kc != null) {
+      const d = norm180(kc - kurs), zw = (r.obrot / 60) * (d < 0 ? r.ml : r.mp) * dt;
+      kurs = norm180(kurs + Math.max(-zw, Math.min(zw, d)));
+      if (Math.abs(norm180(kc - kurs)) < 1e-6) { kurs = kc; kc = null; }
+    }
+    v += Math.max(-r.a * dt, Math.min(r.a * dt, r.cel - v));
+    kurs = norm180(kurs + ((v > 0 ? (r.roznica * 0.3 * v) / r.v_maks : 0) + r.trym) * dt);
+    if (!r.orbita) {
+      const kr = (kurs * Math.PI) / 180;
+      kx += (v * Math.sin(kr) + r.vb * Math.cos(kr)) * dt;
+      ky += (v * Math.cos(kr) - r.vb * Math.sin(kr)) * dt;
+    }
+  }
+  return { kurs: (((90 - kurs) % 360) + 360) % 360, k: r.orbita ? null : [kx, ky] };
+}
+
 // Kurs jednostki teraz (stopnie, układ mapy: 0° = wschód, 90° = północ), z trwającym manewrem.
 export function kursTeraz(o, t = teraz()) {
+  if (o?.reczny) return recznyTeraz(o, t).kurs;
   const m = o?.manewr;
   if (m && t < m.do) {
     const p = Math.max(0, Math.min(1, (t - m.od) / Math.max(1, m.do - m.od)));
@@ -913,7 +940,8 @@ export default {
       // w tym samym punkcie stoi w szyku (rozstaw w km — widać go dopiero przy dużym zbliżeniu).
       if (o.uklad_k && !planetaObiektu(o) && !wNadprzestrzeni(o) && pl == null) {
         const [dx, dy] = szykKm(o);
-        return naEkran(o.x, o.y, o.uklad_k[0] + dx, o.uklad_k[1] + dy);
+        const k = o.reczny?.k ? recznyTeraz(o).k : o.uklad_k;
+        return naEkran(o.x, o.y, k[0] + dx, k[1] + dy);
       }
       if (pl != null) {
         // Między układami: po linii lotu na mapie; w układzie: między planetą a celem (np. księżycem).

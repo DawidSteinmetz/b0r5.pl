@@ -682,4 +682,11 @@ Zasada (użytkownik): bitwa w świecie gry nie zaskakuje graczy. `api/starcia.ph
   (posiłki „1 h po ataku” — 1 h po umówionym terminie).
 - **Termin.** Wyjście atakujących ze skoku następuje w terminie; starcie przechodzi w bitwę na mapie (mapa_bitwy,
   rodzaj rzeczywista, uczestnicy — okręty obu stron w układzie). Rozegranie jej silnikiem bitwy na prawdziwych
-  okrętach (osłony, baterie, klucze, piloci; skutki w świecie po zatwierdzeniu MG) — następny etap.
+  okrętach — etap 2 niżej; skutki w świecie po zatwierdzeniu MG — etap 3.
+- **Bitwa (etap 2).** W terminie silnik bitwy (ten sam co w symulacjach) rusza na prawdziwych okrętach z profilem
+  klasy: okręty obu stron w układzie i te z zatrzymanych skoków (posiłki wchodzą z opóźnieniem wobec pauzy). Obrońcy
+  w środku pola, atakujący i posiłki 40 km od nich od strony, z której nadlecieli, dziobem ku środkowi. Klucze
+  z hangarów (myśliwce profilu / 4), piloci z pokładu, stanowiska ze stałych przydziałów okrętów. Strona z graczami
+  dowodzi sama (klucze czekają w hangarze na START), strona bez graczy — SI Calrissian. Zegar od terminu, okno 4 h,
+  pauza i koniec — MG. Pulpity: stanowisko przechodzi do bitwy samo (z aplikacji Mostek też), dowódca dostaje
+  przejście „Do bitwy” w aplikacjach Mostek i Starcia. Okręty bez profilu klasy nie walczą w silniku (rozstrzyga MG).

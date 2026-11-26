@@ -178,26 +178,108 @@ function starcia_aktualizuj(): void
     }
 }
 
-// Termin walki: bitwa na mapie (rodzaj rzeczywista) w układzie starcia, uczestnicy — okręty obu stron w układzie.
+// Termin walki: bitwa rozgrywana silnikiem (jak symulacja) na prawdziwych okrętach starcia — okręty obu stron w układzie
+// i te w zatrzymanych skokach (atakujący wychodzą ze skoku w terminie, posiłki później: wejście = opóźnienie wobec
+// pauzy). Obrońcy w środku pola, atakujący 40 km od nich od strony, z której nadlecieli (posiłki tak samo). Klucze
+// z hangarów (profil: myśliwce / 4), piloci z pokładu (mapa_piloci), stanowiska ze stałych przydziałów okrętów.
+// Strona z graczami prowadzi się sama (klucze czekają na START); strona bez graczy — SI dowódcy (domyślnie Calrissian).
+// Bitwa startuje od razu (zegar od terminu); okno 4 h, koniec — MG. Na mapie: znacznik bitwy z uczestnikami.
+const STARCIE_OKNO_S = 4 * 3600;
+const STARCIE_ODLEGLOSC_ATAKU_KM = 40.0;
+const STARCIE_SI_DOMYSLNA = 'calrissian';
+
 function starcie_otworz_bitwe(array $s): void
 {
     $db = polaczenie_bazy();
-    $kod = 'starcie-' . (int) $s['id'];
-    $q = $db->prepare('SELECT id FROM mapa_bitwy WHERE kod=?');
-    $q->execute([$kod]);
-    $bitwa = (int) ($q->fetchColumn() ?: 0);
-    if (!$bitwa) {
+    $id = (int) $s['id'];
+    $termin = czas_z_utc((string) $s['termin_utc']);
+    $pauza = czas_z_utc((string) $s['pauza_od_utc']);
+    // okręty: w układzie (obie strony) i w zatrzymanych skokach (z kierunkiem nadlotu i opóźnieniem wejścia)
+    $okrety = [];
+    foreach (starcie_okrety_ukladu((float) $s['uklad_x'], (float) $s['uklad_y']) as $o) {
+        $okrety[(int) $o['id']] = ['o' => $o, 'atak' => mapa_relacja($s['agresor_frakcja'], $o['frakcja_strony']) !== 'wrog', 'wejscie' => 0, 'kat' => null];
+    }
+    $q = $db->prepare('SELECT k.obiekt_id, k.strona, k.eta_org_utc, j.start_x, j.start_y FROM starcia_skoki k
+        JOIN mapa_rozkazy_skokow_jednostki j ON j.rozkaz_id = k.rozkaz_id AND j.obiekt_id = k.obiekt_id WHERE k.starcie_id=? AND k.obiekt_id > 0');
+    $q->execute([$id]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $qo = $db->prepare('SELECT o.id, o.nazwa, o.wlasciciel, ' . (function_exists('mapa_frakcja_dostepna') && mapa_frakcja_dostepna() ? 'o.frakcja' : 'NULL AS frakcja')
+            . ', fj.flota_id FROM mapa_obiekty o LEFT JOIN mapa_floty_jednostki fj ON fj.obiekt_id = o.id WHERE o.id=?');
+        $qo->execute([(int) $r['obiekt_id']]);
+        $o = $qo->fetch(PDO::FETCH_ASSOC);
+        if (!$o) continue;
+        $o['dowodca'] = $o['flota_id'] ? floty_dowodca((int) $o['flota_id']) : null;
+        $o['frakcja_strony'] = starcie_frakcja($o);
+        $kat = atan2((float) $r['start_x'] - (float) $s['uklad_x'], (float) $r['start_y'] - (float) $s['uklad_y']);   // namiar nadlotu (od północy)
+        $okrety[(int) $o['id']] = ['o' => $o, 'atak' => $r['strona'] === 'agresor', 'wejscie' => max(0, czas_z_utc((string) $r['eta_org_utc']) - $pauza), 'kat' => $kat];
+    }
+    // tylko okręty z profilem klasy walczą w silniku
+    $profile = [];
+    if ($okrety) {
+        $q = $db->query('SELECT id, profil_klasy FROM mapa_obiekty WHERE id IN (' . implode(',', array_keys($okrety)) . ') AND profil_klasy IS NOT NULL');
+        $profile = $q->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    $sl = bitwa_slowniki();
+    $ucz = $db->prepare('SELECT strona, COUNT(*) FROM starcia_uczestnicy WHERE starcie_id=? GROUP BY strona');
+    $ucz->execute([$id]);
+    $gracze = $ucz->fetchAll(PDO::FETCH_KEY_PAIR);
+    $strony = [['strona' => (string) $s['agresor_frakcja'], 'rola' => 'atak', 'gracze' => !empty($gracze['agresor'])],
+        ['strona' => (string) ($s['obronca_frakcja'] ?: 'Obrona'), 'rola' => 'obrona', 'gracze' => !empty($gracze['obronca'])]];
+    $sc = ['kod' => 'starcie-' . $id, 'nazwa' => $s['nazwa'], 'odprawa' => "{$s['agresor_frakcja']} atakuje {$s['obronca_frakcja']} — termin umówiony przez strony.",
+        'strony' => [], 'jednostki' => [], 'klucze' => []];
+    foreach ($strony as $st) {
+        $sc['strony'][] = ['strona' => $st['strona'], 'dowodzenie' => $st['gracze'] ? 'gracze' : STARCIE_SI_DOMYSLNA, 'rola' => $st['rola'], 'asy_proc' => 5, 'kadeci_proc' => 35,
+            'kolor' => $st['strona'] === 'Imperium' ? '#9fb4c8' : '#ff6b55'];
+    }
+    $nr = 0;
+    $obrona = 0;
+    foreach ($okrety as $oid => $x) {
+        $profil = $profile[$oid] ?? null;
+        if (!$profil || !isset($sl['profile'][$profil])) continue;
+        $nr++;
+        $strona = $x['atak'] ? $strony[0]['strona'] : $strony[1]['strona'];
+        if ($x['atak'] || $x['kat'] !== null) {
+            $kat = $x['kat'] ?? 0.0;
+            $px = sin($kat) * STARCIE_ODLEGLOSC_ATAKU_KM + ($nr % 3 - 1) * 3; $py = cos($kat) * STARCIE_ODLEGLOSC_ATAKU_KM;
+            $kurs = fmod(rad2deg($kat) + 180 + 360, 360);   // dziobem ku środkowi pola
+        } else {
+            $px = ($obrona % 4) * 4 - 6; $py = intdiv($obrona, 4) * 4; $kurs = 0.0;
+            $obrona++;
+        }
+        $sc['jednostki'][] = ['nr' => $nr, 'strona' => $strona, 'profil_kod' => $profil, 'nazwa' => $x['o']['nazwa'], 'x_km' => round($px, 2), 'y_km' => round($py, 2),
+            'kurs_deg' => round($kurs, 2), 'predkosc_km_s' => 0, 'wejscie_s' => (int) $x['wejscie'], 'wejscie_rozrzut_s' => 0, 'obiekt_id' => $oid, 'z_mapy' => 1];
+        $typ = MOSTEK_TYP_MYSLIWCOW[$profil] ?? null;
+        $ile = intdiv((int) $sl['profile'][$profil]['mysliwce'], 4);
+        if ($typ && isset($sl['maszyny'][$typ]) && $ile > 0) {
+            $sc['klucze'][] = ['strona' => $strona, 'typ_maszyny' => $typ, 'liczba_kluczy' => $ile, 'jednostka_nr' => $nr, 'start_s' => (int) $x['wejscie'] + 30,
+                'start_rozrzut_s' => 20, 'x_km' => null, 'y_km' => null, 'rozkaz' => 'ochrona', 'fala' => $nr];
+        }
+    }
+    $bitwa = null;
+    if ($sc['jednostki']) {
+        // scenariusz starcia (strony, okno) — potrzebny wczytywaniu stanu bitwy; nie trafia na listę symulacji
+        $db->prepare("INSERT INTO bitwy_scenariusze (kod, nazwa, odprawa, okno_s, zwyciestwo, porazka, status) VALUES (?,?,?,?,?,?, 'wycofany')
+            ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa)")->execute([$sc['kod'], $sc['nazwa'], $sc['odprawa'], STARCIE_OKNO_S, 'utrzymanie układu / zniszczenie obrony', 'odwrót']);
+        foreach ($sc['strony'] as $st) {
+            $db->prepare('INSERT INTO bitwy_scenariusze_strony (scenariusz_kod, strona, kolor, dowodzenie, rola, asy_proc, kadeci_proc) VALUES (?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE dowodzenie=VALUES(dowodzenie)')->execute([$sc['kod'], $st['strona'], $st['kolor'], $st['dowodzenie'], $st['rola'], 5, 35]);
+        }
+        $bitwa = bitwa_utworz_z_danych($sc, $sc['kod'], $s['nazwa'], 'rzeczywista', null, (int) $s['planeta_id'], $sc['odprawa'], true, 'aktywna');
+        // zegar od terminu walki
+        $db->prepare('UPDATE mapa_bitwy SET zegar_start_utc=? WHERE id=?')->execute([bitwa_utc((float) $termin), $bitwa]);
+    } else {
+        // bez okrętów z profilem klasy — sam znacznik bitwy na mapie (rozstrzyga MG)
         $rodzaj = function_exists('bitwa_dostepna') && bitwa_dostepna();
         $db->prepare('INSERT INTO mapa_bitwy (kod, nazwa, planeta_id, status, opis' . ($rodzaj ? ', rodzaj' : '') . ') VALUES (?,?,?,\'aktywna\',?' . ($rodzaj ? ",'rzeczywista'" : '') . ')')
-            ->execute([$kod, $s['nazwa'], $s['planeta_id'], "{$s['agresor_frakcja']} atakuje {$s['obronca_frakcja']}. Termin umówiony przez strony."]);
+            ->execute(['starcie-' . $id, $s['nazwa'], $s['planeta_id'], $sc['odprawa']]);
         $bitwa = (int) $db->lastInsertId();
     }
-    foreach (starcie_okrety_ukladu((float) $s['uklad_x'], (float) $s['uklad_y']) as $o) {
-        $strona = mapa_relacja($s['agresor_frakcja'], $o['frakcja_strony']) === 'wrog' ? (string) $s['obronca_frakcja'] : (string) $s['agresor_frakcja'];
+    foreach ($okrety as $oid => $x) {
+        $strona = $x['atak'] ? $strony[0]['strona'] : $strony[1]['strona'];
         $db->prepare('INSERT IGNORE INTO mapa_bitwy_uczestnicy (bitwa_id, obiekt_id, strona, kolor) VALUES (?,?,?,?)')
-            ->execute([$bitwa, $o['id'], $strona, $strona === 'Imperium' ? '#9fb4c8' : '#ff6b55']);
+            ->execute([$bitwa, $oid, $strona, $strona === 'Imperium' ? '#9fb4c8' : '#ff6b55']);
     }
-    $db->prepare("UPDATE starcia SET status='bitwa', bitwa_id=? WHERE id=?")->execute([$bitwa, $s['id']]);
+    $db->prepare("UPDATE starcia SET status='bitwa', bitwa_id=? WHERE id=?")->execute([$bitwa, $id]);
 }
 
 // ------------------------------------------------------------------------------------------------ widok i rozkazy
@@ -298,7 +380,7 @@ function obsluz_starcia(string $akcja, bool $post, array $u): void
         case 'starcie_zakoncz':
             // MG: koniec bitwy (znacznik na mapie znika z radaru).
             if (!$mg) blad('Bitwę kończy MG.', 403);
-            if ($s['bitwa_id']) $db->prepare("UPDATE mapa_bitwy SET status='zakonczona', koniec_utc=UTC_TIMESTAMP() WHERE id=?")->execute([$s['bitwa_id']]);
+            if ($s['bitwa_id']) $db->prepare("UPDATE mapa_bitwy SET status='zakonczona', koniec_utc=UTC_TIMESTAMP() WHERE id=? AND status <> 'zakonczona'")->execute([$s['bitwa_id']]);
             $db->prepare("UPDATE starcia SET status='zakonczone', zakonczono_utc=? WHERE id=?")->execute([czas_utc(czas_teraz()), $id]);
             odpowiedz(['ok' => true]);
     }

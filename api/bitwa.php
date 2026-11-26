@@ -473,7 +473,10 @@ function mostek_widok(array $u, int $obiektId): array
         'prowadzacy_login' => null];
     $postacie = [];
     foreach (uzytkownicy() as $x) $postacie[mb_strtolower((string) $x['login'])] = $x;
-    return lot_reczny_do_widoku(bitwa_widok($b, $S) + ['mostek' => true, 'obiekt_id' => (int) $o['id'], 'moge_prowadzic' => false, 'mg' => $d['mg'],
+    // Okręt w trwającej bitwie (starcie w realnej grze): pulpity działają w bitwie — mostek odsyła do niej.
+    $qb = polaczenie_bazy()->prepare("SELECT b.id FROM bitwy_jednostki j JOIN mapa_bitwy b ON b.id = j.bitwa_id WHERE j.obiekt_id=? AND b.rodzaj='rzeczywista' AND b.status='aktywna' ORDER BY b.id DESC LIMIT 1");
+    try { $qb->execute([(int) $o['id']]); $bitwaTrwa = $qb->fetchColumn() ?: null; } catch (Throwable $e) { $bitwaTrwa = null; }
+    return ['bitwa_trwa' => $bitwaTrwa !== null ? (int) $bitwaTrwa : null] + lot_reczny_do_widoku(bitwa_widok($b, $S) + ['mostek' => true, 'obiekt_id' => (int) $o['id'], 'moge_prowadzic' => false, 'mg' => $d['mg'],
         'stanowiska' => ['okret' => ['nazwa' => $o['nazwa'], 'profil' => $profil], 'pelny' => $d['pelny'], 'mg' => $d['mg'],
             'kapitan' => $d['przydziela'] && !$d['mg'], 'moje' => $d['moje'], 'stale' => true, 'migracja' => bitwa_stale_dostepne(),
             'przypisane' => array_map(static fn($s) => ['pulpit' => $s['pulpit'], 'login' => $s['login'],
@@ -587,8 +590,18 @@ function bitwa_utworz(array $u, string $scenariusz, ?int $obiektId): int
         $j['nazwa'] = $wybrany['nazwa'];
     }
     unset($j);
+    return bitwa_utworz_z_danych($sc, $scenariusz, 'Symulacja: ' . $sc['nazwa'], 'symulacja', (string) ($u['login'] ?? ''), null, (string) $sc['odprawa']);
+}
+
+// Bitwa z gotowych danych scenariusza ($sc: strony, jednostki z obiekt_id, klucze): symulacja albo bitwa rzeczywista
+// (starcie w realnej grze — api/starcia.php). $graczeWHangarze: klucze stron graczy czekają w hangarze na START.
+function bitwa_utworz_z_danych(array $sc, string $scenariusz, string $nazwa, string $rodzaj, ?string $prowadzacy, ?int $planeta, string $opis,
+    bool $graczeWHangarze = false, string $status = 'przygotowanie'): int
+{
+    $db = polaczenie_bazy();
     $ziarno = random_int(1, 2147483646);
     $S = bitwa_stan_ze_scenariusza($sc, $ziarno);
+    if ($graczeWHangarze) foreach ($S['klucze'] as $ki => $k) if (!$k['ai']) $S['klucze'][$ki]['start'] = null;
     $sl = bitwa_slowniki();
 
     // Piloci z pokładu (mapa_piloci) w kluczach stron prowadzonych przez graczy: 4 na klucz, ranga klucza = prowadzący.
@@ -615,8 +628,8 @@ function bitwa_utworz(array $u, string $scenariusz, ?int $obiektId): int
     $db->beginTransaction();
     try {
         $db->prepare("INSERT INTO mapa_bitwy (kod, nazwa, rodzaj, scenariusz_kod, ziarno, status, planeta_id, prowadzacy_login, opis)
-            VALUES (?, ?, 'symulacja', ?, ?, 'przygotowanie', NULL, ?, ?)")
-            ->execute(['sym-' . bin2hex(random_bytes(6)), 'Symulacja: ' . $sc['nazwa'], $scenariusz, $ziarno, (string) ($u['login'] ?? ''), $sc['odprawa']]);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            ->execute([($rodzaj === 'symulacja' ? 'sym-' : 'bit-') . bin2hex(random_bytes(6)), $nazwa, $rodzaj, $scenariusz, $ziarno, $status, $planeta, $prowadzacy, $opis]);
         $id = (int) $db->lastInsertId();
         $insJ = $db->prepare('INSERT INTO bitwy_jednostki (bitwa_id, obiekt_id, profil_kod, nazwa, strona, scenariusz_nr, stan, wejscie_tik, tasma_tik, x_km, y_km,
             vx_km_s, vy_km_s, v_km_s, zwrot_deg, kadlub_start) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,100)');
@@ -964,7 +977,7 @@ function bitwa_gracze_do_przydzialu(array $u, array $okret): array
 
 function bitwa_wiersz(int $id): array
 {
-    $q = polaczenie_bazy()->prepare("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod WHERE b.id=? AND b.rodzaj='symulacja'");
+    $q = polaczenie_bazy()->prepare("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod WHERE b.id=? AND b.rodzaj IN ('symulacja','rzeczywista')");
     $q->execute([$id]);
     $b = $q->fetch(PDO::FETCH_ASSOC);
     if (!$b) blad('Nie ma takiej symulacji.', 404);
@@ -1034,7 +1047,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 'wyniki' => array_map(static fn($x) => ['test' => $x[0], 'oczekiwane' => $x[1], 'otrzymane' => $x[2], 'ok' => $x[3]], $wyniki)]);
         case 'bitwa_scenariusze':
             $out = [];
-            foreach ($db->query('SELECT kod, nazwa, odprawa, okno_s, zwyciestwo, porazka, status FROM bitwy_scenariusze ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            foreach ($db->query('SELECT kod, nazwa, odprawa, okno_s, zwyciestwo, porazka, status FROM bitwy_scenariusze WHERE kod NOT LIKE 'starcie-%' ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC) as $s) {
                 $q = $db->prepare('SELECT strona, dowodzenie, rola FROM bitwy_scenariusze_strony WHERE scenariusz_kod=?');
                 $q->execute([$s['kod']]);
                 $s['strony'] = $q->fetchAll(PDO::FETCH_ASSOC);
@@ -1052,7 +1065,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
             $silnik();
             $out = [];
             foreach ($db->query("SELECT b.*, s.okno_s FROM mapa_bitwy b JOIN bitwy_scenariusze s ON s.kod = b.scenariusz_kod
-                WHERE b.rodzaj='symulacja' ORDER BY b.id DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC) as $b) {
+                WHERE b.rodzaj IN ('symulacja','rzeczywista') ORDER BY b.id DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC) as $b) {
                 if (!bitwa_moze($u, $b)) continue;
                 $out[] = ['id' => (int) $b['id'], 'nazwa' => $b['nazwa'], 'status' => $b['status'], 'pauza' => $b['pauza_od_utc'] !== null,
                     'prowadzacy' => $b['prowadzacy_login'], 'czas_s' => $b['zegar_start_utc'] !== null ? round(bitwa_czas_teraz($b), 1) : 0, 'okno_s' => (int) $b['okno_s'],

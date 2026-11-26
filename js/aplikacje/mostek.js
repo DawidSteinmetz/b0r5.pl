@@ -207,8 +207,13 @@ export default {
         : h('div.komunikat', st.pelny ? `Brak układów konsol dla profilu ${st.okret?.profil || aktywny?.profil || 'nieznanego'}.`
           : 'To stanowisko nie jest już przydzielone.');
       const ramka = h('div.mostek-pulpit', ekran);
+      // Okręt w trwającej bitwie (starcie): pulpity działają w bitwie — stanowisko przechodzi do niej samo, dowódca
+      // dostaje przejście.
+      if (stanOkretu.bitwa_trwa && kiosk) { ctx.otworzApp?.('symulacje', { bitwa: stanOkretu.bitwa_trwa, stanowisko: true }); return; }
+      const doBitwy = stanOkretu.bitwa_trwa ? h('div.komunikat', { style: 'margin:8px 0' }, 'Okręt jest w bitwie. ',
+        h('button.przycisk', { onclick: () => ctx.otworzApp?.('symulacje', { bitwa: stanOkretu.bitwa_trwa }) }, 'Do bitwy')) : null;
       const zawartosc = [
-        kiosk ? null : panel('MOSTEK · ' + aktywny.nazwa, przywrocListe,
+        kiosk ? null : panel('MOSTEK · ' + aktywny.nazwa, przywrocListe, doBitwy,
           st.pelny ? h('p.slaby.maly-tekst', 'Pełny dostęp dowódcy. Wybierz pulpit lub zarządzaj przydziałami załogi.') : null,
           rysujAdmin(stanOkretu), pasek, komunikat),
         ramka,

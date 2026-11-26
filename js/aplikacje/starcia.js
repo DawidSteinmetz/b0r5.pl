@@ -56,11 +56,12 @@ export default {
       const mgPrzyciski = mg ? h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' },
         otwarte ? h('button.przycisk.drugi', { onclick: () => confirm('Odwołać starcie? Czas wróci do normy, skoki skończą się po pauzie.') && wyslij('starcie_anuluj', { id: s.id }) }, 'Odwołaj starcie') : null,
         s.status === 'bitwa' ? h('button.przycisk.drugi', { onclick: () => confirm('Zakończyć bitwę?') && wyslij('starcie_zakoncz', { id: s.id }) }, 'Zakończ bitwę') : null) : null;
+      const doBitwy = s.status === 'bitwa' && s.bitwa_id ? h('button.przycisk', { style: 'margin-top:8px', onclick: () => ctx.otworzApp?.('symulacje', { bitwa: s.bitwa_id }) }, 'Do bitwy') : null;
       return panel(s.nazwa.toUpperCase(),
         s.status === 'negocjacja' ? h('p.maly-tekst', 'Skok atakującego zatrzymał czas w hiperprzestrzeni. Ustalcie termin walki — wyjście ze skoku nastąpi w umówionym '
           + 'terminie. Obrońca może w tym czasie opuścić układ: starcie się skończy, a czas wróci do normy. Posiłki skaczące teraz do układu wyskoczą '
           + 'o tyle po terminie, o ile miały wyskoczyć po początku pauzy.') : null,
-        strony, propozycje ? h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Propozycje terminu:') : null, propozycje, zaproponuj, mgPrzyciski);
+        strony, propozycje ? h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Propozycje terminu:') : null, propozycje, zaproponuj, doBitwy, mgPrzyciski);
     }
 
     async function odswiez() {

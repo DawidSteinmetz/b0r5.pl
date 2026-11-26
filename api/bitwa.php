@@ -1301,7 +1301,20 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 ->execute([(int) $okret['id'], $pulpit, (string) $gracz['login']]);
             odpowiedz(['ok' => true, 'teleport' => $teleport, 'postac' => $gracz['postac'] ?? $gracz['login']]);
         case 'mostek_stan':
-            odpowiedz(['stan' => mostek_widok($u, (int) ($_GET['okret'] ?? 0))]);
+            // Diagnostyka: wyjątek albo stan, którego nie da się zapisać w JSON (pusta odpowiedź), idzie na ekran mostka
+            // z miejscem błędu, zamiast ogólnego „Węzeł holonetu nie odpowiada”.
+            try { $stan = mostek_widok($u, (int) ($_GET['okret'] ?? 0)); }
+            catch (Throwable $e) {
+                dziennik_bledow('mostek_stan: ' . get_class($e) . ': ' . $e->getMessage() . ' w ' . basename($e->getFile()) . ':' . $e->getLine());
+                blad('Mostek: ' . $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')', 500);
+            }
+            if (json_encode($stan, JSON_UNESCAPED_UNICODE) === false) {
+                $zle = [];
+                foreach ($stan as $k => $v) if (json_encode($v, JSON_UNESCAPED_UNICODE) === false) $zle[] = $k;
+                dziennik_bledow('mostek_stan: JSON ' . json_last_error_msg() . ' w polach ' . implode(', ', $zle));
+                blad('Mostek: stanu nie da się zapisać (' . json_last_error_msg() . ') w polach: ' . implode(', ', $zle), 500);
+            }
+            odpowiedz(['stan' => $stan]);
         case 'mostek_rozkaz':
             if (!$post) blad('Zła metoda.', 405);
             $wynik = lot_reczny_rozkaz($u, (int) ($w['okret'] ?? 0), $w);

@@ -1059,7 +1059,7 @@ function obsluz_bitwa(string $akcja, bool $post): void
                 'wyniki' => array_map(static fn($x) => ['test' => $x[0], 'oczekiwane' => $x[1], 'otrzymane' => $x[2], 'ok' => $x[3]], $wyniki)]);
         case 'bitwa_scenariusze':
             $out = [];
-            foreach ($db->query('SELECT kod, nazwa, odprawa, okno_s, zwyciestwo, porazka, status FROM bitwy_scenariusze WHERE kod NOT LIKE 'starcie-%' ORDER BY nazwa')->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            foreach ($db->query("SELECT kod, nazwa, odprawa, okno_s, zwyciestwo, porazka, status FROM bitwy_scenariusze WHERE kod NOT LIKE 'starcie-%' ORDER BY nazwa")->fetchAll(PDO::FETCH_ASSOC) as $s) {
                 $q = $db->prepare('SELECT strona, dowodzenie, rola FROM bitwy_scenariusze_strony WHERE scenariusz_kod=?');
                 $q->execute([$s['kod']]);
                 $s['strony'] = $q->fetchAll(PDO::FETCH_ASSOC);

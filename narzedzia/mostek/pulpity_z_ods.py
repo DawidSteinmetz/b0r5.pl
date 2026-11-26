@@ -4,7 +4,8 @@
 
 Typ elementu z koloru tła komórki (siatka.KOLORY), rozmiar ze scalenia; szary pionowy pas w kolumnie 1/13 to suwak
 zakresu (tekst górnej komórki = maks., dolnej = min.). Wczytywane są tylko arkusze, które mają kolorowe komórki
-w siatce pulpitu; FORMATY (telefon) bierze się z modułu wzorowego (domyślnie isd_i). Zapis: uklady/MODUL.py.
+w siatce pulpitu; FORMATY (telefon) bierze się z modułu wzorowego (domyślnie isd_i), a gdy pulpity mieszczą się
+w 7 wierszach, FORMAT = 'szeroki' (13×7). Zapis: uklady/MODUL.py.
 Nakładanie lub wyjście poza siatkę przerywa pracę; asymetria burt jest tylko wypisywana.
 """
 import argparse, importlib, zipfile
@@ -65,12 +66,15 @@ def elementy(k):
 
 def zapisz(zrodlo, modul, wzor='isd_i'):
     formaty = getattr(importlib.import_module('uklady.' + wzor), 'FORMATY', {})
+    tabele = komorki_arkuszy(zrodlo)
+    wysokosc = max((r for n, k in tabele.items() if formaty.get(n, 'pulpit') == 'pulpit' for (_, r) in k), default=9)
+    format_ = 'szeroki' if wysokosc <= 7 else 'pulpit'
     out = [f'"""Układy pulpitów wczytane z arkusza {zrodlo.replace(chr(92), "/").split("/")[-1]} (pulpity_z_ods.py).',
            'Format elementów i zasady siatki: `siatka.py` i `PULPITY.md`. Zmiany najprościej robić w ODS i wczytać ponownie.', '"""',
-           '', f'FORMATY = {formaty!r}', '', 'UKLADY = {}', '']
-    for nazwa, k in komorki_arkuszy(zrodlo).items():
+           '', f'FORMAT = {format_!r}', f'FORMATY = {formaty!r}', '', 'UKLADY = {}', '']
+    for nazwa, k in tabele.items():
         el = elementy(k)
-        _, bledy, asym = sprawdz(el, *FORMATY[formaty.get(nazwa, 'pulpit')])
+        _, bledy, asym = sprawdz(el, *FORMATY[formaty.get(nazwa, format_)])
         if bledy: raise SystemExit(nazwa + ': ' + '; '.join(bledy))
         print(f'{nazwa}: {len(el)} elementów; asymetria: {len(asym)}')
         for a in asym: print('   ', a)

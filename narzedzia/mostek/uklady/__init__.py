@@ -19,5 +19,6 @@ def uklady(klasa):
 
 
 def format_pulpitu(klasa, nazwa):
-    """'pulpit' (13×9, komputer i tablet) albo 'telefon' (5×9) — z FORMATY modułu klasy, domyślnie 'pulpit'."""
-    return getattr(_modul(klasa), 'FORMATY', {}).get(nazwa, 'pulpit')
+    """'pulpit' (13×9), 'szeroki' (13×7) albo 'telefon' (5×9) — z FORMATY modułu klasy, domyślnie FORMAT modułu ('pulpit')."""
+    m = _modul(klasa)
+    return getattr(m, 'FORMATY', {}).get(nazwa, getattr(m, 'FORMAT', 'pulpit'))

@@ -3,7 +3,7 @@
 // Typy: S suwak zakresu, R wzmocnij, Y suwak, G synchronizacja, B urządzenie / ekran, W polecenie.
 
 export const KOLORY = {"S": "#999999", "R": "#ff3333", "Y": "#ffff99", "G": "#99ff99", "B": "#6666ff", "W": "#ffffff"};
-export const FORMATY = {"ISD_I": {"Osłony": [13, 9], "Turbolasery": [13, 9], "Silniki": [13, 9], "Reaktory": [13, 9], "Kontrola ognia": [13, 9], "Sensory": [13, 9], "Grawitacja": [13, 9], "Myśliwce": [13, 9], "Nawigacja": [13, 9], "Radar": [13, 9], "Klucz": [5, 9], "Eskadra": [5, 9]}};
+export const FORMATY = {"ISD_I": {"Osłony": [13, 7], "Turbolasery": [13, 7], "Silniki": [13, 7], "Reaktory": [13, 7], "Kontrola ognia": [13, 7], "Sensory": [13, 7], "Grawitacja": [13, 7], "Myśliwce": [13, 7], "Nawigacja": [13, 7], "Radar": [13, 7], "Klucz": [5, 9], "Eskadra": [5, 9]}};
 export const UKLADY = {
  "ISD_I": {
   "Osłony": [

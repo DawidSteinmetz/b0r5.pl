@@ -4,6 +4,7 @@ w `uklady/__init__.py` ustaw KLASY['ISD_I'] = 'uklady.isd_i' i uruchom pulpity_j
 Format elementów i zasady siatki: `siatka.py` i `PULPITY.md`. Zmiany najprościej robić w ODS i wczytać ponownie.
 """
 
+FORMAT = 'szeroki'  # 13×7: pulpity szersze i niższe
 FORMATY = {'Klucz': 'telefon', 'Eskadra': 'telefon'}
 
 UKLADY = {}

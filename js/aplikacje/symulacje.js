@@ -6,7 +6,7 @@
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
-import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, zapiszZwroty, pulpityKlasy } from './konsole.js';
+import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, zapiszZwroty, pulpityKlasy, oprawaPulpitu } from './konsole.js';
 
 const DOWODZENIE = { gracze: 'gracze', radus: 'AI: Radus (agresywny)', ackbar: 'AI: Ackbar (defensywny)', calrissian: 'AI: Calrissian (zrównoważony)' };
 const STATUS = { przygotowanie: 'w przygotowaniu', aktywna: 'trwa', zakonczona: 'zakończona', anulowana: 'anulowana' };
@@ -29,6 +29,7 @@ export default {
     let dane = null;
     let zegar = null;
     let koniec = false;
+    let oprawaSym = null;  // oprawa pulpitu (konsole.js): stała wielkość, komunikaty nad pulpitem, pełny ekran z doku
     // Tryb stanowiska (pulpit systemu otworzył symulację graczowi z przydziałem): tylko konsola, bez listy i nagłówka.
     const kiosk = !!ctx.parametr?.stanowisko;
 
@@ -40,6 +41,7 @@ export default {
     // ------------------------------------------------------------------ lista
     async function lista() {
       zatrzymaj();
+      oprawaSym?.zniszcz(); oprawaSym = null;
       ctx.ustawWstecz?.(null);
       try {
         dane = await api('bitwa_scenariusze');
@@ -158,6 +160,9 @@ export default {
       // W symulacji: przydział jednorazowy albo stały (zapis na okręcie — obowiązuje też poza symulacją i w kolejnych).
       const naStale = h('input', { type: 'checkbox' });
       const stanKonsol = nowyStanKonsol();
+      oprawaSym?.zniszcz();
+      const oprawa = oprawaSym = oprawaPulpitu(kiosk ? null : ctx);
+      const komunikatNaMiejsce = () => { oprawa.ukryj(); if (!kiosk && zakladki.parentNode && komunikat.previousSibling !== zakladki) zakladki.after(komunikat); };
       const zakladki = h('div.zakladki');
       const konsolaEl = h('div', { hidden: true, style: 'margin:10px 0' });
       const przeglad = h('div');
@@ -175,12 +180,17 @@ export default {
         const st = ostatni.stanowiska || { pelny: true, moje: [] };
         przeglad.hidden = !!mostek || !(st.pelny && widok === 'przeglad');
         konsolaEl.hidden = !przeglad.hidden ? true : false;
-        if (!przeglad.hidden) return;
+        if (!przeglad.hidden) { komunikatNaMiejsce(); return; }
         if (!widok) {
+          komunikatNaMiejsce();
           wyczysc(konsolaEl).append(panel('STANOWISKO', h('p.maly-tekst', 'Czekasz na przydział stanowiska. Pulpit przydziela MG albo kapitan okrętu.')));
           return;
         }
-        wyczysc(konsolaEl).append(konsola(widok, ostatni, stanKonsol, akcjeKonsoli));
+        const ekran = konsola(widok, ostatni, stanKonsol, akcjeKonsoli);
+        if (kiosk) { wyczysc(konsolaEl).append(ekran); return; }
+        // Ten sam układ co mostek: pulpit w oprawie (stała wielkość, komunikat nad pulpitem, pełny ekran z doku).
+        oprawa.pokaz(ekran, komunikat);
+        if (oprawa.el.parentNode !== konsolaEl) wyczysc(konsolaEl).append(oprawa.el);
       }
       // Zakładki: pełny podgląd — przegląd, pulpity z mechaniką, potem pozostałe pulpity klasy; gracz — tylko swoje.
       function listaWidokow() {
@@ -421,6 +431,6 @@ export default {
     w.append(tresc);
     if (ctx.parametr?.bitwa) otworzSymulacje(Number(ctx.parametr.bitwa));
     else lista();
-    return () => { koniec = true; zatrzymaj(); };
+    return () => { koniec = true; zatrzymaj(); oprawaSym?.zniszcz(); };
   },
 };

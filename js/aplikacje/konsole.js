@@ -212,7 +212,93 @@ const LOKALNE = new Map();
 let biezaceOdswiez = null;
 const WCISNIETE = new Map();
 const PRZELACZNIK_W = /^(tryb|filtr|pokaż|zamroź|blokada|zakłócenia|zakłócanie|alarm|skanuj|załóż|przełącz|wybierz|sektor|skala|śledź|oznacz|kasuj)/i;
-let wysokoscPulpitu = 0;
+// Wysokość pulpitu liczona tylko z okna i pasków systemu (górny pasek, dolny dok), nigdy z treści nad pulpitem —
+// komunikat, suwak czy zakładki nie zmieniają rozmiaru. --pulpit-h: zwykły widok (bez marginesów widoku),
+// --pulpit-h-pelny: pełny ekran od dolnej krawędzi górnego paska do górnej krawędzi doku.
+function zmierzMiejscePulpitu() {
+  const pasek = document.getElementById('pasek'), dok = document.getElementById('dok');
+  const widoczny = (el) => el && !el.hidden && getComputedStyle(el).display !== 'none';
+  const gora = widoczny(pasek) ? Math.round(pasek.getBoundingClientRect().bottom) : 0;
+  const dol = widoczny(dok) ? Math.round(dok.getBoundingClientRect().top) : window.innerHeight;
+  const s = document.documentElement.style;
+  s.setProperty('--pulpit-gora', `${gora}px`);
+  s.setProperty('--pulpit-dol', `${Math.max(0, window.innerHeight - dol)}px`);
+  s.setProperty('--pulpit-h', `${Math.max(200, dol - gora - 56)}px`);
+  s.setProperty('--pulpit-h-pelny', `${Math.max(200, dol - gora - 12)}px`);
+}
+let mierzenieGotowe = false;
+function mierzPulpit() {
+  zmierzMiejscePulpitu();
+  if (mierzenieGotowe) return;
+  mierzenieGotowe = true;
+  window.addEventListener('resize', zmierzMiejscePulpitu);
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(zmierzMiejscePulpitu);
+    for (const id of ['pasek', 'dok']) { const el = document.getElementById(id); if (el) ro.observe(el); }
+  }
+  if (window.MutationObserver) {
+    const mo = new MutationObserver(zmierzMiejscePulpitu);
+    for (const id of ['pasek', 'dok']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden', 'class'] }); }
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  }
+}
+
+// Oprawa pulpitu (mostek i symulacja — ten sam układ): stała wielkość, komunikaty jako nakładka nad pulpitem
+// (nie przesuwają go, znikają po kilku sekundach), przycisk pełnego ekranu w doku. Pełny ekran zakrywa zakładki
+// i panele: pulpit wypełnia miejsce między górnym paskiem a dokiem.
+const IKONA_PELNY = '<path d="M8 18V8h10M30 8h10v10M40 30v10H30M18 40H8V30"/>';
+const IKONA_ZWYKLY = '<path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/>';
+let pelnyEkranPulpitu = false;
+export function oprawaPulpitu(ctx) {
+  styleAnimacji();
+  mierzPulpit();
+  const el = h('div.pulpit-oprawa');
+  const nakladka = h('div.pulpit-oprawa-komunikat');
+  let komunikatEl = null, zegarKomunikatu = null, obserwator = null, widoczna = false;
+  const dok = () => ctx?.dok?.(widoczna ? [{ ikona: pelnyEkranPulpitu ? IKONA_ZWYKLY : IKONA_PELNY,
+    tytul: pelnyEkranPulpitu ? 'Zamknij pełny ekran pulpitu' : 'Pulpit na pełny ekran', akcja: () => ustawPelny(!pelnyEkranPulpitu) }] : null);
+  const klawisz = (e) => { if (e.key === 'Escape' && pelnyEkranPulpitu) ustawPelny(false); };
+  function ustawPelny(v) {
+    pelnyEkranPulpitu = v;
+    document.documentElement.classList.toggle('pulpit-pelny-ekran', v && widoczna);
+    zmierzMiejscePulpitu();
+    dok();
+  }
+  document.addEventListener('keydown', klawisz);
+  return {
+    el,
+    // ekran: pulpit (konsola); komunikat: element komunikatów aplikacji — pokazywany jako nakładka.
+    pokaz(ekran, komunikat) {
+      if (komunikat && komunikat !== komunikatEl) {
+        komunikatEl = komunikat;
+        obserwator?.disconnect();
+        obserwator = new MutationObserver(() => {
+          clearTimeout(zegarKomunikatu);
+          if (komunikatEl.childNodes.length) zegarKomunikatu = setTimeout(() => komunikatEl.replaceChildren(), 6000);
+        });
+        obserwator.observe(komunikatEl, { childList: true });
+      }
+      el.replaceChildren(ekran, nakladka);
+      if (komunikatEl) nakladka.replaceChildren(komunikatEl);
+      if (!widoczna) { widoczna = true; ustawPelny(pelnyEkranPulpitu); }
+    },
+    ukryj() {
+      if (!widoczna) return;
+      widoczna = false;
+      document.documentElement.classList.remove('pulpit-pelny-ekran');
+      dok();
+    },
+    zniszcz() {
+      widoczna = false;
+      obserwator?.disconnect();
+      clearTimeout(zegarKomunikatu);
+      document.removeEventListener('keydown', klawisz);
+      document.documentElement.classList.remove('pulpit-pelny-ekran');
+      ctx?.dok?.(null);
+    },
+  };
+}
+
 function styleAnimacji() {
   if (document.getElementById('pulpit-animacje')) return;
   document.head.append(h('style', { id: 'pulpit-animacje' }, `
@@ -222,7 +308,14 @@ function styleAnimacji() {
 @keyframes pp-sprezyna { 0% { transform: translateY(2px) scale(.94); filter: brightness(1.6); } 100% { transform: none; filter: none; } }
 @keyframes pp-zatrzask { 0% { transform: translateY(2px) scale(.94); filter: brightness(1.8); } 100% { transform: translateY(1px) scale(.985); filter: none; } }
 .pp.sprezyna { animation: pp-sprezyna .32s ease-out both; }
-.pp.zatrzask { animation: pp-zatrzask .32s ease-out both; }`));
+.pp.zatrzask { animation: pp-zatrzask .32s ease-out both; }
+.pulpit-oprawa { position: relative; display: grid; place-items: center; width: 100%; margin: 10px 0; }
+.pulpit-oprawa-komunikat { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 8; width: max-content;
+  max-width: min(640px, 92%); pointer-events: none; }
+.pulpit-oprawa-komunikat:empty, .pulpit-oprawa-komunikat > :empty { display: none; }
+.pulpit-oprawa-komunikat .komunikat { margin: 0; box-shadow: 0 4px 18px rgba(0,0,0,.6); background: rgba(10,17,20,.94); }
+html.pulpit-pelny-ekran .pulpit-oprawa { position: fixed; left: 0; right: 0; top: var(--pulpit-gora, 0px); bottom: var(--pulpit-dol, 0px);
+  z-index: 30; margin: 0; padding: 6px; box-sizing: border-box; background: var(--tlo, #05080a); --pulpit-h: var(--pulpit-h-pelny); }`));
 }
 
 function pulpit(klasa, nazwa, wiazania) {
@@ -233,20 +326,15 @@ function pulpit(klasa, nazwa, wiazania) {
   const geometria = `display:grid;grid-template-columns:repeat(${K},1fr);grid-template-rows:repeat(${W},1fr);gap:4px;padding:12px;box-sizing:border-box;`;
   const telefon = K < 13;
   const kiosk = document.documentElement.classList.contains('tryb-stanowiska');
-  // Pulpit ma stałe proporcje siatki (K × W kwadratowych komórek) i dopasowuje się do ekranu: albo całą szerokością,
-  // albo wysokością od swojej górnej krawędzi do dołu okna — co pierwsze się skończy.
+  // Pulpit ma stałe proporcje siatki (K × W kwadratowych komórek) i stałą wielkość: cała szerokość albo wysokość
+  // miejsca między paskami systemu (--pulpit-h, oprawaPulpitu) — co pierwsze się skończy; treść wokół jej nie zmienia.
   const proporcja = K / W;
-  const szerokosc = (wys) => `min(100%, ${Math.round(wys * proporcja)}px)`;
+  mierzPulpit();
   const ramka = h('div', { style: `position:relative;width:${kiosk ? `min(100%, calc((100dvh - 32px) * ${proporcja.toFixed(4)}))`
-    : wysokoscPulpitu ? szerokosc(wysokoscPulpitu) : `min(100%, calc((100dvh - 150px) * ${proporcja.toFixed(4)}))`};`
+    : `min(100%, calc(var(--pulpit-h, calc(100dvh - 150px)) * ${proporcja.toFixed(4)}))`};`
     + `aspect-ratio:${K}/${W};min-width:${kiosk ? '0' : telefon ? 280 : 320}px;`
     + `background:linear-gradient(180deg,rgba(207,239,255,.13) 0,rgba(207,239,255,0) 30%),${BLACHA};border:3px solid ${KRAWEDZ};border-radius:10px;`
     + 'box-shadow:inset 0 0 50px rgba(0,0,0,.55),0 6px 20px rgba(0,0,0,.5);box-sizing:border-box;container-type:inline-size' });
-  if (!kiosk) requestAnimationFrame(() => {
-    if (!ramka.isConnected) return;
-    const wys = Math.round(window.innerHeight - Math.max(0, ramka.getBoundingClientRect().top) - 12);
-    if (wys > 200 && Math.abs(wys - wysokoscPulpitu) > 2) { wysokoscPulpitu = wys; ramka.style.width = szerokosc(wys); }
-  });
   // nity w narożnikach płyty
   for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
     ramka.append(h('div', { style: `position:absolute;${x ? 'right' : 'left'}:3px;${y ? 'bottom' : 'top'}:3px;width:6px;height:6px;border-radius:50%;`

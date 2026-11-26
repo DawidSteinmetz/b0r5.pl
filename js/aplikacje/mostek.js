@@ -1,7 +1,7 @@
 // Mostek HOLOLINK: pełny widok dla dowódcy okrętu i pojedynczy pulpit dla przypisanej załogi.
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
-import { konsola, KONSOLE, nowyStanKonsol, pulpityKlasy } from './konsole.js';
+import { konsola, KONSOLE, nowyStanKonsol, pulpityKlasy, oprawaPulpitu } from './konsole.js';
 
 const IKONA = '<path d="M7 34h34M12 34V19l12-9 12 9v15M18 34V23h12v11M4 40h40"/><circle cx="24" cy="18" r="2"/>';
 
@@ -29,6 +29,8 @@ export default {
     let zamkniete = false;
     let kiosk = !!ctx.parametr?.stanowisko;
     const stanKonsol = nowyStanKonsol();
+    // Pulpit w oprawie: stała wielkość, komunikaty nad pulpitem, pełny ekran z doku (jak w symulacji).
+    const oprawa = oprawaPulpitu(ctx);
 
     const stacjaParam = typeof ctx.parametr?.stanowisko === 'string' ? ctx.parametr.stanowisko : null;
     if (kiosk) document.documentElement.classList.add('tryb-stanowiska');
@@ -51,6 +53,7 @@ export default {
 
     function pokazListe() {
       if (kiosk) return;
+      oprawa.ukryj();
       clearTimeout(timer);
       aktywny = null;
       trescMostka.hidden = true;
@@ -209,7 +212,9 @@ export default {
       catch (e) { console.error(e); ekran = h('div.komunikat.blad', `Pulpit ${pulpitAktywny} nie dał się narysować: ${e.message}`); }
       ekran ||= h('div.komunikat', st.pelny ? `Brak układów konsol dla profilu ${st.okret?.profil || aktywny?.profil || 'nieznanego'}.`
           : 'To stanowisko nie jest już przydzielone.');
-      const ramka = h('div.mostek-pulpit', ekran);
+      let ramka;
+      if (kiosk) ramka = h('div.mostek-pulpit', ekran);
+      else { oprawa.pokaz(ekran, komunikat); ramka = oprawa.el; }
       // Okręt w trwającej bitwie (starcie): pulpity działają w bitwie — stanowisko przechodzi do niej samo, dowódca
       // dostaje przejście.
       if (stanOkretu.bitwa_trwa && kiosk) { ctx.otworzApp?.('symulacje', { bitwa: stanOkretu.bitwa_trwa, stanowisko: true }); return; }
@@ -219,7 +224,7 @@ export default {
         kiosk ? null : panel('MOSTEK · ' + aktywny.nazwa, przywrocListe, doBitwy,
           st.pelny ? h('p.slaby.maly-tekst', 'Pełny dostęp dowódcy. Wybierz pulpit lub zarządzaj przydziałami załogi.') : null,
           stanOkretu.blad_swiata ? h('div.komunikat', `Część stanu ze świata nie wczytała się: ${stanOkretu.blad_swiata.join('; ')}`) : null,
-          rysujAdmin(stanOkretu), pasek, komunikat),
+          rysujAdmin(stanOkretu), pasek, kiosk ? komunikat : null),
         ramka,
       ];
       wyczysc(trescMostka).append(...zawartosc);
@@ -273,6 +278,7 @@ export default {
     return () => {
       zamkniete = true;
       clearTimeout(timer);
+      oprawa.zniszcz();
       if (kiosk) document.documentElement.classList.remove('tryb-stanowiska');
       w.classList.remove('widok-mostka-stanowisko');
     };

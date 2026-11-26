@@ -39,92 +39,53 @@ const zaokr = (r) => r;
 const opisOdl = (r) => (r >= 10 ? `${Math.round(r)} km` : r >= 1 ? `${Math.round(r * 10) / 10} km`
   : r >= 0.01 ? `${Math.round(r * 1000)} m` : `${Math.round(r * 10000) / 10} m`);
 
-// Sylwetki z góry w stylu rysunku technicznego (rysunek ISD od użytkownika): obrys, płyty pokładów, nadbudówka, kopuły
-// osłon, wieże, hangar, drobne panele i linie poszycia. Rysunki w pikselach obrazu wzorcowego (dziób w prawo dla ISD,
-// w lewo dla MC80), sprowadzane do długości 1 z dziobem w górę. Szczegóły dochodzą z powiększeniem: obrys → płyty
-// i nadbudówka → panele poszycia (setki drobnych prostokątów, losowanych raz z ziarna i trzymanych w pamięci).
+// Sylwetki z góry: małe rozmiary — wektorowy obrys (piksele obrazów wzorcowych, sprowadzone do długości 1, dziób
+// w górę); od 40 px — pełny rysunek z assets/sylwetki (niżej).
 const SYLWETKI = {
   ISD_I: {
-    // obraz 1060×600: dziób (1050,298), rufa x≈20–60
     transform: 'rotate(-90) scale(0.000971) translate(-535 -298)',
     obrys: 'M1050 298 L75 585 L62 560 L60 470 L22 470 L22 355 L60 355 L60 315 L20 315 L20 281 L60 281 L60 245 L22 245 L22 130 L60 130 L60 38 L75 12 Z',
-    wnetrze: (x, y) => x > 64 && x < 1046 && Math.abs(y - 298) < 286 * (1046 - x) / 980 - 4,
-    plyty: [
-      'M1020 298 L95 560 L95 36 Z',
-      'M140 72 L350 72 L350 140 L395 140 L600 238 L600 358 L395 456 L350 456 L350 525 L140 525 L140 410 L72 410 L72 186 L140 186 Z',
-      'M400 142 L598 240 L598 356 L400 452 Z', 'M610 242 L760 264 L745 345 L615 358 Z',
-      'M480 178 L540 178 L540 205 L500 205 Z', 'M480 418 L540 418 L540 391 L500 391 Z',
-    ],
-    nadbudowka: [
-      'M66 184 L340 184 L340 412 L66 412 Z', 'M150 214 L320 214 L320 382 L150 382 Z', 'M340 236 L410 236 L410 360 L340 360 Z',
-      'M410 268 L440 268 L440 330 L410 330 Z', 'M195 280 L250 280 L262 298 L250 316 L195 316 Z', 'M270 284 L300 284 L310 298 L300 312 L270 312 Z',
-      'M105 260 L150 260 L150 336 L105 336 Z', 'M870 284 L905 280 L928 298 L905 316 L870 312 Z',
-    ],
-    kola: [[128, 230, 17], [128, 230, 10], [128, 366, 17], [128, 366, 10]],
-    wieze: [[198, 145], [240, 145], [280, 145], [320, 145], [198, 451], [240, 451], [280, 451], [320, 451]],
-    linie: ['M200 40 L200 132', 'M548 160 L548 280', 'M510 298 L600 298', 'M95 298 L1000 298', 'M60 150 L1040 298', 'M60 446 L1040 298'],
-    panele: { n: 520, ziarno: 7, x0: 62, x1: 1040, y0: 14, y1: 584 },
   },
   MC80: {
-    // obraz 342×125: dziób (5,70), rufa x≈340; skrzydła odchylone do rufy
     transform: 'rotate(90) scale(0.00297) translate(-172 -63)',
     obrys: 'M5 68 C20 55 50 42 90 34 C140 24 190 20 230 18 L262 10 C285 3 305 0 322 2 L330 8 C318 16 300 26 292 36 L338 44 C342 60 342 72 338 84 '
       + 'L292 92 C300 100 318 110 330 118 L322 124 C305 125 285 122 262 115 L230 107 C190 106 140 102 90 92 C50 84 20 78 5 72 Z',
-    wnetrze: (x, y) => x > 8 && x < 336 && Math.abs(y - 64) < Math.min(42, 6 + (x - 5) * 0.32) - 2,
-    plyty: ['M20 69 C60 52 120 40 230 32 L320 46 L320 82 L230 96 C120 90 60 82 20 71 Z'],
-    nadbudowka: [],
-    elipsy: [[110, 62, 40, 11], [175, 50, 30, 9], [215, 64, 45, 12], [268, 58, 40, 11], [302, 66, 22, 9], [150, 80, 20, 6], [242, 82, 25, 7], [85, 52, 15, 5], [300, 40, 14, 5], [300, 88, 14, 5]],
-    kola: [],
-    wieze: [],
-    linie: ['M20 70 L330 64', 'M262 12 L292 36', 'M262 114 L292 92'],
-    panele: { n: 260, ziarno: 11, x0: 8, x1: 336, y0: 2, y1: 124, maly: true },
   },
 };
-
-// Losowanie z ziarna (mulberry32) — ten sam rysunek paneli przy każdym przerysowaniu.
-function losowanie(z) {
-  return () => { z = (z + 0x6d2b79f5) | 0; let t1 = Math.imul(z ^ (z >>> 15), 1 | z); t1 = (t1 + Math.imul(t1 ^ (t1 >>> 7), 61 | t1)) ^ t1; return ((t1 ^ (t1 >>> 14)) >>> 0) / 4294967296; };
-}
 const LINIA = { fill: 'none', stroke: '#0b1013', 'vector-effect': 'non-scaling-stroke' };
-const pamiecPaneli = {};
-function panele(profil) {
-  if (pamiecPaneli[profil]) return pamiecPaneli[profil].cloneNode(true);
-  const s = SYLWETKI[profil], c = s.panele, los = losowanie(c.ziarno);
-  const g = svg('g', { ...LINIA, 'stroke-opacity': 0.45, 'stroke-width': 0.6 });
-  let d = '';
-  for (let i = 0, prob = 0; i < c.n && prob < c.n * 20; prob++) {
-    const x = c.x0 + los() * (c.x1 - c.x0), y = c.y0 + los() * (c.y1 - c.y0);
-    const w = (c.maly ? 2 : 4) + los() * (c.maly ? 6 : 16), hh = (c.maly ? 1.5 : 3) + los() * (c.maly ? 3 : 8);
-    if (!s.wnetrze(x, y) || !s.wnetrze(x + w, y + hh)) continue;
-    i++;
-    if (los() < 0.35) d += `M${x.toFixed(1)} ${y.toFixed(1)}h${(w * 2).toFixed(1)}`;     // linia poszycia
-    else d += `M${x.toFixed(1)} ${y.toFixed(1)}h${w.toFixed(1)}v${hh.toFixed(1)}h${(-w).toFixed(1)}Z`;
-  }
-  g.append(svg('path', { d }));
-  pamiecPaneli[profil] = g;
-  return g.cloneNode(true);
+
+// Pełne rysunki z góry (assets/sylwetki, z obrazów od użytkownika: dziób w górę, przezroczyste tło, odcienie szarości):
+// od rozmiaru 40 px okręt rysuje się obrazem w pełnej rozdzielczości, zabarwionym kolorem strony (białe pola → kolor,
+// czarne linie zostają); mniejsze — wektorowy obrys. proporcja = szerokość / długość obrazu.
+const RYSUNKI = {
+  ISD_I: { href: new URL('../../assets/sylwetki/isd_i.png', import.meta.url).href, proporcja: 584 / 1047 },
+  MC80: { href: new URL('../../assets/sylwetki/mc80.png', import.meta.url).href, proporcja: 383 / 1008 },
+};
+let licznikFiltrow = 0;
+function zabarwienie(kolor) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(kolor.slice(i, i + 2), 16) / 255);
+  const id = 'barwa' + (++licznikFiltrow);
+  const f = svg('filter', { id, 'color-interpolation-filters': 'sRGB' });
+  const w = (c) => `${(c * 0.3).toFixed(3)} ${(c * 0.59).toFixed(3)} ${(c * 0.11).toFixed(3)} 0 0`;
+  f.append(svg('feColorMatrix', { type: 'matrix', values: `${w(r)} ${w(g)} ${w(b)} 0 0 0 1 0` }));
+  return [id, f];
 }
 
 export function sylwetka(profil, kolor, rozmiar) {
-  const s = SYLWETKI[profil];
+  const s = SYLWETKI[profil], rys = RYSUNKI[profil];
   const g = svg('g', { transform: `scale(${rozmiar})` });
   if (!s) { g.append(svg('path', { d: 'M0 -0.5 L0.3 0.5 L-0.3 0.5Z', fill: kolor })); return g; }
-  const r = svg('g', { transform: s.transform });
-  r.append(svg('path', { d: s.obrys, ...LINIA, fill: kolor, 'fill-opacity': 0.92, 'stroke-width': rozmiar >= 60 ? 1.2 : 0.8 }));
-  if (rozmiar >= 40) {
-    // płyty pokładów i nadbudówka: jaśniejsze pola z ciemnym obrysem (jak rysunek techniczny)
-    for (const d of s.plyty) r.append(svg('path', { d, ...LINIA, fill: '#fff', 'fill-opacity': 0.1, 'stroke-opacity': 0.7, 'stroke-width': 0.8 }));
-    for (const d of s.nadbudowka) r.append(svg('path', { d, ...LINIA, fill: '#fff', 'fill-opacity': 0.18, 'stroke-opacity': 0.85, 'stroke-width': 0.8 }));
-    for (const [cx, cy, rx, ry] of s.elipsy || []) r.append(svg('ellipse', { cx, cy, rx, ry, ...LINIA, fill: '#fff', 'fill-opacity': 0.16, 'stroke-opacity': 0.75, 'stroke-width': 0.8 }));
-    for (const [cx, cy, rr] of s.kola) r.append(svg('circle', { cx, cy, r: rr, ...LINIA, fill: '#fff', 'fill-opacity': 0.12, 'stroke-opacity': 0.8, 'stroke-width': 0.8 }));
-    for (const [x, y] of s.wieze) {
-      r.append(svg('rect', { x: x - 13, y: y - 13, width: 26, height: 26, rx: 4, ...LINIA, fill: '#fff', 'fill-opacity': 0.14, 'stroke-opacity': 0.8, 'stroke-width': 0.8 }));
-      r.append(svg('circle', { cx: x, cy: y, r: 7, ...LINIA, 'stroke-opacity': 0.8, 'stroke-width': 0.7 }));
-    }
-    r.append(svg('path', { d: s.linie.join(' '), ...LINIA, 'stroke-opacity': 0.5, 'stroke-width': 0.6 }));
+  if (rys && rozmiar >= 40) {
+    const [id, filtr] = zabarwienie(kolor);
+    const defs = svg('defs');
+    defs.append(filtr);
+    g.append(defs, svg('image', { href: rys.href, x: -rys.proporcja / 2, y: -0.5, width: rys.proporcja, height: 1,
+      preserveAspectRatio: 'none', filter: `url(#${id})`, style: 'image-rendering:auto' }));
+  } else {
+    const r = svg('g', { transform: s.transform });
+    r.append(svg('path', { d: s.obrys, ...LINIA, fill: kolor, 'fill-opacity': 0.92, 'stroke-width': 0.8 }));
+    g.append(r);
   }
-  if (rozmiar >= 150) r.append(panele(profil));
-  g.append(r);
   if (rozmiar >= 60) g.append(rozstawienie(profil, rozmiar));
   return g;
 }

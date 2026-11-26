@@ -189,7 +189,15 @@ export default {
         const ekran = konsola(widok, ostatni, stanKonsol, akcjeKonsoli);
         if (kiosk) { wyczysc(konsolaEl).append(ekran); return; }
         // Ten sam układ co mostek: pulpit w oprawie (stała wielkość, komunikat nad pulpitem, pełny ekran z doku).
-        oprawa.pokaz(ekran, komunikat);
+        // Strzałki pełnego ekranu: poprzedni / następny pulpit z zakładek (bez przeglądu), w kółko.
+        const pulpityStrzalek = listaWidokow().map(([k]) => k).filter((k) => k !== 'przeglad');
+        const zmien = pulpityStrzalek.length > 1 ? (d) => {
+          const i = pulpityStrzalek.indexOf(widok);
+          widok = pulpityStrzalek[(i + d + pulpityStrzalek.length) % pulpityStrzalek.length];
+          rysujZakladki();
+          rysujKonsole();
+        } : null;
+        oprawa.pokaz(ekran, komunikat, zmien);
         if (oprawa.el.parentNode !== konsolaEl) wyczysc(konsolaEl).append(oprawa.el);
       }
       // Zakładki: pełny podgląd — przegląd, pulpity z mechaniką, potem pozostałe pulpity klasy; gracz — tylko swoje.

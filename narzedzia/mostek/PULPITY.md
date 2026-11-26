@@ -92,7 +92,8 @@ szerokością albo wysokością miejsca między górnym paskiem a dokiem — co 
 z okna i pasków, nigdy z treści nad pulpitem: komunikaty pokazują się nad pulpitem jako nakładka (znikają po 6 s), więc
 kliknięcie suwaka czy odmowa rozkazu nie zmieniają rozmiaru. Mostek i symulacja mają ten sam układ (konsole.js
 oprawaPulpitu). Przycisk w doku przełącza pulpit na pełny ekran: zakładki i panele znikają, pulpit wypełnia miejsce od
-dolnej krawędzi górnego paska do górnej krawędzi doku; Esc albo ten sam przycisk wraca. Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
+dolnej krawędzi górnego paska do górnej krawędzi doku; strzałki na środku lewej i prawej krawędzi przełączają poprzedni
+i następny pulpit (w kółko) bez wychodzenia z pełnego ekranu; Esc albo ten sam przycisk wraca. Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
 urządzenia, tryby i filtry — przełączniki świecące w kolorze typu; pozostałe polecenia — przyciski sprężynowe; żółte
 suwaki — uchwyt w miejscu dotknięcia; szare — dwa uchwyty zakresu), dymek mówi wtedy „bez wpływu na symulację”.
 Wciśnięcie: przycisk i napis zapadają się, sprężynowy wraca, przełącznik zostaje lekko wciśnięty. Szary suwak osłon

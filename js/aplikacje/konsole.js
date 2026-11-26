@@ -254,6 +254,11 @@ export function oprawaPulpitu(ctx) {
   mierzPulpit();
   const el = h('div.pulpit-oprawa');
   const nakladka = h('div.pulpit-oprawa-komunikat');
+  // Strzałki (tylko na pełnym ekranie): poprzedni / następny pulpit bez wychodzenia z pełnego ekranu.
+  let przelacz = null;
+  const strzalka = (kierunek, znak, tytul) => h('button.pulpit-strzalka.' + (kierunek < 0 ? 'lewa' : 'prawa'),
+    { type: 'button', title: tytul, 'aria-label': tytul, onclick: () => przelacz?.(kierunek) }, znak);
+  const strzalki = [strzalka(-1, '‹', 'Poprzedni pulpit'), strzalka(1, '›', 'Następny pulpit')];
   let komunikatEl = null, zegarKomunikatu = null, obserwator = null, widoczna = false;
   const dok = () => ctx?.dok?.(widoczna ? [{ ikona: pelnyEkranPulpitu ? IKONA_ZWYKLY : IKONA_PELNY,
     tytul: pelnyEkranPulpitu ? 'Zamknij pełny ekran pulpitu' : 'Pulpit na pełny ekran', akcja: () => ustawPelny(!pelnyEkranPulpitu) }] : null);
@@ -267,8 +272,10 @@ export function oprawaPulpitu(ctx) {
   document.addEventListener('keydown', klawisz);
   return {
     el,
-    // ekran: pulpit (konsola); komunikat: element komunikatów aplikacji — pokazywany jako nakładka.
-    pokaz(ekran, komunikat) {
+    // ekran: pulpit (konsola); komunikat: element komunikatów aplikacji — pokazywany jako nakładka; zmien(kierunek):
+    // przejście do poprzedniego (−1) / następnego (+1) pulpitu — bez niego (jeden pulpit) strzałek nie ma.
+    pokaz(ekran, komunikat, zmien = null) {
+      przelacz = zmien;
       if (komunikat && komunikat !== komunikatEl) {
         komunikatEl = komunikat;
         obserwator?.disconnect();
@@ -278,7 +285,7 @@ export function oprawaPulpitu(ctx) {
         });
         obserwator.observe(komunikatEl, { childList: true });
       }
-      el.replaceChildren(ekran, nakladka);
+      el.replaceChildren(ekran, nakladka, ...(zmien ? strzalki : []));
       if (komunikatEl) nakladka.replaceChildren(komunikatEl);
       if (!widoczna) { widoczna = true; ustawPelny(pelnyEkranPulpitu); }
     },
@@ -315,7 +322,14 @@ function styleAnimacji() {
 .pulpit-oprawa-komunikat:empty, .pulpit-oprawa-komunikat > :empty { display: none; }
 .pulpit-oprawa-komunikat .komunikat { margin: 0; box-shadow: 0 4px 18px rgba(0,0,0,.6); background: rgba(10,17,20,.94); }
 html.pulpit-pelny-ekran .pulpit-oprawa { position: fixed; left: 0; right: 0; top: var(--pulpit-gora, 0px); bottom: var(--pulpit-dol, 0px);
-  z-index: 30; margin: 0; padding: 6px; box-sizing: border-box; background: var(--tlo, #05080a); --pulpit-h: var(--pulpit-h-pelny); }`));
+  z-index: 30; margin: 0; padding: 6px 40px; box-sizing: border-box; background: var(--tlo, #05080a); --pulpit-h: var(--pulpit-h-pelny); }
+.pulpit-strzalka { display: none; position: absolute; top: 50%; transform: translateY(-50%); z-index: 9; width: 34px; height: 76px; padding: 0;
+  border: 1px solid rgba(77,226,201,.45); background: rgba(5,8,10,.72); color: #4de2c9; font-size: 34px; line-height: 1; cursor: pointer;
+  opacity: .75; transition: opacity .15s, background .15s; }
+.pulpit-strzalka:hover, .pulpit-strzalka:active { opacity: 1; background: rgba(77,226,201,.18); }
+.pulpit-strzalka.lewa { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
+.pulpit-strzalka.prawa { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
+html.pulpit-pelny-ekran .pulpit-strzalka { display: block; }`));
 }
 
 function pulpit(klasa, nazwa, wiazania) {

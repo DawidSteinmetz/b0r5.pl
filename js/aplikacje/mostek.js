@@ -214,7 +214,16 @@ export default {
           : 'To stanowisko nie jest już przydzielone.');
       let ramka;
       if (kiosk) ramka = h('div.mostek-pulpit', ekran);
-      else { oprawa.pokaz(ekran, komunikat); ramka = oprawa.el; }
+      else {
+        // Strzałki pełnego ekranu: poprzedni / następny dozwolony pulpit (po kolei, w kółko).
+        const zmien = dozwolone.length > 1 ? (d) => {
+          const i = dozwolone.indexOf(pulpitAktywny);
+          pulpitAktywny = dozwolone[(i + d + dozwolone.length) % dozwolone.length];
+          rysujMostek();
+        } : null;
+        oprawa.pokaz(ekran, komunikat, zmien);
+        ramka = oprawa.el;
+      }
       // Okręt w trwającej bitwie (starcie): pulpity działają w bitwie — stanowisko przechodzi do niej samo, dowódca
       // dostaje przejście.
       if (stanOkretu.bitwa_trwa && kiosk) { ctx.otworzApp?.('symulacje', { bitwa: stanOkretu.bitwa_trwa, stanowisko: true }); return; }

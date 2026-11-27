@@ -1,17 +1,22 @@
 # Śledztwa droida detektywistycznego — projekt
 
-Odnoga HOLOLINK. Logowanie bez zmian; konto z `"rola": "detektyw"` (wpis w `datapad_dane.uzytkownicy`)
-po zalogowaniu widzi pulpit sterowania droidem (makieta: skan przestrzenny DT-4). Ta sama baza SQL.
+Odnoga HOLOLINK. Logowanie bez zmian. Konto wpisane do tabeli `sledztwo_detektywi` (po loginie) po zalogowaniu
+widzi pulpit sterowania droidem (makieta: skan przestrzenny DT-4) zamiast zwykłego pulpitu. Ta sama baza SQL.
 Schemat: `api/migracje/082_sledztwa_schemat.sql`.
 
-## 1. Typ śledztwa i wyczyn
+## 1. Typ śledztwa, jawność, wyczyn
 
-- Typ początkowy = **zdarzenie × relacja** (12 × 12 = 144), np. „Szantaż × Szpiedzy”.
-- Gracz dostaje dany typ najwyżej raz (`UNIQUE (konto_uid, zdarzenie_id, relacja_id)`).
-  Losowanie: z typów, których gracz jeszcze nie ma.
-- Wyczyn: siatka 12 × 12 ze stanami `rozwiazane`; komplet = 144.
-- **Porzucenie**: stan `porzucone`, sprawa trafia do kolejki MG. Typ dalej zajęty.
-  Gracz pisze uzasadnienie → `wznowienie_prosba` → MG (ewentualnie po zmianach w treści) przywraca `trwa`.
+- Typ = **prawdziwe zdarzenie × relacja** (12 × 12 = 144), np. „Szantaż × Szpiedzy”.
+- **Jawność sprawy**: jawna — gracza wezwano do tego, co naprawdę zaszło; ukryta — wezwano go do innego zdarzenia
+  (`zdarzenie_zgloszone_id`), a ktoś (`ukrywa_kod`) zasłania prawdę. Przykład: zgłoszenie gwałtu, a naprawdę
+  kradzież, bo ofiara chce coś ukryć.
+- **Jawność faz**: każda faza jest jawna albo ukryta. Ten sam wariant działa inaczej: pościg jawny = list gończy,
+  ukryty = ciche śledzenie po tropach. Teksty zachowań NPC dla obu przypadków: `sledztwo_fazy_szablon.npc_jawna`
+  i `npc_ukryta` — trafiają do promptów NPC i decydują, kto co mówi, kto kłamie, kto milczy.
+- Gracz dostaje dany typ najwyżej raz (`UNIQUE (konto_login, zdarzenie_id, relacja_id)`); losowanie tylko z typów,
+  których jeszcze nie ma. Wyczyn: siatka 12 × 12 rozwiązanych.
+- **Porzucenie**: `porzucone` → kolejka MG, typ dalej zajęty. Gracz pisze uzasadnienie → `wznowienie_prosba` →
+  MG (ewentualnie po zmianach) przywraca `trwa`.
 
 ## 2. Szkielet 12 faz
 
@@ -30,71 +35,67 @@ Schemat: `api/migracje/082_sledztwa_schemat.sql`.
 | 11 | Wyścig | – | przebieg |
 | 12 | Finał (wybór gracza) | – | przebieg |
 
-Każda faza ma 12 wariantów (`warianty_json`) z tagami `wymaga` / `daje`. Generator losuje k12 spośród wariantów
-zgodnych z dotychczasowymi tagami, potem permutuje fazy 4–10 tak, by każda faza wymagająca tagu stała po fazie,
-która go daje. Wynik zapisany w `sledztwa.kolejnosc_json`. Losowanie (warianty, kolejność, imiona) robi PHP z `seed`
-— nie AI; AI tylko pisze treść do już wybranego szkieletu.
+Każda faza ma 12 wariantów (`sledztwo_warianty`) z tagami `wymaga` / `daje` i dopuszczalną jawnością.
 
-## 3. Dwa modele AI
+## 3. Tworzenie śledztwa
 
-Dostawca dowolny, zgodny z API OpenAI (`/chat/completions`): OpenRouter (modele `:free`), Groq, Gemini (warstwa
-zgodności OpenAI), lokalna Ollama. Konfiguracja w `api/konfiguracja-ai.php` (poza repo, jak hasło bazy):
-`adres`, `model_autor`, `model_droid`, `klucz`.
+### Krok 1 — baza danych (PHP, bez AI)
+Wszystko, co czyni śledztwo wyjątkowym, losuje serwer z `seed` i pul w bazie:
 
-### Autor (przy tworzeniu śledztwa, poza grą)
-Mały model nie napisze dobrze całej sprawy naraz, więc generacja idzie **krokami**, każdy z wąskim zadaniem
-i wymuszonym JSON-em, walidowanym przez PHP (zły JSON → ponowienie, max 3, potem stan `blad` do MG):
+1. Typ (zdarzenie × relacja) spośród niezdobytych; jawność sprawy; przy ukrytej — zdarzenie zgłoszone i kto ukrywa.
+2. Warianty faz (k12 zgodne z tagami), jawność każdej fazy, kolejność faz 4–10 (każda faza wymagająca tagu
+   po fazie, która go daje).
+3. Skupisko na Nar Shaddaa (`lokalizacje`) i miejsca fabularne: rodzaj (`gen_rodzaje_miejsc`, zgodnie z poziomem),
+   poziom, numer pokoju, nazwa lokalu.
+4. Postacie kluczowe (A, B, a jeśli warianty wymagają — Z zleceniodawca, S śledzący, W świadek) i poboczne:
+   gatunek wg `gen_populacja`, płeć, wiek, imię / nazwisko / przydomek (`gen_imiona`), archetyp (`gen_archetypy`),
+   2–3 cechy charakteru (`gen_charakter`), **karta EotE** (cechy gatunku + premie archetypu + umiejętności
+   + bronie; format jak `osoby_karta_eote.dane`), ekwipunek i kredyty, przedmioty-dowody (`gen_przedmioty`).
 
-1. Postacie A, B (+ Z, S, jeśli tagi ich wymagają): imię, gatunek, wygląd, sposób mówienia.
-2. Faza po fazie (1 → 12): 3–6 zdań treści; dostaje streszczenie poprzednich faz, nie całość.
-3. Miejsca fabularne: dla każdej fazy, która ich wymaga — budynek w skupisku, poziom, pokój, opis, plan.
-4. Historia każdego **kluczowego** NPC: bardzo szczegółowa, plus `wiedza_json` (co wie, kiedy powie, kiedy kłamie).
-5. Ślady: dla faz 1–10 po 2–4 śladach: `fakt`, `nosnik` (treść logu / notatki / wypowiedzi), `slowa_kluczowe`.
-6. Zaczyn: duży wstęp dla gracza (zlecenie, tło, kim są ludzie, od czego zacząć) — bez ujawniania faz 3–7.
+Wynik: stan `pisanie`. Szkielet jest kompletny — AI niczego nie losuje i nie wymyśla imion ani miejsc.
 
-Każdy krok ma osobny prompt bazowy w `sledztwo_fazy_szablon.prompt_bazowy` (rola, zasady świata 3 BBY,
-format wyjścia z przykładem, zakazy: nie zmieniaj imion, nie dodawaj postaci spoza listy, pisz po polsku).
+### Krok 2 — model „Autor” (API)
+Dostawca zgodny z API OpenAI (OpenRouter `:free`, Groq, Gemini, Ollama); konfiguracja w
+`api/konfiguracja-ai.php` poza repo. Mały model dostaje wąskie zadania z wymuszonym JSON-em, walidowanym przez PHP
+(zły JSON → ponowienie, max 3, potem stan `blad` do MG):
 
-### Droid (w grze)
-Nie zna prawdy ani słów kluczowych. Ma procedurę bazową: „z tekstu wypisz konkretne fakty: kto, gdzie, kiedy,
-ile, nazwy, liczby; nie zgaduj”. Działa na tym, co droid realnie zobaczył (opis miejsca, nośnik śladu, rozmowa).
-**Serwer** porównuje wyłapane fakty ze `slowa_kluczowe_json` (normalizacja: małe litery, bez polskich znaków,
-rdzenie słów). Trafienie → ślad `odkryty_utc`, wpis `koncentrat` w dzienniku. Dzięki temu słaby model nie może
-„wymyślić” postępu — postęp daje tylko trafienie w ukryty klucz.
+1. Treść faz 1 → 12 (3–6 zdań każda), z wylosowanymi postaciami, miejscami i jawnością; tylko streszczenie
+   poprzednich faz w kontekście.
+2. Opisy i plany miejsc fabularnych.
+3. Historie kluczowych NPC (bardzo szczegółowe) + wiedza: co wiedzą, co powiedzą przy jawnej / ukrytej fazie,
+   kiedy kłamią.
+4. Ślady faz 1–10: fakt, nośnik (log, notatka, wypowiedź), słowa kluczowe; fałszywe ślady fazy 8.
+5. Zaczyn dla gracza: zlecenie (przy ukrytej sprawie — wersja zgłoszona), tło, kim są ludzie, od czego zacząć.
 
-### Rozmowa AI–AI
-- Kluczowy NPC: model gra NPC z jego `historia` + `wiedza_json` + `sposob_mowienia`; droid zadaje pytania wg
-  procedury (kim jesteś, gdzie był(a) X, kiedy, z kim). 4–8 wymian, potem ekstrakcja faktów jak wyżej.
-- Gracz wpływa pisząc polecenie w grze („spytaj go o dług u Huttów”) — trafia do kolejki pytań droida.
-- Poboczny NPC (szum): **bez wywołania AI**, odpowiedzi z puli zdawkowych kwestii
-  („Dzień dobry.”, „Nie wiem, jak panu pomóc.”). Oszczędza limity darmowego modelu.
+Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wskazowki_autora`.
 
-## 4. Przestrzeń
+### Krok 3 — w grze
+- **Droid** (model AI) nie zna prawdy ani słów kluczowych. Procedura bazowa: wypisz z tekstu konkretne fakty
+  (kto, gdzie, kiedy, ile, nazwy, liczby), nie zgaduj. **Serwer** porównuje je ze `slowa_kluczowe`
+  (małe litery, bez polskich znaków, rdzenie). Trafienie → ślad odkryty → wpis `koncentrat`. Słaby model nie
+  „wymyśli” postępu.
+- **Rozmowa AI–AI** z kluczowym NPC: model gra NPC (historia, wiedza, charakter, jawność faz), droid pyta wg
+  procedury; gracz dopisuje polecenia („spytaj go o dług u Huttów”).
+- **Poboczni NPC**: bez AI — `gen_kwestie_szumu` („Dzień dobry.”, „Nie wiem, jak panu pomóc.”).
 
-- **Skupisko** (`sledztwa.skupisko_id`): kompleks z `lokalizacje` na Nar Shaddaa (widoczny na mapie): lądowisko,
-  hangar, sklepy, kantyny, kasyna; niższe poziomy: nory slicerów, magazyny.
-- **Miejsca fabularne** (`sledztwo_miejsca`): konkretny poziom + pokój (np. poziom 12, pokój 1256).
-- **Szum**: każde inne (skupisko, poziom, pokój) generuje deterministycznie PHP z `hash(seed, lokalizacja, poziom,
-  pokój)` — rodzaj lokalu, kilku pobocznych NPC, zero śladów. Po pierwszej wizycie kopia w `sledztwo_szum`.
-  Droid może tam pojechać (np. windą na poziom 11), ale to strata czasu.
+## 4. Przestrzeń i ruch
 
-## 5. Ruch droida
+- Skupisko: kompleks widoczny na mapie Nar Shaddaa — lądowisko, hangar, sklepy, kantyny, kasyna; niżej nory
+  slicerów, magazyny.
+- Miejsca fabularne: konkretny poziom + pokój (np. poziom 12, pokój 1256).
+- Szum: każde inne (lokalizacja, poziom, pokój) generuje PHP deterministycznie z `hash(seed, …)` — rodzaj z
+  `gen_rodzaje_miejsc`, opis szumu, poboczni NPC, zero śladów. Po wizycie kopia w `sledztwo_szum`.
+- Droid idzie tempem chodu (proponowane 1,4 m/s; winda 20 s / poziom + oczekiwanie). Gracz wskazuje cel, serwer
+  liczy `dotrze_utc`; po dotarciu droid sam skanuje i melduje. W tym czasie gracz czyta zaczyn i koncentrat.
 
-Tempo chodu (proponowane: 1,4 m/s; winda: 20 s na poziom + oczekiwanie). Gracz wskazuje cel → serwer liczy
-`dotrze_utc` i zapisuje `w_drodze`. Pozycja w trakcie liczona z czasu (jak skoki statków). Po dotarciu droid sam
-robi skan i zapisuje meldunek. W tym czasie gracz czyta zaczyn i koncentrat.
+## 5. Pulpit detektywa (kolejne etapy)
 
-## 6. Pulpit detektywa (kolejne etapy)
+1. Skan przestrzenny piętra (makieta DT-4). 2. Dziennik. 3. Koncentrat i tablica powiązań.
+4. Akta (zaczyn, postacie, miejsca). 5. Raport końcowy (ocena = pokrycie faz 1–7).
 
-1. Skan przestrzenny piętra (makieta DT-4): zasięg, sonda ruchu, kontakty, terminale, drzwi.
-2. Dziennik: meldunki, rozmowy, polecenia.
-3. Koncentrat: odkryte fakty do łączenia; tablica powiązań.
-4. Akta: zaczyn, postacie, miejsca znane droidowi.
-5. Raport końcowy: gracz opisuje rozwiązanie; ocena = pokrycie faz 1–7.
+## 6. Do ustalenia
 
-## 7. Do ustalenia
-
-- Pełne listy 12 zdarzeń i 12 relacji (w migracji robocze propozycje).
-- 12 wariantów dla każdej z faz 3–12 (z tagami).
-- Granice treści dla ciężkich zdarzeń (np. gwałt: tylko poza kadrem, bez opisów; konsekwencje i motyw).
-- Dostawca i model AI (limity zapytań darmowej warstwy).
+- Pełne listy 12 zdarzeń i 12 relacji (w migracji robocze).
+- 12 wariantów każdej fazy z tagami (`sledztwo_warianty` — pusta).
+- Rozbudowa pul: imiona i nazwiska (dziesiątki na gatunek), archetypy, przedmioty, kwestie.
+- Dostawca i model AI.

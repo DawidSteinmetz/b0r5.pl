@@ -151,7 +151,7 @@ function sl_pule(PDO $db): array
 function sl_skupiska(PDO $db, int $planetaId): array
 {
     if ($planetaId <= 0 || !tabela_sql_dostepna('lokalizacje')) return [];
-    $q = $db->prepare("SELECT b.id, b.nazwa, b.typ, b.rodzaj, b.rodzic_id, r.nazwa AS skupisko
+    $q = $db->prepare("SELECT b.id, b.nazwa, b.typ, b.rodzaj, b.rodzic_id, r.nazwa AS skupisko, r.x_km AS sx, r.y_km AS sy
         FROM lokalizacje b JOIN lokalizacje r ON r.id = b.rodzic_id
         WHERE b.planeta_id = ? AND b.status = 'aktywna' AND b.typ IN ('budynek','ladowisko') ORDER BY b.id");
     $q->execute([$planetaId]);
@@ -160,6 +160,8 @@ function sl_skupiska(PDO $db, int $planetaId): array
         $id = (int) $b['rodzic_id'];
         $skupiska[$id]['id'] = $id;
         $skupiska[$id]['nazwa'] = $b['skupisko'];
+        $skupiska[$id]['x_km'] = $b['sx'];
+        $skupiska[$id]['y_km'] = $b['sy'];
         $skupiska[$id]['budynki'][] = $b;
     }
     return array_values(array_filter($skupiska, fn($s) => count($s['budynki']) >= 2));
@@ -263,11 +265,43 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
         'kolejnosc' => implode(',', $kolejnosc), 'tagi' => implode(',', array_keys($tagi)),
         'planeta_id' => $pule['planeta_id'] ?: null,
         'skupisko' => $skupisko ? ['id' => $skupisko['id'], 'nazwa' => $skupisko['nazwa']] : null,
+        'nowe_budynki' => $skupisko ? array_values(array_filter($skupisko['budynki'], fn($b) => !empty($b['nowy']))) : [],
         'fazy' => array_values($fazy), 'miejsca' => $miejsca, 'postacie' => $postacie,
     ];
 }
 
-function sl_miejsce(array $pule, int $seed, ?array $skupisko, array $faza, array &$zajetePokoje): array
+// Budynek, którego kompleks nie ma, a sprawa go potrzebuje: [typ, rodzaj w lokalizacje, wzór nazwy]. Powstaje przy
+// zapisie sprawy jako prawdziwy wpis w `lokalizacje` (wspólna mapa) — lokacje „precyzują się” dopiero w kontekście.
+const SLEDZTWO_NOWY_BUDYNEK = [
+    'hotel' => ['budynek', 'hotel', 'Hotel „%s”'], 'kantyna' => ['budynek', 'kantyna', 'Kantyna „%s”'],
+    'sklep' => ['budynek', 'sklep', 'Sklep „%s”'], 'targ' => ['budynek', 'inne', 'Targ „%s”'],
+    'hangar' => ['budynek', 'hangar', 'Hangar %s'], 'ladowisko' => ['ladowisko', 'platforma', 'Lądowisko %s'],
+    'kasyno' => ['budynek', 'inne', 'Kasyno „%s”'], 'biuro' => ['budynek', 'biuro', 'Biurowiec „%s”'],
+    'magazyn' => ['budynek', 'magazyn', 'Magazyn %s'], 'mieszkalny' => ['budynek', 'inne', 'Blok mieszkalny %s'],
+];
+
+function sl_nowy_budynek(array $pule, array &$skupisko, string $preset): ?array
+{
+    if (!isset(SLEDZTWO_NOWY_BUDYNEK[$preset], $pule['presety'][$preset])) return null;
+    [$typ, $rodzaj, $wzor] = SLEDZTWO_NOWY_BUDYNEK[$preset];
+    $nazwy = array_values(array_filter($pule['imiona'], fn($i) => in_array($i['rodzaj'], ['przydomek', 'nazwisko'], true)));
+    $zajete = array_map(fn($b) => mb_strtolower((string) $b['nazwa']), $skupisko['budynki']);
+    for ($proba = 0; $proba < 20; $proba++) {
+        $cecha = in_array($preset, ['hangar', 'ladowisko', 'magazyn', 'mieszkalny'], true) || !$nazwy
+            ? strtoupper(chr(65 + sl_los(0, 25))) . '-' . sprintf('%02d', sl_los(1, 99))
+            : sl_jeden($nazwy)['wartosc'];
+        $nazwa = sprintf($wzor, $cecha);
+        if (!in_array(mb_strtolower($nazwa), $zajete, true)) break;
+    }
+    $b = ['id' => null, 'nazwa' => $nazwa, 'typ' => $typ, 'rodzaj' => $rodzaj, 'nowy' => true, 'preset' => $preset,
+        'preset_nazwa' => $pule['presety'][$preset]['nazwa'],
+        'x_km' => round((float) ($skupisko['x_km'] ?? 0) + sl_los(-30, 30) / 100, 3),
+        'y_km' => round((float) ($skupisko['y_km'] ?? 0) + sl_los(-30, 30) / 100, 3)];
+    $skupisko['budynki'][] = $b;
+    return $b;
+}
+
+function sl_miejsce(array $pule, int $seed, ?array &$skupisko, array $faza, array &$zajetePokoje): array
 {
     // Rodzaj: podpowiedź ze słów wariantu, inaczej losowanie wg wag fabularnych (lokale publiczne).
     $tekst = mb_strtolower($faza['wariant'] . ' ' . $faza['szkic']);
@@ -286,12 +320,14 @@ function sl_miejsce(array $pule, int $seed, ?array $skupisko, array $faza, array
     if ($skupisko) {
         $preset = SLEDZTWO_RODZAJ_PRESET[$r['kod']] ?? null;
         $zgodne = array_filter($skupisko['budynki'], fn($b) => sl_preset_kod($pule, $b) === $preset);
+        // Brak takiego budynku w kompleksie → nowy budynek na wspólnej mapie (powstanie przy zapisie sprawy).
+        if (!$zgodne && $preset && ($nowy = sl_nowy_budynek($pule, $skupisko, $preset))) $zgodne = [$nowy];
         $wlasny = (bool) $zgodne;
         $budynek = sl_jeden($zgodne ?: $skupisko['budynki']);
     }
     [$pmin, $pmax] = [(int) $r['poziom_min'], (int) $r['poziom_max']];
     if ($wlasny) {
-        $prof = sl_profil($pule, $seed, $budynek);
+        $prof = sl_profil($pule, $budynek);
         // Lokal fabularny presetu bywa tylko na parterze (sala kantyny) albo na piętrach (pokój gościnny).
         $naParterze = false;
         foreach ($pule['lokale'][$prof['kod']]['parter'] ?? [] as $w) if ($w['lokal'] === $pule['presety'][$prof['kod']]['lokal_fabularny']) $naParterze = true;
@@ -300,7 +336,7 @@ function sl_miejsce(array $pule, int $seed, ?array $skupisko, array $faza, array
     do {
         $poziom = sl_los($pmin, $pmax);
         $pokoj = sprintf('%d%02d', $poziom, sl_los(1, 40));
-        $klucz = ($budynek['id'] ?? 0) . '/' . $poziom . '/' . $pokoj;
+        $klucz = ($budynek['nazwa'] ?? '') . '/' . $poziom . '/' . $pokoj;
     } while (isset($zajetePokoje[$klucz]));
     $zajetePokoje[$klucz] = true;
 
@@ -317,8 +353,8 @@ function sl_miejsce(array $pule, int $seed, ?array $skupisko, array $faza, array
     }
     if ($budynek && !$wlasny) $nazwa .= ' (' . $budynek['nazwa'] . ')';
 
-    return ['faza_nr' => $faza['faza_nr'], 'lokalizacja_id' => $budynek ? (int) $budynek['id'] : null,
-        'budynek' => $budynek['nazwa'] ?? null, 'rodzaj_kod' => $r['kod'], 'rodzaj' => $r['nazwa'],
+    return ['faza_nr' => $faza['faza_nr'], 'lokalizacja_id' => $budynek && $budynek['id'] !== null ? (int) $budynek['id'] : null,
+        'budynek' => $budynek['nazwa'] ?? null, 'nowy_budynek' => !empty($budynek['nowy']), 'rodzaj_kod' => $r['kod'], 'rodzaj' => $r['nazwa'],
         'poziom' => $poziom, 'pokoj' => $pokoj, 'nazwa' => mb_substr($nazwa, 0, 160)];
 }
 
@@ -446,9 +482,32 @@ function sledztwo_zapisz(PDO $db, array $plan): int
         $q = $db->prepare('INSERT INTO sledztwo_fazy (sledztwo_id, faza_nr, pozycja, wariant_nr, jawnosc, tagi) VALUES (?, ?, ?, ?, ?, ?)');
         foreach ($plan['fazy'] as $f) $q->execute([$id, $f['faza_nr'], $f['pozycja'], $f['wariant_nr'], $f['jawnosc'], $f['tagi']]);
 
+        // Nowe budynki na wspólnej mapie (kompleks nie miał budynku tego rodzaju). Nazwa zajęta na planecie → numer.
+        $idNowych = [];
+        if (!empty($plan['nowe_budynki']) && !empty($plan['skupisko']['id'])) {
+            $jest = $db->prepare('SELECT id, rodzic_id FROM lokalizacje WHERE planeta_id = ? AND nazwa = ?');
+            $wstaw = $db->prepare("INSERT INTO lokalizacje (typ, rodzaj, rodzic_id, uklad_id, planeta_id, nazwa, x_km, y_km, publiczna, status, opis)
+                VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 1, 'aktywna', ?)");
+            foreach ($plan['nowe_budynki'] as $b) {
+                $nazwa = $b['nazwa'];
+                for ($n = 2; ; $n++) {
+                    $jest->execute([$plan['planeta_id'], $nazwa]);
+                    $w = $jest->fetch();
+                    if (!$w) break;
+                    // Ten sam budynek dopisała już inna sprawa w tym kompleksie — używamy go.
+                    if ((int) $w['rodzic_id'] === (int) $plan['skupisko']['id']) { $idNowych[$b['nazwa']] = (int) $w['id']; continue 2; }
+                    $nazwa = $b['nazwa'] . ' ' . $n;
+                }
+                $wstaw->execute([$b['typ'], $b['rodzaj'], (int) $plan['skupisko']['id'], $plan['planeta_id'], $nazwa, $b['x_km'], $b['y_km'],
+                    '[LORE: AUTORSKI] ' . ($b['preset_nazwa'] ?? 'Budynek') . ' w kompleksie ' . $plan['skupisko']['nazwa'] . '.']);
+                $idNowych[$b['nazwa']] = (int) $db->lastInsertId();
+            }
+        }
+
         $idMiejsc = [];
         $q = $db->prepare('INSERT INTO sledztwo_miejsca (sledztwo_id, faza_nr, lokalizacja_id, rodzaj_kod, poziom, pokoj, nazwa) VALUES (?, ?, ?, ?, ?, ?, ?)');
         foreach ($plan['miejsca'] as $i => $m) {
+            if (!empty($m['nowy_budynek'])) $plan['miejsca'][$i]['lokalizacja_id'] = $m['lokalizacja_id'] = $idNowych[$m['budynek']] ?? null;
             $q->execute([$id, $m['faza_nr'], $m['lokalizacja_id'], $m['rodzaj_kod'], $m['poziom'], $m['pokoj'], $m['nazwa']]);
             $idMiejsc[$i] = (int) $db->lastInsertId();
         }
@@ -614,6 +673,10 @@ const SLEDZTWO_RODZAJ_PRESET = ['kantyna' => 'kantyna', 'sklep' => 'sklep', 'tar
 const SLEDZTWO_WAGI_FABULY = ['kantyna' => 14, 'sklep' => 10, 'targ' => 6, 'hangar' => 9, 'ladowisko' => 9, 'kasyno' => 8,
     'hotel' => 10, 'biuro' => 6, 'magazyn' => 5, 'mieszkanie' => 3, 'nora_slicera' => 2, 'korytarz' => 0];
 
+// Ziarno świata: budynki, plany pięter, strażnicy i przechodnie są wspólni dla wszystkich spraw i detektywów
+// (wspólna mapa; docelowo wiele droidów naraz). Ziarno sprawy losuje tylko to, co należy do sprawy.
+const SLEDZTWO_SWIAT = 1977;
+
 // Liczba z zakresu z skrótu (bez ruszania mt_rand).
 function sl_hash_int(int $seed, int $min, int $max, string ...$czesci): int
 {
@@ -631,13 +694,13 @@ function sl_preset_kod(array $pule, ?array $b): string
 }
 
 // Profil budynku: preset, poziom parteru i najwyższy poziom (deterministycznie z ziarna sprawy).
-function sl_profil(array $pule, int $seed, ?array $b): array
+function sl_profil(array $pule, ?array $b): array
 {
     $kod = sl_preset_kod($pule, $b);
     $p = $pule['presety'][$kod];
-    $bid = (string) ($b['id'] ?? 0);
-    $parter = sl_hash_int($seed, (int) $p['parter_min'], (int) $p['parter_max'], 'parter', $bid);
-    $pieter = sl_hash_int($seed, (int) $p['pieter_min'], (int) $p['pieter_max'], 'pieter', $bid);
+    $bid = (string) ($b['nazwa'] ?? 'kompleks');
+    $parter = sl_hash_int(SLEDZTWO_SWIAT, (int) $p['parter_min'], (int) $p['parter_max'], 'parter', $bid);
+    $pieter = sl_hash_int(SLEDZTWO_SWIAT, (int) $p['pieter_min'], (int) $p['pieter_max'], 'pieter', $bid);
     return ['kod' => $kod, 'nazwa' => $p['nazwa'], 'parter' => $parter, 'gora' => min(SLEDZTWO_POZIOM_MAX, $parter + $pieter - 1)];
 }
 
@@ -658,7 +721,7 @@ function sl_plan(PDO $db, array $s, array $pule, ?array $budynek, int $poziom): 
     $q = $db->prepare("SELECT id, poziom, pokoj, rodzaj_kod, nazwa, opis, zamkniete FROM sledztwo_miejsca WHERE sledztwo_id = ? AND {$warunek}");
     $q->execute($arg);
     $fabula = [];
-    $prof = sl_profil($pule, (int) $s['seed'], $budynek);
+    $prof = sl_profil($pule, $budynek);
     foreach ($q->fetchAll() as $m) {
         $prof['parter'] = min($prof['parter'], (int) $m['poziom']);
         $prof['gora'] = max($prof['gora'], (int) $m['poziom']);
@@ -668,7 +731,7 @@ function sl_plan(PDO $db, array $s, array $pule, ?array $budynek, int $poziom): 
         : ($poziom > $prof['parter'] && $poziom < $prof['gora'] ? 'pietro' : 'techniczny'));
     $preset = $strefa === 'techniczny' ? 'techniczny' : $prof['kod'];
 
-    sl_ziarno((int) $s['seed'], 'plan', (string) $bid, (string) $poziom);
+    sl_ziarno(SLEDZTWO_SWIAT, 'plan', (string) $bid, (string) $poziom);
     $pokoje = [];
     foreach (sl_lokale_presetu($pule, $preset, $strefa) as $w) {
         for ($k = 0, $n = sl_los((int) $w['ile_min'], (int) $w['ile_max']); $k < $n; $k++) {
@@ -733,7 +796,7 @@ function sl_x_droida(array $plan, string $pokoj): int
 // Strażnik strzeżonego lokalu: deterministyczny, z kartą EotE (archetyp z presetu budynku). Intelekt często niski.
 function sl_straznik(array $pule, array $s, array $plan, array $p): array
 {
-    sl_ziarno((int) $s['seed'], 'straz', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']);
+    sl_ziarno(SLEDZTWO_SWIAT, 'straz', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']);
     $archKod = $pule['presety'][$plan['preset']]['straz_archetyp'] ?? 'ochroniarz';
     $arch = $pule['archetypy'][$archKod] ?? $pule['archetypy']['ochroniarz'] ?? reset($pule['archetypy']);
     $g = sl_wazony(array_values(array_filter($pule['populacja'], fn($x) => $x['kod'] !== 'droid')) ?: $pule['populacja'])['kod'];
@@ -761,7 +824,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
             $q->execute([(int) $s['id'], $p['miejsce_id']]);
             foreach ($q->fetchAll() as $o) $osoby[] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
         } elseif ($p['ludzie_max'] > 0) {
-            sl_ziarno((int) $s['seed'], 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
+            sl_ziarno(SLEDZTWO_SWIAT, 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
             $ile = sl_los(0, $p['ludzie_max']);
             $bywalcy = array_values(array_filter($pule['archetypy'], fn($a) => in_array($p['rodzaj_kod'], sl_tagi((string) $a['rodzaje_miejsc']), true)));
             for ($k = 0; $k < $ile; $k++) {

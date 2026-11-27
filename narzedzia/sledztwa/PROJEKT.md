@@ -127,6 +127,29 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 - Generator kładzie miejsca fabuły w budynkach o zgodnym presecie (kantyna w kantynie, hangar w hangarze), na ich
   piętrach, z wagami fabularnymi (lokale publiczne; mieszkania rzadko — głównie jako kryjówki).
 
+### Wspólna mapa: lokacje precyzują się w kontekście (decyzja autora, 27.11)
+
+- Śledztwa korzystają ze **wspólnej mapy** (`lokalizacje`). Jeśli sprawa potrzebuje budynku, którego kompleks nie
+  ma (np. hangaru), generator dopisuje go przy zapisie sprawy jako prawdziwy wpis w `lokalizacje` (publiczny,
+  widoczny na mapie, dziecko kompleksu, współrzędne obok kompleksu). Kolejne sprawy w tym kompleksie używają go.
+  Wszystko, co nie wystąpiło w żadnym kontekście, zostaje szumem (bez zapisu).
+- Budynek wygląda tak samo dla wszystkich: profil (parter, piętra), plan pięter, strażnicy i przechodnie są
+  liczeni ze **stałego ziarna świata** (`SLEDZTWO_SWIAT`) i nazwy / id budynku, nie z ziarna sprawy. Ziarno sprawy
+  losuje tylko to, co należy do sprawy (typ, fazy, miejsca fabuły, postacie). Miejsce fabuły zastępuje na planie
+  lokal tego samego typu — dla innych spraw w tym miejscu jest zwykły lokal.
+
+### Docelowo: duże śledztwa multiplayer — do 12 droidów naraz
+
+Do zmiany, gdy przyjdzie pora (dziś model to jedna sprawa = jeden detektyw = jeden droid):
+- `sledztwa.konto_login` → tabela uczestników sprawy (konto, rola, droid); wyczyn liczony każdemu uczestnikowi.
+- `sledztwo_droid` (klucz: sprawa) → klucz (sprawa, droid); każdy droid ma własną pozycję, cel i rozmowę;
+  rozkazy i blokady per droid (`sl_rozlicz_droida`, `sl_rozkaz_ruchu`).
+- Rozmowy: jeden NPC może rozmawiać z jednym droidem naraz (blokada na postaci), reszta czeka albo słucha.
+- Dziennik i koncentrat wspólne dla zespołu; meldunki z oznaczeniem droida. Przepustki strażników i nakazy —
+  na sprawę (cały zespół) albo na droida — do decyzji.
+- Generator dużych spraw: więcej miejsc i postaci (kilka kompleksów naraz), równoległe wątki faz.
+- Czas 1:1 i wspólna mapa już teraz działają dla wielu graczy (ten sam świat, ten sam plan budynków).
+
 ## 4a. Zasady z ustaleń autora (wątek ChatGPT, 27.11) — obowiązują w śledztwach droida
 
 - **Czas 1:1.** Sekunda realna = sekunda w grze; pora dnia z zegara świata (noc na księżycu = noc w grze).

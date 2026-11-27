@@ -88,8 +88,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    **Etap 3 zrobiony (nieprzetestowany): presety budynków i wstęp** — migracja `086_sledztwa_presety.sql`,
    akcje `sledztwo_straz`, `sledztwo_nakaz_wniosek`, `mg_sledztwo_nakazy`, `mg_sledztwo_nakaz_decyzja`; panel MG:
    karta „Wnioski o nakaz” w zakładce Konta. Opis w PROJEKT.md rozdz. 4 „Presety budynków i wstęp”. Uwaga: bez 086
-   skan i generator zwracają „Brak presetów budynków (migracja 086)”. Kompleksy z 030 mają po 2 budynki —
-   decyzja autora o dołożeniu budynków do mapy (wariant A) albo budynkach tylko dla sprawy (B) jeszcze nie zapadła.
+   skan i generator zwracają „Brak presetów budynków (migracja 086)”.
+   **Wspólna mapa (decyzja autora):** brakujące budynki kompleksu generator dopisuje do `lokalizacje` przy zapisie
+   sprawy (`sl_nowy_budynek`, `sledztwo_zapisz`); plany budynków liczone ze ziarna świata `SLEDZTWO_SWIAT`.
+   Docelowo multiplayer do 12 droidów — lista zmian w PROJEKT.md („Docelowo: duże śledztwa multiplayer”).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

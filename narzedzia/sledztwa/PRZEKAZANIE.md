@@ -74,7 +74,11 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    decyzje — „Generator kroku 1” niżej. Brak panelu MG (na razie tylko API).
 3. Szablony AI dla Autora: treść fazy, miejsce, historia NPC, wiedza NPC, ślad, wiadomość w datapadzie, zaczyn;
    w grze: pytanie droida, ekstrakcja faktów.
-4. Pulpit detektywa wg makiety DT-4; ruch droida; dziennik; koncentrat.
+4. Pulpit detektywa wg makiety DT-4 — **etap 1 zrobiony (nieprzetestowany)**: ruch droida 1:1 i skan piętra
+   (`sledztwo_skan`, `sledztwo_idz`; opis w PROJEKT.md rozdz. 4 „Ruch i skan”). Dalej: rozmowy z kontaktami
+   (AI gra NPC, punkty W/S/Z, testy EotE — PROJEKT.md rozdz. 4a), terminale (publiczny / slicer / sam),
+   koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
+   czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.
 
 ## Generator kroku 1 — jak działa (decyzje do ewentualnej zmiany)
 

@@ -88,6 +88,41 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 - Droid idzie tempem chodu (proponowane 1,4 m/s; winda 20 s / poziom + oczekiwanie). Gracz wskazuje cel, serwer
   liczy `dotrze_utc`; po dotarciu droid sam skanuje i melduje. W tym czasie gracz czyta zaczyn i koncentrat.
 
+### Ruch i skan — jak działa (etap 1 sterowania na żywo, `api/sledztwa.php`)
+
+- Cel: dowolny budynek / lądowisko **skupiska**, poziom 1–120, pokój albo korytarz. Inne kompleksy — później
+  (dystanse między sektorami to setki km; potrzebna taksówka powietrzna).
+- Czas podróży (1:1): wyjście 20 s + odległość między budynkami (`x_km`, `y_km`) / 1,4 m/s + przy zmianie poziomu
+  30 s czekania na windę i 20 s / poziom + dojście do pokoju 20 s. Ten sam poziom i budynek: 30 s.
+- Nowy rozkaz w drodze: przed połową trasy droid zawraca z punktu startu, po połowie — rusza z poprzedniego celu.
+- Dotarcie rozlicza serwer przy najbliższym odczycie (nie trzeba crona): pozycja, meldunek w dzienniku, wpis
+  `sledztwo_szum` dla miejsc spoza fabuły.
+- Plan piętra deterministyczny z `crc32(seed|budynek|poziom)`: 10–18 pokoi po obu stronach korytarza, drzwi,
+  terminale (publiczne T1, T2…), rodzaj każdego pokoju (z `gen_rodzaje_miejsc` wg poziomu; częściej rodzaj budynku).
+  Pokoje fabuły zawsze są na planie. Kontakty K-1…: postacie z `sledztwo_postacie` (miejsce fabularne) albo
+  przypadkowi przechodnie (szum, bez zapisu). Droid widzi kontakty w zasięgu 230 j. (pokój = 60 j. szerokości).
+  Kontakt to sylwetka (gatunek, wygląd zawodu) — imienia droid nie zna.
+
+## 4a. Zasady z ustaleń autora (wątek ChatGPT, 27.11) — obowiązują w śledztwach droida
+
+- **Czas 1:1.** Sekunda realna = sekunda w grze; pora dnia z zegara świata (noc na księżycu = noc w grze).
+  Rozmowa trwa tyle, ile trwa. Świat działa, gdy gracz nie patrzy: NPC zmieniają miejsca, plotki krążą.
+- **Nieaktywność:** do 7 dni bez skutków; po miesiącu skutki (w przygodzie gracza: rynsztok bez ekwipunku;
+  dla droida — do ustalenia, np. sprawa przechodzi do MG jako porzucona).
+- **Punkty relacji** każdego NPC wobec detektywa / droida, niezależne osie: W1–W3 wkurw, S1–S3 strach,
+  Z1–Z3 zachwyt (np. W2 + S2 naraz). Relacje rozchodzą się drogami informacji (bezpośrednio, plotka, ta sama
+  organizacja, polecenie przełożonego) — wkurzony barman → nieufny ochroniarz; nie każdy wie wszystko.
+- **Testy EotE** rozstrzygają interakcje: Zastraszanie przeciw Dyscyplinie, Urok przeciw Opanowaniu, Oszustwo
+  przeciw Czujności, Negocjacje przeciw Negocjacjom; Odporność i wysoka Siła Woli utrudniają zastraszenie.
+  Wynik testu → punkty relacji (udane zastraszenie może dać S2 i W1). Każdy NPC ma kartę EotE (generator już je
+  tworzy; kluczowi pełne, statyści uproszczone). NPC też wykonują testy (Skradanie, Oszustwo, Percepcja…).
+- **AI tylko gra NPC**: interpretuje wypowiedź (intencja: groźba, pochlebstwo, kłamstwo, negocjacja), mówi;
+  fakty, testy, punkty i postęp liczy PHP i zapisuje SQL. AI nie przyznaje punktów samo.
+- **Terminale i dane:** publiczny terminal — tanio, ale właściciel danych dowiaduje się, gdzie i kiedy;
+  slicer — drogo, dyskretnie (może oszukać albo współpracować z właścicielem); samodzielnie — test Komputerów,
+  warstwy szyfru, częściowy odczyt.
+- **Zleceniodawcę można udobruchać** (obietnica, pierwsze informacje), fałszywe informacje budzą podejrzliwość.
+
 ## 5. Pulpit detektywa (kolejne etapy)
 
 1. Skan przestrzenny piętra (makieta DT-4). 2. Dziennik. 3. Koncentrat i tablica powiązań.

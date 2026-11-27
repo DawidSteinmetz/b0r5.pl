@@ -536,7 +536,7 @@ function sl_detektyw(PDO $db, string $login): bool
 
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
-    $akcje = ['sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad'];
+    $akcje = ['sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -584,6 +584,37 @@ function obsluz_sledztwa(string $akcja, bool $post): void
             case 'mg_sledztwo_podglad':
                 if (!$mg) blad('Brak uprawnień.', 403);
                 odpowiedz(sledztwo_podglad($db, (int) ($_GET['id'] ?? 0)));
+
+            // Lista detektywów (zakładka Konta w panelu MG).
+            case 'mg_detektywi':
+                if (!$mg) blad('Brak uprawnień.', 403);
+                $q = $db->query('SELECT d.konto_login, d.droid_oznaczenie, COUNT(s.id) AS sledztwa
+                    FROM sledztwo_detektywi d LEFT JOIN sledztwa s ON s.konto_login = d.konto_login
+                    GROUP BY d.konto_login, d.droid_oznaczenie ORDER BY d.konto_login');
+                odpowiedz(['detektywi' => $q->fetchAll()]);
+
+            // Nadanie / odebranie roli detektywa: {login, detektyw: true|false}. Konto musi istnieć w JSON-ie kont
+            // (tylko odczyt). Detektywa z zapisanymi śledztwami nie da się odebrać (klucz obcy) — najpierw MG usuwa śledztwa.
+            case 'mg_detektyw_ustaw':
+                if (!$mg) blad('Brak uprawnień.', 403);
+                if (!$post) blad('Zła metoda.', 405);
+                $w = wejscie();
+                $login = trim((string) ($w['login'] ?? ''));
+                $konto = null;
+                foreach (uzytkownicy() as $x) if (mb_strtolower((string) $x['login']) === mb_strtolower($login)) { $konto = $x; break; }
+                if (!$konto) blad('Nie ma takiego konta.', 404);
+                if (!empty($w['detektyw'])) {
+                    $db->prepare('INSERT INTO sledztwo_detektywi (konto_login) VALUES (?) ON DUPLICATE KEY UPDATE konto_login = konto_login')
+                        ->execute([(string) $konto['login']]);
+                } else {
+                    try {
+                        $db->prepare('DELETE FROM sledztwo_detektywi WHERE konto_login = ?')->execute([(string) $konto['login']]);
+                    } catch (PDOException $e) {
+                        if ($e->getCode() === '23000') blad('To konto ma zapisane śledztwa — nie można odebrać roli detektywa.');
+                        throw $e;
+                    }
+                }
+                odpowiedz(['ok' => true]);
         }
     } catch (SledztwoBlad $e) {
         blad($e->getMessage());

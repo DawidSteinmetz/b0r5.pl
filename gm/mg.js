@@ -390,6 +390,9 @@ async function konta(edytowany = null) {
   const { uzytkownicy } = await api('mg_uzytkownicy');
   let lokacjeStartu = [];
   try { lokacjeStartu = (await api('mg_karty')).lokacje || []; } catch { /* bez listy miejsc */ }
+  // Detektywi (śledztwa droida): null = moduł niedostępny (brak migracji 082) — wtedy bez przycisku.
+  let detektywi = null;
+  try { detektywi = new Map((await api('mg_detektywi')).detektywi.map((d) => [d.konto_login.toLowerCase(), d])); } catch { /* bez modułu śledztw */ }
   const e = edytowany || {};
   const nowe = !e.id;
   // Nowy gracz: domyślnie zaproszenie (gracz sam ustawia hasło kodem jednorazowym); hasło od MG — opcjonalnie.
@@ -441,7 +444,8 @@ async function konta(edytowany = null) {
     h('div.karta.przewijana', h('h2', `Konta (${uzytkownicy.length})`),
       h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', 'Gotowość'), h('th', '')),
         uzytkownicy.map((x) => h('tr',
-          h('td', x.login, x.rola === 'mg' ? h('span.slaby', ' (MG)') : null),
+          h('td', x.login, x.rola === 'mg' ? h('span.slaby', ' (MG)') : null,
+            detektywi?.has(x.login.toLowerCase()) ? h('span.slaby', ' · detektyw') : null),
           h('td', x.postac), h('td', x.frakcja), h('td', [x.oddzial, x.ranga].filter(Boolean).join(' / ')), h('td', x.poziom),
           gotowosc(x),
           h('td.rzad',
@@ -452,6 +456,14 @@ async function konta(edytowany = null) {
               wyczysc(glowna); await konta();
               glowna.prepend(kartaZaproszenia(x.login, r.kod, r.wazne_do));
             })) : null,
+            detektywi ? (() => {
+              const d = detektywi.get(x.login.toLowerCase());
+              return btn(d ? 'Odbierz detektywa' : 'Nadaj detektywa', bezpiecznie(async () => {
+                if (d && !confirm(`Odebrać ${x.login} rolę detektywa?`)) return;
+                await api('mg_detektyw_ustaw', { login: x.login, detektyw: !d });
+                wyczysc(glowna); await konta();
+              }));
+            })() : null,
             btn('Usuń', bezpiecznie(async () => {
               if (!confirm(`Usunąć konto ${x.login}?`)) return;
               await api('mg_uzytkownik_usun', { id: x.id });

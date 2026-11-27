@@ -536,7 +536,7 @@ function sl_detektyw(PDO $db, string $login): bool
 
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
-    $akcje = ['sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
+    $akcje = ['sledztwo_moje', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -544,11 +544,49 @@ function obsluz_sledztwa(string $akcja, bool $post): void
     try {
         $db->query('SELECT 1 FROM sledztwo_warianty LIMIT 1');
     } catch (Throwable $e) {
+        // Pulpit pyta o to każdego gracza — bez migracji po prostu nikt nie jest detektywem.
+        if ($akcja === 'sledztwo_moje') odpowiedz(['detektyw' => false]);
         blad('Moduł śledztw nie odpowiada. (Brak migracji 082.)');
     }
 
     try {
         switch ($akcja) {
+            // Widok gracza (aplikacja „Droid śledczy”). Tylko to, co detektyw może wiedzieć: zgłoszenie (nigdy
+            // prawdziwe zdarzenie ani relacja), zaczyn, pozycja droida, dziennik. Pulpit pyta o to po zalogowaniu.
+            case 'sledztwo_moje':
+                $q = $db->prepare('SELECT droid_oznaczenie FROM sledztwo_detektywi WHERE konto_login = ?');
+                $q->execute([(string) $u['login']]);
+                $droid = $q->fetchColumn();
+                if ($droid === false) odpowiedz(['detektyw' => false, 'mg' => $mg]);
+                $q = $db->prepare("SELECT s.id, s.tytul, s.stan, s.zaczyn, s.utworzono_utc, s.zakonczono_utc, s.ocena,
+                        COALESCE(zg.nazwa, z.nazwa) AS zgloszenie, l.nazwa AS skupisko
+                    FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id
+                    LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id LEFT JOIN lokalizacje l ON l.id = s.skupisko_id
+                    WHERE s.konto_login = ? ORDER BY s.id DESC");
+                $q->execute([(string) $u['login']]);
+                $lista = $q->fetchAll();
+                $biezace = null;
+                foreach ($lista as $s) {
+                    if (in_array($s['stan'], ['losowanie', 'pisanie', 'trwa', 'wznowienie_prosba', 'blad'], true)) { $biezace = $s; break; }
+                }
+                $droidStan = null;
+                $dziennik = [];
+                if ($biezace) {
+                    $q = $db->prepare('SELECT d.poziom, d.pokoj, d.stan, d.cel_poziom, d.cel_pokoj, d.dotrze_utc, l.nazwa AS lokalizacja, c.nazwa AS cel
+                        FROM sledztwo_droid d LEFT JOIN lokalizacje l ON l.id = d.lokalizacja_id LEFT JOIN lokalizacje c ON c.id = d.cel_lokalizacja_id
+                        WHERE d.sledztwo_id = ?');
+                    $q->execute([(int) $biezace['id']]);
+                    $droidStan = $q->fetch() ?: null;
+                    $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik
+                        WHERE sledztwo_id = ? AND rodzaj <> 'system' ORDER BY id DESC LIMIT 50");
+                    $q->execute([(int) $biezace['id']]);
+                    $dziennik = $q->fetchAll();
+                }
+                $rozwiazane = count(array_filter($lista, fn($s) => $s['stan'] === 'rozwiazane'));
+                odpowiedz(['detektyw' => true, 'mg' => $mg, 'droid' => $droid, 'biezace' => $biezace, 'droid_stan' => $droidStan,
+                    'dziennik' => $dziennik, 'archiwum' => array_values(array_filter($lista, fn($s) => $s !== $biezace)),
+                    'rozwiazane' => $rozwiazane, 'wszystkie_typy' => 144]);
+
             case 'sledztwo_nowe':
                 if (!$post) blad('Zła metoda.', 405);
                 $w = wejscie();

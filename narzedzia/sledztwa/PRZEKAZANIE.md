@@ -47,6 +47,7 @@ Plik dla kolejnej sesji Claude (albo człowieka), która przejmuje tę pracę. C
 | `api/index.php` | `require ai.php` + `obsluz_ai()` |
 | `api/migracje/084_sledztwa_warianty.sql` | **pierwsza wersja** 144 wariantów faz: nazwa, szkic z {A}{B}{Z}{S}{W}{M}, tagi `wymaga` / `daje`, jawność; słownik tagów w nagłówku pliku; ponowny import nadpisuje warianty treścią pliku |
 | `api/sledztwa.php` | generator kroku 1 (bez AI): akcje `sledztwo_nowe` (detektyw dla siebie; MG dla `login`, z opcjami `seed`, `zdarzenie_id`, `relacja_id`, `jawnosc`, `proba`), `mg_sledztwa`, `mg_sledztwo_podglad`, `mg_detektywi`, `mg_detektyw_ustaw` (`{login, detektyw: true/false}`); `api/index.php` — require + `obsluz_sledztwa()` |
+| `js/aplikacje/sledztwa.js` + `js/system.js` | aplikacja „Droid śledczy” (pierwsza wersja, przed makietą DT-4): bieżąca sprawa (zgłoszenie, zaczyn), położenie droida, dziennik, archiwum, „Przyjmij nową sprawę”. Ikona tylko dla detektywów: pulpit pyta `sledztwo_moje` i ustawia `stan.detektyw`. `sledztwo_moje` nie zdradza prawdziwego zdarzenia ani relacji |
 | `gm/mg.js` (zakładka Konta) | przycisk „Nadaj detektywa” / „Odbierz detektywa” przy koncie i dopisek „· detektyw” przy loginie; bez migracji 082 przycisku nie ma. Odebrać nie można, gdy konto ma zapisane śledztwa |
 | `narzedzia/sledztwa/sprawdz_warianty.pl` | kontrola spójności wariantów (perl): 12 × 12, wstawki ↔ tagi postaci, źródło każdego wymaganego tagu, wariant bez wymagań dla każdej jawności, symulacja 100 tys. losowań generatora |
 

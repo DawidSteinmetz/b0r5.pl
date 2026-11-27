@@ -20,8 +20,9 @@ import gielda from './aplikacje/gielda.js';
 import symulacje from './aplikacje/symulacje.js';
 import mostek from './aplikacje/mostek.js';
 import starcia from './aplikacje/starcia.js';
+import sledztwa from './aplikacje/sledztwa.js';
 
-const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, starcia, symulacje, ustawienia];
+const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, starcia, sledztwa, symulacje, ustawienia];
 
 const html = document.documentElement;
 const pulpit = document.getElementById('pulpit');
@@ -888,6 +889,11 @@ function ekranPulpitu() {
   const pierwszy = ukryte === null;
   rysujIkony(siatka);
   if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));
+  // Detektyw (sledztwo_detektywi): ikona „Droid śledczy”. Brak modułu albo błąd = brak ikony.
+  api('sledztwo_moje').then((d) => {
+    const jest = !!d?.detektyw;
+    if (jest !== !!stan.detektyw) { stan.detektyw = jest; if (siatka.isConnected) rysujIkony(siatka); }
+  }).catch(() => {});
   api('bitwa_dostep').then((d) => {
     const jest = !!d?.upowazniony;
     const poprzednioSymulacje = stan.symulacje;

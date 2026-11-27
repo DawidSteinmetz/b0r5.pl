@@ -1,8 +1,8 @@
 # Dodatkowa blokada katalogu danych (główna ochrona jest w samych plikach).
 RedirectMatch 404 /api/dane/
-<Files "konfiguracja-bazy.php">
+<FilesMatch "^konfiguracja-(bazy|ai)\.php$">
   Require all denied
-</Files>
+</FilesMatch>
 # Skrypty SQL nie są zasobem publicznym (schemat, migracje, dane startowe mapy).
 <FilesMatch "\.sql$">
   Require all denied

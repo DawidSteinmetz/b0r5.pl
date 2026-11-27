@@ -17,6 +17,7 @@
 /api/dane/*
 !/api/dane/.htaccess
 /api/konfiguracja-bazy.php
+/api/konfiguracja-ai.php
 
 # Importy SQL w archiwum nie są źródłem wdrożeniowym
 /archiwum/sql/*.sql

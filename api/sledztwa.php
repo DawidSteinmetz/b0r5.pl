@@ -18,7 +18,7 @@ const SLEDZTWO_SZANSA_UKRYTEJ_SPRAWY = 35;   // % spraw, w których zgłoszenie 
 const SLEDZTWO_SZANSA_UKRYTEJ_FAZY = 50;     // % faz 1, 3–12 losowanych jako ukryte
 const SLEDZTWO_PRZESTAWNE = [4, 5, 6, 7, 8, 9, 10];
 const SLEDZTWO_TAG_POSTACI = ['zleceniodawca' => 'Z', 'sledzacy' => 'S', 'swiadek' => 'W'];
-const SLEDZTWO_NAZWY_KODOW = ['A' => 'strona A', 'B' => 'strona B', 'Z' => 'zleceniodawca', 'S' => 'śledzący', 'W' => 'świadek'];
+const SLEDZTWO_NAZWY_KODOW = ['A' => 'strona A', 'B' => 'strona B', 'Z' => 'zleceniodawca', 'S' => 'śledzący', 'W' => 'świadek', 'V' => 'zgłaszający'];
 
 // Bronie archetypów (nazwy z gen_archetypy.bronie) → format karty EotE: nazwa, umiejętność, obrażenia, krytyk, zasięg, cechy.
 const SLEDZTWO_BRONIE = [
@@ -237,7 +237,13 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
     if (strpos($fazy[7]['szkic'], '{M}') === false && in_array('kryjowka', sl_tagi($fazy[7]['tagi']), true)) {
         $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[7], $zajetePokoje);
     }
-    if (!$miejsca) $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[1], $zajetePokoje);
+    // Miejsce startowe (faza 2: zgłoszenie) jest zawsze — tam droid zaczyna i tam czeka zgłaszający (VIP).
+    $startIdx = null;
+    foreach ($miejsca as $i => $m) if ($m['faza_nr'] === 2) { $startIdx = $i; break; }
+    if ($startIdx === null) {
+        $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[2], $zajetePokoje);
+        $startIdx = count($miejsca) - 1;
+    }
 
     // 5. Postacie kluczowe: A, B zawsze; Z / S / W, gdy końcowe tagi ich wymagają. Poboczni: 1–2 na miejsce.
     $kody = ['A', 'B'];
@@ -245,6 +251,17 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
     $postacie = [];
     $uzyteNazwy = [];
     foreach ($kody as $kod) $postacie[] = sl_postac($pule, $kod, 'kluczowy', $miejsca, $tagi, $uzyteNazwy, null);
+    // VIP: postać, którą szkic fazy 2 wskazuje jako zgłaszającego (B, Z, W, S, A), albo nowa postać „V”.
+    $vip = null;
+    foreach (['B', 'Z', 'W', 'S', 'A'] as $k) {
+        if (in_array($k, $kody, true) && strpos($fazy[2]['szkic'], '{' . $k . '}') !== false) { $vip = $k; break; }
+    }
+    if ($vip) {
+        foreach ($postacie as &$p) if ($p['kod'] === $vip) $p['miejsce_idx'] = $startIdx;
+        unset($p);
+    } else {
+        $postacie[] = sl_postac($pule, 'V', 'kluczowy', $miejsca, $tagi, $uzyteNazwy, $startIdx);
+    }
     foreach ($miejsca as $i => $m) {
         for ($k = sl_los(1, 2); $k > 0; $k--) $postacie[] = sl_postac($pule, null, 'poboczny', $miejsca, $tagi, $uzyteNazwy, $i);
     }
@@ -520,11 +537,14 @@ function sledztwo_zapisz(PDO $db, array $plan): int
                 mb_substr($p['ekwipunek'], 0, 500), $p['kredyty'], $idMiejsc[$p['miejsce_idx']] ?? null]);
         }
 
-        // Droid startuje w skupisku, na poziomie miejsca fazy 2 (zgłoszenie), a gdy go nie ma — pierwszego miejsca.
+        // Droid startuje W lokalu startowym (faza 2: zgłoszenie), przy zgłaszającym.
         $start = $plan['miejsca'][0];
         foreach ($plan['miejsca'] as $m) if ($m['faza_nr'] === 2) { $start = $m; break; }
-        $db->prepare('INSERT INTO sledztwo_droid (sledztwo_id, lokalizacja_id, poziom) VALUES (?, ?, ?)')
-            ->execute([$id, $start['lokalizacja_id'], $start['poziom']]);
+        $db->prepare('INSERT INTO sledztwo_droid (sledztwo_id, lokalizacja_id, poziom, pokoj) VALUES (?, ?, ?, ?)')
+            ->execute([$id, $start['lokalizacja_id'], $start['poziom'], $start['pokoj']]);
+        $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, rodzaj, kto, tresc) VALUES (?, 'meldunek', 'droid', ?)")
+            ->execute([$id, "Jestem na miejscu zgłoszenia: {$start['nazwa']}, poziom {$start['poziom']}, lokal {$start['pokoj']}. "
+                . 'Zgłaszający czeka tutaj. Teczka sprawy jest w ekwipunku.']);
 
         $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, rodzaj, kto, tresc) VALUES (?, 'system', 'system', ?)")
             ->execute([$id, "Szkielet wylosowany (seed {$plan['seed']}). Czeka na treść od modelu Autor."]);
@@ -718,7 +738,7 @@ function sl_plan(PDO $db, array $s, array $pule, ?array $budynek, int $poziom): 
     $bid = $budynek['id'] ?? 0;
     $warunek = $budynek ? 'lokalizacja_id = ?' : 'lokalizacja_id IS NULL';
     $arg = $budynek ? [(int) $s['id'], $bid] : [(int) $s['id']];
-    $q = $db->prepare("SELECT id, poziom, pokoj, rodzaj_kod, nazwa, opis, zamkniete FROM sledztwo_miejsca WHERE sledztwo_id = ? AND {$warunek}");
+    $q = $db->prepare("SELECT id, faza_nr, poziom, pokoj, rodzaj_kod, nazwa, opis, zamkniete FROM sledztwo_miejsca WHERE sledztwo_id = ? AND {$warunek}");
     $q->execute($arg);
     $fabula = [];
     $prof = sl_profil($pule, $budynek);
@@ -749,7 +769,8 @@ function sl_plan(PDO $db, array $s, array $pule, ?array $budynek, int $poziom): 
         $zgodny = $wzor && (SLEDZTWO_RODZAJ_PRESET[$m['rodzaj_kod']] ?? '') === $prof['kod'];
         $pokoj = ['nr' => (string) $m['pokoj'], 'lokal' => $zgodny ? $wzor['lokal'] : $m['rodzaj_kod'],
             'rodzaj' => $zgodny ? $wzor['nazwa'] : ($pule['rodzaje'][$m['rodzaj_kod']]['nazwa'] ?? $m['rodzaj_kod']),
-            'rodzaj_kod' => $m['rodzaj_kod'], 'dostep' => $zgodny ? $wzor['dostep'] : 'wolny', 'zamkniete' => (bool) $m['zamkniete'],
+            'rodzaj_kod' => $m['rodzaj_kod'], 'dostep' => $zgodny && (int) $m['faza_nr'] !== 2 ? $wzor['dostep'] : 'wolny',
+            'zamkniete' => (int) $m['faza_nr'] !== 2 && (bool) $m['zamkniete'],
             'szer' => $zgodny ? max(1, (int) $wzor['szer']) : 1, 'terminal' => $zgodny && (int) $wzor['terminal_proc'] >= 50,
             'ludzie_max' => 0, 'opis_szumu' => $zgodny ? $wzor['opis'] : (string) ($pule['rodzaje'][$m['rodzaj_kod']]['opis_szumu'] ?? ''),
             'miejsce_id' => (int) $m['id'], 'nazwa' => $m['nazwa'], 'opis' => $m['opis']];
@@ -1158,6 +1179,7 @@ function sl_skan_przedmioty(PDO $db, array $s, array $d): array
 {
     try {
         sl_przedmioty_zapewnij($db, $s);
+        sl_teczka_zapewnij($db, $s);
         return ['przedmioty' => sl_przedmioty_tutaj($db, $s, $d), 'ekwipunek' => sl_ekwipunek($db, $s), 'przedmioty_dostepne' => true];
     } catch (PDOException $e) {
         return ['przedmioty' => [], 'ekwipunek' => [], 'przedmioty_dostepne' => false];
@@ -1314,6 +1336,116 @@ function sl_przedmioty_zapewnij(PDO $db, array $s): void
         $wstaw->execute([(int) $s['id'], (int) $p['m']['id'], $p['m']['lokalizacja_id'], (int) $p['m']['poziom'], (string) $p['m']['pokoj'],
             (int) $p['wl'], $p['rodzaj'], mb_substr($p['nazwa'], 0, 160), $p['opis'], $p['przenosny'], $p['ukryty'], $p['zab'], $p['pliki']]);
     }
+}
+
+// Miejsce startowe (faza 2) i VIP — kluczowa postać, która w nim czeka i wprowadza w sprawę.
+function sl_start(PDO $db, array $s): array
+{
+    $q = $db->prepare('SELECT * FROM sledztwo_miejsca WHERE sledztwo_id = ? AND faza_nr = 2 ORDER BY id LIMIT 1');
+    $q->execute([(int) $s['id']]);
+    $m = $q->fetch() ?: null;
+    $vip = null;
+    if ($m) {
+        $q = $db->prepare("SELECT * FROM sledztwo_postacie WHERE sledztwo_id = ? AND miejsce_id = ? AND waga = 'kluczowy' ORDER BY kod = 'V' DESC, id LIMIT 1");
+        $q->execute([(int) $s['id'], (int) $m['id']]);
+        $vip = $q->fetch() ?: null;
+    }
+    return [$m, $vip];
+}
+
+// Opis wyglądu i charakteru z karty EotE (do akt osobowych i profilu psychologicznego).
+function sl_profil_postaci(array $p, array $pule): array
+{
+    $k = json_decode((string) $p['karta_eote'], true) ?: [];
+    $c = $k['cechy'] ?? [];
+    $cechy = [];
+    if (($c['krzepa'] ?? 2) >= 3) $cechy[] = 'silny fizycznie';
+    if (($c['krzepa'] ?? 2) <= 1) $cechy[] = 'wątłej budowy';
+    if (($c['zwinnosc'] ?? 2) >= 3) $cechy[] = 'zręczny, szybki';
+    if (($c['intelekt'] ?? 2) >= 3) $cechy[] = 'bystry, wykształcony';
+    if (($c['spryt'] ?? 2) >= 3) $cechy[] = 'cwany, dobrze zna ulicę';
+    if (($c['wola'] ?? 2) >= 3) $cechy[] = 'uparty, trudno go złamać';
+    if (($c['wola'] ?? 2) <= 1) $cechy[] = 'łatwo ulega presji';
+    if (($c['prezencja'] ?? 2) >= 3) $cechy[] = 'charyzmatyczny, łatwo zjednuje ludzi';
+    if (($c['prezencja'] ?? 2) <= 1) $cechy[] = 'zamknięty w sobie';
+    $ch = ['cecha' => '', 'nawyk' => '', 'mowa' => ''];
+    foreach (explode(';', (string) $p['charakter']) as $x) {
+        [$a, $b] = array_pad(array_map('trim', explode(':', $x, 2)), 2, '');
+        if (isset($ch[$a])) $ch[$a] = $b;
+    }
+    $um = array_keys((array) ($k['umiejetnosci'] ?? []));
+    return ['cechy' => $cechy, 'ch' => $ch, 'umiejetnosci' => $um,
+        'archetyp' => $pule['archetypy'][$p['archetyp_kod']]['nazwa'] ?? 'nieustalone',
+        'gatunek' => $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'],
+        'pelne' => trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '')) . ($p['przydomek'] ? " „{$p['przydomek']}”" : '')];
+}
+
+// Teczka sprawy od biura — w ekwipunku droida od startu: zgłoszenie, akta osobowe, profil psychologiczny,
+// znane powiązania, zalecenia. Tylko wersja zgłoszona (przy sprawie ukrytej — zasłona, nie prawda).
+function sl_teczka_zapewnij(PDO $db, array $s): void
+{
+    $q = $db->prepare("SELECT 1 FROM sledztwo_przedmioty WHERE sledztwo_id = ? AND rodzaj = 'dokument' AND nazwa LIKE 'Teczka sprawy%' LIMIT 1");
+    $q->execute([(int) $s['id']]);
+    if ($q->fetchColumn()) return;
+    $pule = sl_pule($db);
+    $q = $db->prepare('SELECT * FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IS NOT NULL');
+    $q->execute([(int) $s['id']]);
+    $os = [];
+    foreach ($q->fetchAll() as $p) $os[$p['kod']] = $p;
+    if (!isset($os['A'])) return;
+    [$start, $vip] = sl_start($db, $s);
+    $q = $db->prepare('SELECT COALESCE(zg.nazwa, z.nazwa) AS zgloszone, r.nazwa AS relacja, r.rola_a, r.rola_b, l.nazwa AS skupisko
+        FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id
+        JOIN sledztwo_relacje r ON r.id = s.relacja_id LEFT JOIN lokalizacje l ON l.id = s.skupisko_id WHERE s.id = ?');
+    $q->execute([(int) $s['id']]);
+    $sp = $q->fetch();
+    $q = $db->prepare('SELECT w.szkic FROM sledztwo_fazy f JOIN sledztwo_warianty w ON w.faza_nr = f.faza_nr AND w.nr = f.wariant_nr
+        WHERE f.sledztwo_id = ? AND f.faza_nr = 2');
+    $q->execute([(int) $s['id']]);
+    $szkic2 = (string) $q->fetchColumn();
+    $q = $db->prepare('SELECT faza_nr, nazwa, poziom, pokoj FROM sledztwo_miejsca WHERE sledztwo_id = ? ORDER BY id');
+    $q->execute([(int) $s['id']]);
+    $mf = [];
+    foreach ($q->fetchAll() as $m) $mf[(int) $m['faza_nr']] ??= $m;
+    $q = $db->prepare('SELECT tagi FROM sledztwo_fazy WHERE sledztwo_id = ? ORDER BY pozycja DESC LIMIT 1');
+    $q->execute([(int) $s['id']]);
+    $tagi = sl_tagi((string) $q->fetchColumn());
+
+    $A = $os['A'];
+    $pa = sl_profil_postaci($A, $pule);
+    $gdzie = fn(?array $m) => $m ? "{$m['nazwa']}, poziom {$m['poziom']}, lokal {$m['pokoj']}" : 'nieustalone';
+    $pv = $vip ? sl_profil_postaci($vip, $pule) : null;
+    $zgl = "Sprawa #{$s['id']} — {$sp['zgloszone']}.\nDotyczy: {$pa['pelne']} ({$sp['rola_a']}).\n"
+        . ($vip ? "Zgłaszający: {$pv['pelne']}, {$pv['gatunek']}, {$pv['archetyp']}.\nCzeka na droida: {$gdzie($start)}.\n" : "Zgłoszenie anonimowe.\n")
+        . "\nTreść zgłoszenia (wg zgłaszającego):\n" . ($szkic2 ? sl_szkic_czytelny($szkic2, array_values($os), $start['nazwa'] ?? null) : '—');
+    $akta = "Imię i nazwisko: {$pa['pelne']}\nGatunek: {$pa['gatunek']}\nPłeć: " . (['m' => 'mężczyzna', 'k' => 'kobieta', 'n' => '—'][$A['plec']] ?? '—')
+        . "\nWiek: " . ($A['wiek'] ?? 'nieznany') . "\nZajęcie: {$pa['archetyp']}\nRejon: " . ($sp['skupisko'] ?? 'Nar Shaddaa')
+        . "\nOstatnio widziany: {$gdzie($mf[1] ?? $mf[3] ?? null)}\nPrzy sobie zwykle: " . ($A['ekwipunek'] ?: 'nieustalone')
+        . "\nZnaki szczególne: " . ($pa['ch']['nawyk'] ?: 'brak w aktach')
+        . "\nSytuacja finansowa: " . (in_array('dlug', $tagi, true) ? 'zła — zaległości w spłatach' : 'bez zastrzeżeń w rejestrach')
+        . "\nKartoteka: " . (in_array('wladze', $tagi, true) ? 'wpis w rejestrze straży portowej' : 'czysta');
+    $profil = "Ocena wstępna (na podstawie akt i relacji otoczenia — nie jest pewnikiem):\n"
+        . '- ' . ($pa['ch']['cecha'] ?: 'brak wyraźnych cech') . "\n"
+        . ($pa['cechy'] ? '- ' . implode("\n- ", $pa['cechy']) . "\n" : '')
+        . '- sposób mówienia: ' . ($pa['ch']['mowa'] ?: 'zwyczajny') . "\n"
+        . '- zawodowo: ' . ($pa['umiejetnosci'] ? implode(', ', array_slice($pa['umiejetnosci'], 0, 4)) : 'brak danych') . "\n"
+        . (in_array('sekret', $tagi, true) ? "- otoczenie twierdzi, że „coś ukrywał w ostatnich tygodniach”\n" : '')
+        . (in_array('konflikt', $tagi, true) ? "- ostatnio skłócony z kimś bliskim\n" : '')
+        . "\nZalecenie: nie zakładać, że jest ofiarą. Nie zakładać, że jest sprawcą.";
+    $pow = [];
+    if (isset($os['B'])) $pow[] = trim($os['B']['imie'] . ' ' . ($os['B']['nazwisko'] ?? '')) . " — {$sp['rola_b']} (relacja: {$sp['relacja']})";
+    if ($vip && !in_array($vip['kod'], ['A', 'B'], true)) $pow[] = "{$pv['pelne']} — zgłaszający";
+    $pow[] = 'pozostałe kontakty — nieustalone';
+    $zal = '1. Rozmowa ze zgłaszającym' . ($vip ? " ({$pv['pelne']})" : '') . " w miejscu zgłoszenia: {$gdzie($start)}.\n"
+        . "2. Ustalić, gdzie i kiedy {$pa['pelne']} był widziany po raz ostatni.\n"
+        . "3. Przedmioty osobiste i stanowisko pracy mogą być zabezpieczone — łamać ostrożnie; terminal publiczny zostawia ślad.\n"
+        . '4. Bez nakazu nie wchodzić do lokali oznaczonych NAKAZ. Wnioski składać przez panel nakazów.';
+    $db->prepare("INSERT INTO sledztwo_przedmioty (sledztwo_id, lokalizacja_id, poziom, pokoj, wlasciciel_id, rodzaj, nazwa, opis, przenosny, ukryty,
+            zabezpieczenie, zawartosc, znaleziony_utc, w_ekwipunku, odblokowany, sposob_odblokowania)
+        VALUES (?, NULL, 0, 'teczka', NULL, 'dokument', ?, ?, 1, 0, 0, ?, ?, 1, 1, 'biuro')")
+        ->execute([(int) $s['id'], "Teczka sprawy #{$s['id']}", 'Teczka od biura: zgłoszenie, akta osobowe, profil psychologiczny, powiązania, zalecenia.',
+            sl_pliki(['Zgłoszenie', $zgl], ["Akta osobowe — {$pa['pelne']}", $akta], ['Profil psychologiczny', $profil],
+                ['Znane powiązania', implode("\n", $pow)], ['Zalecenia biura', $zal]), sl_utc(sl_teraz())]);
 }
 
 // Przedmioty widoczne w lokalu, w którym stoi droid (bez schowanych, których jeszcze nie znalazł; bez zabranych).
@@ -1687,6 +1819,7 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
         'Z' => 'zleceniodawca / mocodawca w tej sprawie',
         'S' => 'ktoś, kto sam szuka w tej sprawie ludzi i rzeczy (łowca, agent albo cichy tropiciel)',
         'W' => 'świadek — widziałeś coś ważnego',
+        'V' => 'osoba, która zgłosiła sprawę biuru i wezwała droida',
         default => 'osoba z otoczenia sprawy',
     };
 
@@ -1705,6 +1838,17 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
     }
     if (!$wiedza) $wiedza[] = "- O samej sprawie nic konkretnego nie wiesz. Słyszałeś tylko plotki, że coś się stało ({$sp['zgloszone']}).";
     if (!$zachowanie) $zachowanie[] = '- Zachowujesz się zgodnie z charakterem; o sprawie mówisz niechętnie, bo cię nie dotyczy.';
+    // VIP (zgłaszający, czeka w miejscu startowym): wprowadza droida w sprawę.
+    [$start, $vip] = sl_start($db, $s);
+    if ($vip && (int) $vip['id'] === (int) $p['id']) {
+        $ost = $miejscaFaz[1] ?? $miejscaFaz[3] ?? null;
+        $wiedza[] = "- ZGŁOSIŁEŚ TĘ SPRAWĘ biuru: {$sp['zgloszone']}. Dotyczy: " . ($imieKodu['A'] ?? 'osoby, którą znasz')
+            . ". Wezwałeś droida tutaj (" . ($start['nazwa'] ?? 'miejsce zgłoszenia') . "). Ostatnio widziałeś tę osobę: " . ($ost ?? 'kilka cykli temu w okolicy')
+            . '. [TO MÓWISZ CHĘTNIE: gdy droid pyta, co się stało, sam streszczasz w 2–4 zdaniach, kogo dotyczy sprawa,'
+            . ' co według ciebie się stało, kiedy i gdzie ostatnio widziałeś tę osobę]';
+        $zachowanie[] = '- Jesteś zgłaszającym: chcesz, żeby droid się tym zajął, i wprowadzasz go w sprawę'
+            . ($kod && $kod === $sp['ukrywa_kod'] ? ' — ale trzymasz się wersji ze zgłoszenia i ukrywasz prawdę.' : '.');
+    }
     if ($sp['wskazowki_autora']) $zachowanie[] = '- Granice treści: ' . $sp['wskazowki_autora'];
 
     $ch = ['cecha' => '', 'nawyk' => '', 'mowa' => ''];
@@ -1729,6 +1873,29 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
         'miejsce' => $miejsce,
         'faza' => ['zachowanie' => implode("\n", $zachowanie)],
     ];
+}
+
+// Odprawa VIP-a bez AI (gdy łącze z modułem językowym nie działa): pierwsza odpowiedź streszcza zgłoszenie.
+function sl_vip_odprawa(PDO $db, array $s, array $postac, int $pytan): ?string
+{
+    [$start, $vip] = sl_start($db, $s);
+    if (!$vip || (int) $vip['id'] !== (int) $postac['id']) return null;
+    if ($pytan > 0) return ['Powiedziałem już wszystko, co wiem. Resztę masz w teczce.', 'Nie wiem więcej, naprawdę. Znajdź go.',
+        'Sprawdź miejsca, o których mówiłem. Ja tu poczekam.'][$pytan % 3];
+    $q = $db->prepare("SELECT p.imie, p.nazwisko, p.plec, COALESCE(zg.nazwa, z.nazwa) AS zgloszone FROM sledztwo_postacie p
+        JOIN sledztwa s ON s.id = p.sledztwo_id JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id
+        LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id WHERE p.sledztwo_id = ? AND p.kod = 'A'");
+    $q->execute([(int) $s['id']]);
+    $a = $q->fetch();
+    if (!$a) return null;
+    $q = $db->prepare('SELECT nazwa, poziom FROM sledztwo_miejsca WHERE sledztwo_id = ? AND faza_nr IN (1, 3) ORDER BY faza_nr LIMIT 1');
+    $q->execute([(int) $s['id']]);
+    $m = $q->fetch();
+    $kto = trim($a['imie'] . ' ' . ($a['nazwisko'] ?? ''));
+    $go = $a['plec'] === 'k' ? 'ją' : 'go';
+    return "Wreszcie. Chodzi o {$kto}. Zgłosiłem to jako: " . mb_strtolower((string) $a['zgloszone']) . '. '
+        . ($m ? "Ostatni raz widziałem {$go} w {$m['nazwa']}, poziom {$m['poziom']}. " : '')
+        . 'Resztę masz w teczce od biura.';
 }
 
 // Jedna tura: (polecenie operatora) → pytanie droida → odpowiedź rozmówcy. Kluczowi NPC — AI; reszta — bez AI.
@@ -1828,7 +1995,13 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
             } catch (AiBlad $e) { $awaria = true; }
         }
         if ($odp === null) {
-            if (!$ai || $awaria) {
+            $odprawa = $postac && (!$ai || $awaria) ? sl_vip_odprawa($db, $s, $postac, $pytan) : null;
+            if ($odprawa !== null) {
+                // VIP bez AI: odprawa zastępcza zamiast zdawkowej kwestii.
+                $nastroj = 'uprzejmy';
+                $odp = $odprawa;
+                sl_wpis($db, $rid, 'npc', $odp);
+            } elseif (!$ai || $awaria) {
                 // Bez AI: zdawkowa kwestia; przechodzień po kilku pytaniach odchodzi.
                 // Domyślnie neutralni; zniecierpliwienie rośnie z liczbą pytań.
                 if ($pytan === 0) {
@@ -1871,7 +2044,7 @@ function sl_rozmowy_dostepne(PDO $db): void
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
     $akcje = ['sledztwo_moje', 'sledztwo_skan', 'sledztwo_idz', 'sledztwo_rozmowa', 'sledztwo_rozmowa_start', 'sledztwo_rozmowa_tura',
-        'sledztwo_rozmowa_koniec', 'sledztwo_przeszukaj', 'sledztwo_zabierz', 'sledztwo_zlam', 'sledztwo_komputer', 'sledztwo_dekoduj', 'sledztwo_straz', 'sledztwo_nakaz_wniosek', 'mg_sledztwo_nakazy', 'mg_sledztwo_nakaz_decyzja', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
+        'sledztwo_rozmowa_koniec', 'sledztwo_porzuc', 'sledztwo_przeszukaj', 'sledztwo_zabierz', 'sledztwo_zlam', 'sledztwo_komputer', 'sledztwo_dekoduj', 'sledztwo_straz', 'sledztwo_nakaz_wniosek', 'mg_sledztwo_nakazy', 'mg_sledztwo_nakaz_decyzja', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -1980,6 +2153,22 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
                 odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''))]);
+
+            // Porzucenie: sprawa trafia do MG (stan porzucone), typ zostaje zajęty; detektyw może przyjąć nową.
+            // Powrót — po uzasadnieniu i decyzji MG (PROJEKT.md, rozdz. 1).
+            case 'sledztwo_porzuc':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                $powod = trim(mb_substr((string) (wejscie()['uzasadnienie'] ?? ''), 0, 1000));
+                try {
+                    $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+                    if ($r) sl_rozmowa_zakoncz($db, $r, 'Sprawa porzucona.');
+                } catch (PDOException $e) { /* brak migracji 085 */ }
+                $db->prepare("UPDATE sledztwa SET stan = 'porzucone', zakonczono_utc = ? WHERE id = ?")->execute([sl_utc(sl_teraz()), (int) $s['id']]);
+                sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', 'Sprawa porzucona.' . ($powod !== '' ? " Powód: {$powod}" : ''));
+                odpowiedz(['ok' => true]);
 
             // Przedmioty i komputery (migracja 087): przeszukanie lokalu (Percepcja), zabranie, łamanie (Komputery),
             // ekran komputera ({przedmiot_id} albo {terminal: 'T1'}), dekodowanie na terminalu publicznym (zostawia ślad).

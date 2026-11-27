@@ -300,7 +300,18 @@ export default {
         x.zaczyn ? h('div', { style: 'white-space:pre-wrap;margin-top:10px' }, x.zaczyn)
           : h('p.maly-tekst', 'Akta wstępne (zlecenie, tło, ludzie, od czego zacząć) pojawią się tutaj, gdy biuro je skompletuje.')) : null,
         (moje?.archiwum || []).length ? panel('ARCHIWUM', h('table.tabela', h('tr', h('th', '#'), h('th', 'Sprawa'), h('th', 'Stan')),
-          moje.archiwum.map((a) => h('tr', h('td', a.id), h('td', a.tytul || a.zgloszenie), h('td', STAN[a.stan] || a.stan))))) : null);
+          moje.archiwum.map((a) => h('tr', h('td', a.id), h('td', a.tytul || a.zgloszenie), h('td', STAN[a.stan] || a.stan))))) : null,
+        x ? panel('PORZUCENIE', h('p.maly-tekst', 'Porzucona sprawa trafia do MG, a ten rodzaj sprawy zostaje zajęty. Możesz od razu przyjąć nową. '
+          + 'Powrót do porzuconej — po uzasadnieniu i decyzji MG.'),
+        przycisk('Porzuć sprawę', async () => {
+          if (!window.confirm(`Porzucić sprawę #${x.id}? Tego nie da się cofnąć bez decyzji MG.`)) return;
+          const uzasadnienie = window.prompt('Powód porzucenia (opcjonalnie, dla MG):', '') ?? '';
+          try {
+            await api('sledztwo_porzuc', { uzasadnienie });
+            zakladka = 'skan'; rozmowa = null; wyczysc(rozmowaBox);
+            await odswiez();
+          } catch (e) { pokaz(blad(e)); }
+        }, '.zly.maly')) : null);
     }
 
     function zakladkaDziennik() {
@@ -506,7 +517,8 @@ export default {
     function biuro() {
       const nowa = przycisk('Przyjmij nową sprawę', async () => {
         nowa.disabled = true;
-        try { await api('sledztwo_nowe', {}); await odswiez(); }
+        // Nowa sprawa: od razu otwarty ekwipunek z teczką od biura (zgłoszenie, akta osobowe, profil psychologiczny).
+        try { await api('sledztwo_nowe', {}); zakladka = 'ekwipunek'; await odswiez(); }
         catch (e) { pokaz(blad(e)); nowa.disabled = false; }
       }, '');
       return h('div', { style: 'position:absolute;inset:0;overflow:auto;padding:24px' },

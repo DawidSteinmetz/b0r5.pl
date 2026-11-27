@@ -127,6 +127,18 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 - Generator kładzie miejsca fabuły w budynkach o zgodnym presecie (kantyna w kantynie, hangar w hangarze), na ich
   piętrach, z wagami fabularnymi (lokale publiczne; mieszkania rzadko — głównie jako kryjówki).
 
+### Zawiązanie akcji: start z zaczepieniem (decyzja autora, 27.11)
+
+- Każda sprawa ma miejsce startowe = miejsce fazy 2 (zgłoszenie); gdy wariant nie ma `{M}`, generator i tak je tworzy.
+  Lokal startowy jest zawsze otwarty (bez zamka, nakazu i strażnika). Droid zaczyna **w** tym lokalu.
+- W miejscu startowym czeka **VIP — zgłaszający**: postać wskazana w szkicu fazy 2 ({B}, {Z}, {W}, {S}, {A}),
+  a gdy jej nie ma — nowa kluczowa postać o kodzie `V`. VIP mówi przez AI z dodatkową wiedzą: zgłosił sprawę,
+  na pytanie „co się stało” sam ją streszcza (kogo dotyczy, co według niego zaszło, gdzie ostatnio widział A);
+  przy sprawie ukrytej, jeśli to on ukrywa prawdę, trzyma się wersji zgłoszenia. Bez AI — odprawa zastępcza.
+- **Teczka sprawy** od biura w ekwipunku od startu (także dla starszych spraw): zgłoszenie (wersja zgłoszona,
+  nie prawda), akta osobowe A, profil psychologiczny (z karty EotE i charakteru), znane powiązania, zalecenia.
+- Porzucenie sprawy (`sledztwo_porzuc`): stan `porzucone`, typ zajęty, można przyjąć nową.
+
 ### Przedmioty, komputery i terminale (migracja 087)
 
 - Na start sprawy w jej miejscach leżą przedmioty (`sledztwo_przedmioty`, tworzone raz, także dla starszych spraw):

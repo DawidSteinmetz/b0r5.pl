@@ -5,7 +5,7 @@
 // Projekt: narzedzia/sledztwa/PROJEKT.md. API: api/sledztwa.php. Gracz nigdy nie dostaje prawdy o sprawie ani
 // informacji, który lokal jest fabularny.
 
-import { h, wyczysc } from '../rdzen/narzedzia.js';
+import { h, wyczysc, czasGry } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
 
 const STAN = {
@@ -24,8 +24,10 @@ const STREFA = { parter: 'parter', pietro: 'piętro', gora: 'najwyższe piętro'
 const RODZAJ_P = { datapad: 'datapad', stanowisko: 'stanowisko pracy', terminal: 'terminal', kostka: 'kostka danych', dokument: 'dokument', osobisty: 'przedmiot osobisty' };
 const PODEJSCIA = [['oszustwo', 'Blef (Oszustwo)'], ['urok', 'Urok'], ['zastraszanie', 'Zastraszanie']];
 
-const data = (t) => (t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '');
-const godz = (t) => (t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '');
+// Daty zawsze w formacie gry: DD|MM|RR GG:MM (rok gry = rok realny − 2010) — czasGry() z gry głównej.
+const zUtc = (t) => new Date(String(t).replace(' ', 'T') + 'Z');
+const data = (t) => (t ? czasGry(zUtc(t)) : '');
+const godz = (t) => (t ? zUtc(t).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '');
 const czas = (s) => { s = Math.max(0, Math.round(s)); const g = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return g ? `${g} h ${m} min` : m ? `${m} min ${String(r).padStart(2, '0')} s` : `${r} s`; };
 const lokalTxt = (p) => (p === 'korytarz' ? 'korytarz' : `lokal ${p}`);
@@ -365,7 +367,7 @@ export default {
         ekran.append(h('div', { style: 'flex:1;display:grid;place-items:center;text-align:center;padding:20px' }, h('div',
           h('div', { style: 'font-size:22px;letter-spacing:4px;margin-bottom:10px' }, 'NOŚNIK ZABEZPIECZONY'),
           h('div', `Poziom zabezpieczenia: ${k.zabezpieczenie} · ${k.opis || ''}`),
-          doBlokady && doBlokady > new Date() ? h('div', { style: 'color:var(--zly);margin-top:6px' }, `Tryb blokady do ${doBlokady.toLocaleTimeString('pl-PL')}.`) : null,
+          doBlokady && doBlokady > new Date() ? h('div', { style: 'color:var(--zly);margin-top:6px' }, `Tryb blokady do ${czasGry(doBlokady)}.`) : null,
           h('div', { style: 'margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap' },
             przycisk('Złam zabezpieczenie (Intelekt + Komputery)', async () => {
               const r = await zawolaj('sledztwo_zlam', { przedmiot_id: k.przedmiot_id }, (x) => `${x.udana ? 'Zabezpieczenie złamane.' : 'Nie udało się.'} ${x.opis}`);

@@ -490,10 +490,10 @@ function sledztwo_zapisz(PDO $db, array $plan): int
     $db->beginTransaction();
     try {
         $db->prepare('INSERT INTO sledztwa (konto_login, zdarzenie_id, relacja_id, zdarzenie_zgloszone_id, ukrywa_kod, seed, stan,
-            kolejnosc, tytul, planeta_id, skupisko_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            kolejnosc, tytul, planeta_id, skupisko_id, utworzono_utc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$plan['konto_login'], $plan['zdarzenie_id'], $plan['relacja_id'], $plan['zdarzenie_zgloszone_id'],
                 $plan['ukrywa_kod'], $plan['seed'], 'losowanie', $plan['kolejnosc'], $plan['tytul'], $plan['planeta_id'],
-                $plan['skupisko']['id'] ?? null]);
+                $plan['skupisko']['id'] ?? null, sl_utc(sl_teraz())]);
         $id = (int) $db->lastInsertId();
 
         $q = $db->prepare('INSERT INTO sledztwo_fazy (sledztwo_id, faza_nr, pozycja, wariant_nr, jawnosc, tagi) VALUES (?, ?, ?, ?, ?, ?)');
@@ -542,12 +542,12 @@ function sledztwo_zapisz(PDO $db, array $plan): int
         foreach ($plan['miejsca'] as $m) if ($m['faza_nr'] === 2) { $start = $m; break; }
         $db->prepare('INSERT INTO sledztwo_droid (sledztwo_id, lokalizacja_id, poziom, pokoj) VALUES (?, ?, ?, ?)')
             ->execute([$id, $start['lokalizacja_id'], $start['poziom'], $start['pokoj']]);
-        $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, rodzaj, kto, tresc) VALUES (?, 'meldunek', 'droid', ?)")
-            ->execute([$id, "Jestem na miejscu zgłoszenia: {$start['nazwa']}, poziom {$start['poziom']}, lokal {$start['pokoj']}. "
+        $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, 'meldunek', 'droid', ?)")
+            ->execute([$id, sl_utc(sl_teraz()), "Jestem na miejscu zgłoszenia: {$start['nazwa']}, poziom {$start['poziom']}, lokal {$start['pokoj']}. "
                 . 'Zgłaszający czeka tutaj. Teczka sprawy jest w ekwipunku.']);
 
-        $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, rodzaj, kto, tresc) VALUES (?, 'system', 'system', ?)")
-            ->execute([$id, "Szkielet wylosowany (seed {$plan['seed']}). Czeka na treść od modelu Autor."]);
+        $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, 'system', 'system', ?)")
+            ->execute([$id, sl_utc(sl_teraz()), "Szkielet wylosowany (seed {$plan['seed']}). Czeka na treść od modelu Autor."]);
         $db->prepare("UPDATE sledztwa SET stan = 'pisanie' WHERE id = ?")->execute([$id]);
         $db->commit();
         return $id;
@@ -646,6 +646,11 @@ const SLEDZTWO_STANY_RUCHU = ['pisanie', 'trwa'];
 function sl_teraz(): int { return time(); }
 function sl_utc(int $t): string { return gmdate('Y-m-d H:i:s', $t); }
 function sl_z_utc(?string $s): ?int { return $s ? (int) strtotime($s . ' UTC') : null; }
+// Data gry jak czasGry() w js/rdzen/narzedzia.js: DD|MM|RR GG:MM, rok gry = rok realny − 2010, czas polski.
+function sl_data_gry(int $t, bool $godz = true): string
+{
+    return date('d|m|', $t) . sprintf('%02d', (int) date('Y', $t) - 2010) . ($godz ? date(' H:i', $t) : '');
+}
 
 // Deterministyczne losowanie dla miejsc i ludzi (ten sam klucz = ten sam wynik).
 function sl_ziarno(int $seed, string ...$czesci): void
@@ -1024,7 +1029,8 @@ function sl_czas_drogi(array $budynki, array $z, array $do): int
 
 function sl_dziennik(PDO $db, int $id, string $rodzaj, string $kto, string $tresc): void
 {
-    $db->prepare('INSERT INTO sledztwo_dziennik (sledztwo_id, rodzaj, kto, tresc) VALUES (?, ?, ?, ?)')->execute([$id, $rodzaj, $kto, $tresc]);
+    $db->prepare('INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$id, sl_utc(sl_teraz()), $rodzaj, $kto, $tresc]);
 }
 
 // Rozlicza dotarcie droida (wywoływane przy każdym odczycie; bez crona). Zwraca wiersz droida po rozliczeniu.
@@ -1276,7 +1282,10 @@ function sl_przedmioty_zapewnij(PDO $db, array $s): void
     sl_ziarno((int) $s['seed'], 'przedmioty');
     $imie = fn(?array $p) => $p ? trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '')) : '';
     $ksywa = fn(?array $p) => $p ? ($p['przydomek'] ?: $p['imie']) : '';
-    $temu = fn(int $faza) => max(1, 13 - ($poz[$faza] ?? 6)) . ' cykli temu';
+    $baza = sl_z_utc($s['utworzono_utc'] ?? null) ?? sl_teraz();
+    $dni = fn(int $faza) => max(1, 13 - ($poz[$faza] ?? 6));
+    $kiedy = fn(int $d) => sl_data_gry($baza - $d * 86400 - sl_los(1800, 60000));
+    $dzien = fn(int $d) => sl_data_gry($baza - $d * 86400, false);
     $godz = fn() => sprintf('%02d:%02d', sl_los(0, 23), sl_los(0, 59));
     $gdzie = fn(array $m) => "{$m['nazwa']}, poziom {$m['poziom']}, lokal {$m['pokoj']}";
     $A = $os['A']; $B = $os['B'] ?? null; $Z = $os['Z'] ?? null; $S = $os['S'] ?? null;
@@ -1289,15 +1298,15 @@ function sl_przedmioty_zapewnij(PDO $db, array $s): void
 
     // 1. Zabezpieczony datapad zaginionego — schowany (trzeba przeszukać lokal).
     $kal = [];
-    foreach ([1, 3, 5, 7] as $f) if (isset($mf[$f])) $kal[] = "[{$temu($f)}] " . ($f === 7 ? 'Rezerwacja: ' : 'Spotkanie: ') . $gdzie($mf[$f]);
+    foreach ([1, 3, 5, 7] as $f) if (isset($mf[$f])) $kal[] = '[' . $kiedy($dni($f)) . '] ' . ($f === 7 ? 'Rezerwacja: ' : 'Spotkanie: ') . $gdzie($mf[$f]);
     $wiad = [];
-    if ($B) $wiad[] = "[{$temu(3)}, {$godz()}] {$ksywa($B)}: Musimy porozmawiać o tym, co ustaliliśmy. Nie przez holonet.";
-    if ($Z) $wiad[] = "[{$temu(4)}, {$godz()}] nadawca zastrzeżony: Termin się zbliża. Pamiętaj, kto ci zapłacił.";
-    if (in_array('dlug', $tagi, true)) $wiad[] = "[{$temu(5)}, {$godz()}] Kantor: Rata przeterminowana. Odsetki naliczane od cyklu {$temu(5)}.";
-    if ($S) $wiad[] = "[1 cykl temu, {$godz()}] nieznany: Ktoś o ciebie pytał. Nie stąd. Uważaj.";
-    $wiad[] = "[1 cykl temu, {$godz()}] {$imie($A)} (szkic, niewysłane): Jeśli to czytasz, to znaczy, że mnie nie ma.";
+    if ($B) $wiad[] = '[' . $kiedy($dni(3)) . "] {$ksywa($B)}: Musimy porozmawiać o tym, co ustaliliśmy. Nie przez holonet.";
+    if ($Z) $wiad[] = '[' . $kiedy($dni(4)) . '] nadawca zastrzeżony: Termin się zbliża. Pamiętaj, kto ci zapłacił.';
+    if (in_array('dlug', $tagi, true)) $wiad[] = '[' . $kiedy(max(1, $dni(5) - 1)) . '] Kantor: Rata przeterminowana. Odsetki naliczane od ' . $dzien($dni(5)) . '.';
+    if ($S) $wiad[] = '[' . $kiedy(1) . '] nieznany: Ktoś o ciebie pytał. Nie stąd. Uważaj.';
+    $wiad[] = '[' . $kiedy(1) . "] {$imie($A)} (szkic, niewysłane): Jeśli to czytasz, to znaczy, że mnie nie ma.";
     $kontakty = array_filter([$B ? "{$imie($B)} — {$sp['rola_b']}" : '', $Z ? "{$ksywa($Z)} — interesy, nie dzwonić po zmroku" : '',
-        $S ? 'numer bez nazwy (zapisany 2 cykle temu)' : '']);
+        $S ? 'numer bez nazwy (zapisany ' . $dzien(2) . ')' : '']);
     $przed[] = ['m' => $kryj, 'wl' => $A['id'], 'rodzaj' => 'datapad', 'nazwa' => "Datapad osobisty — {$imie($A)}",
         'opis' => 'Porysowany datapad z blokadą biometryczną; ostatnio używany przez zaginionego.', 'przenosny' => 1, 'ukryty' => 1, 'zab' => 3,
         'pliki' => sl_pliki(['Wiadomości', implode("\n", $wiad)], ['Kalendarz', implode("\n", $kal)], ['Kontakty', implode("\n", $kontakty)],
@@ -1307,8 +1316,8 @@ function sl_przedmioty_zapewnij(PDO $db, array $s): void
     $ostatni = isset($mf[3]) ? "trasa: {$gdzie($mf[3])}" : 'trasa: (plik uszkodzony)';
     $przed[] = ['m' => $praca, 'wl' => $A['id'], 'rodzaj' => 'stanowisko', 'nazwa' => "Stanowisko pracy — {$imie($A)}",
         'opis' => 'Terminal z otwartą, przerwaną sesją. Na blacie kubek z zaschniętą kafą.', 'przenosny' => 0, 'ukryty' => 0, 'zab' => 2,
-        'pliki' => sl_pliki(['Dziennik logowań', "Ostatnie logowanie: {$temu(3)}, {$godz()}.\nWylogowanie: brak — sesja przerwana."],
-            ['Poczta służbowa', "Od: {$imie($A)}\nDo: przełożony\nTemat: wolne\nBiorę kilka cykli wolnego. Sprawy rodzinne. Wrócę.\n\nOd: przełożony\nDo: {$imie($A)}\nTemat: RE: wolne\nGdzie jesteś? Nikt cię nie widział od {$temu(3)}."],
+        'pliki' => sl_pliki(['Dziennik logowań', 'Ostatnie logowanie: ' . $kiedy($dni(3)) . ".\nWylogowanie: brak — sesja przerwana."],
+            ['Poczta służbowa', "Od: {$imie($A)}\nDo: przełożony\nTemat: wolne\nBiorę kilka cykli wolnego. Sprawy rodzinne. Wrócę.\n\nOd: przełożony\nDo: {$imie($A)}\nTemat: RE: wolne\nGdzie jesteś? Nikt cię nie widział od " . $dzien($dni(3)) . '.'],
             ['Ostatnie pliki', "rachunek_{$kwota}kr.dat\n{$ostatni}\nzdjecie_" . sl_los(100, 999) . '.holo'])];
 
     // 3. Kostka danych (gdy sprawa ma tag „dane”) — mocno zabezpieczona, schowana.

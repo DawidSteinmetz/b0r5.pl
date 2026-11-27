@@ -62,6 +62,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
 - Nazwy po polsku, bez polskich znaków w identyfikatorach. Komentarze po polsku.
 - Karta EotE: format jak `osoby_karta_eote.dane` / `nowaKarta()` w `js/rdzen/eote.js`.
 - Lokacje: tabela `lokalizacje` (Nar Shaddaa z migracji 030). Konta: login z JSON-a (tylko odczyt).
+- **Daty zawsze w formacie gry: `DD|MM|RR GG:MM`, rok gry = rok realny − 2010** (np. 27|11|16 21:34). W JS
+  `czasGry()` / `dataKrotka()` / `dataGry()` z `js/rdzen/narzedzia.js` (pełny kalendarz gry, dni „H”); w PHP
+  `sl_data_gry()` w `api/sledztwa.php`. W bazie czas w UTC wpisywany jawnie z PHP (`sl_utc(sl_teraz())`), nie przez
+  `DEFAULT CURRENT_TIMESTAMP` (strefa serwera MySQL przesuwałaby godziny).
 
 ## Następne kroki
 

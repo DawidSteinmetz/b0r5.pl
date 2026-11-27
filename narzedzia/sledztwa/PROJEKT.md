@@ -96,6 +96,6 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 ## 6. Do ustalenia
 
 - Pełne listy 12 zdarzeń i 12 relacji (w migracji robocze).
-- 12 wariantów każdej fazy z tagami (`sledztwo_warianty` — pusta).
+- 12 wariantów każdej fazy z tagami — pierwsza wersja w migracji 084 (do poprawek autora; kontrola: `narzedzia/sledztwa/sprawdz_warianty.pl`).
 - Rozbudowa pul: imiona i nazwiska (dziesiątki na gatunek), archetypy, przedmioty, kwestie.
 - Dostawca i model AI.

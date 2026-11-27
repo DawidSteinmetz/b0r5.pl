@@ -114,27 +114,33 @@ export default {
       // Pokoje: klik = rozkaz wejścia (ten sam budynek i poziom).
       for (const p of plan.pokoje) {
         const y = yPokoju(p.strona);
+        const w = (p.szer || 1) * P;
+        const sx = p.x + w / 2;
         const tu = !wDrodze && droid.pokoj === p.nr;
         const cel = wDrodze && droid.cel && droid.cel.pokoj === p.nr && droid.cel.poziom === plan.poziom && droid.cel.budynek_id === plan.budynek_id;
+        const wstep = p.zamkniete ? ' · zamknięty' : p.dostep === 'nakaz' ? ' · tylko z nakazem' : p.dostep === 'straz' ? ' · strzeżony' : '';
+        const ramka = p.zamkniete ? 'var(--zly)' : p.dostep === 'nakaz' ? 'var(--zly)' : p.dostep === 'straz' ? 'var(--akcent-2)' : 'currentColor';
         const g = s('g', { style: 'cursor:pointer', onclick: () => idz(plan.budynek_id, plan.poziom, p.nr) },
-          s('title', {}, `Lokal ${p.nr} · ${p.rodzaj}${p.zamkniete ? ' · zamknięty' : ''} — kliknij, by tam wysłać droida`),
-          s('rect', { x: p.x + 1, y: y + 1, width: P - 2, height: GLEB - 2, fill: tu || cel ? 'currentColor' : 'transparent',
-            'fill-opacity': tu ? 0.16 : 0.08, stroke: 'currentColor', 'stroke-opacity': p.zamkniete ? 0.35 : 0.8,
+          s('title', {}, `Lokal ${p.nr} · ${p.rodzaj}${wstep} — kliknij, by tam wysłać droida`),
+          s('rect', { x: p.x + 1, y: y + 1, width: w - 2, height: GLEB - 2, fill: tu || cel ? 'currentColor' : 'transparent',
+            'fill-opacity': tu ? 0.16 : 0.08, stroke: ramka, 'stroke-opacity': p.zamkniete ? 0.5 : 0.8,
             'stroke-dasharray': cel ? '3 2' : null }),
           s('text', { x: p.x + 5, y: y + 12, 'font-size': 9, fill: 'currentColor' }, p.nr),
-          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.65 }, p.rodzaj.slice(0, 14)),
+          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.65 }, p.rodzaj.slice(0, 14 * (p.szer || 1))),
+          p.dostep !== 'wolny' ? s('text', { x: p.x + w - 6, y: y + GLEB - 6, 'text-anchor': 'end', 'font-size': 7, fill: ramka },
+            p.dostep === 'nakaz' ? 'NAKAZ' : 'STRAŻ') : null,
           // Drzwi od strony korytarza z numerem.
-          s('line', { x1: p.x + 22, y1: p.strona === 'gora' ? GLEB : GLEB + KOR, x2: p.x + 38, y2: p.strona === 'gora' ? GLEB : GLEB + KOR,
+          s('line', { x1: sx - 8, y1: p.strona === 'gora' ? GLEB : GLEB + KOR, x2: sx + 8, y2: p.strona === 'gora' ? GLEB : GLEB + KOR,
             stroke: p.zamkniete ? 'var(--zly)' : 'var(--tlo)', 'stroke-width': 3 }),
-          s('text', { x: p.x + 30, y: p.strona === 'gora' ? GLEB - 3 : GLEB + KOR + 9, 'text-anchor': 'middle', 'font-size': 6,
+          s('text', { x: sx, y: p.strona === 'gora' ? GLEB - 3 : GLEB + KOR + 9, 'text-anchor': 'middle', 'font-size': 6,
             fill: 'currentColor', 'fill-opacity': 0.6 }, String(p.drzwi)),
-          p.terminal ? s('rect', { x: p.x + P - 14, y: y + 6, width: 9, height: 11, fill: 'none', stroke: 'var(--akcent-2)' }) : null,
-          p.terminal ? s('text', { x: p.x + P - 9.5, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal) : null);
+          p.terminal ? s('rect', { x: p.x + w - 14, y: y + 6, width: 9, height: 11, fill: 'none', stroke: 'var(--akcent-2)' }) : null,
+          p.terminal ? s('text', { x: p.x + w - 9.5, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal) : null);
         svg.append(g);
       }
-      // Kontakty w zasięgu: klik = droid podchodzi na 2–3 m i zaczyna rozmowę.
+      // Kontakty w zasięgu: klik = droid podchodzi na 2–3 m i zaczyna rozmowę. Strażnicy stoją na korytarzu przy drzwiach.
       for (const k of kontakty) {
-        const y = yPokoju(k.strona) + 38;
+        const y = k.strona === 'korytarz' ? (k.przy === 'gora' ? GLEB + 8 : GLEB + KOR - 8) : yPokoju(k.strona) + 38;
         const aktywny = d.rozmowa && d.rozmowa.kontakt === k.token;
         svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); zacznijRozmowe(k.token); } },
           s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad} — kliknij, by droid zaczął rozmowę`),
@@ -176,9 +182,49 @@ export default {
         h('div.slaby', h('b', 'ŁĄCZE › '), lacze));
     }
 
+    // Wstęp: strzeżone lokale w zasięgu (podejścia do strażnika) i nakazy (wniosek do biura, decyzja MG).
+    const PODEJSCIA = [['oszustwo', 'Blef (Oszustwo)'], ['urok', 'Urok'], ['zastraszanie', 'Zastraszanie']];
+    async function przekonaj(pokoj, podejscie) {
+      try {
+        const r = await api('sledztwo_straz', { pokoj, podejscie });
+        wyczysc(komunikat).append(h(`div.komunikat.${r.udana ? 'ok' : 'blad'}`,
+          r.juz ? 'Droid ma już wstęp — wchodzi.' : `${r.udana ? 'Strażnik wpuszcza droida.' : 'Strażnik odmawia.'} ${r.opis}`));
+        await skanuj();
+        odswiez();
+      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+    }
+    async function wniosek(lokalizacja_id, gdzie) {
+      const uzasadnienie = window.prompt(`Wniosek o nakaz: ${gdzie}.\nUzasadnienie dla biura (co najmniej 10 znaków):`);
+      if (!uzasadnienie) return;
+      try {
+        await api('sledztwo_nakaz_wniosek', { lokalizacja_id, uzasadnienie });
+        wyczysc(komunikat).append(h('div.komunikat.ok', 'Wniosek złożony. Decyzja biura pojawi się w dzienniku.'));
+        await skanuj();
+        odswiez();
+      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+    }
+    function wstep(d) {
+      const { plan, droid, zasieg, nakazy = [] } = d;
+      const wZasiegu = (p) => Math.abs(p.x + (p.szer || 1) * P / 2 - droid.x) <= zasieg;
+      const strzezone = droid.stan === 'w_drodze' ? [] : plan.pokoje.filter((p) => p.dostep === 'straz' && !p.zamkniete && wZasiegu(p));
+      const nakazowe = plan.pokoje.filter((p) => p.dostep === 'nakaz');
+      const STAN_N = { wniosek: 'czeka na decyzję', wydany: 'wydany', odrzucony: 'odrzucony' };
+      const tenBudynek = nakazy.find((n) => n.lokalizacja_id === plan.budynek_id && n.stan !== 'odrzucony');
+      return h('div', { style: 'margin:8px 0' },
+        strzezone.map((p) => h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0' },
+          h('span', `Lokal ${p.nr} (${p.rodzaj}) — strzeżony. Przekonaj strażnika:`),
+          ...PODEJSCIA.map(([k, n]) => { const b = h('button.przycisk.drugi.maly', n); b.onclick = () => przekonaj(p.nr, k); return b; }))),
+        nakazowe.length ? h('p.maly-tekst', `Tylko z nakazem: ${nakazowe.map((p) => `${p.nr} (${p.rodzaj})`).join(', ')}.`) : null,
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0' },
+          h('span.maly-tekst', 'Nakazy: ' + (nakazy.length ? nakazy.map((n) => `${n.budynek} — ${STAN_N[n.stan] || n.stan}`).join(' · ') : 'brak') + '.'),
+          plan.budynek_id && !tenBudynek ? (() => { const b = h('button.przycisk.drugi.maly', `Wniosek o nakaz: ${plan.budynek}`);
+            b.onclick = () => wniosek(plan.budynek_id, plan.budynek); return b; })() : null));
+    }
+
     function ekranDT4(d) {
       const { droid, kontakty, plan } = d;
-      const naglowek = `DT-4 · SKAN PRZESTRZENNY · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom}`;
+      const STREFA = { parter: 'parter', pietro: 'piętro', gora: 'najwyższe piętro', techniczny: 'strefa techniczna' };
+      const naglowek = `DT-4 · SKAN PRZESTRZENNY · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom} (${STREFA[plan.strefa] || plan.strefa})`;
       let postep = null;
       if (droid.stan === 'w_drodze') {
         const pasek = h('div', { style: `height:4px;background:var(--akcent);width:${Math.round(droid.postep * 100)}%;transition:width 1s linear` });
@@ -195,10 +241,12 @@ export default {
           h('div', { style: 'height:4px;background:var(--linia);margin-top:4px' }, pasek));
       } else clearInterval(licznik);
       return panel(naglowek,
-        h('p.maly-tekst', `Zasięg ${d.zasieg} j. · stan: ${STAN_DROIDA[droid.stan] || droid.stan} · kontakty w zasięgu: ${kontakty.length}. `
+        h('p.maly-tekst', `${plan.preset_nazwa}: parter na poziomie ${plan.parter}, najwyższe piętro ${plan.gora}. `
+          + `Zasięg ${d.zasieg} j. · stan: ${STAN_DROIDA[droid.stan] || droid.stan} · kontakty w zasięgu: ${kontakty.length}. `
           + 'Kliknij lokal, by wysłać tam droida; inny poziom lub budynek — poniżej.'),
         postep,
         planPietra(d),
+        wstep(d),
         kontakty.length ? h('div.maly-tekst', 'Kontakty (kliknij, by rozmawiać): ', ...kontakty.map((k, i) => h('span',
           i ? ' · ' : null,
           h('a', { href: '#', onclick: (e) => { e.preventDefault(); zacznijRozmowe(k.token); } }, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),

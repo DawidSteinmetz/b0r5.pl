@@ -103,6 +103,30 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
   przypadkowi przechodnie (szum, bez zapisu). Droid widzi kontakty w zasięgu 230 j. (pokój = 60 j. szerokości).
   Kontakt to sylwetka (gatunek, wygląd zawodu) — imienia droid nie zna.
 
+### Presety budynków i wstęp (migracja 086)
+
+- Budynek dostaje preset (`gen_presety_budynkow`) po słowach w nazwie albo po `lokalizacje.rodzaj`: hotel,
+  kantyna, sklep, targ, hangar, lądowisko, kasyno, biurowiec, magazyn, blok mieszkalny; reszta — „budynek”.
+  Preset ustala poziom parteru i liczbę pięter (deterministycznie z ziarna sprawy; poziomy fabuły poszerzają budynek).
+- Plan piętra = lokale presetu dla strefy (`gen_presety_lokali`): parter, piętro, najwyższe piętro; poziomy spoza
+  budynku to strefa techniczna (rozdzielnie, szyby). Kolejność od windy (np. recepcja hotelu zawsze przy windzie,
+  pokoje gości wzdłuż korytarza). Lokale mają szerokość (hala hangaru = 3 pokoje), szansę zamka i terminala,
+  liczbę bywających ludzi i typ bywalców.
+- Wstęp: `wolny` (czasem zamknięte drzwi), `nakaz` (np. hala hangaru, wieża kontroli, kasa kasyna, archiwum) —
+  tylko z nakazem; `straz` (warsztat, płyta lądowiska, biuro ochrony, loża) — z nakazem albo po przekonaniu
+  strażnika. Strażnik stoi na korytarzu przy drzwiach (kontakt; można z nim rozmawiać), ma kartę EotE z archetypu
+  presetu, Intelekt często niski (opis: „wygląda na mało rozgarniętego”).
+- Przekonanie strażnika = test przeciwstawny EotE (pełne kości: zdolność, biegłość, trudność, wyzwanie):
+  blef — Spryt + Oszustwo droida przeciw Intelektowi + Czujności strażnika; Urok przeciw Prezencji + Opanowaniu;
+  Zastraszanie przeciw Sile Woli + Dyscyplinie. Sukces = przepustka na 24 h i droid wchodzi. Porażka: tym samym
+  sposobem dopiero za godzinę, po 2 porażkach w godzinie — koniec rozmów; rozpacz = zakaz wstępu na dobę.
+  Karta droida: `sledztwo_detektywi.droid_karta_eote` albo domyślna (Intelekt 3, Spryt 2, Wola 2, Prezencja 1).
+- Nakaz: detektyw składa wniosek z uzasadnieniem (budynek albo cały kompleks), MG wydaje albo odrzuca w zakładce
+  Konta; decyzja trafia do dziennika detektywa jako meldunek biura.
+- Meldunek po wejściu wygląda tak samo w lokalu fabularnym i w szumie (rodzaj + opis); o fabule świadczą ludzie i ślady.
+- Generator kładzie miejsca fabuły w budynkach o zgodnym presecie (kantyna w kantynie, hangar w hangarze), na ich
+  piętrach, z wagami fabularnymi (lokale publiczne; mieszkania rzadko — głównie jako kryjówki).
+
 ## 4a. Zasady z ustaleń autora (wątek ChatGPT, 27.11) — obowiązują w śledztwach droida
 
 - **Czas 1:1.** Sekunda realna = sekunda w grze; pora dnia z zegara świata (noc na księżycu = noc w grze).

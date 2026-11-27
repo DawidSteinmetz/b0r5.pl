@@ -129,6 +129,16 @@ function sl_pule(PDO $db): array
     $p['rodzaje'] = [];
     foreach ($db->query('SELECT kod, nazwa, poziom_min, poziom_max, waga, opis_szumu FROM gen_rodzaje_miejsc')->fetchAll() as $r) $p['rodzaje'][$r['kod']] = $r;
 
+    try {
+        $p['presety'] = [];
+        foreach ($db->query('SELECT * FROM gen_presety_budynkow')->fetchAll() as $b) $p['presety'][$b['kod']] = $b;
+        $p['lokale'] = [];
+        foreach ($db->query('SELECT * FROM gen_presety_lokali ORDER BY budynek, strefa, kolejnosc')->fetchAll() as $l) $p['lokale'][$l['budynek']][$l['strefa']][] = $l;
+    } catch (PDOException $e) {
+        throw new SledztwoBlad('Brak presetów budynków (migracja 086).');
+    }
+    if (!isset($p['presety']['ogolny'], $p['presety']['techniczny'])) throw new SledztwoBlad('Brak presetów budynków (migracja 086).');
+
     if (count($p['zdarzenia']) < 1 || count($p['relacje']) < 1) throw new SledztwoBlad('Brak słowników zdarzeń i relacji (migracja 082).');
     for ($f = 1; $f <= 12; $f++) {
         if (empty($p['warianty'][$f])) throw new SledztwoBlad("Brak wariantów fazy {$f} (migracja 084).");
@@ -219,13 +229,13 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
     $zajetePokoje = [];
     foreach ($kolejnosc as $f) {
         if (strpos($fazy[$f]['szkic'], '{M}') === false) continue;
-        $miejsca[] = sl_miejsce($pule, $skupisko, $fazy[$f], $zajetePokoje);
+        $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[$f], $zajetePokoje);
     }
     // Kryjówka (faza 7 z tagiem kryjowka) bez {M} w szkicu i tak dostaje miejsce — tam przebywa A.
     if (strpos($fazy[7]['szkic'], '{M}') === false && in_array('kryjowka', sl_tagi($fazy[7]['tagi']), true)) {
-        $miejsca[] = sl_miejsce($pule, $skupisko, $fazy[7], $zajetePokoje);
+        $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[7], $zajetePokoje);
     }
-    if (!$miejsca) $miejsca[] = sl_miejsce($pule, $skupisko, $fazy[1], $zajetePokoje);
+    if (!$miejsca) $miejsca[] = sl_miejsce($pule, $seed, $skupisko, $fazy[1], $zajetePokoje);
 
     // 5. Postacie kluczowe: A, B zawsze; Z / S / W, gdy końcowe tagi ich wymagają. Poboczni: 1–2 na miejsce.
     $kody = ['A', 'B'];
@@ -257,35 +267,47 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
     ];
 }
 
-function sl_miejsce(array $pule, ?array $skupisko, array $faza, array &$zajetePokoje): array
+function sl_miejsce(array $pule, int $seed, ?array $skupisko, array $faza, array &$zajetePokoje): array
 {
-    // Rodzaj: podpowiedź ze słów wariantu, inaczej losowanie wg wag.
+    // Rodzaj: podpowiedź ze słów wariantu, inaczej losowanie wg wag fabularnych (lokale publiczne).
     $tekst = mb_strtolower($faza['wariant'] . ' ' . $faza['szkic']);
     $rodzaj = null;
     foreach (SLEDZTWO_SLOWA_MIEJSC as $slowo => $kod) {
         if (isset($pule['rodzaje'][$kod]) && mb_strpos($tekst, $slowo) !== false) { $rodzaj = $kod; break; }
     }
-    $r = $rodzaj ? $pule['rodzaje'][$rodzaj] : sl_wazony(array_values($pule['rodzaje']));
-    // Budynek skupiska: najpierw ten o zgodnym rodzaju.
+    if (!$rodzaj) {
+        $wagi = array_map(fn($r) => ['kod' => $r['kod'], 'waga' => SLEDZTWO_WAGI_FABULY[$r['kod']] ?? 0], array_values($pule['rodzaje']));
+        $rodzaj = sl_wazony($wagi)['kod'];
+    }
+    $r = $pule['rodzaje'][$rodzaj];
+    // Budynek skupiska o zgodnym presecie (kantyna w kantynie, hangar w hangarze); poziom — w obrębie jego pięter.
     $budynek = null;
+    $wlasny = false;
     if ($skupisko) {
-        $zgodne = array_filter($skupisko['budynki'], fn($b) =>
-            (SLEDZTWO_RODZAJ_BUDYNKU[(string) $b['rodzaj']] ?? ($b['typ'] === 'ladowisko' ? 'ladowisko' : null)) === $r['kod']);
+        $preset = SLEDZTWO_RODZAJ_PRESET[$r['kod']] ?? null;
+        $zgodne = array_filter($skupisko['budynki'], fn($b) => sl_preset_kod($pule, $b) === $preset);
+        $wlasny = (bool) $zgodne;
         $budynek = sl_jeden($zgodne ?: $skupisko['budynki']);
     }
+    [$pmin, $pmax] = [(int) $r['poziom_min'], (int) $r['poziom_max']];
+    if ($wlasny) {
+        $prof = sl_profil($pule, $seed, $budynek);
+        // Lokal fabularny presetu bywa tylko na parterze (sala kantyny) albo na piętrach (pokój gościnny).
+        $naParterze = false;
+        foreach ($pule['lokale'][$prof['kod']]['parter'] ?? [] as $w) if ($w['lokal'] === $pule['presety'][$prof['kod']]['lokal_fabularny']) $naParterze = true;
+        [$pmin, $pmax] = $naParterze ? [$prof['parter'], $prof['parter']] : [min($prof['gora'], $prof['parter'] + 1), $prof['gora']];
+    }
     do {
-        $poziom = sl_los((int) $r['poziom_min'], (int) $r['poziom_max']);
-        $pokoj = in_array($r['kod'], ['ladowisko', 'korytarz', 'targ'], true)
-            ? sprintf('%s-%02d', strtoupper(mb_substr($r['kod'], 0, 1)), sl_los(1, 40))
-            : sprintf('%d%02d', $poziom, sl_los(1, 60));
+        $poziom = sl_los($pmin, $pmax);
+        $pokoj = sprintf('%d%02d', $poziom, sl_los(1, 40));
         $klucz = ($budynek['id'] ?? 0) . '/' . $poziom . '/' . $pokoj;
     } while (isset($zajetePokoje[$klucz]));
     $zajetePokoje[$klucz] = true;
 
-    // Nazwa lokalu: budynek o zgodnym rodzaju daje swoją nazwę; inaczej rodzaj + przydomek właściciela albo numer.
-    $wlasny = $budynek && (SLEDZTWO_RODZAJ_BUDYNKU[(string) $budynek['rodzaj']] ?? '') === $r['kod'];
+    // Nazwa lokalu (do akt MG i dla Autora): budynek o zgodnym presecie daje swoją nazwę; inaczej rodzaj + przydomek.
     if ($wlasny) {
-        $nazwa = $budynek['nazwa'];
+        $nazwa = in_array(SLEDZTWO_RODZAJ_PRESET[$r['kod']] ?? '', ['hotel', 'biuro', 'mieszkalny', 'magazyn', 'targ'], true)
+            ? $r['nazwa'] . ' ' . $pokoj . ', ' . $budynek['nazwa'] : $budynek['nazwa'];
     } elseif (in_array($r['kod'], ['kantyna', 'sklep', 'kasyno', 'hotel', 'biuro', 'hangar'], true)) {
         $przydomki = array_values(array_filter($pule['imiona'], fn($i) => $i['rodzaj'] === 'przydomek'));
         $p = sl_jeden($przydomki);
@@ -576,53 +598,155 @@ function sl_budynki(PDO $db, array $s): array
     return $wynik;
 }
 
-// Plan piętra: pokoje po obu stronach korytarza (winda po lewej, x = 0). Deterministyczny; pokoje fabuły zawsze są.
+// ---------- presety budynków (migracja 086) ----------
+
+// Słowa w nazwie budynku → preset (wygrywają z lokalizacje.rodzaj, bo wiele budynków ma rodzaj „inne”).
+const SLEDZTWO_SLOWA_BUDYNKOW = ['kasyno' => 'kasyno', 'klub' => 'kantyna', 'kantyna' => 'kantyna', 'hotel' => 'hotel',
+    'gospoda' => 'hotel', 'blok mieszkalny' => 'mieszkalny', 'hala towarowa' => 'targ', 'targ' => 'targ', 'sklep' => 'sklep',
+    'magazyn' => 'magazyn', 'skład' => 'magazyn', 'rafineria' => 'magazyn', 'zakład' => 'magazyn', 'lądowisko' => 'ladowisko',
+    'hangar' => 'hangar', 'warsztat' => 'hangar', 'biuro' => 'biuro', 'dom maklerski' => 'biuro', 'giełda' => 'biuro',
+    'kantor' => 'biuro', 'posterunek' => 'biuro', 'kwatera' => 'biuro'];
+// Rodzaj miejsca fabularnego (gen_rodzaje_miejsc) → preset budynku, w którym naturalnie leży.
+const SLEDZTWO_RODZAJ_PRESET = ['kantyna' => 'kantyna', 'sklep' => 'sklep', 'targ' => 'targ', 'hangar' => 'hangar',
+    'ladowisko' => 'ladowisko', 'kasyno' => 'kasyno', 'hotel' => 'hotel', 'biuro' => 'biuro', 'magazyn' => 'magazyn',
+    'mieszkanie' => 'mieszkalny', 'nora_slicera' => 'techniczny', 'korytarz' => 'techniczny'];
+// Wagi rodzajów miejsc fabularnych (szum ma własne wagi w gen_rodzaje_miejsc): sprawy toczą się w lokalach publicznych.
+const SLEDZTWO_WAGI_FABULY = ['kantyna' => 14, 'sklep' => 10, 'targ' => 6, 'hangar' => 9, 'ladowisko' => 9, 'kasyno' => 8,
+    'hotel' => 10, 'biuro' => 6, 'magazyn' => 5, 'mieszkanie' => 3, 'nora_slicera' => 2, 'korytarz' => 0];
+
+// Liczba z zakresu z skrótu (bez ruszania mt_rand).
+function sl_hash_int(int $seed, int $min, int $max, string ...$czesci): int
+{
+    if ($max <= $min) return $min;
+    return $min + (crc32($seed . '|' . implode('|', $czesci)) % ($max - $min + 1));
+}
+
+function sl_preset_kod(array $pule, ?array $b): string
+{
+    if (!$b) return 'ogolny';
+    $n = mb_strtolower((string) $b['nazwa']);
+    foreach (SLEDZTWO_SLOWA_BUDYNKOW as $slowo => $kod) if (str_contains($n, $slowo)) return isset($pule['presety'][$kod]) ? $kod : 'ogolny';
+    $k = SLEDZTWO_RODZAJ_BUDYNKU[(string) ($b['rodzaj'] ?? '')] ?? (($b['typ'] ?? '') === 'ladowisko' ? 'ladowisko' : null);
+    return $k && isset($pule['presety'][$k]) ? $k : 'ogolny';
+}
+
+// Profil budynku: preset, poziom parteru i najwyższy poziom (deterministycznie z ziarna sprawy).
+function sl_profil(array $pule, int $seed, ?array $b): array
+{
+    $kod = sl_preset_kod($pule, $b);
+    $p = $pule['presety'][$kod];
+    $bid = (string) ($b['id'] ?? 0);
+    $parter = sl_hash_int($seed, (int) $p['parter_min'], (int) $p['parter_max'], 'parter', $bid);
+    $pieter = sl_hash_int($seed, (int) $p['pieter_min'], (int) $p['pieter_max'], 'pieter', $bid);
+    return ['kod' => $kod, 'nazwa' => $p['nazwa'], 'parter' => $parter, 'gora' => min(SLEDZTWO_POZIOM_MAX, $parter + $pieter - 1)];
+}
+
+function sl_lokale_presetu(array $pule, string $kod, string $strefa): array
+{
+    $l = $pule['lokale'];
+    return $l[$kod][$strefa] ?? ($strefa === 'gora' ? ($l[$kod]['pietro'] ?? null) : null)
+        ?? $l['ogolny'][$strefa === 'gora' ? 'pietro' : $strefa] ?? $l['ogolny']['pietro'] ?? [];
+}
+
+// Plan piętra z presetu budynku: lokale po obu stronach korytarza (winda po lewej, x = 0), kolejność od windy.
+// Pokoje fabuły zawsze są na planie (zastępują lokal tego samego typu); poziomy fabuły poszerzają budynek.
 function sl_plan(PDO $db, array $s, array $pule, ?array $budynek, int $poziom): array
 {
     $bid = $budynek['id'] ?? 0;
-    $q = $db->prepare('SELECT id, pokoj, rodzaj_kod, nazwa, opis, zamkniete FROM sledztwo_miejsca
-        WHERE sledztwo_id = ? AND poziom = ? AND ' . ($budynek ? 'lokalizacja_id = ?' : 'lokalizacja_id IS NULL'));
-    $q->execute($budynek ? [(int) $s['id'], $poziom, $bid] : [(int) $s['id'], $poziom]);
+    $warunek = $budynek ? 'lokalizacja_id = ?' : 'lokalizacja_id IS NULL';
+    $arg = $budynek ? [(int) $s['id'], $bid] : [(int) $s['id']];
+    $q = $db->prepare("SELECT id, poziom, pokoj, rodzaj_kod, nazwa, opis, zamkniete FROM sledztwo_miejsca WHERE sledztwo_id = ? AND {$warunek}");
+    $q->execute($arg);
     $fabula = [];
-    foreach ($q->fetchAll() as $m) $fabula[(string) $m['pokoj']] = $m;
+    $prof = sl_profil($pule, (int) $s['seed'], $budynek);
+    foreach ($q->fetchAll() as $m) {
+        $prof['parter'] = min($prof['parter'], (int) $m['poziom']);
+        $prof['gora'] = max($prof['gora'], (int) $m['poziom']);
+        if ((int) $m['poziom'] === $poziom) $fabula[] = $m;
+    }
+    $strefa = $poziom === $prof['parter'] ? 'parter' : ($poziom === $prof['gora'] ? 'gora'
+        : ($poziom > $prof['parter'] && $poziom < $prof['gora'] ? 'pietro' : 'techniczny'));
+    $preset = $strefa === 'techniczny' ? 'techniczny' : $prof['kod'];
 
     sl_ziarno((int) $s['seed'], 'plan', (string) $bid, (string) $poziom);
-    $numery = [];
-    for ($i = 1, $n = sl_los(10, 18); $i <= $n; $i++) $numery[] = sprintf('%d%02d', $poziom, $i);
-    foreach (array_keys($fabula) as $p) if (!in_array((string) $p, $numery, true)) $numery[] = (string) $p;
-
-    $naPoziomie = array_values(array_filter($pule['rodzaje'], fn($r) => $poziom >= (int) $r['poziom_min'] && $poziom <= (int) $r['poziom_max']));
-    if (!$naPoziomie) $naPoziomie = array_values($pule['rodzaje']);
-    $wlasny = $budynek['rodzaj_kod'] ?? null;
-    $wlasnyPasuje = $wlasny && isset($pule['rodzaje'][$wlasny])
-        && $poziom >= (int) $pule['rodzaje'][$wlasny]['poziom_min'] && $poziom <= (int) $pule['rodzaje'][$wlasny]['poziom_max'];
-
     $pokoje = [];
-    $terminal = 0;
-    foreach ($numery as $i => $nr) {
-        $m = $fabula[$nr] ?? null;
-        $rodzaj = $m ? $m['rodzaj_kod'] : (($wlasnyPasuje && sl_procent(50)) ? $wlasny : sl_wazony($naPoziomie)['kod']);
-        $zamkniete = $m ? (bool) $m['zamkniete'] : sl_procent($rodzaj === 'mieszkanie' ? 45 : 15);
-        $maTerminal = sl_procent(in_array($rodzaj, ['biuro', 'hotel', 'nora_slicera', 'kasyno'], true) ? 45 : 12);
-        $pokoje[] = ['nr' => $nr, 'drzwi' => $i + 1, 'strona' => $i % 2 ? 'dol' : 'gora', 'x' => intdiv($i, 2) * SLEDZTWO_POKOJ_J,
-            'rodzaj_kod' => $rodzaj, 'rodzaj' => $pule['rodzaje'][$rodzaj]['nazwa'] ?? $rodzaj, 'zamkniete' => $zamkniete,
-            'terminal' => $maTerminal ? 'T' . (++$terminal) : null, 'miejsce_id' => $m ? (int) $m['id'] : null,
-            'nazwa' => $m['nazwa'] ?? null, 'opis' => $m['opis'] ?? null];
+    foreach (sl_lokale_presetu($pule, $preset, $strefa) as $w) {
+        for ($k = 0, $n = sl_los((int) $w['ile_min'], (int) $w['ile_max']); $k < $n; $k++) {
+            $pokoje[] = ['nr' => null, 'lokal' => $w['lokal'], 'rodzaj' => $w['nazwa'], 'rodzaj_kod' => $w['bywalcy'] ?: 'korytarz',
+                'dostep' => $w['dostep'], 'zamkniete' => $w['dostep'] === 'wolny' && sl_procent((int) $w['zamek_proc']),
+                'szer' => max(1, (int) $w['szer']), 'terminal' => sl_procent((int) $w['terminal_proc']), 'ludzie_max' => (int) $w['ludzie_max'],
+                'opis_szumu' => $w['opis'], 'miejsce_id' => null, 'nazwa' => null, 'opis' => null];
+        }
     }
-    $korytarzTerminal = sl_procent(50) ? 'T' . (++$terminal) : null;
+    // Pokoje fabuły: w budynku zgodnego rodzaju są lokalem „fabularnym” presetu (z jego regułą wstępu).
+    $fabLokal = $pule['presety'][$prof['kod']]['lokal_fabularny'];
+    $wzor = null;
+    foreach ($pule['lokale'][$prof['kod']] ?? [] as $wiersze) foreach ($wiersze as $w) if ($w['lokal'] === $fabLokal) { $wzor = $w; break 2; }
+    foreach ($fabula as $m) {
+        $zgodny = $wzor && (SLEDZTWO_RODZAJ_PRESET[$m['rodzaj_kod']] ?? '') === $prof['kod'];
+        $pokoj = ['nr' => (string) $m['pokoj'], 'lokal' => $zgodny ? $wzor['lokal'] : $m['rodzaj_kod'],
+            'rodzaj' => $zgodny ? $wzor['nazwa'] : ($pule['rodzaje'][$m['rodzaj_kod']]['nazwa'] ?? $m['rodzaj_kod']),
+            'rodzaj_kod' => $m['rodzaj_kod'], 'dostep' => $zgodny ? $wzor['dostep'] : 'wolny', 'zamkniete' => (bool) $m['zamkniete'],
+            'szer' => $zgodny ? max(1, (int) $wzor['szer']) : 1, 'terminal' => $zgodny && (int) $wzor['terminal_proc'] >= 50,
+            'ludzie_max' => 0, 'opis_szumu' => $zgodny ? $wzor['opis'] : (string) ($pule['rodzaje'][$m['rodzaj_kod']]['opis_szumu'] ?? ''),
+            'miejsce_id' => (int) $m['id'], 'nazwa' => $m['nazwa'], 'opis' => $m['opis']];
+        $gdzie = null;
+        foreach ($pokoje as $i => $p) if ($p['miejsce_id'] === null && $p['lokal'] === $pokoj['lokal']) { $gdzie = $i; break; }
+        if ($gdzie === null) $pokoje[] = $pokoj; else $pokoje[$gdzie] = $pokoj;
+    }
+    // Numeracja (pomija numery pokoi fabuły), strony korytarza, szerokości, drzwi, terminale.
+    $zajete = array_filter(array_column($pokoje, 'nr'));
+    $i = 1;
+    $xs = ['gora' => 0, 'dol' => 0];
+    $terminal = 0;
+    foreach ($pokoje as $j => &$p) {
+        if ($p['nr'] === null) {
+            do { $nr = sprintf('%d%02d', $poziom, $i++); } while (in_array($nr, $zajete, true));
+            $p['nr'] = $nr;
+        }
+        $strona = $xs['gora'] <= $xs['dol'] ? 'gora' : 'dol';
+        $p['strona'] = $strona;
+        $p['x'] = $xs[$strona];
+        $xs[$strona] += $p['szer'] * SLEDZTWO_POKOJ_J;
+        $p['drzwi'] = $j + 1;
+        $p['terminal'] = $p['terminal'] ? 'T' . (++$terminal) : null;
+    }
+    unset($p);
+    $korytarzTerminal = sl_procent($strefa === 'techniczny' ? 20 : 50) ? 'T' . (++$terminal) : null;
     return ['budynek_id' => $budynek['id'] ?? null, 'budynek' => $budynek['nazwa'] ?? 'Kompleks', 'poziom' => $poziom,
-        'szerokosc' => (int) ceil(count($pokoje) / 2) * SLEDZTWO_POKOJ_J, 'pokoje' => $pokoje,
-        'terminal_korytarz' => $korytarzTerminal];
+        'preset' => $prof['kod'], 'preset_nazwa' => $prof['nazwa'], 'strefa' => $strefa, 'parter' => $prof['parter'], 'gora' => $prof['gora'],
+        'szerokosc' => max($xs['gora'], $xs['dol']), 'pokoje' => $pokoje, 'terminal_korytarz' => $korytarzTerminal];
+}
+
+function sl_srodek(array $p): int
+{
+    return $p['x'] + intdiv($p['szer'] * SLEDZTWO_POKOJ_J, 2);
 }
 
 // Środek pokoju (albo windy, gdy droid stoi na korytarzu) na osi korytarza.
 function sl_x_droida(array $plan, string $pokoj): int
 {
-    foreach ($plan['pokoje'] as $p) if ($p['nr'] === $pokoj) return $p['x'] + intdiv(SLEDZTWO_POKOJ_J, 2);
+    foreach ($plan['pokoje'] as $p) if ($p['nr'] === $pokoj) return sl_srodek($p);
     return 0;
 }
 
-// Kontakty w zasięgu: postacie fabuły (z bazy) albo przechodnie szumu (deterministycznie, zmieniają się co godzinę).
+// Strażnik strzeżonego lokalu: deterministyczny, z kartą EotE (archetyp z presetu budynku). Intelekt często niski.
+function sl_straznik(array $pule, array $s, array $plan, array $p): array
+{
+    sl_ziarno((int) $s['seed'], 'straz', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']);
+    $archKod = $pule['presety'][$plan['preset']]['straz_archetyp'] ?? 'ochroniarz';
+    $arch = $pule['archetypy'][$archKod] ?? $pule['archetypy']['ochroniarz'] ?? reset($pule['archetypy']);
+    $g = sl_wazony(array_values(array_filter($pule['populacja'], fn($x) => $x['kod'] !== 'droid')) ?: $pule['populacja'])['kod'];
+    $plec = $g === 'droid' ? 'n' : (sl_procent(70) ? 'm' : 'k');
+    $karta = sl_karta_eote($pule['gatunki'][$g], $arch, 'slugus', 'Strażnik', $plec, null, '', 0, '');
+    $karta['cechy']['intelekt'] = [1, 1, 2, 2, 3][sl_los(0, 4)];
+    $int = $karta['cechy']['intelekt'];
+    return ['gatunek_kod' => $g, 'plec' => $plec, 'archetyp' => $arch['nazwa'], 'karta' => $karta,
+        'wyglad' => 'strażnik przy drzwiach ' . $p['nr'] . ($int <= 1 ? ', wygląda na mało rozgarniętego' : ($int >= 3 ? ', bystre spojrzenie' : ''))];
+}
+
+// Kontakty w zasięgu: postacie fabuły (z bazy), przechodnie szumu (wg presetu lokalu, zmieniają się co godzinę)
+// i strażnicy przy drzwiach strzeżonych lokali (na korytarzu).
 function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida): array
 {
     $kontakty = [];
@@ -630,15 +754,15 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
     $q = $db->prepare('SELECT p.id, p.gatunek_kod, p.plec, a.nazwa AS archetyp FROM sledztwo_postacie p
         LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? AND p.miejsce_id = ? ORDER BY p.id');
     foreach ($plan['pokoje'] as $p) {
-        $srodek = $p['x'] + intdiv(SLEDZTWO_POKOJ_J, 2);
+        $srodek = sl_srodek($p);
         if (abs($srodek - $xDroida) > SLEDZTWO_ZASIEG) continue;
         $osoby = [];
         if ($p['miejsce_id']) {
             $q->execute([(int) $s['id'], $p['miejsce_id']]);
             foreach ($q->fetchAll() as $o) $osoby[] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
-        } else {
+        } elseif ($p['ludzie_max'] > 0) {
             sl_ziarno((int) $s['seed'], 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
-            $ile = sl_los(0, in_array($p['rodzaj_kod'], ['kantyna', 'kasyno', 'targ'], true) ? 3 : 1);
+            $ile = sl_los(0, $p['ludzie_max']);
             $bywalcy = array_values(array_filter($pule['archetypy'], fn($a) => in_array($p['rodzaj_kod'], sl_tagi((string) $a['rodzaje_miejsc']), true)));
             for ($k = 0; $k < $ile; $k++) {
                 $g = sl_wazony($pule['populacja'])['kod'];
@@ -647,17 +771,154 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
                     'postac_id' => null, 'token' => sl_token((int) $s['seed'], 's', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina, (string) $k)];
             }
         }
+        $miejsc = max(1, 3 * $p['szer']);
         foreach ($osoby as $j => $o) {
-            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $p['x'] + 15 + ($j % 3) * 15, 'strona' => $p['strona'],
+            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $p['x'] + 12 + ($j % $miejsc) * 15, 'strona' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$o['gatunek_kod']]['nazwa'] ?? $o['gatunek_kod'], 'plec' => $o['plec'],
                 'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień',
                 'token' => $o['token'], 'postac_id' => $o['postac_id']];
+        }
+        if ($p['dostep'] === 'straz') {
+            $st = sl_straznik($pule, $s, $plan, $p);
+            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $srodek, 'strona' => 'korytarz', 'przy' => $p['strona'],
+                'gatunek' => $pule['gatunki'][$st['gatunek_kod']]['nazwa'] ?? $st['gatunek_kod'], 'plec' => $st['plec'],
+                'wyglad' => $st['wyglad'], 'token' => sl_token((int) $s['seed'], 'g', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']),
+                'postac_id' => null, 'straznik' => true];
         }
     }
     usort($kontakty, fn($a, $b) => $a['x'] <=> $b['x']);
     foreach ($kontakty as $i => &$k) $k['kod'] = 'K-' . ($i + 1);
     unset($k);
     return $kontakty;
+}
+
+// ---------- dostęp: zamki, nakazy, strażnicy ----------
+
+function sl_ma_nakaz(PDO $db, int $sledztwoId, ?int $bid): bool
+{
+    $q = $db->prepare("SELECT 1 FROM sledztwo_nakazy WHERE sledztwo_id = ? AND stan = 'wydany' AND (lokalizacja_id IS NULL OR lokalizacja_id = ?) LIMIT 1");
+    $q->execute([$sledztwoId, $bid]);
+    return (bool) $q->fetchColumn();
+}
+
+function sl_przepustka(PDO $db, int $sledztwoId, ?int $bid, int $poziom, string $pokoj): bool
+{
+    $q = $db->prepare('SELECT 1 FROM sledztwo_straz WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND udana = 1
+        AND kiedy_utc > ? LIMIT 1');
+    $q->execute([$sledztwoId, $bid, $poziom, $pokoj, sl_utc(sl_teraz() - 86400)]);
+    return (bool) $q->fetchColumn();
+}
+
+// [czy wolno wejść, komunikat droida]
+function sl_dostep(PDO $db, array $s, ?int $bid, int $poziom, array $p): array
+{
+    $nazwa = "Lokal {$p['nr']} ({$p['rodzaj']})";
+    if ($p['zamkniete']) return [false, "{$nazwa} jest zamknięty."];
+    if ($p['dostep'] === 'nakaz') {
+        return sl_ma_nakaz($db, (int) $s['id'], $bid) ? [true, 'Okazałem nakaz.'] : [false, "{$nazwa}: wstęp tylko z nakazem."];
+    }
+    if ($p['dostep'] === 'straz') {
+        if (sl_ma_nakaz($db, (int) $s['id'], $bid)) return [true, 'Okazałem strażnikowi nakaz.'];
+        if (sl_przepustka($db, (int) $s['id'], $bid, $poziom, $p['nr'])) return [true, 'Strażnik mnie pamięta i wpuszcza.'];
+        return [false, "{$nazwa}: strażnik przy drzwiach nie wpuszcza bez nakazu. Można spróbować go przekonać."];
+    }
+    return [true, ''];
+}
+
+// Kości EotE: [sukces, przewaga, triumf, rozpacz] na ścianę. z — zdolność, b — biegłość, t — trudność, w — wyzwanie.
+const SLEDZTWO_KOSCI = [
+    'z' => [[0, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [0, 1, 0, 0], [0, 1, 0, 0], [1, 1, 0, 0], [0, 2, 0, 0]],
+    'b' => [[0, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0], [2, 0, 0, 0], [2, 0, 0, 0], [0, 1, 0, 0], [1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 0, 0],
+        [0, 2, 0, 0], [0, 2, 0, 0], [1, 0, 1, 0]],
+    't' => [[0, 0, 0, 0], [-1, 0, 0, 0], [-2, 0, 0, 0], [0, -1, 0, 0], [0, -1, 0, 0], [0, -1, 0, 0], [0, -2, 0, 0], [-1, -1, 0, 0]],
+    'w' => [[0, 0, 0, 0], [-1, 0, 0, 0], [-1, 0, 0, 0], [-2, 0, 0, 0], [-2, 0, 0, 0], [0, -1, 0, 0], [0, -1, 0, 0], [-1, -1, 0, 0],
+        [-1, -1, 0, 0], [0, -2, 0, 0], [0, -2, 0, 0], [-1, 0, 0, 1]],
+];
+
+// Test przeciwstawny EotE: pula = wyższa z (cecha, ranga), z czego niższa to kości ulepszone.
+function sl_test_eote(int $cecha, int $ranga, int $cechaObr, int $rangaObr): array
+{
+    $b = min($cecha, $ranga); $z = max($cecha, $ranga) - $b;
+    $w = min($cechaObr, $rangaObr); $t = max($cechaObr, $rangaObr) - $w;
+    if ($w + $t === 0) $t = 1;
+    $wynik = [0, 0, 0, 0];
+    foreach (['z' => $z, 'b' => $b, 't' => $t, 'w' => $w] as $rodzaj => $ile) {
+        for ($i = 0; $i < $ile; $i++) {
+            $sciana = SLEDZTWO_KOSCI[$rodzaj][random_int(0, count(SLEDZTWO_KOSCI[$rodzaj]) - 1)];
+            foreach ($sciana as $k => $v) $wynik[$k] += $v;
+        }
+    }
+    return ['pula' => "{$z} zdolności, {$b} biegłości przeciw {$t} trudności, {$w} wyzwania",
+        'sukcesy' => $wynik[0], 'przewagi' => $wynik[1], 'triumf' => $wynik[2], 'rozpacz' => $wynik[3], 'udana' => $wynik[0] > 0];
+}
+
+// Karta droida: sledztwo_detektywi.droid_karta_eote albo domyślny tani droid śledczy.
+function sl_karta_droida(PDO $db, string $login): array
+{
+    $q = $db->prepare('SELECT droid_karta_eote FROM sledztwo_detektywi WHERE konto_login = ?');
+    $q->execute([$login]);
+    $k = json_decode((string) $q->fetchColumn(), true);
+    if (is_array($k) && isset($k['cechy'])) return $k;
+    return ['cechy' => ['krzepa' => 1, 'zwinnosc' => 1, 'intelekt' => 3, 'spryt' => 2, 'wola' => 2, 'prezencja' => 1],
+        'umiejetnosci' => ['oszustwo' => ['ranga' => 1], 'urok' => ['ranga' => 1], 'zastraszanie' => ['ranga' => 1],
+            'percepcja' => ['ranga' => 2], 'czujnosc' => ['ranga' => 2], 'komputery' => ['ranga' => 2]]];
+}
+
+// Podejścia do strażnika: [cecha i umiejętność droida, cecha i umiejętność strażnika, nazwa].
+// Blef (Oszustwo) idzie przeciw Intelektowi i Czujności — strażnika z niskim Intelektem łatwo nabrać.
+const SLEDZTWO_PODEJSCIA = [
+    'oszustwo' => ['spryt', 'oszustwo', 'intelekt', 'czujnosc', 'blef (Oszustwo)'],
+    'urok' => ['prezencja', 'urok', 'prezencja', 'opanowanie', 'Urok'],
+    'zastraszanie' => ['wola', 'zastraszanie', 'wola', 'dyscyplina', 'Zastraszanie'],
+];
+
+function sl_straz_proba(PDO $db, array $s, string $pokoj, string $podejscie): array
+{
+    if (!isset(SLEDZTWO_PODEJSCIA[$podejscie])) throw new SledztwoBlad('Nieznany sposób.');
+    $pule = sl_pule($db);
+    $d = sl_rozlicz_droida($db, $s, $pule);
+    if (!$d || $d['stan'] === 'w_drodze') throw new SledztwoBlad('Droid jest w drodze.');
+    $budynki = sl_budynki($db, $s);
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
+    $p = null;
+    foreach ($plan['pokoje'] as $x) if ($x['nr'] === $pokoj) { $p = $x; break; }
+    if (!$p || $p['dostep'] !== 'straz') throw new SledztwoBlad('Przy tym lokalu nie ma strażnika.');
+    if (abs(sl_srodek($p) - sl_x_droida($plan, (string) $d['pokoj'])) > SLEDZTWO_ZASIEG) throw new SledztwoBlad('Strażnik jest poza zasięgiem droida.');
+    [$ok] = sl_dostep($db, $s, $bid, (int) $d['poziom'], $p);
+    if ($ok) {
+        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $pokoj);
+        return ['udana' => true, 'juz' => true, 'czas_s' => $ruch['czas_s']];
+    }
+    $teraz = sl_teraz();
+    $q = $db->prepare('SELECT podejscie, udana, rozpacz, kiedy_utc FROM sledztwo_straz WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ?
+        AND pokoj = ? AND kiedy_utc > ? ORDER BY id DESC');
+    $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], $pokoj, sl_utc($teraz - 86400)]);
+    $proby = $q->fetchAll();
+    $godzina = array_filter($proby, fn($x) => !$x['udana'] && (sl_z_utc($x['kiedy_utc']) ?? 0) > $teraz - 3600);
+    if (array_filter($proby, fn($x) => (int) $x['rozpacz'] > 0)) throw new SledztwoBlad('Strażnik wezwał przełożonego — droid ma tu zakaz wstępu do jutra.');
+    if (count($godzina) >= 2) throw new SledztwoBlad('Strażnik nie chce już rozmawiać. Wróć za godzinę.');
+    if (array_filter($godzina, fn($x) => $x['podejscie'] === $podejscie)) throw new SledztwoBlad('Strażnik już to słyszał. Spróbuj inaczej albo wróć za godzinę.');
+
+    [$cD, $uD, $cS, $uS, $nazwa] = SLEDZTWO_PODEJSCIA[$podejscie];
+    $droid = sl_karta_droida($db, (string) $s['konto_login']);
+    $st = sl_straznik($pule, $s, $plan, $p);
+    $test = sl_test_eote((int) ($droid['cechy'][$cD] ?? 1), (int) ($droid['umiejetnosci'][$uD]['ranga'] ?? 0),
+        (int) ($st['karta']['cechy'][$cS] ?? 2), (int) (((array) $st['karta']['umiejetnosci'])[$uS]['ranga'] ?? 0));
+    $db->prepare('INSERT INTO sledztwo_straz (sledztwo_id, lokalizacja_id, poziom, pokoj, podejscie, sukcesy, przewagi, triumf, rozpacz, udana, kiedy_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([(int) $s['id'], $bid, (int) $d['poziom'], $pokoj, $podejscie, $test['sukcesy'], $test['przewagi'], $test['triumf'],
+            $test['rozpacz'], $test['udana'] ? 1 : 0, sl_utc($teraz)]);
+    $opis = "{$nazwa}: {$test['pula']} → sukcesy netto {$test['sukcesy']}, przewagi {$test['przewagi']}"
+        . ($test['triumf'] ? ', TRIUMF' : '') . ($test['rozpacz'] ? ', ROZPACZ' : '') . '.';
+    sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Przekonaj strażnika lokalu {$pokoj} — {$nazwa}.");
+    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', $test['udana']
+        ? "Strażnik lokalu {$pokoj} mnie wpuszcza. ({$opis})"
+        : ($test['rozpacz'] ? "Strażnik lokalu {$pokoj} wzywa przełożonego. Zakaz wstępu do jutra. ({$opis})"
+            : "Strażnik lokalu {$pokoj} odmawia. ({$opis})"));
+    $wynik = ['udana' => $test['udana'], 'test' => $test, 'opis' => $opis];
+    if ($test['udana']) $wynik['czas_s'] = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $pokoj)['czas_s'];
+    return $wynik;
 }
 
 // Czas podróży w sekundach między pozycjami [budynek_id|null, poziom, pokoj].
@@ -705,17 +966,19 @@ function sl_rozlicz_droida(PDO $db, array $s, ?array $pule = null): ?array
         if ($pokoj === 'korytarz' || !$lokal) {
             $pokoj = 'korytarz';
             $meldunek = "{$miejsce}, korytarz. Na piętrze " . count($plan['pokoje']) . ' lokali.';
-        } elseif ($lokal['zamkniete']) {
-            $meldunek = "{$miejsce}: lokal {$pokoj} zamknięty. Czekam na korytarzu przed drzwiami {$lokal['drzwi']}.";
-            $pokoj = 'korytarz';
-        } elseif ($lokal['miejsce_id']) {
-            $meldunek = "{$miejsce}, lokal {$pokoj}: {$lokal['nazwa']}." . ($lokal['opis'] ? ' ' . $lokal['opis'] : " ({$lokal['rodzaj']})");
         } else {
-            $opis = (string) ($pule['rodzaje'][$lokal['rodzaj_kod']]['opis_szumu'] ?? '');
-            $meldunek = "{$miejsce}, lokal {$pokoj}: {$lokal['rodzaj']}." . ($opis !== '' ? ' ' . $opis : '');
-            if ($bid !== null) {
-                $db->prepare('INSERT IGNORE INTO sledztwo_szum (sledztwo_id, lokalizacja_id, poziom, pokoj, rodzaj_kod, opis) VALUES (?, ?, ?, ?, ?, ?)')
-                    ->execute([(int) $s['id'], $bid, $poziom, $pokoj, $lokal['rodzaj_kod'], $opis]);
+            [$wolno, $powod] = sl_dostep($db, $s, $bid, $poziom, $lokal);
+            if (!$wolno) {
+                $meldunek = "{$miejsce}: {$powod} Czekam na korytarzu przed drzwiami {$lokal['drzwi']}.";
+                $pokoj = 'korytarz';
+            } else {
+                // Meldunek wygląda tak samo w lokalu fabularnym i w szumie — o fabule świadczą dopiero ludzie i ślady.
+                $opis = (string) ($lokal['opis'] ?: $lokal['opis_szumu']);
+                $meldunek = trim("{$powod} {$miejsce}, lokal {$pokoj}: {$lokal['rodzaj']}." . ($opis !== '' ? ' ' . $opis : ''));
+                if ($bid !== null && !$lokal['miejsce_id']) {
+                    $db->prepare('INSERT IGNORE INTO sledztwo_szum (sledztwo_id, lokalizacja_id, poziom, pokoj, rodzaj_kod, opis) VALUES (?, ?, ?, ?, ?, ?)')
+                        ->execute([(int) $s['id'], $bid, $poziom, $pokoj, $lokal['lokal'], $opis]);
+                }
             }
         }
         $kontakty = sl_kontakty($db, $s, $pule, $plan, sl_x_droida($plan, $pokoj));
@@ -800,7 +1063,7 @@ function sl_skan(PDO $db, array $s): array
     // W drodze droid nie skanuje (idzie korytarzami); kontakty — dopiero po dotarciu.
     $kontakty = $wDrodze ? [] : sl_kontakty($db, $s, $pule, $plan, $xDroida);
     // Graczowi nie pokazujemy, który lokal jest fabularny.
-    $plan['pokoje'] = array_map(fn($p) => array_diff_key($p, ['miejsce_id' => 1, 'nazwa' => 1, 'opis' => 1]), $plan['pokoje']);
+    $plan['pokoje'] = array_map(fn($p) => array_diff_key($p, ['miejsce_id' => 1, 'nazwa' => 1, 'opis' => 1, 'opis_szumu' => 1, 'ludzie_max' => 1, 'rodzaj_kod' => 1]), $plan['pokoje']);
 
     $droid = ['budynek_id' => $bid, 'budynek' => $plan['budynek'], 'poziom' => (int) $d['poziom'], 'pokoj' => (string) $d['pokoj'],
         'stan' => $d['stan'], 'x' => $xDroida];
@@ -823,7 +1086,36 @@ function sl_skan(PDO $db, array $s): array
     $kontakty = array_map(fn($k) => array_diff_key($k, ['postac_id' => 1]), $kontakty);
     return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
-        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz];
+        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki)];
+}
+
+// Nakazy sprawy dla ekranu DT-4 (budynek NULL = cały kompleks).
+function sl_nakazy(PDO $db, array $s, array $budynki): array
+{
+    try {
+        $q = $db->prepare('SELECT id, lokalizacja_id, stan, decyzja, zlozono_utc FROM sledztwo_nakazy WHERE sledztwo_id = ? ORDER BY id DESC LIMIT 20');
+        $q->execute([(int) $s['id']]);
+    } catch (PDOException $e) { return []; }
+    return array_map(fn($n) => ['id' => (int) $n['id'], 'lokalizacja_id' => $n['lokalizacja_id'] !== null ? (int) $n['lokalizacja_id'] : null,
+        'budynek' => $n['lokalizacja_id'] !== null ? ($budynki[(int) $n['lokalizacja_id']]['nazwa'] ?? 'budynek') : 'cały kompleks',
+        'stan' => $n['stan'], 'decyzja' => $n['decyzja'], 'zlozono_utc' => $n['zlozono_utc']], $q->fetchAll());
+}
+
+function sl_nakaz_wniosek(PDO $db, array $s, ?int $bid, string $uzasadnienie): void
+{
+    $uzasadnienie = trim(mb_substr($uzasadnienie, 0, 1000));
+    if (mb_strlen($uzasadnienie) < 10) throw new SledztwoBlad('Uzasadnij wniosek (co najmniej 10 znaków).');
+    $budynki = sl_budynki($db, $s);
+    if ($bid !== null && !isset($budynki[$bid])) throw new SledztwoBlad('Ten budynek jest poza rejonem sprawy.');
+    $q = $db->prepare("SELECT stan FROM sledztwo_nakazy WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND stan IN ('wniosek','wydany') LIMIT 1");
+    $q->execute([(int) $s['id'], $bid]);
+    $jest = $q->fetchColumn();
+    if ($jest === 'wydany') throw new SledztwoBlad('Nakaz na ten budynek jest już wydany.');
+    if ($jest === 'wniosek') throw new SledztwoBlad('Wniosek na ten budynek czeka już na decyzję.');
+    $db->prepare('INSERT INTO sledztwo_nakazy (sledztwo_id, lokalizacja_id, uzasadnienie, zlozono_utc) VALUES (?, ?, ?, ?)')
+        ->execute([(int) $s['id'], $bid, $uzasadnienie, sl_utc(sl_teraz())]);
+    $gdzie = $bid !== null ? $budynki[$bid]['nazwa'] : 'cały kompleks';
+    sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Wniosek o nakaz: {$gdzie}. Uzasadnienie: {$uzasadnienie}");
 }
 
 // ---------- rozmowy droida z NPC (migracja 085) ----------
@@ -893,21 +1185,26 @@ function sl_rozmowa_start(PDO $db, array $s, string $token): array
     if (!$kontakt) throw new SledztwoBlad('Kontakt poza zasięgiem albo już odszedł.');
     $lokal = null;
     foreach ($plan['pokoje'] as $p) if ($p['nr'] === $kontakt['pokoj']) { $lokal = $p; break; }
-    if ($lokal && $lokal['zamkniete'] && $d['pokoj'] !== $lokal['nr']) throw new SledztwoBlad("Lokal {$lokal['nr']} jest zamknięty — droid nie wejdzie.");
+    if (!empty($kontakt['straznik'])) $lokal = null; // strażnik stoi na korytarzu — rozmowa bez wchodzenia
+    if ($lokal && $d['pokoj'] !== $lokal['nr']) {
+        [$wolno, $powod] = sl_dostep($db, $s, $bid, (int) $d['poziom'], $lokal);
+        if (!$wolno) throw new SledztwoBlad($powod . ' Droid nie wejdzie.');
+    }
 
     $stara = sl_rozmowa_aktywna($db, (int) $s['id']);
     if ($stara) sl_rozmowa_zakoncz($db, $stara, 'Droid przerwał rozmowę i podszedł do kogoś innego.');
     $teraz = sl_teraz();
     $gotowa = $teraz + SLEDZTWO_PODEJSCIE_S;
-    if ($d['pokoj'] !== $kontakt['pokoj']) {
-        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $kontakt['pokoj']);
+    $cel = empty($kontakt['straznik']) ? $kontakt['pokoj'] : 'korytarz';
+    if ($d['pokoj'] !== $cel) {
+        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $cel);
         $gotowa = $teraz + $ruch['czas_s'] + SLEDZTWO_PODEJSCIE_S;
     }
     $opis = ['gatunek' => $kontakt['gatunek'], 'plec' => $kontakt['plec'], 'wyglad' => $kontakt['wyglad'], 'kod' => $kontakt['kod']];
     $db->prepare('INSERT INTO sledztwo_rozmowy (sledztwo_id, kontakt, postac_id, opis_json, lokalizacja_id, poziom, pokoj, gotowa_utc, rozpoczeto_utc)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([(int) $s['id'], $token, $kontakt['postac_id'], json_encode($opis, JSON_UNESCAPED_UNICODE), $bid, (int) $d['poziom'],
-            $kontakt['pokoj'], sl_utc($gotowa), sl_utc($teraz)]);
+            $cel, sl_utc($gotowa), sl_utc($teraz)]);
     $r = sl_rozmowa_aktywna($db, (int) $s['id']);
     $txt = "{$kontakt['kod']}: {$kontakt['gatunek']}, {$kontakt['wyglad']} (lokal {$kontakt['pokoj']})";
     sl_wpis($db, (int) $r['id'], 'system', "DT-4 podchodzi do rozmówcy ({$txt}) na 2–3 m.");
@@ -1158,7 +1455,7 @@ function sl_rozmowy_dostepne(PDO $db): void
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
     $akcje = ['sledztwo_moje', 'sledztwo_skan', 'sledztwo_idz', 'sledztwo_rozmowa', 'sledztwo_rozmowa_start', 'sledztwo_rozmowa_tura',
-        'sledztwo_rozmowa_koniec', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
+        'sledztwo_rozmowa_koniec', 'sledztwo_straz', 'sledztwo_nakaz_wniosek', 'mg_sledztwo_nakazy', 'mg_sledztwo_nakaz_decyzja', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -1267,6 +1564,55 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
                 odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''))]);
+
+            // Próba przekonania strażnika: {pokoj, podejscie: oszustwo|urok|zastraszanie} — test EotE.
+            case 'sledztwo_straz':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                $w = wejscie();
+                odpowiedz(['ok' => true] + sl_straz_proba($db, $s, mb_substr((string) ($w['pokoj'] ?? ''), 0, 12), (string) ($w['podejscie'] ?? '')));
+
+            // Wniosek o nakaz: {lokalizacja_id (null = cały kompleks), uzasadnienie}. Decyduje MG.
+            case 'sledztwo_nakaz_wniosek':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                $w = wejscie();
+                $bid = isset($w['lokalizacja_id']) && $w['lokalizacja_id'] !== '' && $w['lokalizacja_id'] !== null ? (int) $w['lokalizacja_id'] : null;
+                sl_nakaz_wniosek($db, $s, $bid, (string) ($w['uzasadnienie'] ?? ''));
+                odpowiedz(['ok' => true]);
+
+            // MG: wnioski o nakaz (czekające i ostatnio rozpatrzone).
+            case 'mg_sledztwo_nakazy':
+                if (!$mg) blad('Brak uprawnień.', 403);
+                try {
+                    $lista = $db->query("SELECT n.id, n.stan, n.uzasadnienie, n.decyzja, n.zlozono_utc, n.rozpatrzono_utc, s.id AS sledztwo_id,
+                            s.konto_login, s.tytul, COALESCE(l.nazwa, 'cały kompleks') AS budynek
+                        FROM sledztwo_nakazy n JOIN sledztwa s ON s.id = n.sledztwo_id LEFT JOIN lokalizacje l ON l.id = n.lokalizacja_id
+                        ORDER BY n.stan = 'wniosek' DESC, n.id DESC LIMIT 50")->fetchAll();
+                } catch (PDOException $e) { blad('Brak migracji 086.'); }
+                odpowiedz(['nakazy' => $lista]);
+
+            // MG: {id, wydany: true|false, decyzja}. Detektyw dostaje meldunek biura w dzienniku.
+            case 'mg_sledztwo_nakaz_decyzja':
+                if (!$mg) blad('Brak uprawnień.', 403);
+                if (!$post) blad('Zła metoda.', 405);
+                $w = wejscie();
+                $q = $db->prepare("SELECT n.*, COALESCE(l.nazwa, 'cały kompleks') AS budynek FROM sledztwo_nakazy n
+                    LEFT JOIN lokalizacje l ON l.id = n.lokalizacja_id WHERE n.id = ? AND n.stan = 'wniosek'");
+                $q->execute([(int) ($w['id'] ?? 0)]);
+                $n = $q->fetch();
+                if (!$n) blad('Nie ma takiego wniosku albo już go rozpatrzono.');
+                $wydany = !empty($w['wydany']);
+                $decyzja = trim(mb_substr((string) ($w['decyzja'] ?? ''), 0, 500));
+                $db->prepare('UPDATE sledztwo_nakazy SET stan = ?, decyzja = ?, rozpatrzono_utc = ? WHERE id = ?')
+                    ->execute([$wydany ? 'wydany' : 'odrzucony', $decyzja !== '' ? $decyzja : null, sl_utc(sl_teraz()), (int) $n['id']]);
+                sl_dziennik($db, (int) $n['sledztwo_id'], 'meldunek', 'system', 'Biuro: nakaz na ' . $n['budynek'] . ($wydany ? ' wydany.' : ' odrzucony.')
+                    . ($decyzja !== '' ? ' ' . $decyzja : ''));
+                odpowiedz(['ok' => true]);
 
             case 'sledztwo_rozmowa_koniec':
                 if (!$post) blad('Zła metoda.', 405);

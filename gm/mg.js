@@ -393,6 +393,15 @@ async function konta(edytowany = null) {
   // Detektywi (śledztwa droida): null = moduł niedostępny (brak migracji 082) — wtedy bez przycisku.
   let detektywi = null;
   try { detektywi = new Map((await api('mg_detektywi')).detektywi.map((d) => [d.konto_login.toLowerCase(), d])); } catch { /* bez modułu śledztw */ }
+  // Wnioski detektywów o nakaz (śledztwa, migracja 086): MG wydaje albo odrzuca.
+  let nakazy = [];
+  if (detektywi) try { nakazy = (await api('mg_sledztwo_nakazy')).nakazy.filter((n) => n.stan === 'wniosek'); } catch { /* bez migracji 086 */ }
+  const decyzjaNakazu = (n, wydany) => bezpiecznie(async () => {
+    const decyzja = window.prompt(`${wydany ? 'Wydać' : 'Odrzucić'} nakaz: ${n.budynek} (sprawa #${n.sledztwo_id}, ${n.konto_login})?\nKomentarz biura (opcjonalnie):`, '');
+    if (decyzja === null) return;
+    await api('mg_sledztwo_nakaz_decyzja', { id: n.id, wydany, decyzja });
+    wyczysc(glowna); await konta();
+  });
   const e = edytowany || {};
   const nowe = !e.id;
   // Nowy gracz: domyślnie zaproszenie (gracz sam ustawia hasło kodem jednorazowym); hasło od MG — opcjonalnie.
@@ -441,6 +450,11 @@ async function konta(edytowany = null) {
         nowe ? h('label', h('span', zaproszenie, ' Zaproszenie (gracz sam ustawi hasło)')) : null,
         pole(nowe ? 'Hasło (tylko bez zaproszenia)' : 'Nowe hasło', f.klucz)),
       h('div.rzad', btn('Zapisz', zapisz, '.glowny'), e.id ? btn('Anuluj', () => { wyczysc(glowna); konta(); }) : null)),
+    ...(nakazy.length ? [h('div.karta', h('h2', `Wnioski o nakaz (${nakazy.length})`),
+      h('table', h('tr', h('th', 'Detektyw'), h('th', 'Sprawa'), h('th', 'Budynek'), h('th', 'Uzasadnienie'), h('th', '')),
+        nakazy.map((n) => h('tr', h('td', n.konto_login), h('td', `#${n.sledztwo_id} ${n.tytul || ''}`), h('td', n.budynek),
+          h('td', n.uzasadnienie),
+          h('td.rzad', btn('Wydaj', decyzjaNakazu(n, true), '.glowny'), btn('Odrzuć', decyzjaNakazu(n, false), '.zly'))))))] : []),
     h('div.karta.przewijana', h('h2', `Konta (${uzytkownicy.length})`),
       h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', 'Gotowość'), h('th', '')),
         uzytkownicy.map((x) => h('tr',

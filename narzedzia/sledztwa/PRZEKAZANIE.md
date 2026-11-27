@@ -85,7 +85,12 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    powstaje ze szkieletu (`sl_npc_dane`: fazy z jego kodem w szkicu; ukryte fazy oznaczone „TO UKRYWASZ”;
    `ukrywa_kod` — prawdziwe zdarzenie). Nastrój po każdej wypowiedzi zapisany w rozmowie (pod punkty W/S/Z).
    Droid nie pyta sam w pętli — każdą turę wyzwala operator („Zadaj pytanie” albo „Dalej”), żeby nie palić limitu.
-   Dalej: punkty W/S/Z i testy EotE (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
+   **Etap 3 zrobiony (nieprzetestowany): presety budynków i wstęp** — migracja `086_sledztwa_presety.sql`,
+   akcje `sledztwo_straz`, `sledztwo_nakaz_wniosek`, `mg_sledztwo_nakazy`, `mg_sledztwo_nakaz_decyzja`; panel MG:
+   karta „Wnioski o nakaz” w zakładce Konta. Opis w PROJEKT.md rozdz. 4 „Presety budynków i wstęp”. Uwaga: bez 086
+   skan i generator zwracają „Brak presetów budynków (migracja 086)”. Kompleksy z 030 mają po 2 budynki —
+   decyzja autora o dołożeniu budynków do mapy (wariant A) albo budynkach tylko dla sprawy (B) jeszcze nie zapadła.
+   Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.
 

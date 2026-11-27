@@ -71,6 +71,7 @@ require __DIR__ . '/astro.php';
 require __DIR__ . '/gwiazdy.php';
 require __DIR__ . '/bitwa.php';
 require __DIR__ . '/ai.php';
+require __DIR__ . '/sledztwa.php';
 
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'secure' => !empty($_SERVER['HTTPS'])]);
 session_name('dp_sesja');
@@ -384,6 +385,7 @@ obsluz_astro($akcja, $post);
 obsluz_gwiazdy($akcja, $post);
 obsluz_bitwa($akcja, $post);
 obsluz_ai($akcja, $post);
+obsluz_sledztwa($akcja, $post);
 
 switch ($akcja) {
 

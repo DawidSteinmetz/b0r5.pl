@@ -46,6 +46,7 @@ Plik dla kolejnej sesji Claude (albo człowieka), która przejmuje tę pracę. C
 | `api/konfiguracja-ai.example.php` | wzór konfiguracji (prawdziwa `konfiguracja-ai.php` poza repo, zablokowana w `.htaccess`) |
 | `api/index.php` | `require ai.php` + `obsluz_ai()` |
 | `api/migracje/084_sledztwa_warianty.sql` | **pierwsza wersja** 144 wariantów faz: nazwa, szkic z {A}{B}{Z}{S}{W}{M}, tagi `wymaga` / `daje`, jawność; słownik tagów w nagłówku pliku; ponowny import nadpisuje warianty treścią pliku |
+| `api/sledztwa.php` | generator kroku 1 (bez AI): akcje `sledztwo_nowe` (detektyw dla siebie; MG dla `login`, z opcjami `seed`, `zdarzenie_id`, `relacja_id`, `jawnosc`, `proba`), `mg_sledztwa`, `mg_sledztwo_podglad`; `api/index.php` — require + `obsluz_sledztwa()` |
 | `narzedzia/sledztwa/sprawdz_warianty.pl` | kontrola spójności wariantów (perl): 12 × 12, wstawki ↔ tagi postaci, źródło każdego wymaganego tagu, wariant bez wymagań dla każdej jawności, symulacja 100 tys. losowań generatora |
 
 Przetestowane lokalnie (MariaDB + atrapa API): obie migracje 2× bez błędów; brak pola blokuje zapytanie; zły JSON
@@ -64,17 +65,34 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
 
 1. ~~Warianty faz~~ — **zrobione** (084, pierwsza wersja). Czeka na poprawki autora; po każdej zmianie uruchomić
    `perl narzedzia/sledztwa/sprawdz_warianty.pl` (musi skończyć się „OK”).
-2. **Generator kroku 1** (`api/sledztwa.php`, akcja `sledztwo_nowe`): typ spośród niezdobytych, jawność, warianty
-   k12 zgodne z tagami, kolejność 4–10, skupisko i miejsca, postacie z kartami EotE i ekwipunkiem; zapis w bazie,
-   podgląd dla MG. Losowanie wariantów tak jak w symulacji `sprawdz_warianty.pl`: fazy 1, 2, 3, potem 4–10
-   w losowej kolejności, 11, 12; dla każdej fazy najpierw jawność, potem k12 spośród zgodnych (wszystkie tagi
-   z `wymaga` już dane; jawność wariantu `dowolna` albo równa jawności fazy); `daje` dopisać do tagów i zapisać
-   w `sledztwo_fazy.tagi`. Przy sprawie ukrytej faza 2 zawsze ukryta. Postacie Z / S / W tworzyć, gdy końcowy
-   zbiór tagów zawiera `zleceniodawca` / `sledzacy` / `swiadek`. Warianty z rzadkimi tagami (`statek`,
-   `falszywa_tozsamosc`, `zakladnik`, `organizacja`) losują się rzadko (ok. 0,5–1 %) — ewentualnie podbić wagą.
+2. ~~Generator kroku 1~~ — **napisany, NIEPRZETESTOWANY** (`api/sledztwa.php`; lokalnie brak PHP i MySQL —
+   sprawdzony tylko czytaniem i bilansem nawiasów). Pierwszy test na serwerze: jako MG
+   `POST ?a=sledztwo_nowe` z `{"login":"<detektyw>","proba":true}` → szkielet bez zapisu; potem bez `proba`
+   i `GET ?a=mg_sledztwo_podglad&id=…`. Ten sam `seed` + te same pule = ten sam szkielet. Szczegóły i
+   decyzje — „Generator kroku 1” niżej. Brak panelu MG (na razie tylko API).
 3. Szablony AI dla Autora: treść fazy, miejsce, historia NPC, wiedza NPC, ślad, wiadomość w datapadzie, zaczyn;
    w grze: pytanie droida, ekstrakcja faktów.
 4. Pulpit detektywa wg makiety DT-4; ruch droida; dziennik; koncentrat.
+
+## Generator kroku 1 — jak działa (decyzje do ewentualnej zmiany)
+
+- Losowanie: `mt_srand(seed)`; seed zapisany w `sledztwa.seed`. Stałe na górze `api/sledztwa.php`.
+- Typ: losowo spośród par (zdarzenie, relacja), których detektyw jeszcze nie ma (porzucone też zajmują).
+- Jawność sprawy: 35 % ukrytych; przy ukrytej — zdarzenie zgłoszone (inne niż prawdziwe), `ukrywa_kod` = A, B albo Z.
+  Faza 2 ma jawność sprawy; pozostałe fazy 50/50 (jeśli żaden wariant nie pasuje, jawność fazy się odwraca).
+- Fazy: 1, 2, 3, 4–10 przetasowane, 11, 12; k12 spośród zgodnych z tagami i jawnością; `sledztwo_fazy.tagi` = stan po fazie.
+- Skupisko: kompleks z `lokalizacje` (Nar Shaddaa) mający ≥ 2 budynki / lądowiska; brak lokacji → miejsca bez `lokalizacja_id`.
+- Miejsca: jedno na każdą fazę, której szkic ma `{M}`, plus kryjówka fazy 7. Rodzaj — ze słów wariantu
+  (`SLEDZTWO_SLOWA_MIEJSC`: nora, hotel, kasyno…), inaczej wg wag `gen_rodzaje_miejsc`; poziom z jego zakresu;
+  pokój `<poziom><nr>` (np. 1256), lądowisko / korytarz / targ `L-07`. Budynek skupiska o zgodnym rodzaju daje swoją
+  nazwę; inaczej „Kantyna „Szczur” (budynek)” albo „Mieszkanie 1256 (budynek)”. Pula nazw lokali — do dodania.
+- Postacie: A, B zawsze; Z / S / W wg końcowych tagów; 1–2 pobocznych na miejsce (archetypy bywające w tym rodzaju
+  miejsca). S przy tagu `nagroda` = łowca. Gatunek wg `gen_populacja`, imię / nazwisko z puli gatunku (brak → pula
+  człowieka), przydomek 35 % kluczowi / 15 % poboczni, charakter: cecha + mowa (+ nawyk 60 %). Kluczowi min. rywal,
+  poboczni sługusi. Kluczowi dostają przedmiot z `gen_przedmioty` (przyszły dowód). A przy długu ma 1/5 kredytów.
+  A przebywa w kryjówce fazy 7. Karta EotE jak `nowaKarta()` (tryb NPC); bronie z tabeli `SLEDZTWO_BRONIE`.
+- Droid startuje w budynku i na poziomie miejsca fazy 2 (albo pierwszego miejsca). Wpis w dzienniku „Szkielet wylosowany”.
+- Gracz może mieć jedno otwarte śledztwo; gracz nie dostaje w odpowiedzi szkieletu (prawdy), tylko id.
 
 ## Otwarte pytania do autora
 

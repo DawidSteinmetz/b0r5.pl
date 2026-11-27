@@ -627,7 +627,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
 {
     $kontakty = [];
     $godzina = gmdate('YmdH');
-    $q = $db->prepare('SELECT p.gatunek_kod, p.plec, a.nazwa AS archetyp FROM sledztwo_postacie p
+    $q = $db->prepare('SELECT p.id, p.gatunek_kod, p.plec, a.nazwa AS archetyp FROM sledztwo_postacie p
         LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? AND p.miejsce_id = ? ORDER BY p.id');
     foreach ($plan['pokoje'] as $p) {
         $srodek = $p['x'] + intdiv(SLEDZTWO_POKOJ_J, 2);
@@ -635,7 +635,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
         $osoby = [];
         if ($p['miejsce_id']) {
             $q->execute([(int) $s['id'], $p['miejsce_id']]);
-            foreach ($q->fetchAll() as $o) $osoby[] = $o;
+            foreach ($q->fetchAll() as $o) $osoby[] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
         } else {
             sl_ziarno((int) $s['seed'], 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
             $ile = sl_los(0, in_array($p['rodzaj_kod'], ['kantyna', 'kasyno', 'targ'], true) ? 3 : 1);
@@ -643,13 +643,15 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
             for ($k = 0; $k < $ile; $k++) {
                 $g = sl_wazony($pule['populacja'])['kod'];
                 $a = $bywalcy ? sl_wazony($bywalcy) : null;
-                $osoby[] = ['gatunek_kod' => $g, 'plec' => $g === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k'), 'archetyp' => $a['nazwa'] ?? null];
+                $osoby[] = ['gatunek_kod' => $g, 'plec' => $g === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k'), 'archetyp' => $a['nazwa'] ?? null,
+                    'postac_id' => null, 'token' => sl_token((int) $s['seed'], 's', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina, (string) $k)];
             }
         }
         foreach ($osoby as $j => $o) {
             $kontakty[] = ['pokoj' => $p['nr'], 'x' => $p['x'] + 15 + ($j % 3) * 15, 'strona' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$o['gatunek_kod']]['nazwa'] ?? $o['gatunek_kod'], 'plec' => $o['plec'],
-                'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień'];
+                'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień',
+                'token' => $o['token'], 'postac_id' => $o['postac_id']];
         }
     }
     usort($kontakty, fn($a, $b) => $a['x'] <=> $b['x']);
@@ -813,16 +815,350 @@ function sl_skan(PDO $db, array $s): array
     }
     $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik WHERE sledztwo_id = ? AND rodzaj <> 'system' ORDER BY id DESC LIMIT 12");
     $q->execute([(int) $s['id']]);
-    return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG,
+    $rozmowa = null;
+    try {
+        $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+        if ($r) $rozmowa = ['id' => (int) $r['id'], 'kontakt' => $r['kontakt'], 'stan' => $r['stan']];
+    } catch (PDOException $e) { /* brak migracji 085 — bez rozmów */ }
+    $kontakty = array_map(fn($k) => array_diff_key($k, ['postac_id' => 1]), $kontakty);
+    return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
         'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz];
+}
+
+// ---------- rozmowy droida z NPC (migracja 085) ----------
+
+const SLEDZTWO_PODEJSCIE_S = 3;              // droid podchodzi na 2–3 m
+const SLEDZTWO_AI_DLA_POBOCZNYCH = false;    // true = poboczni z bazy też mówią przez AI (więcej wywołań)
+const SLEDZTWO_NASTAWIENIE = ['uprzejmy' => 'uprzejme, choć ostrożne', 'obojetny' => 'obojętne, lekko nieufne',
+    'wrogi' => 'wrogie', 'przestraszony' => 'przestraszone'];
+
+function sl_token(int $seed, string ...$czesci): string
+{
+    return substr(md5($seed . '|' . implode('|', $czesci)), 0, 12);
+}
+
+function sl_rozmowa_aktywna(PDO $db, int $sledztwoId): ?array
+{
+    $q = $db->prepare("SELECT * FROM sledztwo_rozmowy WHERE sledztwo_id = ? AND stan <> 'zakonczona' ORDER BY id DESC LIMIT 1");
+    $q->execute([$sledztwoId]);
+    return $q->fetch() ?: null;
+}
+
+function sl_wpis(PDO $db, int $rozmowaId, string $kto, string $tresc, bool $ai = false): void
+{
+    $db->prepare('INSERT INTO sledztwo_rozmowy_wpisy (rozmowa_id, kiedy_utc, kto, tresc, ai) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$rozmowaId, sl_utc(sl_teraz()), $kto, $tresc, $ai ? 1 : 0]);
+}
+
+function sl_opis_rozmowcy(array $r): string
+{
+    $o = json_decode((string) $r['opis_json'], true) ?: [];
+    return trim(($o['gatunek'] ?? 'rozmówca') . ', ' . ($o['wyglad'] ?? ''), ', ');
+}
+
+function sl_rozmowa_zakoncz(PDO $db, array $r, string $powod): void
+{
+    $db->prepare("UPDATE sledztwo_rozmowy SET stan = 'zakonczona', zakonczono_utc = ?, tura_od = NULL WHERE id = ? AND stan <> 'zakonczona'")
+        ->execute([sl_utc(sl_teraz()), (int) $r['id']]);
+    sl_wpis($db, (int) $r['id'], 'system', $powod);
+    $q = $db->prepare("SELECT COUNT(*) FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto IN ('droid','npc')");
+    $q->execute([(int) $r['id']]);
+    sl_dziennik($db, (int) $r['sledztwo_id'], 'rozmowa', 'droid',
+        'Rozmowa zakończona (' . sl_opis_rozmowcy($r) . ', lokal ' . $r['pokoj'] . '): ' . (int) $q->fetchColumn() . ' wypowiedzi. ' . $powod);
+    $db->prepare("UPDATE sledztwo_droid SET stan = 'czeka' WHERE sledztwo_id = ? AND stan = 'rozmowa'")->execute([(int) $r['sledztwo_id']]);
+}
+
+function sl_rozmowa_widok(PDO $db, array $r): array
+{
+    $q = $db->prepare('SELECT id, kiedy_utc, kto, tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? ORDER BY id');
+    $q->execute([(int) $r['id']]);
+    $o = json_decode((string) $r['opis_json'], true) ?: [];
+    return ['id' => (int) $r['id'], 'kontakt' => $r['kontakt'], 'stan' => $r['stan'], 'rozmowca' => sl_opis_rozmowcy($r), 'kod' => $o['kod'] ?? null,
+        'pokoj' => $r['pokoj'], 'gotowa_za_s' => max(0, (sl_z_utc($r['gotowa_utc']) ?? 0) - sl_teraz()),
+        'tura_trwa' => $r['tura_od'] !== null, 'wpisy' => $q->fetchAll()];
+}
+
+// Klik w kontakt: droid podchodzi (wchodzi do lokalu, jeśli trzeba) i zaczyna rozmowę.
+function sl_rozmowa_start(PDO $db, array $s, string $token): array
+{
+    $pule = sl_pule($db);
+    $d = sl_rozlicz_droida($db, $s, $pule);
+    if (!$d || $d['stan'] === 'w_drodze') throw new SledztwoBlad('Droid jest w drodze. Poczekaj, aż dotrze.');
+    $budynki = sl_budynki($db, $s);
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
+    $kontakt = null;
+    foreach (sl_kontakty($db, $s, $pule, $plan, sl_x_droida($plan, (string) $d['pokoj'])) as $k) if ($k['token'] === $token) { $kontakt = $k; break; }
+    if (!$kontakt) throw new SledztwoBlad('Kontakt poza zasięgiem albo już odszedł.');
+    $lokal = null;
+    foreach ($plan['pokoje'] as $p) if ($p['nr'] === $kontakt['pokoj']) { $lokal = $p; break; }
+    if ($lokal && $lokal['zamkniete'] && $d['pokoj'] !== $lokal['nr']) throw new SledztwoBlad("Lokal {$lokal['nr']} jest zamknięty — droid nie wejdzie.");
+
+    $stara = sl_rozmowa_aktywna($db, (int) $s['id']);
+    if ($stara) sl_rozmowa_zakoncz($db, $stara, 'Droid przerwał rozmowę i podszedł do kogoś innego.');
+    $teraz = sl_teraz();
+    $gotowa = $teraz + SLEDZTWO_PODEJSCIE_S;
+    if ($d['pokoj'] !== $kontakt['pokoj']) {
+        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $kontakt['pokoj']);
+        $gotowa = $teraz + $ruch['czas_s'] + SLEDZTWO_PODEJSCIE_S;
+    }
+    $opis = ['gatunek' => $kontakt['gatunek'], 'plec' => $kontakt['plec'], 'wyglad' => $kontakt['wyglad'], 'kod' => $kontakt['kod']];
+    $db->prepare('INSERT INTO sledztwo_rozmowy (sledztwo_id, kontakt, postac_id, opis_json, lokalizacja_id, poziom, pokoj, gotowa_utc, rozpoczeto_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        ->execute([(int) $s['id'], $token, $kontakt['postac_id'], json_encode($opis, JSON_UNESCAPED_UNICODE), $bid, (int) $d['poziom'],
+            $kontakt['pokoj'], sl_utc($gotowa), sl_utc($teraz)]);
+    $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+    $txt = "{$kontakt['kod']}: {$kontakt['gatunek']}, {$kontakt['wyglad']} (lokal {$kontakt['pokoj']})";
+    sl_wpis($db, (int) $r['id'], 'system', "DT-4 podchodzi do rozmówcy ({$txt}) na 2–3 m.");
+    sl_dziennik($db, (int) $s['id'], 'rozmowa', 'droid', "Podchodzę do kontaktu {$txt}.");
+    return sl_rozmowa_widok($db, $r);
+}
+
+// Formy grzecznościowe wg płci rozmówcy.
+function sl_formy(string $plec): array
+{
+    return $plec === 'k'
+        ? ['wolacz' => 'obywatelko', 'pan' => 'Pani', 'panu' => 'Pani', 'pana' => 'Panią', 'a' => 'a', 'opis' => 'Pani (kobieta)']
+        : ['wolacz' => 'obywatelu', 'pan' => 'Pan', 'panu' => 'Panu', 'pana' => 'Pana', 'a' => '', 'opis' => $plec === 'm' ? 'Pan (mężczyzna)' : 'Pan (płeć nieokreślona)'];
+}
+
+// Wypowiedź droida bez AI (przechodnie, poboczni, awaria łącza).
+function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr): string
+{
+    if ($pierwsza) {
+        $t = "Dzień dobry, {$f['wolacz']}. Jestem droid detektywistyczny {$oznaczenie}, operowany przez: {$operator}. "
+            . "Mam prawo zadać {$f['panu']} kilka pytań, ponieważ trwa śledztwo, w które jest {$f['pan']} ewidentnie zaangażowan" . ($f['a'] ?: 'y') . '.';
+        return $t . ($polecenie !== '' ? " Operator pyta: {$polecenie}" : ' Co stało się tutaj ubiegłej nocy?');
+    }
+    if ($polecenie !== '') return "Operator pyta: {$polecenie}";
+    $pytania = ["Kogo {$f['pan']} tu widział{$f['a']} w ciągu ostatniej doby?", "Czy ktoś pytał już {$f['pana']} o tę sprawę?",
+        'Kto jeszcze bywa w tym miejscu regularnie?', 'Czy coś zginęło albo zmieniło się tutaj w ostatnich dniach?',
+        "Gdzie {$f['pan']} był{$f['a']} ubiegłej nocy?"];
+    return $pytania[$nr % count($pytania)];
+}
+
+function sl_kwestia_szumu(PDO $db, string $nastroj): string
+{
+    $q = $db->prepare('SELECT tresc FROM gen_kwestie_szumu WHERE nastroj = ?');
+    $q->execute([$nastroj]);
+    $l = $q->fetchAll(PDO::FETCH_COLUMN);
+    if (!$l) $l = $db->query('SELECT tresc FROM gen_kwestie_szumu')->fetchAll(PDO::FETCH_COLUMN);
+    return $l ? (string) $l[random_int(0, count($l) - 1)] : 'Nie wiem.';
+}
+
+// Dane kluczowego NPC do szablonu npc_wypowiedz. Dopóki model Autor nie napisze historii i wiedzy (krok 2),
+// wiedza powstaje ze szkieletu: fazy, w których szkicu występuje kod postaci, z zachowaniem wg jawności fazy.
+function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
+{
+    $q = $db->prepare('SELECT id, kod, imie, nazwisko FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IS NOT NULL');
+    $q->execute([(int) $s['id']]);
+    $kluczowi = $q->fetchAll();
+    $q = $db->prepare('SELECT f.faza_nr, f.jawnosc, w.szkic, t.nazwa, t.npc_jawna, t.npc_ukryta FROM sledztwo_fazy f
+        JOIN sledztwo_warianty w ON w.faza_nr = f.faza_nr AND w.nr = f.wariant_nr JOIN sledztwo_fazy_szablon t ON t.nr = f.faza_nr
+        WHERE f.sledztwo_id = ? ORDER BY f.pozycja');
+    $q->execute([(int) $s['id']]);
+    $fazy = $q->fetchAll();
+    $q = $db->prepare('SELECT faza_nr, nazwa FROM sledztwo_miejsca WHERE sledztwo_id = ?');
+    $q->execute([(int) $s['id']]);
+    $miejscaFaz = [];
+    foreach ($q->fetchAll() as $m) $miejscaFaz[(int) $m['faza_nr']] = $m['nazwa'];
+    $q = $db->prepare('SELECT s.ukrywa_kod, z.nazwa AS prawdziwe, z.wskazowki_autora, COALESCE(zg.nazwa, z.nazwa) AS zgloszone,
+            r.nazwa AS relacja, r.rola_a, r.rola_b
+        FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id
+        JOIN sledztwo_relacje r ON r.id = s.relacja_id WHERE s.id = ?');
+    $q->execute([(int) $s['id']]);
+    $sp = $q->fetch();
+
+    $kod = $p['kod'];
+    $imieKodu = [];
+    foreach ($kluczowi as $k) $imieKodu[$k['kod']] = trim($k['imie'] . ' ' . ($k['nazwisko'] ?? ''));
+    $archetyp = $pule['archetypy'][$p['archetyp_kod']]['nazwa'] ?? 'mieszkaniec Nar Shaddaa';
+    $rola = match ($kod) {
+        'A' => "{$sp['rola_a']} w relacji „{$sp['relacja']}”; drugą stroną jest " . ($imieKodu['B'] ?? 'ktoś bliski') . " ({$sp['rola_b']})",
+        'B' => "{$sp['rola_b']} w relacji „{$sp['relacja']}”; drugą stroną jest " . ($imieKodu['A'] ?? 'ktoś bliski') . " ({$sp['rola_a']})",
+        'Z' => 'zleceniodawca / mocodawca w tej sprawie',
+        'S' => 'ktoś, kto sam szuka w tej sprawie ludzi i rzeczy (łowca, agent albo cichy tropiciel)',
+        'W' => 'świadek — widziałeś coś ważnego',
+        default => 'osoba z otoczenia sprawy',
+    };
+
+    $wiedza = [];
+    $zachowanie = [];
+    foreach ($fazy as $f) {
+        if (!$kod || strpos((string) $f['szkic'], '{' . $kod . '}') === false) continue;
+        $tekst = sl_szkic_czytelny((string) $f['szkic'], $kluczowi, $miejscaFaz[(int) $f['faza_nr']] ?? null);
+        $wiedza[] = "- {$f['nazwa']}: {$tekst}" . ($f['jawnosc'] === 'ukryta'
+            ? ' [TO UKRYWASZ: zaprzeczasz albo zbywasz, dopóki pytanie nie trafi dokładnie w sedno; wtedy kłamiesz albo milkniesz]'
+            : ' [o tym możesz mówić, jeśli ktoś wprost zapyta]');
+        $zachowanie[] = "- {$f['nazwa']}: " . ($f['jawnosc'] === 'ukryta' ? $f['npc_ukryta'] : $f['npc_jawna']);
+    }
+    if ($kod && $kod === $sp['ukrywa_kod']) {
+        $wiedza[] = "- NAJWAŻNIEJSZE: naprawdę chodzi o: {$sp['prawdziwe']}. Ukrywasz to i trzymasz się wersji, że chodzi o: {$sp['zgloszone']}.";
+    }
+    if (!$wiedza) $wiedza[] = "- O samej sprawie nic konkretnego nie wiesz. Słyszałeś tylko plotki, że coś się stało ({$sp['zgloszone']}).";
+    if (!$zachowanie) $zachowanie[] = '- Zachowujesz się zgodnie z charakterem; o sprawie mówisz niechętnie, bo cię nie dotyczy.';
+    if ($sp['wskazowki_autora']) $zachowanie[] = '- Granice treści: ' . $sp['wskazowki_autora'];
+
+    $ch = ['cecha' => '', 'nawyk' => '', 'mowa' => ''];
+    foreach (explode(';', (string) $p['charakter']) as $c) {
+        [$k, $v] = array_pad(array_map('trim', explode(':', $c, 2)), 2, '');
+        if (isset($ch[$k])) $ch[$k] = $v;
+    }
+    $miejsce = ['nazwa' => 'lokal ' . $r['pokoj'], 'poziom' => (string) $r['poziom'], 'opis' => 'Zwykły lokal na Nar Shaddaa.'];
+    if ($p['miejsce_id']) {
+        $q = $db->prepare('SELECT m.nazwa, m.opis, g.opis_szumu FROM sledztwo_miejsca m JOIN gen_rodzaje_miejsc g ON g.kod = m.rodzaj_kod WHERE m.id = ?');
+        $q->execute([(int) $p['miejsce_id']]);
+        if ($m = $q->fetch()) $miejsce = ['nazwa' => $m['nazwa'], 'poziom' => (string) $r['poziom'], 'opis' => $m['opis'] ?: ($m['opis_szumu'] ?: 'Zwykły lokal na Nar Shaddaa.')];
+    }
+    $pelne = trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '') . ($p['przydomek'] ? " „{$p['przydomek']}”" : ''));
+    return [
+        'npc' => ['pelne_imie' => $pelne, 'gatunek' => $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'],
+            'plec' => ['m' => 'mężczyzna', 'k' => 'kobieta', 'n' => 'nieokreślona'][$p['plec']] ?? 'nieokreślona',
+            'wiek' => $p['wiek'] !== null ? (string) $p['wiek'] : 'nieznany', 'archetyp' => $archetyp,
+            'charakter' => $ch['cecha'] ?: 'zwyczajny', 'nawyk' => $ch['nawyk'] ?: 'brak szczególnych nawyków', 'mowa' => $ch['mowa'] ?: 'zwyczajnie',
+            'historia' => $p['historia'] ?: "Jesteś {$archetyp} na Nar Shaddaa. W sprawie jesteś: {$rola}.",
+            'wiedza' => $p['wiedza'] ?: implode("\n", $wiedza), 'nastawienie' => SLEDZTWO_NASTAWIENIE[$r['nastroj']] ?? 'obojętne'],
+        'miejsce' => $miejsce,
+        'faza' => ['zachowanie' => implode("\n", $zachowanie)],
+    ];
+}
+
+// Jedna tura: (polecenie operatora) → pytanie droida → odpowiedź rozmówcy. Kluczowi NPC — AI; reszta — bez AI.
+function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie): array
+{
+    $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ?');
+    $q->execute([$rid, (int) $s['id']]);
+    $r = $q->fetch();
+    if (!$r || $r['stan'] === 'zakonczona') throw new SledztwoBlad('Ta rozmowa jest już zakończona.');
+    if ((sl_z_utc($r['gotowa_utc']) ?? 0) > sl_teraz()) throw new SledztwoBlad('Droid jeszcze podchodzi do rozmówcy.');
+    $pule = sl_pule($db);
+    $d = sl_rozlicz_droida($db, $s, $pule);
+    $naMiejscu = $d && $d['stan'] !== 'w_drodze' && (string) $d['pokoj'] === (string) $r['pokoj'] && (int) $d['poziom'] === (int) $r['poziom']
+        && (($d['lokalizacja_id'] === null && $r['lokalizacja_id'] === null) || (int) $d['lokalizacja_id'] === (int) $r['lokalizacja_id']);
+    if (!$naMiejscu) {
+        sl_rozmowa_zakoncz($db, $r, 'Droid odszedł od rozmówcy.');
+        throw new SledztwoBlad('Droid nie stoi już przy rozmówcy — rozmowa zakończona.');
+    }
+    $teraz = sl_teraz();
+    $zajmij = $db->prepare('UPDATE sledztwo_rozmowy SET tura_od = ? WHERE id = ? AND (tura_od IS NULL OR tura_od < ?)');
+    $zajmij->execute([sl_utc($teraz), $rid, sl_utc($teraz - 120)]);
+    if (!$zajmij->rowCount()) throw new SledztwoBlad('Droid jeszcze rozmawia — poczekaj na odpowiedź.');
+    @set_time_limit(180);
+
+    try {
+        if ($r['stan'] === 'podejscie') {
+            $db->prepare("UPDATE sledztwo_rozmowy SET stan = 'trwa' WHERE id = ?")->execute([$rid]);
+            $db->prepare("UPDATE sledztwo_droid SET stan = 'rozmowa' WHERE sledztwo_id = ?")->execute([(int) $s['id']]);
+        }
+        $polecenie = trim(mb_substr($polecenie, 0, 300));
+        if ($polecenie !== '') sl_wpis($db, $rid, 'operator', $polecenie);
+
+        $q = $db->prepare("SELECT kto, tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto IN ('droid','npc') ORDER BY id");
+        $q->execute([$rid]);
+        $dotad = $q->fetchAll();
+        $pytan = count(array_filter($dotad, fn($w) => $w['kto'] === 'droid'));
+        $ostatnie = array_slice($dotad, -12);
+
+        $o = json_decode((string) $r['opis_json'], true) ?: [];
+        $f = sl_formy((string) ($o['plec'] ?? 'n'));
+        $q = $db->prepare('SELECT droid_oznaczenie FROM sledztwo_detektywi WHERE konto_login = ?');
+        $q->execute([(string) $s['konto_login']]);
+        $oznaczenie = (string) ($q->fetchColumn() ?: 'DT-4');
+        $operator = trim(($u['ranga'] ?? '') . ' ' . ($u['postac'] ?? '')) ?: (string) $u['login'];
+        $postac = null;
+        if ($r['postac_id']) {
+            $q = $db->prepare('SELECT * FROM sledztwo_postacie WHERE id = ?');
+            $q->execute([(int) $r['postac_id']]);
+            $postac = $q->fetch() ?: null;
+        }
+        $ai = $postac && ($postac['waga'] === 'kluczowy' || SLEDZTWO_AI_DLA_POBOCZNYCH);
+        $q = $db->prepare('SELECT COALESCE(zg.nazwa, z.nazwa) FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id
+            LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id WHERE s.id = ?');
+        $q->execute([(int) $s['id']]);
+        $zgloszenie = (string) $q->fetchColumn();
+        $awaria = false;
+
+        // 1. Droid pyta.
+        $przebiegDroida = $ostatnie ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "{$oznaczenie}: " : 'Rozmówca: ') . $w['tresc'], $ostatnie))
+            : '(rozmowa dopiero się zaczyna)';
+        $pytanie = null;
+        $pytanieAi = false;
+        if ($ai) {
+            try {
+                $pytanie = ai_wywolaj('droid_wypowiedz', [
+                    'droid' => ['oznaczenie' => $oznaczenie], 'operator' => ['opis' => $operator],
+                    'sprawa' => ['zgloszenie' => $zgloszenie],
+                    'miejsce' => ['rejon' => 'Nar Shaddaa', 'nazwa' => 'lokal ' . $r['pokoj'] . ', poziom ' . $r['poziom']],
+                    'rozmowca' => ['opis' => sl_opis_rozmowcy($r), 'forma' => $f['opis']],
+                    'rozmowa' => ['etap' => $pytan ? 'Rozmowa trwa — nie przedstawiaj się ponownie.' : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.',
+                        'polecenie' => $polecenie !== '' ? $polecenie : 'Brak — zadaj kolejne pytanie zgodnie z zasadą 4.',
+                        'przebieg' => $przebiegDroida],
+                ], (int) $s['id'])['wypowiedz'];
+                $pytanieAi = true;
+            } catch (AiBlad $e) { $awaria = true; }
+        }
+        $pytanie = $pytanie ?? sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $polecenie, $pytan);
+        sl_wpis($db, $rid, 'droid', $pytanie, $pytanieAi);
+
+        // 2. Rozmówca odpowiada.
+        $odp = null;
+        $nastroj = (string) $r['nastroj'];
+        $konczy = false;
+        if ($ai && !$awaria) {
+            try {
+                $dane = sl_npc_dane($db, $s, $postac, $pule, $r);
+                $imie = $dane['npc']['pelne_imie'];
+                $dane['droid'] = ['oznaczenie' => $oznaczenie];
+                $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie
+                    ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
+                    : '(to początek rozmowy)'];
+                $w = ai_wywolaj('npc_wypowiedz', $dane, (int) $s['id']);
+                $odp = $w['wypowiedz'];
+                $nastroj = $w['nastroj'];
+                $konczy = (bool) $w['konczy_rozmowe'];
+                sl_wpis($db, $rid, 'npc', $odp, true);
+            } catch (AiBlad $e) { $awaria = true; }
+        }
+        if ($odp === null) {
+            if (!$ai || $awaria) {
+                // Bez AI: zdawkowa kwestia; przechodzień po kilku pytaniach odchodzi.
+                if ($pytan === 0) $nastroj = ['uprzejmy', 'obojetny', 'obojetny', 'wrogi', 'przestraszony'][random_int(0, 4)];
+                $odp = sl_kwestia_szumu($db, $nastroj);
+                $konczy = $pytan >= 2 && random_int(1, 100) <= 50;
+                sl_wpis($db, $rid, 'npc', $odp);
+            }
+        }
+        if ($awaria) sl_wpis($db, $rid, 'system', 'Łącze z modułem językowym niedostępne — wypowiedź zastępcza.');
+        $db->prepare('UPDATE sledztwo_rozmowy SET nastroj = ? WHERE id = ?')->execute([$nastroj, $rid]);
+        if ($konczy) {
+            $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
+            $q->execute([$rid]);
+            sl_rozmowa_zakoncz($db, $q->fetch(), 'Rozmówca kończy rozmowę.');
+        }
+    } finally {
+        $db->prepare('UPDATE sledztwo_rozmowy SET tura_od = NULL WHERE id = ?')->execute([$rid]);
+    }
+    $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
+    $q->execute([$rid]);
+    return sl_rozmowa_widok($db, $q->fetch());
+}
+
+function sl_rozmowy_dostepne(PDO $db): void
+{
+    try {
+        $db->query('SELECT 1 FROM sledztwo_rozmowy LIMIT 1');
+    } catch (PDOException $e) {
+        throw new SledztwoBlad('Rozmowy nie działają. (Brak migracji 085.)');
+    }
 }
 
 // ---------- akcje ----------
 
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
-    $akcje = ['sledztwo_moje', 'sledztwo_skan', 'sledztwo_idz', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
+    $akcje = ['sledztwo_moje', 'sledztwo_skan', 'sledztwo_idz', 'sledztwo_rozmowa', 'sledztwo_rozmowa_start', 'sledztwo_rozmowa_tura',
+        'sledztwo_rozmowa_koniec', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -890,7 +1226,61 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 $w = wejscie();
                 $bid = isset($w['lokalizacja_id']) && $w['lokalizacja_id'] !== '' && $w['lokalizacja_id'] !== null ? (int) $w['lokalizacja_id'] : null;
                 $pokoj = mb_substr(trim((string) ($w['pokoj'] ?? 'korytarz')), 0, 12) ?: 'korytarz';
-                odpowiedz(['ok' => true] + sl_rozkaz_ruchu($db, $s, $bid, (int) ($w['poziom'] ?? 0), $pokoj));
+                $wynik = sl_rozkaz_ruchu($db, $s, $bid, (int) ($w['poziom'] ?? 0), $pokoj);
+                // Odejście kończy rozmowę.
+                try {
+                    $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+                    if ($r) sl_rozmowa_zakoncz($db, $r, 'Droid odszedł na polecenie operatora.');
+                } catch (PDOException $e) { /* brak migracji 085 */ }
+                odpowiedz(['ok' => true] + $wynik);
+
+            // Rozmowa: bieżąca (albo ?id=) z całym zapisem.
+            case 'sledztwo_rozmowa':
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                sl_rozmowy_dostepne($db);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                if (!empty($_GET['id'])) {
+                    $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ?');
+                    $q->execute([(int) $_GET['id'], (int) $s['id']]);
+                    $r = $q->fetch() ?: null;
+                } else {
+                    $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+                }
+                odpowiedz(['rozmowa' => $r ? sl_rozmowa_widok($db, $r) : null]);
+
+            // Klik w kontakt na planie: {kontakt: znacznik z sledztwo_skan}.
+            case 'sledztwo_rozmowa_start':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                sl_rozmowy_dostepne($db);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                odpowiedz(['rozmowa' => sl_rozmowa_start($db, $s, (string) (wejscie()['kontakt'] ?? ''))]);
+
+            // Tura rozmowy: {rozmowa_id, polecenie?} — polecenie operatora dla droida (opcjonalne).
+            case 'sledztwo_rozmowa_tura':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                sl_rozmowy_dostepne($db);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                $w = wejscie();
+                odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''))]);
+
+            case 'sledztwo_rozmowa_koniec':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                sl_rozmowy_dostepne($db);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                $q = $db->prepare("SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ? AND stan <> 'zakonczona'");
+                $q->execute([(int) (wejscie()['rozmowa_id'] ?? 0), (int) $s['id']]);
+                if ($r = $q->fetch()) {
+                    sl_wpis($db, (int) $r['id'], 'droid', 'Dziękuję za współpracę. Życzę spokojnego cyklu.');
+                    sl_rozmowa_zakoncz($db, $r, 'Operator zakończył rozmowę.');
+                }
+                odpowiedz(['ok' => true]);
 
             case 'sledztwo_nowe':
                 if (!$post) blad('Zła metoda.', 405);

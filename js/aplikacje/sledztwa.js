@@ -132,11 +132,14 @@ export default {
           p.terminal ? s('text', { x: p.x + P - 9.5, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal) : null);
         svg.append(g);
       }
-      // Kontakty w zasięgu.
+      // Kontakty w zasięgu: klik = droid podchodzi na 2–3 m i zaczyna rozmowę.
       for (const k of kontakty) {
         const y = yPokoju(k.strona) + 38;
-        svg.append(s('g', {},
-          s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),
+        const aktywny = d.rozmowa && d.rozmowa.kontakt === k.token;
+        svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); zacznijRozmowe(k.token); } },
+          s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad} — kliknij, by droid zaczął rozmowę`),
+          s('circle', { cx: k.x, cy: y, r: 7, fill: 'transparent' }),
+          aktywny ? s('circle', { cx: k.x, cy: y, r: 6, fill: 'none', stroke: 'var(--ok)' }) : null,
           s('circle', { cx: k.x, cy: y, r: 3.5, fill: 'var(--akcent-2)' }),
           s('text', { x: k.x + 5, y: y + 3, 'font-size': 6, fill: 'var(--akcent-2)' }, k.kod)));
       }
@@ -196,9 +199,123 @@ export default {
           + 'Kliknij lokal, by wysłać tam droida; inny poziom lub budynek — poniżej.'),
         postep,
         planPietra(d),
-        kontakty.length ? h('div.maly-tekst', kontakty.map((k) => `${k.kod}: ${k.gatunek}, ${k.wyglad} (lokal ${k.pokoj})`).join(' · ')) : null,
+        kontakty.length ? h('div.maly-tekst', 'Kontakty (kliknij, by rozmawiać): ', ...kontakty.map((k, i) => h('span',
+          i ? ' · ' : null,
+          h('a', { href: '#', onclick: (e) => { e.preventDefault(); zacznijRozmowe(k.token); } }, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),
+          ` (lokal ${k.pokoj})`))) : null,
         sterowanie(d),
         pasekOdczytu(d));
+    }
+
+    // ---------- rozmowa: zapis tekstowy pisany na żywo, polecenia operatora ----------
+
+    const rozmowaBox = h('div');
+    const lista = h('div', { style: 'max-height:340px;overflow-y:auto;margin:8px 0' });
+    let rozmowa = null, pisze = false, zaplanowany = null, kolejka = Promise.resolve();
+    const wypisane = new Set();
+    const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
+
+    // Wypisuje wpis znak po znaku (wpisy po kolei, nie naraz).
+    function wypisz(w, odRazu) {
+      const kto = w.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[w.kto];
+      const tekst = h('span', { style: 'white-space:pre-wrap' });
+      const el = h('div', { style: `margin:5px 0;${w.kto === 'system' ? 'opacity:.6;font-style:italic' : ''}${w.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
+        kto ? h('b', `${kto} › `) : null, tekst);
+      lista.append(el);
+      if (odRazu) { tekst.textContent = w.tresc; return Promise.resolve(); }
+      return new Promise((gotowe) => {
+        let i = 0;
+        const krok = () => {
+          if (koniec) return gotowe();
+          i = Math.min(w.tresc.length, i + 2);
+          tekst.textContent = w.tresc.slice(0, i);
+          lista.scrollTop = lista.scrollHeight;
+          if (i < w.tresc.length) setTimeout(krok, 28); else gotowe();
+        };
+        krok();
+      });
+    }
+
+    function pokazRozmowe(r, odRazu = false) {
+      if (!r) { rozmowa = null; wyczysc(rozmowaBox); return; }
+      if (!rozmowa || rozmowa.id !== r.id) { wyczysc(lista); wypisane.clear(); }
+      rozmowa = r;
+      for (const w of r.wpisy || []) {
+        if (wypisane.has(w.id)) continue;
+        wypisane.add(w.id);
+        kolejka = kolejka.then(() => wypisz(w, odRazu));
+      }
+      rysujSterowanieRozmowy();
+      // Droid jeszcze podchodzi: pierwsza wypowiedź (przedstawienie się) rusza sama, gdy stanie przy rozmówcy.
+      const bezDroida = !(r.wpisy || []).some((w) => w.kto === 'droid');
+      if (r.stan !== 'zakonczona' && bezDroida && zaplanowany !== r.id) {
+        zaplanowany = r.id;
+        setTimeout(() => { if (!koniec && rozmowa?.id === r.id) tura(''); }, (r.gotowa_za_s + 0.5) * 1000);
+      }
+    }
+
+    function rysujSterowanieRozmowy() {
+      if (!rozmowa) return;
+      const zakonczona = rozmowa.stan === 'zakonczona';
+      const pole = h('input', { placeholder: 'Polecenie dla droida, np. „spytaj go, komu jest winien pieniądze”', style: 'flex:1;min-width:220px',
+        disabled: zakonczona || pisze, maxlength: 300 });
+      const zadaj = h('button.przycisk', { disabled: zakonczona || pisze }, 'Zadaj pytanie');
+      const dalej = h('button.przycisk.drugi', { disabled: zakonczona || pisze }, 'Dalej (droid pyta sam)');
+      const zakoncz = h('button.przycisk.drugi', { disabled: zakonczona || pisze }, 'Zakończ rozmowę');
+      const zamknij = h('button.przycisk.drugi', 'Zamknij zapis');
+      zadaj.onclick = () => { if (pole.value.trim()) tura(pole.value.trim()); };
+      pole.onkeydown = (e) => { if (e.key === 'Enter' && pole.value.trim()) tura(pole.value.trim()); };
+      dalej.onclick = () => tura('');
+      zakoncz.onclick = async () => {
+        try { await api('sledztwo_rozmowa_koniec', { rozmowa_id: rozmowa.id }); await odswiezRozmowe(); skanuj(); }
+        catch (e) { wyczysc(komunikat).append(blad(e)); }
+      };
+      zamknij.onclick = () => pokazRozmowe(null);
+      const status = pisze ? 'DT-4 nadaje… czekam na odpowiedź rozmówcy.'
+        : rozmowa.stan === 'podejscie' ? `DT-4 podchodzi do rozmówcy (2–3 m)${rozmowa.gotowa_za_s ? ` · ok. ${czas(rozmowa.gotowa_za_s)}` : ''}…`
+          : zakonczona ? 'Rozmowa zakończona.' : 'Rozmowa trwa. Wpisz polecenie albo pozwól droidowi pytać samemu.';
+      wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · lokal ${rozmowa.pokoj}`,
+        h('p.maly-tekst', 'Zapis tekstowy — droidy śledcze nie mają modułu głosu.'),
+        lista,
+        h('p.maly-tekst', status),
+        h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' },
+          zakonczona ? zamknij : pole, zakonczona ? null : zadaj, zakonczona ? null : dalej, zakonczona ? null : zakoncz)));
+      if (!zakonczona && !pisze) setTimeout(() => pole.focus(), 0);
+    }
+
+    async function tura(polecenie) {
+      if (!rozmowa || pisze || rozmowa.stan === 'zakonczona') return;
+      pisze = true;
+      rysujSterowanieRozmowy();
+      try {
+        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie });
+        pisze = false;
+        pokazRozmowe(r.rozmowa);
+        if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); }
+      } catch (e) {
+        pisze = false;
+        wyczysc(komunikat).append(blad(e));
+        await odswiezRozmowe();
+      }
+    }
+
+    async function odswiezRozmowe(id) {
+      const ktora = id || rozmowa?.id;
+      try {
+        const r = await api('sledztwo_rozmowa', undefined, ktora ? { id: ktora } : {});
+        pokazRozmowe(r.rozmowa, !rozmowa);
+      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+    }
+
+    async function zacznijRozmowe(token) {
+      if (pisze) return;
+      try {
+        const r = await api('sledztwo_rozmowa_start', { kontakt: token });
+        wyczysc(komunikat);
+        pokazRozmowe(r.rozmowa);
+        await skanuj();
+        rozmowaBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) { wyczysc(komunikat).append(blad(e)); }
     }
 
     async function skanuj() {
@@ -206,6 +323,8 @@ export default {
       if (koniec || !maSprawe) return;
       try {
         const d = await api('sledztwo_skan');
+        // Po otwarciu aplikacji: wczytaj trwającą rozmowę (bez animacji tego, co już padło).
+        if (d.rozmowa && (!rozmowa || rozmowa.id !== d.rozmowa.id)) await odswiezRozmowe(d.rozmowa.id);
         wyczysc(ekran).append(ekranDT4(d));
         // W drodze odśwież tuż po dotarciu (licznik woła skanuj), w miejscu — co 60 s (przechodnie się zmieniają).
         if (!koniec && d.droid.stan !== 'w_drodze') zegarSkanu = setTimeout(skanuj, 60000);
@@ -247,6 +366,7 @@ export default {
               d.biezace ? null : nowa),
             d.biezace ? sprawa(d.biezace) : null,
             d.biezace ? ekran : null,
+            d.biezace ? rozmowaBox : null,
             d.biezace ? dziennik(d.dziennik || []) : null,
             archiwum(d.archiwum || []));
           if (maSprawe && !bylaSprawa) skanuj();

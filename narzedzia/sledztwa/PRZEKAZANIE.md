@@ -75,8 +75,17 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
 3. Szablony AI dla Autora: treść fazy, miejsce, historia NPC, wiedza NPC, ślad, wiadomość w datapadzie, zaczyn;
    w grze: pytanie droida, ekstrakcja faktów.
 4. Pulpit detektywa wg makiety DT-4 — **etap 1 zrobiony (nieprzetestowany)**: ruch droida 1:1 i skan piętra
-   (`sledztwo_skan`, `sledztwo_idz`; opis w PROJEKT.md rozdz. 4 „Ruch i skan”). Dalej: rozmowy z kontaktami
-   (AI gra NPC, punkty W/S/Z, testy EotE — PROJEKT.md rozdz. 4a), terminale (publiczny / slicer / sam),
+   (`sledztwo_skan`, `sledztwo_idz`; opis w PROJEKT.md rozdz. 4 „Ruch i skan”).
+   **Etap 2 zrobiony (nieprzetestowany): rozmowy** — migracja `085_sledztwa_rozmowy.sql` (tabele rozmów i wpisów,
+   szablon AI `droid_wypowiedz`), akcje `sledztwo_rozmowa`, `_start` (klik w kontakt → droid wchodzi do lokalu
+   i podchodzi na 2–3 m, 3 s), `_tura` (polecenie operatora → pytanie droida → odpowiedź NPC), `_koniec`.
+   Kluczowi NPC: AI po obu stronach (`droid_wypowiedz` + `npc_wypowiedz`); poboczni i przechodnie: wypowiedź
+   zastępcza droida + kwestie szumu, bez AI (`SLEDZTWO_AI_DLA_POBOCZNYCH`). Awaria AI → wypowiedź zastępcza
+   i wpis „Łącze z modułem językowym niedostępne”. Dopóki Autor nie napisze `historia` / `wiedza`, wiedza NPC
+   powstaje ze szkieletu (`sl_npc_dane`: fazy z jego kodem w szkicu; ukryte fazy oznaczone „TO UKRYWASZ”;
+   `ukrywa_kod` — prawdziwe zdarzenie). Nastrój po każdej wypowiedzi zapisany w rozmowie (pod punkty W/S/Z).
+   Droid nie pyta sam w pętli — każdą turę wyzwala operator („Zadaj pytanie” albo „Dalej”), żeby nie palić limitu.
+   Dalej: punkty W/S/Z i testy EotE (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.
 

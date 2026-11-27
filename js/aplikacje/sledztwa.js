@@ -1,7 +1,9 @@
-// Droid śledczy: aplikacja detektywa (konto wpisane w sledztwo_detektywi; MG nadaje rolę w zakładce Konta).
-// Bieżąca sprawa (zgłoszenie, zaczyn), ekran DT-4 (skan piętra i ruch droida w czasie 1:1), dziennik, archiwum.
-// Projekt: narzedzia/sledztwa/PROJEKT.md (rozdz. 4 i 5). API: api/sledztwa.php — sledztwo_moje, sledztwo_skan,
-// sledztwo_idz, sledztwo_nowe. Gracz nigdy nie dostaje prawdy o sprawie ani informacji, który lokal jest fabularny.
+// Droid śledczy: konsola operatora droida detektywistycznego (konto wpisane w sledztwo_detektywi; MG nadaje rolę
+// w zakładce Konta). Układ na cały ekran: plan piętra (skan DT-4, rysunek techniczny) zajmuje całą przestrzeń;
+// u góry zakładki i sterowanie ruchem, z boku wysuwany panel (Lokal, Ekwipunek, Rozmowa, Akta, Dziennik), na dole
+// pasek odczytu. Podłączenie do komputera (datapad, stanowisko, terminal) otwiera ekran komputera na całą przestrzeń.
+// Projekt: narzedzia/sledztwa/PROJEKT.md. API: api/sledztwa.php. Gracz nigdy nie dostaje prawdy o sprawie ani
+// informacji, który lokal jest fabularny.
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
@@ -17,12 +19,16 @@ const STAN = {
 };
 const STAN_DROIDA = { czeka: 'czeka na polecenia', w_drodze: 'w drodze', rozmowa: 'prowadzi rozmowę', skan: 'skanuje otoczenie',
   dekodowanie: 'dekoduje dane', uszkodzony: 'uszkodzony' };
-const KTO = { droid: 'Droid', gracz: 'Ty', system: 'System' };
+const KTO = { droid: 'Droid', gracz: 'Ty', system: 'Biuro' };
+const STREFA = { parter: 'parter', pietro: 'piętro', gora: 'najwyższe piętro', techniczny: 'strefa techniczna' };
+const RODZAJ_P = { datapad: 'datapad', stanowisko: 'stanowisko pracy', terminal: 'terminal', kostka: 'kostka danych', dokument: 'dokument', osobisty: 'przedmiot osobisty' };
+const PODEJSCIA = [['oszustwo', 'Blef (Oszustwo)'], ['urok', 'Urok'], ['zastraszanie', 'Zastraszanie']];
 
 const data = (t) => (t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' }) : '');
 const godz = (t) => (t ? new Date(String(t).replace(' ', 'T') + 'Z').toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' }) : '');
 const czas = (s) => { s = Math.max(0, Math.round(s)); const g = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return g ? `${g} h ${m} min` : m ? `${m} min ${String(r).padStart(2, '0')} s` : `${r} s`; };
+const lokalTxt = (p) => (p === 'korytarz' ? 'korytarz' : `lokal ${p}`);
 
 // SVG: h() tworzy tylko elementy HTML.
 const NS = 'http://www.w3.org/2000/svg';
@@ -38,8 +44,14 @@ function s(tag, atr = {}, ...dzieci) {
 }
 
 // Geometria planu (jednostki skanu; pokój = 60 j.).
-const P = 60, GLEB = 50, KOR = 30, WINDA = 40;
+const P = 60, GLEB = 70, KOR = 36, WINDA = 44;
 const yPokoju = (strona) => (strona === 'gora' ? 0 : GLEB + KOR);
+
+const przycisk = (napis, akcja, klasa = '.drugi.maly', atr = {}) => {
+  const b = h(`button.przycisk${klasa}`, atr, napis);
+  b.onclick = akcja;
+  return b;
+};
 
 export default {
   id: 'sledztwa',
@@ -49,22 +61,34 @@ export default {
   dostep: (stan) => !!stan.detektyw,
 
   uruchom(w) {
-    const tresc = h('div');
-    const komunikat = h('div');
-    const ekran = h('div');        // ekran DT-4 (odświeżany częściej niż reszta)
+    w.classList.add('widok-mapa');
+    const korzen = h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;background:var(--tlo);color:var(--tekst)' });
+    const gora = h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--linia);background:var(--panel-mocny)' });
+    const obszar = h('div', { style: 'flex:1;position:relative;overflow:hidden;min-height:0' });
+    const planBox = h('div', { style: 'position:absolute;inset:0;padding:10px' });
+    const postepBox = h('div', { style: 'position:absolute;left:12px;right:12px;top:8px;pointer-events:none' });
+    const komunikat = h('div', { style: 'position:absolute;left:50%;transform:translateX(-50%);top:36px;width:min(640px,90%);z-index:3' });
+    const szuflada = h('div', { style: 'position:absolute;top:0;right:0;bottom:0;width:min(460px,94%);overflow-y:auto;padding:12px 14px;'
+      + 'background:var(--panel-mocny);border-left:1px solid var(--linia-mocna);z-index:2', hidden: true });
+    const dol = h('div', { style: 'padding:6px 12px;border-top:1px solid var(--linia);background:var(--panel-mocny);font-size:13px' });
+    const komputerBox = h('div', { style: 'position:absolute;inset:0;z-index:10', hidden: true });
+    obszar.append(planBox, postepBox, komunikat, szuflada);
+    korzen.append(gora, obszar, dol, komputerBox);
+    w.append(korzen);
+
+    let moje = null, d = null, zakladka = 'skan', escK = null;
     let zegar = null, zegarSkanu = null, licznik = null, koniec = false, maSprawe = false;
     const panel = (tytul, ...dzieci) => h('div.panel', h('h2', tytul), ...dzieci);
     const blad = (e) => h('div.komunikat.blad', e.message || String(e));
+    const ok = (t) => h('div.komunikat.ok', t);
     const wiersz = (etykieta, wartosc) => h('tr', h('td.slaby', etykieta), h('td', wartosc ?? '—'));
+    const pokaz = (el) => { wyczysc(komunikat).append(el); setTimeout(() => { if (komunikat.firstChild === el) wyczysc(komunikat); }, 9000); };
+    const zawolaj = async (akcja, dane, sukces) => {
+      try { const r = await api(akcja, dane); if (sukces) pokaz(ok(typeof sukces === 'function' ? sukces(r) : sukces)); await skanuj(); odswiez(); return r; }
+      catch (e) { pokaz(blad(e)); return null; }
+    };
 
-    async function nowaSprawa(przycisk) {
-      przycisk.disabled = true;
-      try {
-        await api('sledztwo_nowe', {});
-        wyczysc(komunikat).append(h('div.komunikat.ok', 'Zgłoszenie przyjęte. Biuro kompletuje akta.'));
-        await odswiez();
-      } catch (e) { wyczysc(komunikat).append(blad(e)); przycisk.disabled = false; }
-    }
+    // ---------- ruch ----------
 
     async function idz(lokalizacja_id, poziom, pokoj) {
       try {
@@ -72,230 +96,333 @@ export default {
         wyczysc(komunikat);
         await skanuj();
         odswiez();
-      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+      } catch (e) { pokaz(blad(e)); }
     }
 
-    function sprawa(x) {
-      return panel(`SPRAWA #${x.id}`,
-        h('table.tabela',
-          wiersz('Tytuł', x.tytul),
-          wiersz('Zgłoszenie', x.zgloszenie),
-          wiersz('Rejon', x.skupisko ? `${x.skupisko}, Nar Shaddaa` : 'Nar Shaddaa'),
-          wiersz('Przyjęto', data(x.utworzono_utc)),
-          wiersz('Stan', STAN[x.stan] || x.stan)),
-        x.zaczyn ? h('div', { style: 'white-space:pre-wrap;margin-top:10px' }, x.zaczyn)
-          : h('p.maly-tekst', 'Akta wstępne (zlecenie, tło, ludzie, od czego zacząć) pojawią się tutaj, gdy biuro je skompletuje.'));
-    }
+    // ---------- plan piętra (rysunek techniczny na całą przestrzeń) ----------
 
-    // ---------- ekran DT-4: skan przestrzenny piętra ----------
-
-    function planPietra(d) {
+    function planPietra() {
       const { plan, droid, kontakty, zasieg } = d;
-      const szer = Math.max(plan.szerokosc, P * 3);
+      const szer = Math.max(plan.szerokosc, P * 4);
       const wys = GLEB * 2 + KOR;
       const wDrodze = droid.stan === 'w_drodze';
-      const svg = s('svg', { viewBox: `${-WINDA - 10} -14 ${szer + WINDA + 20} ${wys + 28}`, width: '100%',
-        style: `max-width:${(szer + WINDA + 20) * 1.6}px;display:block;color:var(--akcent);font-family:var(--czcionka)` });
-      // Zasięg skanu.
+      const vb = [-WINDA - 16, -22, szer + WINDA + 32, wys + 44];
+      const svg = s('svg', { viewBox: vb.join(' '), width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet',
+        style: 'display:block;color:var(--akcent);font-family:var(--czcionka)' },
+        s('defs', {}, s('pattern', { id: 'dt4-siatka', width: 10, height: 10, patternUnits: 'userSpaceOnUse' },
+          s('path', { d: 'M10 0H0V10', fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.08, 'stroke-width': 0.5 }))),
+        s('rect', { x: vb[0], y: vb[1], width: vb[2], height: vb[3], fill: 'url(#dt4-siatka)' }));
       if (!wDrodze) {
-        svg.append(s('rect', { x: droid.x - zasieg, y: -10, width: zasieg * 2, height: wys + 20, fill: 'currentColor', 'fill-opacity': 0.05,
-          stroke: 'currentColor', 'stroke-opacity': 0.35, 'stroke-dasharray': '4 4' }));
+        svg.append(s('rect', { x: droid.x - zasieg, y: -14, width: zasieg * 2, height: wys + 28, fill: 'currentColor', 'fill-opacity': 0.05,
+          stroke: 'currentColor', 'stroke-opacity': 0.35, 'stroke-dasharray': '4 4' }),
+          s('text', { x: droid.x + zasieg - 3, y: -17, 'text-anchor': 'end', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.5 }, `ZASIĘG ${zasieg} j.`));
       }
-      // Winda i korytarz.
       svg.append(
-        s('rect', { x: -WINDA, y: GLEB, width: WINDA, height: KOR, fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.7 }),
-        s('text', { x: -WINDA / 2, y: GLEB + KOR / 2 + 3, 'text-anchor': 'middle', 'font-size': 8, fill: 'currentColor' }, 'WINDA'),
-        s('line', { x1: 0, y1: GLEB, x2: szer, y2: GLEB, stroke: 'currentColor', 'stroke-opacity': 0.4 }),
-        s('line', { x1: 0, y1: GLEB + KOR, x2: szer, y2: GLEB + KOR, stroke: 'currentColor', 'stroke-opacity': 0.4 }));
+        s('rect', { x: -WINDA, y: GLEB, width: WINDA, height: KOR, fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.8 }),
+        s('path', { d: `M${-WINDA} ${GLEB}L0 ${GLEB + KOR}M0 ${GLEB}L${-WINDA} ${GLEB + KOR}`, stroke: 'currentColor', 'stroke-opacity': 0.25 }),
+        s('text', { x: -WINDA / 2, y: GLEB + KOR + 10, 'text-anchor': 'middle', 'font-size': 7, fill: 'currentColor' }, 'WINDA'),
+        s('line', { x1: 0, y1: GLEB, x2: szer, y2: GLEB, stroke: 'currentColor', 'stroke-opacity': 0.5 }),
+        s('line', { x1: 0, y1: GLEB + KOR, x2: szer, y2: GLEB + KOR, stroke: 'currentColor', 'stroke-opacity': 0.5 }),
+        s('text', { x: szer / 2, y: GLEB + KOR / 2 + 2, 'text-anchor': 'middle', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.3, 'letter-spacing': 3 }, 'KORYTARZ'));
       if (plan.terminal_korytarz) {
-        svg.append(s('rect', { x: szer - 14, y: GLEB + 9, width: 10, height: 12, fill: 'none', stroke: 'var(--akcent-2)' }),
-          s('text', { x: szer - 9, y: GLEB + 6, 'text-anchor': 'middle', 'font-size': 7, fill: 'var(--akcent-2)' }, plan.terminal_korytarz));
+        const naMiejscu = !wDrodze && droid.pokoj === 'korytarz';
+        svg.append(s('g', { style: 'cursor:pointer', onclick: () => (naMiejscu ? otworzKomputer({ terminal: plan.terminal_korytarz }) : idz(plan.budynek_id, plan.poziom, 'korytarz')) },
+          s('title', {}, `Terminal publiczny ${plan.terminal_korytarz} — ${naMiejscu ? 'kliknij, by się podłączyć' : 'kliknij, by podejść'}`),
+          s('rect', { x: szer - 16, y: GLEB + 11, width: 11, height: 14, fill: 'var(--tlo)', stroke: 'var(--akcent-2)' }),
+          s('text', { x: szer - 10.5, y: GLEB + 8, 'text-anchor': 'middle', 'font-size': 7, fill: 'var(--akcent-2)' }, plan.terminal_korytarz)));
       }
-      // Pokoje: klik = rozkaz wejścia (ten sam budynek i poziom).
       for (const p of plan.pokoje) {
         const y = yPokoju(p.strona);
-        const w = (p.szer || 1) * P;
-        const sx = p.x + w / 2;
+        const wl = (p.szer || 1) * P;
+        const sx = p.x + wl / 2;
         const tu = !wDrodze && droid.pokoj === p.nr;
         const cel = wDrodze && droid.cel && droid.cel.pokoj === p.nr && droid.cel.poziom === plan.poziom && droid.cel.budynek_id === plan.budynek_id;
         const wstep = p.zamkniete ? ' · zamknięty' : p.dostep === 'nakaz' ? ' · tylko z nakazem' : p.dostep === 'straz' ? ' · strzeżony' : '';
-        const ramka = p.zamkniete ? 'var(--zly)' : p.dostep === 'nakaz' ? 'var(--zly)' : p.dostep === 'straz' ? 'var(--akcent-2)' : 'currentColor';
-        const g = s('g', { style: 'cursor:pointer', onclick: () => idz(plan.budynek_id, plan.poziom, p.nr) },
+        const ramka = p.zamkniete || p.dostep === 'nakaz' ? 'var(--zly)' : p.dostep === 'straz' ? 'var(--akcent-2)' : 'currentColor';
+        const yDrzwi = p.strona === 'gora' ? GLEB : GLEB + KOR;
+        svg.append(s('g', { style: 'cursor:pointer', onclick: () => idz(plan.budynek_id, plan.poziom, p.nr) },
           s('title', {}, `Lokal ${p.nr} · ${p.rodzaj}${wstep} — kliknij, by tam wysłać droida`),
-          s('rect', { x: p.x + 1, y: y + 1, width: w - 2, height: GLEB - 2, fill: tu || cel ? 'currentColor' : 'transparent',
-            'fill-opacity': tu ? 0.16 : 0.08, stroke: ramka, 'stroke-opacity': p.zamkniete ? 0.5 : 0.8,
+          s('rect', { x: p.x + 1, y: y + 1, width: wl - 2, height: GLEB - 2, fill: tu || cel ? 'currentColor' : 'transparent',
+            'fill-opacity': tu ? 0.14 : 0.07, stroke: ramka, 'stroke-opacity': p.zamkniete ? 0.5 : 0.9, 'stroke-width': 1.2,
             'stroke-dasharray': cel ? '3 2' : null }),
           s('text', { x: p.x + 5, y: y + 12, 'font-size': 9, fill: 'currentColor' }, p.nr),
-          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.65 }, p.rodzaj.slice(0, 14 * (p.szer || 1))),
-          p.dostep !== 'wolny' ? s('text', { x: p.x + w - 6, y: y + GLEB - 6, 'text-anchor': 'end', 'font-size': 7, fill: ramka },
+          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.7 }, p.rodzaj.slice(0, 15 * (p.szer || 1))),
+          p.dostep !== 'wolny' ? s('text', { x: p.x + wl - 6, y: y + GLEB - 7, 'text-anchor': 'end', 'font-size': 6.5, fill: ramka },
             p.dostep === 'nakaz' ? 'NAKAZ' : 'STRAŻ') : null,
-          // Drzwi od strony korytarza z numerem.
-          s('line', { x1: sx - 8, y1: p.strona === 'gora' ? GLEB : GLEB + KOR, x2: sx + 8, y2: p.strona === 'gora' ? GLEB : GLEB + KOR,
-            stroke: p.zamkniete ? 'var(--zly)' : 'var(--tlo)', 'stroke-width': 3 }),
+          p.zamkniete ? s('text', { x: p.x + 5, y: y + GLEB - 7, 'font-size': 6.5, fill: 'var(--zly)' }, 'ZAMEK') : null,
+          s('line', { x1: sx - 9, y1: yDrzwi, x2: sx + 9, y2: yDrzwi, stroke: p.zamkniete ? 'var(--zly)' : 'var(--tlo)', 'stroke-width': 3.5 }),
           s('text', { x: sx, y: p.strona === 'gora' ? GLEB - 3 : GLEB + KOR + 9, 'text-anchor': 'middle', 'font-size': 6,
-            fill: 'currentColor', 'fill-opacity': 0.6 }, String(p.drzwi)),
-          p.terminal ? s('rect', { x: p.x + w - 14, y: y + 6, width: 9, height: 11, fill: 'none', stroke: 'var(--akcent-2)' }) : null,
-          p.terminal ? s('text', { x: p.x + w - 9.5, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal) : null);
-        svg.append(g);
+            fill: 'currentColor', 'fill-opacity': 0.6 }, String(p.drzwi))));
+        if (p.terminal) {
+          svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); tu ? otworzKomputer({ terminal: p.terminal }) : idz(plan.budynek_id, plan.poziom, p.nr); } },
+            s('title', {}, `Terminal ${p.terminal} w lokalu ${p.nr} — ${tu ? 'kliknij, by się podłączyć' : 'kliknij, by droid wszedł'}`),
+            s('rect', { x: p.x + wl - 15, y: y + 6, width: 10, height: 12, fill: 'var(--tlo)', stroke: 'var(--akcent-2)' }),
+            s('text', { x: p.x + wl - 10, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal)));
+        }
       }
-      // Kontakty w zasięgu: klik = droid podchodzi na 2–3 m i zaczyna rozmowę. Strażnicy stoją na korytarzu przy drzwiach.
       for (const k of kontakty) {
-        const y = k.strona === 'korytarz' ? (k.przy === 'gora' ? GLEB + 8 : GLEB + KOR - 8) : yPokoju(k.strona) + 38;
+        const y = k.strona === 'korytarz' ? (k.przy === 'gora' ? GLEB + 9 : GLEB + KOR - 9) : yPokoju(k.strona) + 46;
         const aktywny = d.rozmowa && d.rozmowa.kontakt === k.token;
         svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); zacznijRozmowe(k.token); } },
           s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad} — kliknij, by droid zaczął rozmowę`),
-          s('circle', { cx: k.x, cy: y, r: 7, fill: 'transparent' }),
-          aktywny ? s('circle', { cx: k.x, cy: y, r: 6, fill: 'none', stroke: 'var(--ok)' }) : null,
+          s('circle', { cx: k.x, cy: y, r: 8, fill: 'transparent' }),
+          aktywny ? s('circle', { cx: k.x, cy: y, r: 6.5, fill: 'none', stroke: 'var(--ok)' }) : null,
           s('circle', { cx: k.x, cy: y, r: 3.5, fill: 'var(--akcent-2)' }),
           s('text', { x: k.x + 5, y: y + 3, 'font-size': 6, fill: 'var(--akcent-2)' }, k.kod)));
       }
-      // Droid.
       if (!wDrodze) {
         const dy = droid.pokoj === 'korytarz' ? GLEB + KOR / 2 : yPokoju(plan.pokoje.find((p) => p.nr === droid.pokoj)?.strona) + GLEB / 2;
         svg.append(s('g', {},
-          s('circle', { cx: droid.x, cy: dy, r: 5, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }),
-          s('circle', { cx: droid.x, cy: dy, r: 1.8, fill: 'var(--ok)' })));
+          s('circle', { cx: droid.x, cy: dy, r: 6, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }),
+          s('circle', { cx: droid.x, cy: dy, r: 2, fill: 'var(--ok)' }),
+          s('text', { x: droid.x, y: dy - 9, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--ok)' }, d.oznaczenie || 'DT-4')));
       }
-      return h('div', { style: 'overflow-x:auto;margin:8px 0' }, svg);
+      return svg;
     }
 
-    function sterowanie(d) {
-      const { plan, budynki, poziom_max } = d;
+    // ---------- górny pasek: tytuł, zakładki, sterowanie ----------
+
+    function rysujGore() {
+      wyczysc(gora);
+      if (!d) return;
+      const { plan, droid, budynki, poziom_max } = d;
+      const liczba = (n) => (n ? ` (${n})` : '');
+      const zakl = [['skan', 'Skan'], ['lokal', 'Lokal' + liczba((d.przedmioty || []).length + d.kontakty.length)],
+        ['ekwipunek', 'Ekwipunek' + liczba((d.ekwipunek || []).length)], ...(rozmowa ? [['rozmowa', 'Rozmowa']] : []),
+        ['akta', 'Akta'], ['dziennik', 'Dziennik']];
       const budynek = h('select', budynki.length ? budynki.map((b) => h('option', { value: b.id, selected: b.id === plan.budynek_id }, b.nazwa))
         : [h('option', { value: '' }, 'Kompleks')]);
-      const poziom = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:80px' });
-      const lokal = h('input', { placeholder: 'korytarz albo nr lokalu', style: 'width:170px' });
-      const jedz = h('button.przycisk', 'Wyślij droida');
-      jedz.onclick = () => idz(budynek.value === '' ? null : Number(budynek.value), Number(poziom.value), lokal.value.trim() || 'korytarz');
-      return h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' },
-        budynek, h('span.slaby', 'poziom'), poziom, lokal, jedz);
+      const poziom = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:70px' });
+      const lokal = h('input', { placeholder: 'lokal / korytarz', style: 'width:120px' });
+      const jedz = przycisk('Wyślij', () => idz(budynek.value === '' ? null : Number(budynek.value), Number(poziom.value), lokal.value.trim() || 'korytarz'), '.maly');
+      lokal.onkeydown = (e) => { if (e.key === 'Enter') jedz.click(); };
+      gora.append(
+        h('div', { style: 'flex:1 1 280px;min-width:0' },
+          h('b', `${d.oznaczenie || 'DT-4'} · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom}`),
+          h('span.slaby', ` (${STREFA[plan.strefa] || plan.strefa}) · ${plan.preset_nazwa}: parter ${plan.parter}, góra ${plan.gora} · ${STAN_DROIDA[droid.stan] || droid.stan}`)),
+        h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' }, zakl.map(([k, n]) =>
+          przycisk(n, () => { zakladka = zakladka === k && k !== 'skan' ? 'skan' : k; rysujSzuflade(); rysujGore(); }, zakladka === k ? '.maly' : '.drugi.maly'))),
+        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, budynek, h('span.slaby', 'poz.'), poziom, lokal, jedz));
     }
 
-    function pasekOdczytu(d) {
+    function rysujPostep() {
+      wyczysc(postepBox);
+      clearInterval(licznik);
+      const { droid } = d;
+      if (droid.stan !== 'w_drodze') return;
+      const pasek = h('div', { style: `height:4px;background:var(--akcent);width:${Math.round(droid.postep * 100)}%;transition:width 1s linear` });
+      const ile = h('span', czas(droid.zostalo_s));
+      let zostalo = droid.zostalo_s;
+      const calosc = droid.zostalo_s / Math.max(0.0001, 1 - droid.postep);
+      licznik = setInterval(() => {
+        zostalo -= 1;
+        ile.textContent = czas(zostalo);
+        pasek.style.width = `${Math.min(100, Math.round((1 - Math.max(0, zostalo) / calosc) * 100))}%`;
+        if (zostalo <= 0) { clearInterval(licznik); skanuj().then(odswiez); }
+      }, 1000);
+      postepBox.append(h('div', { style: 'background:var(--panel-mocny);border:1px solid var(--linia);padding:6px 10px;display:inline-block;max-width:100%' },
+        h('div', `W drodze: ${droid.cel.budynek}, poziom ${droid.cel.poziom}, ${lokalTxt(droid.cel.pokoj)} · zostało `, ile),
+        h('div', { style: 'height:4px;background:var(--linia);margin-top:4px' }, pasek)));
+    }
+
+    function rysujDol() {
+      wyczysc(dol);
+      if (!d) return;
       const ostatni = (d.meldunki || []).find((m) => m.kto === 'droid');
       const { droid } = d;
       const lacze = droid.stan === 'w_drodze'
-        ? `w drodze · ${droid.cel.budynek}, poziom ${droid.cel.poziom}, ${droid.cel.pokoj === 'korytarz' ? 'korytarz' : `lokal ${droid.cel.pokoj}`}`
-        : `łącze stabilne · ${droid.budynek}, poziom ${droid.poziom}, ${droid.pokoj === 'korytarz' ? 'korytarz' : `lokal ${droid.pokoj}`}`;
-      return h('div', { style: 'border-top:1px solid var(--linia);padding-top:6px;font-size:13px' },
-        h('div', h('b', 'DT-4 › '), ostatni ? `${godz(ostatni.kiedy_utc)} ${ostatni.tresc}` : 'Gotowy.'),
+        ? `w drodze · ${droid.cel.budynek}, poziom ${droid.cel.poziom}, ${lokalTxt(droid.cel.pokoj)}`
+        : `łącze stabilne · ${droid.budynek}, poziom ${droid.poziom}, ${lokalTxt(droid.pokoj)} · kontakty w zasięgu: ${d.kontakty.length}`;
+      dol.append(h('div', h('b', `${d.oznaczenie || 'DT-4'} › `), ostatni ? `${godz(ostatni.kiedy_utc)} ${ostatni.tresc}` : 'Gotowy.'),
         h('div.slaby', h('b', 'ŁĄCZE › '), lacze));
     }
 
-    // Wstęp: strzeżone lokale w zasięgu (podejścia do strażnika) i nakazy (wniosek do biura, decyzja MG).
-    const PODEJSCIA = [['oszustwo', 'Blef (Oszustwo)'], ['urok', 'Urok'], ['zastraszanie', 'Zastraszanie']];
-    async function przekonaj(pokoj, podejscie) {
-      try {
-        const r = await api('sledztwo_straz', { pokoj, podejscie });
-        wyczysc(komunikat).append(h(`div.komunikat.${r.udana ? 'ok' : 'blad'}`,
-          r.juz ? 'Droid ma już wstęp — wchodzi.' : `${r.udana ? 'Strażnik wpuszcza droida.' : 'Strażnik odmawia.'} ${r.opis}`));
-        await skanuj();
-        odswiez();
-      } catch (e) { wyczysc(komunikat).append(blad(e)); }
-    }
-    async function wniosek(lokalizacja_id, gdzie) {
-      const uzasadnienie = window.prompt(`Wniosek o nakaz: ${gdzie}.\nUzasadnienie dla biura (co najmniej 10 znaków):`);
-      if (!uzasadnienie) return;
-      try {
-        await api('sledztwo_nakaz_wniosek', { lokalizacja_id, uzasadnienie });
-        wyczysc(komunikat).append(h('div.komunikat.ok', 'Wniosek złożony. Decyzja biura pojawi się w dzienniku.'));
-        await skanuj();
-        odswiez();
-      } catch (e) { wyczysc(komunikat).append(blad(e)); }
-    }
-    function wstep(d) {
+    // ---------- panel boczny ----------
+
+    function wstep() {
       const { plan, droid, zasieg, nakazy = [] } = d;
       const wZasiegu = (p) => Math.abs(p.x + (p.szer || 1) * P / 2 - droid.x) <= zasieg;
       const strzezone = droid.stan === 'w_drodze' ? [] : plan.pokoje.filter((p) => p.dostep === 'straz' && !p.zamkniete && wZasiegu(p));
       const nakazowe = plan.pokoje.filter((p) => p.dostep === 'nakaz');
       const STAN_N = { wniosek: 'czeka na decyzję', wydany: 'wydany', odrzucony: 'odrzucony' };
       const tenBudynek = nakazy.find((n) => n.lokalizacja_id === plan.budynek_id && n.stan !== 'odrzucony');
-      return h('div', { style: 'margin:8px 0' },
-        strzezone.map((p) => h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0' },
-          h('span', `Lokal ${p.nr} (${p.rodzaj}) — strzeżony. Przekonaj strażnika:`),
-          ...PODEJSCIA.map(([k, n]) => { const b = h('button.przycisk.drugi.maly', n); b.onclick = () => przekonaj(p.nr, k); return b; }))),
+      return panel('WSTĘP',
+        strzezone.map((p) => h('div', { style: 'margin:6px 0' }, h('div', `Lokal ${p.nr} (${p.rodzaj}) — strzeżony. Przekonaj strażnika:`),
+          h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;margin-top:4px' },
+            PODEJSCIA.map(([k, n]) => przycisk(n, () => zawolaj('sledztwo_straz', { pokoj: p.nr, podejscie: k },
+              (r) => (r.juz ? 'Droid ma już wstęp — wchodzi.' : `${r.udana ? 'Strażnik wpuszcza droida.' : 'Strażnik odmawia.'} ${r.opis}`))))))),
         nakazowe.length ? h('p.maly-tekst', `Tylko z nakazem: ${nakazowe.map((p) => `${p.nr} (${p.rodzaj})`).join(', ')}.`) : null,
-        h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0' },
-          h('span.maly-tekst', 'Nakazy: ' + (nakazy.length ? nakazy.map((n) => `${n.budynek} — ${STAN_N[n.stan] || n.stan}`).join(' · ') : 'brak') + '.'),
-          plan.budynek_id && !tenBudynek ? (() => { const b = h('button.przycisk.drugi.maly', `Wniosek o nakaz: ${plan.budynek}`);
-            b.onclick = () => wniosek(plan.budynek_id, plan.budynek); return b; })() : null));
+        h('p.maly-tekst', 'Nakazy: ' + (nakazy.length ? nakazy.map((n) => `${n.budynek} — ${STAN_N[n.stan] || n.stan}`).join(' · ') : 'brak') + '.'),
+        plan.budynek_id && !tenBudynek ? przycisk(`Wniosek o nakaz: ${plan.budynek}`, () => {
+          const uzasadnienie = window.prompt(`Wniosek o nakaz: ${plan.budynek}.\nUzasadnienie dla biura (co najmniej 10 znaków):`);
+          if (uzasadnienie) zawolaj('sledztwo_nakaz_wniosek', { lokalizacja_id: plan.budynek_id, uzasadnienie }, 'Wniosek złożony. Decyzja biura pojawi się w dzienniku.');
+        }) : null);
     }
 
-    function ekranDT4(d) {
-      const { droid, kontakty, plan } = d;
-      const STREFA = { parter: 'parter', pietro: 'piętro', gora: 'najwyższe piętro', techniczny: 'strefa techniczna' };
-      const naglowek = `DT-4 · SKAN PRZESTRZENNY · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom} (${STREFA[plan.strefa] || plan.strefa})`;
-      let postep = null;
-      if (droid.stan === 'w_drodze') {
-        const pasek = h('div', { style: `height:4px;background:var(--akcent);width:${Math.round(droid.postep * 100)}%;transition:width 1s linear` });
-        const ile = h('span', czas(droid.zostalo_s));
-        let zostalo = droid.zostalo_s;
-        clearInterval(licznik);
-        licznik = setInterval(() => {
-          zostalo -= 1;
-          ile.textContent = czas(zostalo);
-          if (zostalo <= 0) { clearInterval(licznik); skanuj().then(odswiez); }
-        }, 1000);
-        postep = h('div', { style: 'margin:6px 0' },
-          h('div', `Droid w drodze: ${droid.cel.budynek}, poziom ${droid.cel.poziom}, ${droid.cel.pokoj === 'korytarz' ? 'korytarz' : `lokal ${droid.cel.pokoj}`} · zostało `, ile),
-          h('div', { style: 'height:4px;background:var(--linia);margin-top:4px' }, pasek));
-      } else clearInterval(licznik);
-      return panel(naglowek,
-        h('p.maly-tekst', `${plan.preset_nazwa}: parter na poziomie ${plan.parter}, najwyższe piętro ${plan.gora}. `
-          + `Zasięg ${d.zasieg} j. · stan: ${STAN_DROIDA[droid.stan] || droid.stan} · kontakty w zasięgu: ${kontakty.length}. `
-          + 'Kliknij lokal, by wysłać tam droida; inny poziom lub budynek — poniżej.'),
-        postep,
-        planPietra(d),
-        wstep(d),
-        kontakty.length ? h('div.maly-tekst', 'Kontakty (kliknij, by rozmawiać): ', ...kontakty.map((k, i) => h('span',
-          i ? ' · ' : null,
+    function zakladkaLokal() {
+      const { droid, plan, kontakty, przedmioty = [] } = d;
+      const wLokalu = droid.stan !== 'w_drodze' && droid.pokoj !== 'korytarz';
+      const lok = plan.pokoje.find((p) => p.nr === droid.pokoj);
+      const terminal = droid.stan === 'w_drodze' ? null : wLokalu ? lok?.terminal : plan.terminal_korytarz;
+      return h('div',
+        panel(wLokalu ? `LOKAL ${droid.pokoj} · ${lok?.rodzaj || ''}` : droid.stan === 'w_drodze' ? 'W DRODZE' : 'KORYTARZ',
+          !d.przedmioty_dostepne ? h('p.maly-tekst', 'Przedmioty niedostępne (brak migracji 087).') : null,
+          wLokalu && przedmioty.length ? h('div', przedmioty.map((p) => h('div', { style: 'margin:8px 0;padding:6px 8px;border:1px solid var(--linia)' },
+            h('div', h('b', p.nazwa), h('span.slaby', ` · ${RODZAJ_P[p.rodzaj] || p.rodzaj}${Number(p.zabezpieczenie) && !Number(p.odblokowany) ? ' · zabezpieczony' : ''}`)),
+            h('div.maly-tekst', p.opis),
+            h('div', { style: 'display:flex;gap:6px;margin-top:4px' },
+              Number(p.przenosny) ? przycisk('Zabierz', () => zawolaj('sledztwo_zabierz', { przedmiot_id: p.id }, `Zabrano: ${p.nazwa}.`)) : null,
+              przycisk('Podłącz / czytaj', () => otworzKomputer({ przedmiot_id: p.id })))))) : null,
+          wLokalu && !przedmioty.length ? h('p.maly-tekst', 'Na pierwszy rzut oka nic tu nie ma.') : null,
+          wLokalu ? przycisk('Przeszukaj lokal (Percepcja)', () => zawolaj('sledztwo_przeszukaj', {},
+            (r) => (r.znalezione.length ? `Znaleziono: ${r.znalezione.join(', ')}.` : r.udane ? 'Nic tu nie ma.' : 'Droid niczego nie zauważył.') + ` ${r.opis}`)) : null,
+          terminal ? h('div', { style: 'margin-top:8px' }, przycisk(`Podłącz się do terminala ${terminal}`, () => otworzKomputer({ terminal }), '.maly')) : null),
+        kontakty.length ? panel('KONTAKTY W ZASIĘGU', kontakty.map((k) => h('div', { style: 'margin:4px 0' },
           h('a', { href: '#', onclick: (e) => { e.preventDefault(); zacznijRozmowe(k.token); } }, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),
-          ` (lokal ${k.pokoj})`))) : null,
-        sterowanie(d),
-        pasekOdczytu(d));
+          h('span.slaby', k.strona === 'korytarz' ? ` (przy drzwiach ${k.pokoj})` : ` (lokal ${k.pokoj})`)))) : null,
+        wstep());
+    }
+
+    function zakladkaEkwipunek() {
+      const e = d.ekwipunek || [];
+      return panel(`EKWIPUNEK ${d.oznaczenie || 'DT-4'}`, e.length ? e.map((p) => h('div', { style: 'margin:8px 0;padding:6px 8px;border:1px solid var(--linia)' },
+        h('div', h('b', p.nazwa), h('span.slaby', ` · ${RODZAJ_P[p.rodzaj] || p.rodzaj}`)),
+        h('div.maly-tekst', Number(p.zabezpieczenie) && !Number(p.odblokowany) ? `Zabezpieczony (poziom ${p.zabezpieczenie}).`
+          : Number(p.odblokowany) ? `Odblokowany (${p.sposob_odblokowania === 'terminal' ? 'terminal publiczny' : 'droid'}).` : p.opis),
+        przycisk('Podłącz / czytaj', () => otworzKomputer({ przedmiot_id: p.id })))) : h('p.maly-tekst', 'Droid niczego nie niesie. Przedmioty zabierasz w zakładce Lokal.'));
+    }
+
+    function zakladkaAkta() {
+      const x = moje?.biezace;
+      return h('div',
+        x ? panel(`SPRAWA #${x.id}`, h('table.tabela', wiersz('Tytuł', x.tytul), wiersz('Zgłoszenie', x.zgloszenie),
+          wiersz('Rejon', x.skupisko ? `${x.skupisko}, Nar Shaddaa` : 'Nar Shaddaa'), wiersz('Przyjęto', data(x.utworzono_utc)), wiersz('Stan', STAN[x.stan] || x.stan)),
+        x.zaczyn ? h('div', { style: 'white-space:pre-wrap;margin-top:10px' }, x.zaczyn)
+          : h('p.maly-tekst', 'Akta wstępne (zlecenie, tło, ludzie, od czego zacząć) pojawią się tutaj, gdy biuro je skompletuje.')) : null,
+        (moje?.archiwum || []).length ? panel('ARCHIWUM', h('table.tabela', h('tr', h('th', '#'), h('th', 'Sprawa'), h('th', 'Stan')),
+          moje.archiwum.map((a) => h('tr', h('td', a.id), h('td', a.tytul || a.zgloszenie), h('td', STAN[a.stan] || a.stan))))) : null);
+    }
+
+    function zakladkaDziennik() {
+      const wpisy = moje?.dziennik || [];
+      return panel('DZIENNIK', wpisy.length ? wpisy.map((x) => h('div', { style: 'margin:6px 0' },
+        h('span.slaby', `${data(x.kiedy_utc)} · ${KTO[x.kto] || x.kto} · `), h('span', { style: 'white-space:pre-wrap' }, x.tresc)))
+        : h('p.maly-tekst', 'Brak wpisów.'));
+    }
+
+    function rysujSzuflade() {
+      szuflada.hidden = zakladka === 'skan' || !d;
+      if (szuflada.hidden) return;
+      const zamknij = przycisk('×', () => { zakladka = 'skan'; rysujSzuflade(); rysujGore(); }, '.drugi.maly', { style: 'float:right', title: 'Zamknij panel' });
+      const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik }[zakladka];
+      wyczysc(szuflada).append(zamknij, tresc ? tresc() : null);
+    }
+
+    function rysujWszystko() {
+      if (!d) return;
+      wyczysc(planBox).append(planPietra());
+      rysujGore();
+      rysujPostep();
+      rysujDol();
+      rysujSzuflade();
+    }
+
+    // ---------- ekran komputera (na całą przestrzeń) ----------
+
+    async function otworzKomputer(arg) {
+      try {
+        const r = await api('sledztwo_komputer', arg);
+        pokazKomputer(r.komputer, arg);
+      } catch (e) { pokaz(blad(e)); }
+    }
+
+    function pokazKomputer(k, arg) {
+      const ZIELEN = '#7dffb0';
+      const tresc = h('pre', { style: 'flex:1;margin:0;padding:14px;white-space:pre-wrap;overflow:auto;font:inherit' });
+      const lista = h('div', { style: `width:min(240px,40%);border-right:1px solid ${ZIELEN}44;overflow:auto;padding:8px` });
+      const zamknij = () => { komputerBox.hidden = true; wyczysc(komputerBox); document.removeEventListener('keydown', esc); escK = null; };
+      const esc = (e) => { if (e.key === 'Escape') zamknij(); };
+      if (escK) document.removeEventListener('keydown', escK);
+      escK = esc;
+      document.addEventListener('keydown', esc);
+      const naglowek = h('div', { style: `display:flex;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid ${ZIELEN}55` },
+        h('b', { style: 'flex:1' }, `◉ POŁĄCZONO · ${k.nazwa}`), przycisk('Rozłącz', zamknij, '.drugi.maly'));
+      const ekran = h('div', { style: `position:absolute;inset:0;display:flex;flex-direction:column;background:#020805;color:${ZIELEN};`
+        + 'font-family:var(--lat);text-shadow:0 0 4px rgba(125,255,176,.35)' }, naglowek);
+      if (k.zablokowany) {
+        const doBlokady = k.blokada_do ? new Date(String(k.blokada_do).replace(' ', 'T') + 'Z') : null;
+        ekran.append(h('div', { style: 'flex:1;display:grid;place-items:center;text-align:center;padding:20px' }, h('div',
+          h('div', { style: 'font-size:22px;letter-spacing:4px;margin-bottom:10px' }, 'NOŚNIK ZABEZPIECZONY'),
+          h('div', `Poziom zabezpieczenia: ${k.zabezpieczenie} · ${k.opis || ''}`),
+          doBlokady && doBlokady > new Date() ? h('div', { style: 'color:var(--zly);margin-top:6px' }, `Tryb blokady do ${doBlokady.toLocaleTimeString('pl-PL')}.`) : null,
+          h('div', { style: 'margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap' },
+            przycisk('Złam zabezpieczenie (Intelekt + Komputery)', async () => {
+              const r = await zawolaj('sledztwo_zlam', { przedmiot_id: k.przedmiot_id }, (x) => `${x.udana ? 'Zabezpieczenie złamane.' : 'Nie udało się.'} ${x.opis}`);
+              if (r) otworzKomputer(arg);
+            }, '.maly')),
+          h('p', { style: 'opacity:.7;margin-top:14px;max-width:520px' }, 'Albo zabierz nośnik i zdekoduj go na publicznym terminalu — szybko i pewnie, '
+            + 'ale sieć publiczna zapisze identyfikator nośnika, a właściciel danych może się dowiedzieć, gdzie i kiedy.'))));
+      } else {
+        const pliki = k.pliki || [];
+        const wybierz = (i) => {
+          tresc.textContent = pliki[i]?.tresc || '';
+          [...lista.children].forEach((el, j) => { el.style.background = j === i ? `${ZIELEN}22` : 'transparent'; });
+        };
+        pliki.forEach((p, i) => lista.append(h('div', { style: 'padding:6px 8px;cursor:pointer', onclick: () => wybierz(i) }, `▸ ${p.nazwa}`)));
+        if (k.publiczny && (k.do_dekodowania || []).length) {
+          lista.append(h('div', { style: 'margin-top:14px;padding:6px 8px;border-top:1px solid #7dffb044' }, 'DEKODUJ NOŚNIK',
+            h('div', { style: 'opacity:.7;font-size:12px;margin:4px 0' }, 'Uwaga: zostawia ślad w sieci publicznej.'),
+            k.do_dekodowania.map((x) => h('div', { style: 'margin:4px 0' }, przycisk(x.nazwa, async () => {
+              const r = await zawolaj('sledztwo_dekoduj', { przedmiot_id: x.id, terminal: k.terminal }, `Odszyfrowano: ${x.nazwa}.`);
+              if (r) otworzKomputer(arg);
+            })))));
+        }
+        ekran.append(h('div', { style: 'flex:1;display:flex;min-height:0' }, lista, tresc));
+        if (pliki.length) wybierz(0); else tresc.textContent = 'Brak plików.';
+      }
+      wyczysc(komputerBox).append(ekran);
+      komputerBox.hidden = false;
     }
 
     // ---------- rozmowa: zapis tekstowy pisany na żywo, polecenia operatora ----------
 
     const rozmowaBox = h('div');
-    const lista = h('div', { style: 'max-height:340px;overflow-y:auto;margin:8px 0' });
+    const listaR = h('div', { style: 'margin:8px 0' });
     let rozmowa = null, pisze = false, zaplanowany = null, kolejka = Promise.resolve();
     const wypisane = new Set();
     const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
 
-    // Wypisuje wpis znak po znaku (wpisy po kolei, nie naraz).
-    function wypisz(w, odRazu) {
-      const kto = w.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[w.kto];
+    function wypisz(wp, odRazu) {
+      const kto = wp.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[wp.kto];
       const tekst = h('span', { style: 'white-space:pre-wrap' });
-      const el = h('div', { style: `margin:5px 0;${w.kto === 'system' ? 'opacity:.6;font-style:italic' : ''}${w.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
+      const el = h('div', { style: `margin:6px 0;${wp.kto === 'system' ? 'opacity:.6;font-style:italic' : ''}${wp.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
         kto ? h('b', `${kto} › `) : null, tekst);
-      lista.append(el);
-      if (odRazu) { tekst.textContent = w.tresc; return Promise.resolve(); }
+      listaR.append(el);
+      if (odRazu) { tekst.textContent = wp.tresc; return Promise.resolve(); }
       return new Promise((gotowe) => {
         let i = 0;
         const krok = () => {
           if (koniec) return gotowe();
-          i = Math.min(w.tresc.length, i + 2);
-          tekst.textContent = w.tresc.slice(0, i);
-          lista.scrollTop = lista.scrollHeight;
-          if (i < w.tresc.length) setTimeout(krok, 28); else gotowe();
+          i = Math.min(wp.tresc.length, i + 2);
+          tekst.textContent = wp.tresc.slice(0, i);
+          szuflada.scrollTop = szuflada.scrollHeight;
+          if (i < wp.tresc.length) setTimeout(krok, 28); else gotowe();
         };
         krok();
       });
     }
 
     function pokazRozmowe(r, odRazu = false) {
-      if (!r) { rozmowa = null; wyczysc(rozmowaBox); return; }
-      if (!rozmowa || rozmowa.id !== r.id) { wyczysc(lista); wypisane.clear(); }
+      if (!r) { rozmowa = null; wyczysc(rozmowaBox); if (zakladka === 'rozmowa') zakladka = 'skan'; rysujGore(); rysujSzuflade(); return; }
+      if (!rozmowa || rozmowa.id !== r.id) { wyczysc(listaR); wypisane.clear(); }
       rozmowa = r;
-      for (const w of r.wpisy || []) {
-        if (wypisane.has(w.id)) continue;
-        wypisane.add(w.id);
-        kolejka = kolejka.then(() => wypisz(w, odRazu));
+      for (const wp of r.wpisy || []) {
+        if (wypisane.has(wp.id)) continue;
+        wypisane.add(wp.id);
+        kolejka = kolejka.then(() => wypisz(wp, odRazu));
       }
       rysujSterowanieRozmowy();
-      // Droid jeszcze podchodzi: pierwsza wypowiedź (przedstawienie się) rusza sama, gdy stanie przy rozmówcy.
-      const bezDroida = !(r.wpisy || []).some((w) => w.kto === 'droid');
+      const bezDroida = !(r.wpisy || []).some((x) => x.kto === 'droid');
       if (r.stan !== 'zakonczona' && bezDroida && zaplanowany !== r.id) {
         zaplanowany = r.id;
         setTimeout(() => { if (!koniec && rozmowa?.id === r.id) tura(''); }, (r.gotowa_za_s + 0.5) * 1000);
@@ -305,30 +432,25 @@ export default {
     function rysujSterowanieRozmowy() {
       if (!rozmowa) return;
       const zakonczona = rozmowa.stan === 'zakonczona';
-      const pole = h('input', { placeholder: 'Polecenie dla droida, np. „spytaj go, komu jest winien pieniądze”', style: 'flex:1;min-width:220px',
+      const pole = h('input', { placeholder: 'Polecenie dla droida, np. „spytaj, komu jest winien pieniądze”', style: 'flex:1;min-width:180px',
         disabled: zakonczona || pisze, maxlength: 300 });
-      const zadaj = h('button.przycisk', { disabled: zakonczona || pisze }, 'Zadaj pytanie');
-      const dalej = h('button.przycisk.drugi', { disabled: zakonczona || pisze }, 'Dalej (droid pyta sam)');
-      const zakoncz = h('button.przycisk.drugi', { disabled: zakonczona || pisze }, 'Zakończ rozmowę');
-      const zamknij = h('button.przycisk.drugi', 'Zamknij zapis');
-      zadaj.onclick = () => { if (pole.value.trim()) tura(pole.value.trim()); };
+      const zadaj = przycisk('Zadaj pytanie', () => { if (pole.value.trim()) tura(pole.value.trim()); }, '.maly', { disabled: zakonczona || pisze });
       pole.onkeydown = (e) => { if (e.key === 'Enter' && pole.value.trim()) tura(pole.value.trim()); };
-      dalej.onclick = () => tura('');
-      zakoncz.onclick = async () => {
-        try { await api('sledztwo_rozmowa_koniec', { rozmowa_id: rozmowa.id }); await odswiezRozmowe(); skanuj(); }
-        catch (e) { wyczysc(komunikat).append(blad(e)); }
-      };
-      zamknij.onclick = () => pokazRozmowe(null);
       const status = pisze ? 'DT-4 nadaje… czekam na odpowiedź rozmówcy.'
         : rozmowa.stan === 'podejscie' ? `DT-4 podchodzi do rozmówcy (2–3 m)${rozmowa.gotowa_za_s ? ` · ok. ${czas(rozmowa.gotowa_za_s)}` : ''}…`
           : zakonczona ? 'Rozmowa zakończona.' : 'Rozmowa trwa. Wpisz polecenie albo pozwól droidowi pytać samemu.';
-      wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · lokal ${rozmowa.pokoj}`,
+      wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · ${lokalTxt(rozmowa.pokoj)}`,
         h('p.maly-tekst', 'Zapis tekstowy — droidy śledcze nie mają modułu głosu.'),
-        lista,
+        listaR,
         h('p.maly-tekst', status),
-        h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center' },
-          zakonczona ? zamknij : pole, zakonczona ? null : zadaj, zakonczona ? null : dalej, zakonczona ? null : zakoncz)));
-      if (!zakonczona && !pisze) setTimeout(() => pole.focus(), 0);
+        zakonczona ? przycisk('Zamknij zapis', () => pokazRozmowe(null))
+          : h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, pole, zadaj,
+            przycisk('Dalej (droid pyta sam)', () => tura(''), '.drugi.maly', { disabled: pisze }),
+            przycisk('Zakończ', async () => {
+              try { await api('sledztwo_rozmowa_koniec', { rozmowa_id: rozmowa.id }); await odswiezRozmowe(); skanuj(); }
+              catch (e) { pokaz(blad(e)); }
+            }, '.drugi.maly', { disabled: pisze }))));
+      if (!zakonczona && !pisze && zakladka === 'rozmowa') setTimeout(() => pole.focus(), 0);
     }
 
     async function tura(polecenie) {
@@ -342,7 +464,7 @@ export default {
         if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); }
       } catch (e) {
         pisze = false;
-        wyczysc(komunikat).append(blad(e));
+        pokaz(blad(e));
         await odswiezRozmowe();
       }
     }
@@ -352,7 +474,7 @@ export default {
       try {
         const r = await api('sledztwo_rozmowa', undefined, ktora ? { id: ktora } : {});
         pokazRozmowe(r.rozmowa, !rozmowa);
-      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+      } catch (e) { pokaz(blad(e)); }
     }
 
     async function zacznijRozmowe(token) {
@@ -360,72 +482,63 @@ export default {
       try {
         const r = await api('sledztwo_rozmowa_start', { kontakt: token });
         wyczysc(komunikat);
+        zakladka = 'rozmowa';
         pokazRozmowe(r.rozmowa);
         await skanuj();
-        rozmowaBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } catch (e) { wyczysc(komunikat).append(blad(e)); }
+      } catch (e) { pokaz(blad(e)); }
     }
+
+    // ---------- odświeżanie ----------
 
     async function skanuj() {
       clearTimeout(zegarSkanu);
       if (koniec || !maSprawe) return;
       try {
-        const d = await api('sledztwo_skan');
-        // Po otwarciu aplikacji: wczytaj trwającą rozmowę (bez animacji tego, co już padło).
+        const nowe = await api('sledztwo_skan');
+        nowe.oznaczenie = moje?.droid || 'DT-4';
+        d = nowe;
         if (d.rozmowa && (!rozmowa || rozmowa.id !== d.rozmowa.id)) await odswiezRozmowe(d.rozmowa.id);
-        wyczysc(ekran).append(ekranDT4(d));
-        // W drodze odśwież tuż po dotarciu (licznik woła skanuj), w miejscu — co 60 s (przechodnie się zmieniają).
+        rysujWszystko();
         if (!koniec && d.droid.stan !== 'w_drodze') zegarSkanu = setTimeout(skanuj, 60000);
-      } catch (e) { wyczysc(ekran).append(blad(e)); }
+      } catch (e) { wyczysc(planBox).append(h('div', { style: 'padding:20px' }, blad(e))); }
     }
 
-    function dziennik(wpisy) {
-      return panel('DZIENNIK', wpisy.length
-        ? h('div', wpisy.map((x) => h('div', { style: 'margin:6px 0' },
-          h('span.slaby', `${data(x.kiedy_utc)} · ${KTO[x.kto] || x.kto} · `), h('span', { style: 'white-space:pre-wrap' }, x.tresc))))
-        : h('p.maly-tekst', 'Brak wpisów.'));
-    }
-
-    function archiwum(lista) {
-      if (!lista.length) return null;
-      return panel('ARCHIWUM', h('table.tabela',
-        h('tr', h('th', '#'), h('th', 'Sprawa'), h('th', 'Stan'), h('th', 'Ocena')),
-        lista.map((x) => h('tr', h('td', x.id), h('td', x.tytul || x.zgloszenie), h('td', STAN[x.stan] || x.stan),
-          h('td', x.ocena != null ? `${x.ocena}%` : '—')))));
+    function biuro() {
+      const nowa = przycisk('Przyjmij nową sprawę', async () => {
+        nowa.disabled = true;
+        try { await api('sledztwo_nowe', {}); await odswiez(); }
+        catch (e) { pokaz(blad(e)); nowa.disabled = false; }
+      }, '');
+      return h('div', { style: 'position:absolute;inset:0;overflow:auto;padding:24px' },
+        panel(`BIURO DETEKTYWISTYCZNE · ${moje?.droid || 'DT-4'}`,
+          h('p.maly-tekst', `Rozwiązane rodzaje spraw: ${moje?.rozwiazane ?? 0} / ${moje?.wszystkie_typy ?? 144}`),
+          h('p', 'Brak otwartej sprawy.'), nowa),
+        (moje?.archiwum || []).length ? zakladkaAkta() : null);
     }
 
     async function odswiez() {
       if (koniec) return;
       try {
-        const d = await api('sledztwo_moje');
-        if (!d.detektyw) {
+        moje = await api('sledztwo_moje');
+        if (!moje.detektyw) {
           maSprawe = false;
-          wyczysc(tresc).append(panel('DROID ŚLEDCZY', h('p.maly-tekst', 'To konto nie ma przydzielonego droida śledczego.')));
+          wyczysc(planBox).append(h('div', { style: 'padding:24px' }, panel('DROID ŚLEDCZY', h('p.maly-tekst', 'To konto nie ma przydzielonego droida śledczego.'))));
         } else {
-          const nowa = h('button.przycisk', 'Przyjmij nową sprawę');
-          nowa.onclick = () => nowaSprawa(nowa);
           const bylaSprawa = maSprawe;
-          maSprawe = !!d.biezace;
-          wyczysc(tresc).append(
-            komunikat,
-            panel(`BIURO DETEKTYWISTYCZNE · ${d.droid}`,
-              h('p.maly-tekst', `Rozwiązane rodzaje spraw: ${d.rozwiazane} / ${d.wszystkie_typy}`),
-              d.biezace ? null : h('p', 'Brak otwartej sprawy.'),
-              d.biezace ? null : nowa),
-            d.biezace ? sprawa(d.biezace) : null,
-            d.biezace ? ekran : null,
-            d.biezace ? rozmowaBox : null,
-            d.biezace ? dziennik(d.dziennik || []) : null,
-            archiwum(d.archiwum || []));
-          if (maSprawe && !bylaSprawa) skanuj();
+          maSprawe = !!moje.biezace;
+          if (!maSprawe) { d = null; wyczysc(gora); wyczysc(dol); szuflada.hidden = true; wyczysc(planBox).append(biuro()); }
+          else if (!bylaSprawa) skanuj();
+          else if (['akta', 'dziennik'].includes(zakladka)) rysujSzuflade();
         }
-      } catch (e) { wyczysc(tresc).append(blad(e)); }
+      } catch (e) { pokaz(blad(e)); }
       clearTimeout(zegar);
       if (!koniec) zegar = setTimeout(odswiez, 30000);
     }
 
-    w.append(tresc);
     odswiez();
-    return () => { koniec = true; clearTimeout(zegar); clearTimeout(zegarSkanu); clearInterval(licznik); };
+    return () => {
+      koniec = true; clearTimeout(zegar); clearTimeout(zegarSkanu); clearInterval(licznik); komputerBox.hidden = true;
+      if (escK) document.removeEventListener('keydown', escK);
+    };
   },
 };

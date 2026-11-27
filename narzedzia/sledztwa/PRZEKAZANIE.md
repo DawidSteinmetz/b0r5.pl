@@ -92,6 +92,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    **Wspólna mapa (decyzja autora):** brakujące budynki kompleksu generator dopisuje do `lokalizacje` przy zapisie
    sprawy (`sl_nowy_budynek`, `sledztwo_zapisz`); plany budynków liczone ze ziarna świata `SLEDZTWO_SWIAT`.
    Docelowo multiplayer do 12 droidów — lista zmian w PROJEKT.md („Docelowo: duże śledztwa multiplayer”).
+   **Etap 4 (nieprzetestowany): przedmioty, komputery, nowy interfejs** — migracja `087_sledztwa_przedmioty.sql`,
+   akcje `sledztwo_przeszukaj`, `_zabierz`, `_zlam`, `_komputer`, `_dekoduj`; NPC bez powtórzeń; aplikacja
+   przepisana na układ pełnoekranowy. Opis w PROJEKT.md „Przedmioty, komputery i terminale”.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

@@ -1149,7 +1149,19 @@ function sl_skan(PDO $db, array $s): array
     $kontakty = array_map(fn($k) => array_diff_key($k, ['postac_id' => 1]), $kontakty);
     return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
-        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki)];
+        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki)]
+        + sl_skan_przedmioty($db, $s, $d);
+}
+
+// Przedmioty w lokalu i ekwipunek droida (pusto bez migracji 087).
+function sl_skan_przedmioty(PDO $db, array $s, array $d): array
+{
+    try {
+        sl_przedmioty_zapewnij($db, $s);
+        return ['przedmioty' => sl_przedmioty_tutaj($db, $s, $d), 'ekwipunek' => sl_ekwipunek($db, $s), 'przedmioty_dostepne' => true];
+    } catch (PDOException $e) {
+        return ['przedmioty' => [], 'ekwipunek' => [], 'przedmioty_dostepne' => false];
+    }
 }
 
 // Nakazy sprawy dla ekranu DT-4 (budynek NULL = cały kompleks).
@@ -1179,6 +1191,328 @@ function sl_nakaz_wniosek(PDO $db, array $s, ?int $bid, string $uzasadnienie): v
         ->execute([(int) $s['id'], $bid, $uzasadnienie, sl_utc(sl_teraz())]);
     $gdzie = $bid !== null ? $budynki[$bid]['nazwa'] : 'cały kompleks';
     sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Wniosek o nakaz: {$gdzie}. Uzasadnienie: {$uzasadnienie}");
+}
+
+// ---------- przedmioty, komputery, terminale (migracja 087) ----------
+
+// Lokale, w których terminal jest publiczny (każdy może się podłączyć; dekodowanie zostawia ślad).
+const SLEDZTWO_TERMINALE_PUBLICZNE = ['recepcja', 'hol', 'terminal_odpraw', 'poczekalnia', 'przejscie', 'hol_kasyna',
+    'kontrola_wejscia', 'galeria'];
+const SLEDZTWO_HOLONET = [
+    'Huttowie podnoszą opłaty za korzystanie z wind towarowych na poziomach 20–40.',
+    'Imperialny patrol widziany nad Sektorem Portowym. Kapitanat: „rutynowa kontrola”.',
+    'Pożar w rafinerii przyprawy opanowany. Trzech rannych, przyczyna nieznana.',
+    'Wyścigi śmigaczy na niższych poziomach odwołane po interwencji ochrony Huttów.',
+    'Kurs kredytu republikańskiego znów spada; kantory przyjmują tylko wartość Imperium.',
+    'Zaginął transport części do hangarów Corellian Sector. Nagroda za informacje.',
+    'Awaria zasilania na poziomie 12: windy stoją, oświetlenie awaryjne do odwołania.',
+    'Kasyno „Ostatnia Szansa” ogłasza turniej sabaka. Wpisowe: 500 kredytów.',
+    'Ostrzeżenie kapitanatu: fałszywe identyfikatory w obiegu. Sprawdzajcie kontrahentów.',
+    'Łowcy nagród proszeni o rejestrację w Biurze Zleceń. Nowe stawki od pierwszego cyklu.',
+];
+const SLEDZTWO_OGLOSZENIA = [
+    'Pokój do wynajęcia, poziom 9, tanio, bez pytań.', 'Kupię części do hipernapędu. Gotówka.',
+    'Naprawa droidów — szybko, dyskretnie, z gwarancją do wyjścia z warsztatu.', 'Zgubiono holozdjęcie. Dla znalazcy nagroda.',
+    'Szukam pilota z własnym statkiem. Kurs jednorazowy.', 'Lekcje huttese dla przyjezdnych.',
+];
+
+function sl_pliki(array ...$pary): string
+{
+    return json_encode(array_map(fn($p) => ['nazwa' => $p[0], 'tresc' => $p[1]], array_values(array_filter($pary, fn($p) => $p[1] !== ''))),
+        JSON_UNESCAPED_UNICODE);
+}
+
+// Przedmioty sprawy na start (raz; także dla spraw sprzed migracji 087). Treść ze szkieletu sprawy — dopóki model
+// Autor jej nie napisze: fragmenty, z których gracz łączy kropki (wiadomości, kalendarz, kontakty, notatki).
+function sl_przedmioty_zapewnij(PDO $db, array $s): void
+{
+    $q = $db->prepare('SELECT COUNT(*) FROM sledztwo_przedmioty WHERE sledztwo_id = ? AND miejsce_id IS NOT NULL');
+    $q->execute([(int) $s['id']]);
+    if ((int) $q->fetchColumn() > 0) return;
+    $q = $db->prepare('SELECT * FROM sledztwo_miejsca WHERE sledztwo_id = ? ORDER BY id');
+    $q->execute([(int) $s['id']]);
+    $miejsca = $q->fetchAll();
+    if (!$miejsca) return;
+    $mf = [];
+    foreach ($miejsca as $m) $mf[(int) $m['faza_nr']] ??= $m;
+    $q = $db->prepare('SELECT * FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IS NOT NULL');
+    $q->execute([(int) $s['id']]);
+    $os = [];
+    foreach ($q->fetchAll() as $p) $os[$p['kod']] = $p;
+    if (!isset($os['A'])) return;
+    $q = $db->prepare('SELECT faza_nr, pozycja, tagi FROM sledztwo_fazy WHERE sledztwo_id = ? ORDER BY pozycja');
+    $q->execute([(int) $s['id']]);
+    $fazy = $q->fetchAll();
+    $poz = [];
+    foreach ($fazy as $f) $poz[(int) $f['faza_nr']] = (int) $f['pozycja'];
+    $tagi = $fazy ? sl_tagi((string) end($fazy)['tagi']) : [];
+    $q = $db->prepare('SELECT r.rola_b, l.nazwa AS skupisko FROM sledztwa s JOIN sledztwo_relacje r ON r.id = s.relacja_id
+        LEFT JOIN lokalizacje l ON l.id = s.skupisko_id WHERE s.id = ?');
+    $q->execute([(int) $s['id']]);
+    $sp = $q->fetch() ?: ['rola_b' => 'znajomy', 'skupisko' => 'kompleksu'];
+
+    sl_ziarno((int) $s['seed'], 'przedmioty');
+    $imie = fn(?array $p) => $p ? trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '')) : '';
+    $ksywa = fn(?array $p) => $p ? ($p['przydomek'] ?: $p['imie']) : '';
+    $temu = fn(int $faza) => max(1, 13 - ($poz[$faza] ?? 6)) . ' cykli temu';
+    $godz = fn() => sprintf('%02d:%02d', sl_los(0, 23), sl_los(0, 59));
+    $gdzie = fn(array $m) => "{$m['nazwa']}, poziom {$m['poziom']}, lokal {$m['pokoj']}";
+    $A = $os['A']; $B = $os['B'] ?? null; $Z = $os['Z'] ?? null; $S = $os['S'] ?? null;
+    $kwota = sl_los(8, 90) * 100;
+
+    $pierwsze = $miejsca[0];
+    $kryj = $mf[7] ?? $mf[3] ?? $pierwsze;
+    $praca = $mf[1] ?? $mf[3] ?? $pierwsze;
+    $przed = [];
+
+    // 1. Zabezpieczony datapad zaginionego — schowany (trzeba przeszukać lokal).
+    $kal = [];
+    foreach ([1, 3, 5, 7] as $f) if (isset($mf[$f])) $kal[] = "[{$temu($f)}] " . ($f === 7 ? 'Rezerwacja: ' : 'Spotkanie: ') . $gdzie($mf[$f]);
+    $wiad = [];
+    if ($B) $wiad[] = "[{$temu(3)}, {$godz()}] {$ksywa($B)}: Musimy porozmawiać o tym, co ustaliliśmy. Nie przez holonet.";
+    if ($Z) $wiad[] = "[{$temu(4)}, {$godz()}] nadawca zastrzeżony: Termin się zbliża. Pamiętaj, kto ci zapłacił.";
+    if (in_array('dlug', $tagi, true)) $wiad[] = "[{$temu(5)}, {$godz()}] Kantor: Rata przeterminowana. Odsetki naliczane od cyklu {$temu(5)}.";
+    if ($S) $wiad[] = "[1 cykl temu, {$godz()}] nieznany: Ktoś o ciebie pytał. Nie stąd. Uważaj.";
+    $wiad[] = "[1 cykl temu, {$godz()}] {$imie($A)} (szkic, niewysłane): Jeśli to czytasz, to znaczy, że mnie nie ma.";
+    $kontakty = array_filter([$B ? "{$imie($B)} — {$sp['rola_b']}" : '', $Z ? "{$ksywa($Z)} — interesy, nie dzwonić po zmroku" : '',
+        $S ? 'numer bez nazwy (zapisany 2 cykle temu)' : '']);
+    $przed[] = ['m' => $kryj, 'wl' => $A['id'], 'rodzaj' => 'datapad', 'nazwa' => "Datapad osobisty — {$imie($A)}",
+        'opis' => 'Porysowany datapad z blokadą biometryczną; ostatnio używany przez zaginionego.', 'przenosny' => 1, 'ukryty' => 1, 'zab' => 3,
+        'pliki' => sl_pliki(['Wiadomości', implode("\n", $wiad)], ['Kalendarz', implode("\n", $kal)], ['Kontakty', implode("\n", $kontakty)],
+            ['Notatka', isset($mf[7]) ? "Gdyby coś poszło nie tak: {$gdzie($mf[7])}. Nikomu nie mówić." : "Nie ufać nikomu z {$sp['skupisko']}."])];
+
+    // 2. Stanowisko pracy zaginionego (terminal, nie do zabrania).
+    $ostatni = isset($mf[3]) ? "trasa: {$gdzie($mf[3])}" : 'trasa: (plik uszkodzony)';
+    $przed[] = ['m' => $praca, 'wl' => $A['id'], 'rodzaj' => 'stanowisko', 'nazwa' => "Stanowisko pracy — {$imie($A)}",
+        'opis' => 'Terminal z otwartą, przerwaną sesją. Na blacie kubek z zaschniętą kafą.', 'przenosny' => 0, 'ukryty' => 0, 'zab' => 2,
+        'pliki' => sl_pliki(['Dziennik logowań', "Ostatnie logowanie: {$temu(3)}, {$godz()}.\nWylogowanie: brak — sesja przerwana."],
+            ['Poczta służbowa', "Od: {$imie($A)}\nDo: przełożony\nTemat: wolne\nBiorę kilka cykli wolnego. Sprawy rodzinne. Wrócę.\n\nOd: przełożony\nDo: {$imie($A)}\nTemat: RE: wolne\nGdzie jesteś? Nikt cię nie widział od {$temu(3)}."],
+            ['Ostatnie pliki', "rachunek_{$kwota}kr.dat\n{$ostatni}\nzdjecie_" . sl_los(100, 999) . '.holo'])];
+
+    // 3. Kostka danych (gdy sprawa ma tag „dane”) — mocno zabezpieczona, schowana.
+    if (in_array('dane', $tagi, true)) {
+        $przed[] = ['m' => $mf[3] ?? $mf[5] ?? $pierwsze, 'wl' => $A['id'], 'rodzaj' => 'kostka', 'nazwa' => 'Kostka danych bez etykiety',
+            'opis' => 'Kostka danych z zatartym numerem seryjnym.', 'przenosny' => 1, 'ukryty' => 1, 'zab' => 4,
+            'pliki' => sl_pliki(['Fragment zapisu', "Transakcja: {$kwota} kr\nOdbiorca: " . ($Z ? $ksywa($Z) : ($B ? $ksywa($B) : 'ukryty')) . "\nZnacznik: {$sp['skupisko']}\nPotwierdzenie: BRAK"])];
+    }
+    // 4. Kwit lombardowy (dług albo łup) — leży na wierzchu.
+    if (in_array('dlug', $tagi, true) || in_array('lup', $tagi, true)) {
+        $przed[] = ['m' => $mf[5] ?? $praca, 'wl' => $A['id'], 'rodzaj' => 'dokument', 'nazwa' => 'Kwit lombardowy',
+            'opis' => 'Zmięty kwit z pieczątką lombardu.', 'przenosny' => 1, 'ukryty' => 0, 'zab' => 0,
+            'pliki' => sl_pliki(['Kwit', "Zastaw: " . ($A['ekwipunek'] ? explode(',', $A['ekwipunek'])[0] : 'przedmiot osobisty') . "\nWartość: " . intdiv($kwota, 3) . " kr\nNa nazwisko: {$imie($A)}\nTermin wykupu: " . sl_los(3, 12) . ' cykli'])];
+    }
+    // 5. Holozdjęcie — kto z kim i gdzie.
+    if ($B) {
+        $przed[] = ['m' => $mf[1] ?? $pierwsze, 'wl' => $A['id'], 'rodzaj' => 'osobisty', 'nazwa' => 'Holozdjęcie',
+            'opis' => 'Wytarte holozdjęcie w plastikowej ramce.', 'przenosny' => 1, 'ukryty' => 0, 'zab' => 0,
+            'pliki' => sl_pliki(['Holozdjęcie', "{$imie($A)} i {$imie($B)}, uśmiechnięci. W tle szyld: " . ($mf[1] ?? $pierwsze)['nazwa'] . '.'])];
+    }
+
+    $wstaw = $db->prepare('INSERT INTO sledztwo_przedmioty (sledztwo_id, miejsce_id, lokalizacja_id, poziom, pokoj, wlasciciel_id, rodzaj, nazwa, opis,
+        przenosny, ukryty, zabezpieczenie, zawartosc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    foreach ($przed as $p) {
+        $wstaw->execute([(int) $s['id'], (int) $p['m']['id'], $p['m']['lokalizacja_id'], (int) $p['m']['poziom'], (string) $p['m']['pokoj'],
+            (int) $p['wl'], $p['rodzaj'], mb_substr($p['nazwa'], 0, 160), $p['opis'], $p['przenosny'], $p['ukryty'], $p['zab'], $p['pliki']]);
+    }
+}
+
+// Przedmioty widoczne w lokalu, w którym stoi droid (bez schowanych, których jeszcze nie znalazł; bez zabranych).
+function sl_przedmioty_tutaj(PDO $db, array $s, array $d): array
+{
+    if ((string) $d['pokoj'] === 'korytarz' || $d['stan'] === 'w_drodze') return [];
+    $q = $db->prepare('SELECT id, rodzaj, nazwa, opis, przenosny, zabezpieczenie, odblokowany FROM sledztwo_przedmioty
+        WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND w_ekwipunku = 0 AND (ukryty = 0 OR znaleziony_utc IS NOT NULL)
+        ORDER BY id');
+    $q->execute([(int) $s['id'], $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null, (int) $d['poziom'], (string) $d['pokoj']]);
+    return $q->fetchAll();
+}
+
+function sl_ekwipunek(PDO $db, array $s): array
+{
+    $q = $db->prepare('SELECT id, rodzaj, nazwa, opis, zabezpieczenie, odblokowany, sposob_odblokowania FROM sledztwo_przedmioty
+        WHERE sledztwo_id = ? AND w_ekwipunku = 1 ORDER BY id');
+    $q->execute([(int) $s['id']]);
+    return $q->fetchAll();
+}
+
+// Przedmiot dostępny dla droida: w ekwipunku albo widoczny w lokalu, w którym stoi.
+function sl_przedmiot_dostepny(PDO $db, array $s, array $d, int $id): array
+{
+    $q = $db->prepare('SELECT * FROM sledztwo_przedmioty WHERE id = ? AND sledztwo_id = ?');
+    $q->execute([$id, (int) $s['id']]);
+    $p = $q->fetch();
+    if (!$p) throw new SledztwoBlad('Nie ma takiego przedmiotu.');
+    if ($p['w_ekwipunku']) return $p;
+    $tutaj = $d['stan'] !== 'w_drodze' && (string) $d['pokoj'] === (string) $p['pokoj'] && (int) $d['poziom'] === (int) $p['poziom']
+        && ((int) $d['lokalizacja_id'] === (int) $p['lokalizacja_id']) && (!$p['ukryty'] || $p['znaleziony_utc'] !== null);
+    if (!$tutaj) throw new SledztwoBlad('Droid nie ma dostępu do tego przedmiotu.');
+    return $p;
+}
+
+function sl_przeszukaj(PDO $db, array $s): array
+{
+    $d = sl_rozlicz_droida($db, $s);
+    if (!$d || $d['stan'] === 'w_drodze' || (string) $d['pokoj'] === 'korytarz') throw new SledztwoBlad('Droid musi stać w lokalu.');
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $teraz = sl_teraz();
+    $q = $db->prepare('SELECT 1 FROM sledztwo_przeszukania WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND kiedy_utc > ? LIMIT 1');
+    $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], (string) $d['pokoj'], sl_utc($teraz - 600)]);
+    if ($q->fetchColumn()) throw new SledztwoBlad('Droid przeszukał ten lokal przed chwilą. Spróbuj za kilka minut.');
+    $k = sl_karta_droida($db, (string) $s['konto_login']);
+    $test = sl_test_eote((int) ($k['cechy']['spryt'] ?? 2), (int) ($k['umiejetnosci']['percepcja']['ranga'] ?? 0), 2, 0);
+    $db->prepare('INSERT INTO sledztwo_przeszukania (sledztwo_id, lokalizacja_id, poziom, pokoj, udane, kiedy_utc) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([(int) $s['id'], $bid, (int) $d['poziom'], (string) $d['pokoj'], $test['udana'] ? 1 : 0, sl_utc($teraz)]);
+    $znalezione = [];
+    if ($test['udana']) {
+        $q = $db->prepare('SELECT id, nazwa FROM sledztwo_przedmioty WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ?
+            AND ukryty = 1 AND znaleziony_utc IS NULL AND w_ekwipunku = 0');
+        $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], (string) $d['pokoj']]);
+        $znalezione = $q->fetchAll();
+        if ($znalezione) {
+            $db->prepare('UPDATE sledztwo_przedmioty SET znaleziony_utc = ? WHERE id IN (' . implode(',', array_map(fn($x) => (int) $x['id'], $znalezione)) . ')')
+                ->execute([sl_utc($teraz)]);
+        }
+    }
+    $opis = "Percepcja: {$test['pula']} → sukcesy netto {$test['sukcesy']}.";
+    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', !$test['udana'] ? "Przeszukałem lokal {$d['pokoj']}. Niczego nie zauważyłem. ({$opis})"
+        : ($znalezione ? "Przeszukałem lokal {$d['pokoj']}. Znalazłem: " . implode(', ', array_column($znalezione, 'nazwa')) . ". ({$opis})"
+            : "Przeszukałem lokal {$d['pokoj']} dokładnie. Nic tu nie ma. ({$opis})"));
+    return ['udane' => $test['udana'], 'znalezione' => array_column($znalezione, 'nazwa'), 'opis' => $opis];
+}
+
+function sl_zabierz(PDO $db, array $s, int $id): array
+{
+    $d = sl_rozlicz_droida($db, $s);
+    $p = sl_przedmiot_dostepny($db, $s, $d, $id);
+    if ($p['w_ekwipunku']) throw new SledztwoBlad('Droid już to ma.');
+    if (!$p['przenosny']) throw new SledztwoBlad('Tego nie da się zabrać — można się tylko podłączyć.');
+    $db->prepare('UPDATE sledztwo_przedmioty SET w_ekwipunku = 1, znaleziony_utc = COALESCE(znaleziony_utc, ?) WHERE id = ?')->execute([sl_utc(sl_teraz()), $id]);
+    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', "Zabezpieczyłem przedmiot: {$p['nazwa']}.");
+    return ['ok' => true];
+}
+
+// Łamanie zabezpieczenia: Intelekt + Komputery droida przeciw kościom trudności = poziom zabezpieczenia.
+function sl_zlam(PDO $db, array $s, int $id): array
+{
+    $d = sl_rozlicz_droida($db, $s);
+    $p = sl_przedmiot_dostepny($db, $s, $d, $id);
+    if ((int) $p['zabezpieczenie'] === 0 || $p['odblokowany']) throw new SledztwoBlad('Ten nośnik nie jest zablokowany.');
+    $teraz = sl_teraz();
+    if ($p['blokada_do'] && (sl_z_utc($p['blokada_do']) ?? 0) > $teraz) {
+        throw new SledztwoBlad('Zabezpieczenie jest w trybie blokady. Spróbuj za ' . sl_czas_tekst((sl_z_utc($p['blokada_do']) ?? 0) - $teraz) . '.');
+    }
+    $k = sl_karta_droida($db, (string) $s['konto_login']);
+    $test = sl_test_eote((int) ($k['cechy']['intelekt'] ?? 2), (int) ($k['umiejetnosci']['komputery']['ranga'] ?? 0), (int) $p['zabezpieczenie'], 0);
+    $opis = "Komputery: {$test['pula']} → sukcesy netto {$test['sukcesy']}" . ($test['rozpacz'] ? ', ROZPACZ' : '') . '.';
+    if ($test['udana']) {
+        $db->prepare("UPDATE sledztwo_przedmioty SET odblokowany = 1, sposob_odblokowania = 'sam' WHERE id = ?")->execute([$id]);
+        sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', "Złamałem zabezpieczenie: {$p['nazwa']}. ({$opis})");
+    } else {
+        $db->prepare('UPDATE sledztwo_przedmioty SET blokada_do = ? WHERE id = ?')->execute([sl_utc($teraz + ($test['rozpacz'] ? 86400 : 600)), $id]);
+        sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', ($test['rozpacz']
+            ? "Zabezpieczenie nośnika {$p['nazwa']} przeszło w blokadę na dobę."
+            : "Nie złamałem zabezpieczenia: {$p['nazwa']}. Blokada 10 minut.") . " ({$opis})");
+    }
+    return ['udana' => $test['udana'], 'opis' => $opis];
+}
+
+// Terminal w zasięgu droida: korytarzowy (droid na korytarzu) albo w lokalu, w którym stoi. [plan, lokal|null, publiczny]
+function sl_terminal_tutaj(PDO $db, array $s, array $d, string $etykieta): array
+{
+    if ($d['stan'] === 'w_drodze') throw new SledztwoBlad('Droid jest w drodze.');
+    $pule = sl_pule($db);
+    $budynki = sl_budynki($db, $s);
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
+    if ((string) $d['pokoj'] === 'korytarz') {
+        if ($plan['terminal_korytarz'] !== $etykieta) throw new SledztwoBlad('Ten terminal nie jest w zasięgu droida — podejdź do niego.');
+        return [$plan, null, true];
+    }
+    foreach ($plan['pokoje'] as $p) {
+        if ($p['nr'] === (string) $d['pokoj'] && $p['terminal'] === $etykieta) return [$plan, $p, in_array($p['lokal'], SLEDZTWO_TERMINALE_PUBLICZNE, true)];
+    }
+    throw new SledztwoBlad('Ten terminal nie jest w zasięgu droida — wejdź do lokalu, w którym stoi.');
+}
+
+// Ekran komputera: przedmiot (datapad, stanowisko, kostka…) albo terminal z planu (T1, T2…).
+function sl_komputer(PDO $db, array $s, ?int $przedmiotId, string $terminal): array
+{
+    $d = sl_rozlicz_droida($db, $s);
+    if (!$d) throw new SledztwoBlad('Droid nie ma przydziału.');
+    $zablokowane = array_values(array_filter(sl_ekwipunek($db, $s), fn($x) => (int) $x['zabezpieczenie'] > 0 && !$x['odblokowany']));
+    if ($przedmiotId) {
+        $p = sl_przedmiot_dostepny($db, $s, $d, $przedmiotId);
+        $zamek = (int) $p['zabezpieczenie'] > 0 && !$p['odblokowany'];
+        return ['nazwa' => $p['nazwa'], 'opis' => $p['opis'], 'przedmiot_id' => (int) $p['id'], 'publiczny' => false,
+            'zablokowany' => $zamek, 'zabezpieczenie' => (int) $p['zabezpieczenie'], 'blokada_do' => $p['blokada_do'],
+            'pliki' => $zamek ? [] : (json_decode((string) $p['zawartosc'], true) ?: [])];
+    }
+    [$plan, $lokal, $publiczny] = sl_terminal_tutaj($db, $s, $d, $terminal);
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    if ($publiczny) {
+        // Spis lokali budynku (z presetu, piętro po piętrze), holonet i ogłoszenia. Dekodowanie nośników zostawia ślad.
+        $pule = sl_pule($db);
+        $budynki = sl_budynki($db, $s);
+        $b = $bid !== null ? ($budynki[$bid] ?? null) : null;
+        $spis = [];
+        for ($pz = $plan['parter'], $ile = 0; $pz <= $plan['gora'] && $ile < 25; $pz++, $ile++) {
+            $pp = sl_plan($db, $s, $pule, $b, $pz);
+            $nazwy = array_count_values(array_column($pp['pokoje'], 'rodzaj'));
+            $spis[] = "Poziom {$pz}: " . implode(', ', array_map(fn($n, $c) => $c > 1 ? "{$n} ×{$c}" : $n, array_keys($nazwy), $nazwy));
+        }
+        $h = crc32(gmdate('YmdH') . '|' . $bid);
+        $news = [];
+        for ($i = 0; $i < 4; $i++) $news[] = '• ' . SLEDZTWO_HOLONET[($h + $i * 3) % count(SLEDZTWO_HOLONET)];
+        $ogl = [];
+        for ($i = 0; $i < 3; $i++) $ogl[] = '• ' . SLEDZTWO_OGLOSZENIA[($h + $i * 2) % count(SLEDZTWO_OGLOSZENIA)];
+        return ['nazwa' => "Terminal publiczny {$terminal} — {$plan['budynek']}, poziom {$plan['poziom']}", 'opis' => 'Terminal ogólnodostępny.',
+            'publiczny' => true, 'terminal' => $terminal, 'zablokowany' => false,
+            'pliki' => [['nazwa' => 'Spis lokali', 'tresc' => implode("\n", $spis)], ['nazwa' => 'Holonet', 'tresc' => implode("\n", $news)],
+                ['nazwa' => 'Ogłoszenia', 'tresc' => implode("\n", $ogl)]],
+            'do_dekodowania' => array_map(fn($x) => ['id' => (int) $x['id'], 'nazwa' => $x['nazwa']], $zablokowane)];
+    }
+    // Prywatny terminal w lokalu: powstaje jako przedmiot przy pierwszym podłączeniu (zabezpieczony, treść z szumu).
+    $nazwa = "Terminal {$terminal} — {$lokal['rodzaj']} {$lokal['nr']}";
+    $q = $db->prepare('SELECT id FROM sledztwo_przedmioty WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND nazwa = ?');
+    $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], $lokal['nr'], $nazwa]);
+    $id = $q->fetchColumn();
+    if (!$id) {
+        $pule = sl_pule($db);
+        sl_ziarno(SLEDZTWO_SWIAT, 'terminal', (string) $bid, (string) $d['poziom'], $lokal['nr']);
+        $ludzie = [];
+        for ($i = 0; $i < 4; $i++) {
+            $im = array_values(array_filter($pule['imiona'], fn($x) => $x['rodzaj'] === 'imie'));
+            $ludzie[] = $im ? sl_jeden($im)['wartosc'] : 'pracownik';
+        }
+        $pliki = sl_pliki(['Grafik zmian', implode("\n", array_map(fn($n, $i) => sprintf('Zmiana %d: %s, %02d:00–%02d:00', $i + 1, $n, 6 + 8 * $i % 24, (14 + 8 * $i) % 24), $ludzie, array_keys($ludzie)))],
+            ['Rejestr wejść', implode("\n", array_map(fn($n) => sprintf('%02d:%02d — %s', sl_los(0, 23), sl_los(0, 59), $n), $ludzie))],
+            ['Notatki', ['Przypomnieć o płatności za wodę.', 'Zamek w drzwiach znów się zacina.', 'Nie wpuszczać droidów po zmroku.', 'Dostawa przesunięta o cykl.'][sl_los(0, 3)]]);
+        $zab = in_array($lokal['lokal'], ['biuro_ochrony', 'serwerownia', 'gabinet_dyrektora', 'biuro_zarzadu', 'wieza', 'kasa', 'archiwum'], true) ? 3 : 2;
+        $db->prepare("INSERT INTO sledztwo_przedmioty (sledztwo_id, lokalizacja_id, poziom, pokoj, rodzaj, nazwa, opis, przenosny, ukryty, zabezpieczenie, zawartosc)
+            VALUES (?, ?, ?, ?, 'terminal', ?, ?, 0, 0, ?, ?)")
+            ->execute([(int) $s['id'], $bid, (int) $d['poziom'], $lokal['nr'], $nazwa, 'Terminal personelu. „Dostęp tylko dla upoważnionych.”', $zab, $pliki]);
+        $id = (int) $db->lastInsertId();
+    }
+    return sl_komputer($db, $s, (int) $id, '');
+}
+
+// Dekodowanie nośnika z ekwipunku na publicznym terminalu: od razu, ale właściciel danych dowiaduje się, gdzie i kiedy.
+function sl_dekoduj_publicznie(PDO $db, array $s, int $id, string $terminal): array
+{
+    $d = sl_rozlicz_droida($db, $s);
+    [$plan, , $publiczny] = sl_terminal_tutaj($db, $s, $d, $terminal);
+    if (!$publiczny) throw new SledztwoBlad('To nie jest terminal publiczny.');
+    $p = sl_przedmiot_dostepny($db, $s, $d, $id);
+    if (!$p['w_ekwipunku']) throw new SledztwoBlad('Najpierw zabierz nośnik.');
+    if ((int) $p['zabezpieczenie'] === 0 || $p['odblokowany']) throw new SledztwoBlad('Ten nośnik nie jest zablokowany.');
+    $db->prepare("UPDATE sledztwo_przedmioty SET odblokowany = 1, sposob_odblokowania = 'terminal' WHERE id = ?")->execute([$id]);
+    $gdzie = "{$plan['budynek']}, poziom {$plan['poziom']}, terminal {$terminal}";
+    $db->prepare("INSERT INTO sledztwo_alarmy (sledztwo_id, kiedy_utc, rodzaj, przedmiot_id, lokalizacja_id, poziom, pokoj, opis)
+        VALUES (?, ?, 'terminal_publiczny', ?, ?, ?, ?, ?)")
+        ->execute([(int) $s['id'], sl_utc(sl_teraz()), $id, $d['lokalizacja_id'], (int) $d['poziom'], (string) $d['pokoj'],
+            "Odszyfrowano {$p['nazwa']} na terminalu publicznym: {$gdzie}."]);
+    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', "Terminal publiczny {$terminal} odszyfrował: {$p['nazwa']}. Uwaga: sieć publiczna zapisuje identyfikator nośnika — właściciel danych może wiedzieć, gdzie i kiedy.");
+    return ['ok' => true];
 }
 
 // ---------- rozmowy droida z NPC (migracja 085) ----------
@@ -1298,13 +1632,26 @@ function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string
     return $pytania[$nr % count($pytania)];
 }
 
-function sl_kwestia_szumu(PDO $db, string $nastroj): string
+// Zdawkowa kwestia bez powtórzeń: pomija to, co ten rozmówca już powiedział, i to, co w tej sprawie padło
+// w ostatnich 6 godzinach; gdy wszystko zużyte — najdawniej użyta.
+function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sledztwoId = 0): string
 {
     $q = $db->prepare('SELECT tresc FROM gen_kwestie_szumu WHERE nastroj = ?');
     $q->execute([$nastroj]);
     $l = $q->fetchAll(PDO::FETCH_COLUMN);
     if (!$l) $l = $db->query('SELECT tresc FROM gen_kwestie_szumu')->fetchAll(PDO::FETCH_COLUMN);
-    return $l ? (string) $l[random_int(0, count($l) - 1)] : 'Nie wiem.';
+    if (!$l) return 'Nie wiem.';
+    $uzyte = [];
+    if ($rozmowaId || $sledztwoId) {
+        $q = $db->prepare("SELECT w.tresc, MAX(w.id) AS ost FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id
+            WHERE w.kto = 'npc' AND (w.rozmowa_id = ? OR (r.sledztwo_id = ? AND w.kiedy_utc > ?)) GROUP BY w.tresc");
+        $q->execute([$rozmowaId, $sledztwoId, sl_utc(sl_teraz() - 6 * 3600)]);
+        foreach ($q->fetchAll() as $x) $uzyte[$x['tresc']] = (int) $x['ost'];
+    }
+    $wolne = array_values(array_filter($l, fn($t) => !isset($uzyte[$t])));
+    if ($wolne) return (string) $wolne[random_int(0, count($wolne) - 1)];
+    usort($l, fn($a, $b) => ($uzyte[$a] ?? 0) <=> ($uzyte[$b] ?? 0));
+    return (string) $l[0];
 }
 
 // Dane kluczowego NPC do szablonu npc_wypowiedz. Dopóki model Autor nie napisze historii i wiedzy (krok 2),
@@ -1483,8 +1830,14 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         if ($odp === null) {
             if (!$ai || $awaria) {
                 // Bez AI: zdawkowa kwestia; przechodzień po kilku pytaniach odchodzi.
-                if ($pytan === 0) $nastroj = ['uprzejmy', 'obojetny', 'obojetny', 'wrogi', 'przestraszony'][random_int(0, 4)];
-                $odp = sl_kwestia_szumu($db, $nastroj);
+                // Domyślnie neutralni; zniecierpliwienie rośnie z liczbą pytań.
+                if ($pytan === 0) {
+                    $r100 = random_int(1, 100);
+                    $nastroj = $r100 <= 78 ? 'obojetny' : ($r100 <= 88 ? 'uprzejmy' : ($r100 <= 95 ? 'przestraszony' : 'wrogi'));
+                } elseif ($pytan >= 3 && $nastroj !== 'przestraszony' && random_int(1, 100) <= 25) {
+                    $nastroj = 'wrogi';
+                }
+                $odp = sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
                 $konczy = $pytan >= 2 && random_int(1, 100) <= 50;
                 sl_wpis($db, $rid, 'npc', $odp);
             }
@@ -1518,7 +1871,7 @@ function sl_rozmowy_dostepne(PDO $db): void
 function obsluz_sledztwa(string $akcja, bool $post): void
 {
     $akcje = ['sledztwo_moje', 'sledztwo_skan', 'sledztwo_idz', 'sledztwo_rozmowa', 'sledztwo_rozmowa_start', 'sledztwo_rozmowa_tura',
-        'sledztwo_rozmowa_koniec', 'sledztwo_straz', 'sledztwo_nakaz_wniosek', 'mg_sledztwo_nakazy', 'mg_sledztwo_nakaz_decyzja', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
+        'sledztwo_rozmowa_koniec', 'sledztwo_przeszukaj', 'sledztwo_zabierz', 'sledztwo_zlam', 'sledztwo_komputer', 'sledztwo_dekoduj', 'sledztwo_straz', 'sledztwo_nakaz_wniosek', 'mg_sledztwo_nakazy', 'mg_sledztwo_nakaz_decyzja', 'sledztwo_nowe', 'mg_sledztwa', 'mg_sledztwo_podglad', 'mg_detektywi', 'mg_detektyw_ustaw'];
     if (!in_array($akcja, $akcje, true)) return;
     $u = wymagaj_logowania();
     $mg = ($u['rola'] ?? '') === 'mg';
@@ -1627,6 +1980,31 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
                 odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''))]);
+
+            // Przedmioty i komputery (migracja 087): przeszukanie lokalu (Percepcja), zabranie, łamanie (Komputery),
+            // ekran komputera ({przedmiot_id} albo {terminal: 'T1'}), dekodowanie na terminalu publicznym (zostawia ślad).
+            case 'sledztwo_przeszukaj':
+            case 'sledztwo_zabierz':
+            case 'sledztwo_zlam':
+            case 'sledztwo_komputer':
+            case 'sledztwo_dekoduj':
+                if (!$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                try {
+                    $db->query('SELECT 1 FROM sledztwo_przedmioty LIMIT 1');
+                } catch (PDOException $e) { blad('Przedmioty nie działają. (Brak migracji 087.)'); }
+                $w = wejscie();
+                $pid = (int) ($w['przedmiot_id'] ?? 0);
+                $term = mb_substr((string) ($w['terminal'] ?? ''), 0, 6);
+                odpowiedz(match ($akcja) {
+                    'sledztwo_przeszukaj' => sl_przeszukaj($db, $s),
+                    'sledztwo_zabierz' => sl_zabierz($db, $s, $pid),
+                    'sledztwo_zlam' => sl_zlam($db, $s, $pid),
+                    'sledztwo_komputer' => ['komputer' => sl_komputer($db, $s, $pid ?: null, $term)],
+                    'sledztwo_dekoduj' => sl_dekoduj_publicznie($db, $s, $pid, $term),
+                });
 
             // Próba przekonania strażnika: {pokoj, podejscie: oszustwo|urok|zastraszanie} — test EotE.
             case 'sledztwo_straz':

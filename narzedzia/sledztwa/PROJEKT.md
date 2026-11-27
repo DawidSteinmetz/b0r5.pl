@@ -127,6 +127,26 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 - Generator kładzie miejsca fabuły w budynkach o zgodnym presecie (kantyna w kantynie, hangar w hangarze), na ich
   piętrach, z wagami fabularnymi (lokale publiczne; mieszkania rzadko — głównie jako kryjówki).
 
+### Przedmioty, komputery i terminale (migracja 087)
+
+- Na start sprawy w jej miejscach leżą przedmioty (`sledztwo_przedmioty`, tworzone raz, także dla starszych spraw):
+  zabezpieczony datapad zaginionego (A) — schowany w kryjówce (faza 7) albo w miejscu fazy 3, wiadomości, kalendarz,
+  kontakty, notatka; jego stanowisko pracy (terminal, nie do zabrania) — przerwana sesja, poczta, ostatnie pliki;
+  kostka danych (tag `dane`, schowana, zabezpieczenie 4); kwit lombardowy (`dlug` / `lup`); holozdjęcie A z B.
+  Treść powstaje ze szkieletu sprawy (nazwy miejsc, imiona, kwoty) — fragmenty do łączenia kropek; docelowo pisze Autor.
+- Schowane przedmioty widać dopiero po przeszukaniu lokalu (Spryt + Percepcja droida przeciw 2 trudności; ponownie
+  po 10 min). Zabieranie do ekwipunku droida. Zabezpieczenie 0–5 = kości trudności.
+- Odblokowanie: samemu (Intelekt + Komputery; porażka = blokada 10 min, rozpacz = doba) albo na terminalu publicznym
+  (od razu, ale wpis w `sledztwo_alarmy`: właściciel danych może wiedzieć, gdzie i kiedy — skutki w kolejnych etapach).
+  Slicer — później.
+- Terminale z planu: publiczne (korytarz, recepcje, hole, terminale odpraw…) — spis lokali budynku piętro po piętrze,
+  holonet, ogłoszenia, dekodowanie nośników; prywatne (w lokalach) — zabezpieczone, z grafikiem zmian i rejestrem
+  wejść (powstają jako przedmiot przy pierwszym podłączeniu).
+- NPC bez AI: domyślnie neutralni (ok. 78% „obojętny”), zbywają różnie; ta sama kwestia nie pada dwa razy w jednej
+  rozmowie ani w sprawie w ciągu 6 h (`sl_kwestia_szumu`).
+- Interfejs: plan piętra na całą przestrzeń (rysunek techniczny z siatką), pasek z zakładkami i sterowaniem ruchem,
+  panel boczny (Lokal, Ekwipunek, Rozmowa, Akta, Dziennik), ekran komputera na cały widok (Esc / „Rozłącz”).
+
 ### Wspólna mapa: lokacje precyzują się w kontekście (decyzja autora, 27.11)
 
 - Śledztwa korzystają ze **wspólnej mapy** (`lokalizacje`). Jeśli sprawa potrzebuje budynku, którego kompleks nie

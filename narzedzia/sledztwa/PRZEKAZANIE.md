@@ -163,6 +163,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    Rozmowa jako zapis analityczny: po każdej wypowiedzi NPC wpis „Analiza:” (JSON, `sl_analiza_wypowiedzi`): postawa,
    sens, ustalenia (tropy), wskazane miejsca (namiary), szczerość (bierny test Intelekt + Czujność przeciw Sprytowi
    i Oszustwu), wiarygodność, wniosek. Aplikacja pokazuje analizę, surową wypowiedź zwija.
+   Czas lokalny domyślnie: godzina lokalna z minutą zegara głównego (`sl_czas_lokalny`), meldunki i dziennik z polem
+   „lokalnie” (`sl_z_lokalnym`), obserwacje „DD|MM|RR, lokalnie około HH:00 (pora)”. Rozmowa: podsumowanie
+   najważniejszych ustaleń na górze, zapis przewija się sam tylko, gdy gracz jest przy jego końcu.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

@@ -923,7 +923,7 @@ function sl_czas_lokalny(PDO $db, array $s, ?int $t = null): array
     $H = astro_kat_godzinny($c, (float) $g['dl'], $t);                // 0 = południe, ±180 = północ
     $u = fmod(($H + 180) / 360 + 1, 1);                                // 0 = północ
     $min = (int) floor($u * 1440);
-    $godz = sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
+    $godz = sprintf('%02d:%s', intdiv($min, 60), date('i', $t)); // godzina lokalna, minuta jak w zegarze głównym
     $wys = astro_wysokosc_slonca($c, (float) $g['szer'], (float) $g['dl'], $t);
     $pora = $wys > -0.833 ? ($u < 0.42 ? 'przedpołudnie' : ($u < 0.58 ? 'południe' : 'popołudnie')) : ($wys > -6 ? ($u < 0.5 ? 'świt' : 'zmierzch') : 'noc');
     return ['godz' => $godz, 'h' => $u * 24, 'pora' => $pora, 'doba_h' => (float) $c['doba_h'],
@@ -1142,6 +1142,18 @@ function sl_odpowiedz_o_kims(PDO $db, array $s, array $pule, array $r, ?array $m
         return $g['ja'] . $gdzie;
     }
     return null;
+}
+
+// Wiersze z kiedy_utc dostają pole 'lokalnie' (godzina lokalna) i 'data' (dzień z kalendarza gry).
+function sl_z_lokalnym(PDO $db, array $s, array $wiersze): array
+{
+    foreach ($wiersze as &$w) {
+        $t = (int) sl_z_utc($w['kiedy_utc'] ?? null);
+        $w['lokalnie'] = $t ? sl_czas_lokalny($db, $s, $t)['godz'] : null;
+        $w['data'] = $t ? sl_data_gry($t, false) : null;
+    }
+    unset($w);
+    return $wiersze;
 }
 
 // Opis miejsca sprawy do nagłówka: planeta i współrzędne na mapie galaktyki, położenie kompleksu, lokalny czas.
@@ -1955,7 +1967,7 @@ function sl_skan(PDO $db, array $s): array
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'] . ($b['w_rejonie'] ? '' : " ({$b['kompleks']})"), 'rodzaj' => $b['rodzaj_kod']],
             array_filter($budynki, fn($b) => $b['w_rejonie'] || $b['id'] === $bid
                 || in_array($b['id'], array_column(sl_namiary_lista($db, $s), 'lokalizacja_id'), true)))),
-        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki),
+        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => sl_z_lokalnym($db, $s, $q->fetchAll()), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki),
         'namiary' => (sl_namiary_startowe($db, $s) ?? sl_namiary_lista($db, $s)), 'miejsce_sprawy' => sl_miejsce_sprawy($db, $s), 'tropy_ile' => sl_tropy_ile($db, $s)]
         + sl_skan_przedmioty($db, $s, $d);
 }
@@ -3211,6 +3223,10 @@ function sl_os_czasu(PDO $db, array $s): array
 function sl_kiedy_mowione(int $t, ?PDO $db = null, ?array $s = null): string
 {
     $lok = $db && $s ? ' (' . sl_czas_lokalny($db, $s, $t)['tekst'] . ')' : '';
+    if ($db && $s) {
+        $cz = sl_czas_lokalny($db, $s, $t);
+        return sl_data_gry($t, false) . ', lokalnie około ' . substr($cz['godz'], 0, 2) . ":00 ({$cz['pora']})";
+    }
     return sl_data_gry($t, false) . ' około ' . date('H', $t) . ':00' . $lok;
 }
 
@@ -3869,8 +3885,8 @@ function sl_notatnik(PDO $db, array $s): array
     $tropy = $q->fetchAll();
     foreach ($tropy as &$x) {
         $x['id'] = (int) $x['id'];
-        $x['kiedy'] = sl_data_gry((int) sl_z_utc($x['kiedy_utc']));
-        $x['czas_zdarzenia'] = $x['czas_zdarzenia_utc'] ? sl_data_gry((int) sl_z_utc($x['czas_zdarzenia_utc'])) : null;
+        $x['kiedy'] = sl_data_gry((int) sl_z_utc($x['kiedy_utc']), false);
+        $x['czas_zdarzenia'] = $x['czas_zdarzenia_utc'] ? sl_data_gry((int) sl_z_utc($x['czas_zdarzenia_utc']), false) : null;
     }
     unset($x);
     $q = $db->prepare('SELECT id, trop_a, trop_b, opis FROM sledztwo_powiazania WHERE sledztwo_id = ? ORDER BY id');
@@ -4511,7 +4527,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                     $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik
                         WHERE sledztwo_id = ? AND rodzaj <> 'system' AND kiedy_utc <= ? ORDER BY kiedy_utc DESC, id DESC LIMIT 50");
                     $q->execute([(int) $biezace['id'], sl_utc(sl_teraz())]);
-                    $dziennik = $q->fetchAll();
+                    $dziennik = sl_z_lokalnym($db, $biezace, $q->fetchAll());
                 }
                 $rozwiazane = count(array_filter($lista, fn($s) => $s['stan'] === 'rozwiazane'));
                 odpowiedz(['detektyw' => true, 'mg' => $mg, 'droid' => $droid, 'biezace' => $biezace, 'droid_stan' => $droidStan,

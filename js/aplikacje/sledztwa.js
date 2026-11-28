@@ -420,7 +420,7 @@ export default {
       const lacze = droid.stan === 'w_drodze'
         ? `w drodze · ${droid.cel.budynek}, poziom ${droid.cel.poziom}, ${lokalTxt(droid.cel.pokoj)}`
         : `łącze stabilne · ${droid.budynek}, poziom ${droid.poziom}, ${lokalTxt(droid.pokoj)} · kontakty w zasięgu: ${d.kontakty.length}`;
-      dol.append(h('div', h('b', `${d.oznaczenie || 'DT-4'} › `), ostatni ? `${godz(ostatni.kiedy_utc)} ${ostatni.tresc}` : 'Gotowy.'),
+      dol.append(h('div', h('b', `${d.oznaczenie || 'DT-4'} › `), ostatni ? `${ostatni.lokalnie || godz(ostatni.kiedy_utc)} ${ostatni.tresc}` : 'Gotowy.'),
         h('div.slaby', h('b', 'ŁĄCZE › '), lacze));
     }
 
@@ -528,7 +528,7 @@ export default {
     function zakladkaDziennik() {
       const wpisy = moje?.dziennik || [];
       return panel('DZIENNIK', wpisy.length ? wpisy.map((x) => h('div', { style: 'margin:6px 0' },
-        h('span.slaby', `${data(x.kiedy_utc)} · ${KTO[x.kto] || x.kto} · `), h('span', { style: 'white-space:pre-wrap' }, x.tresc)))
+        h('span.slaby', `${x.data ? `${x.data}, lokalnie ${x.lokalnie}` : data(x.kiedy_utc)} · ${KTO[x.kto] || x.kto} · `), h('span', { style: 'white-space:pre-wrap' }, x.tresc)))
         : h('p.maly-tekst', 'Brak wpisów.'));
     }
 
@@ -536,7 +536,7 @@ export default {
 
     // „Nar Shaddaa [x, y] · 12.3° N, 45.6° E · lokalnie 14:20, popołudnie (doba 87 h)”.
     const miejsceSprawy = (m) => `${m.planeta}${m.galaktyka ? ` [${m.galaktyka[0]}, ${m.galaktyka[1]}]` : ''}`
-      + `${m.skupisko ? ` · ${m.skupisko}` : ''} · ${m.wspolrzedne} · lokalnie ${m.czas_lokalny}, ${m.pora} (doba ${m.doba_h} h) · standard ${m.czas_standardowy}`;
+      + `${m.skupisko ? ` · ${m.skupisko}` : ''} · ${m.wspolrzedne} · lokalnie ${m.czas_lokalny}, ${m.pora} (doba ${m.doba_h} h)`;
     const RODZAJ_T = { zeznanie: 'Zeznanie', obserwacja: 'Obserwacja', namiar: 'Namiar', dokument: 'Dokument' };
     const OZNACZ = { wazny: ['★ ważny', 'var(--ok)'], podejrzany: ['? podejrzany', 'var(--akcent-2)'], odrzucony: ['✕ odrzucony', 'var(--zly)'] };
     const notatnikBox = h('div');
@@ -569,7 +569,7 @@ export default {
       zazn.onchange = () => { if (zazn.checked) zaznaczone.add(x.id); else zaznaczone.delete(x.id); rysujNotatnik(); };
       return h('div', { style: `margin:8px 0;padding:6px 8px;border:1px solid ${oz ? oz[1] : 'var(--linia)'};${x.oznaczenie === 'odrzucony' ? 'opacity:.55' : ''}` },
         h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, wybor || zazn,
-          h('b', RODZAJ_T[x.rodzaj] || x.rodzaj), h('span.slaby', `· ustalono ${x.kiedy}${x.kiedy_lokalnie ? ` (${x.kiedy_lokalnie})` : ''} · wiarygodność ${x.wiarygodnosc}%`),
+          h('b', RODZAJ_T[x.rodzaj] || x.rodzaj), h('span.slaby', `· ustalono ${x.kiedy}${x.kiedy_lokalnie ? `, ${x.kiedy_lokalnie}` : ''} · wiarygodność ${x.wiarygodnosc}%`),
           oz ? h('span', { style: `color:${oz[1]}` }, oz[0]) : null),
         h('div', { style: 'margin-top:4px;white-space:pre-wrap' }, x.tresc),
         x.czas_zdarzenia ? h('div.maly-tekst', `Kiedy się wydarzyło: ${x.czas_zdarzenia}${x.czas_lokalny ? ` (${x.czas_lokalny})` : ''}`) : null,
@@ -810,12 +810,43 @@ export default {
         wiersz('Wniosek', a.wniosek));
     }
 
+    // Zapis przewija się sam tylko wtedy, gdy gracz jest przy końcu — inaczej zostaje tam, gdzie czyta.
+    const naDole = () => szuflada.scrollHeight - szuflada.scrollTop - szuflada.clientHeight < 60;
+    const przewinNaDol = () => { szuflada.scrollTop = szuflada.scrollHeight; };
+
+    // Najważniejsze z rozmowy (na górze): co ustalono, jakie miejsca wskazano, czy rozmówca coś ukrywa, wyniki testów.
+    const podsumowanieBox = h('div');
+    function rysujPodsumowanie() {
+      wyczysc(podsumowanieBox);
+      if (!rozmowa) return;
+      const ust = new Set(), mie = new Set(), testy = [];
+      let szcz = null;
+      for (const w of rozmowa.wpisy || []) {
+        if (w.kto !== 'system') continue;
+        if (w.tresc.startsWith('Test:')) testy.push(w.tresc.replace(/ \(.*$/, ''));
+        if (!w.tresc.startsWith('Analiza:')) continue;
+        try {
+          const a = JSON.parse(w.tresc.slice(8));
+          (a.ustalenia || []).forEach((x) => ust.add(x));
+          (a.miejsca || []).forEach((x) => mie.add(x));
+          if (a.szczerosc && a.szczerosc !== 'nie da się ocenić') szcz = a.szczerosc;
+        } catch { /* stary wpis */ }
+      }
+      if (!ust.size && !mie.size && !szcz && !testy.length) return;
+      podsumowanieBox.append(h('div', { style: 'margin:6px 0 10px;padding:6px 8px;border:1px solid var(--akcent);background:rgba(125,255,176,.05)' },
+        h('b', 'NAJWAŻNIEJSZE Z TEJ ROZMOWY'),
+        ust.size ? h('div', h('span.slaby', 'Ustalenia: '), h('ul', { style: 'margin:2px 0 2px 18px;padding:0' }, [...ust].map((x) => h('li', x)))) : null,
+        mie.size ? h('div', h('span.slaby', 'Miejsca: '), [...mie].join('; ')) : null,
+        szcz ? h('div', h('span.slaby', 'Ocena rozmówcy: '), szcz) : null,
+        testy.length ? h('div', h('span.slaby', 'Podejścia: '), testy.map((x) => x.replace(/^Test: /, '')).join('; ')) : null));
+    }
+
     function wypisz(wp, odRazu) {
       // Analiza: blok zamiast surowego tekstu.
       if (wp.kto === 'system' && wp.tresc.startsWith('Analiza:')) {
         let a = null;
         try { a = JSON.parse(wp.tresc.slice(8)); } catch { a = null; }
-        if (a) { listaR.append(analizaEl(a)); szuflada.scrollTop = szuflada.scrollHeight; return new Promise((ok) => setTimeout(ok, odRazu ? 0 : 250)); }
+        if (a) { const dol = naDole(); listaR.append(analizaEl(a)); if (dol) przewinNaDol(); rysujPodsumowanie(); return new Promise((ok) => setTimeout(ok, odRazu ? 0 : 250)); }
       }
       // Surowa wypowiedź rozmówcy: zwinięta (łącze przesyła interpretację, nie dźwięk).
       if (wp.kto === 'npc') {
@@ -827,6 +858,7 @@ export default {
       const tekst = h('span', { style: 'white-space:pre-wrap' });
       const el = h('div', { style: `margin:6px 0;${wp.kto === 'system' ? (wp.tresc.startsWith('Test:') ? `font-weight:bold;color:var(${wp.tresc.includes(' UDANY') && !wp.tresc.includes('NIEUDANY') ? '--ok' : '--zly'})` : 'opacity:.6;font-style:italic') : ''}${wp.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
         kto ? h('b', `${kto} › `) : null, tekst);
+      const dol = naDole(); // przed dopisaniem — czy gracz był przy końcu zapisu
       listaR.append(el);
       if (odRazu) { tekst.textContent = wp.tresc; return Promise.resolve(); }
       return new Promise((gotowe) => {
@@ -835,7 +867,7 @@ export default {
           if (koniec) return gotowe();
           i = Math.min(wp.tresc.length, i + 2);
           tekst.textContent = wp.tresc.slice(0, i);
-          szuflada.scrollTop = szuflada.scrollHeight;
+          if (dol) przewinNaDol();
           if (i < wp.tresc.length) setTimeout(krok, 28); else gotowe();
         };
         krok();
@@ -846,6 +878,7 @@ export default {
       if (!r) { rozmowa = null; wyczysc(rozmowaBox); if (zakladka === 'rozmowa') zakladka = 'skan'; rysujGore(); rysujSzuflade(); return; }
       if (!rozmowa || rozmowa.id !== r.id) { wyczysc(listaR); wypisane.clear(); }
       rozmowa = r;
+      rysujPodsumowanie();
       for (const wp of r.wpisy || []) {
         if (wypisane.has(wp.id)) continue;
         wypisane.add(wp.id);
@@ -897,6 +930,7 @@ export default {
       };
       wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · ${lokalTxt(rozmowa.pokoj)}`,
         h('p.maly-tekst', 'Zapis analityczny DT-4 — łącze przesyła interpretację rozmowy, nie dźwięk (tanie droidy śledcze nie mają modułu głosu). Surowe wypowiedzi są zwinięte.'),
+        podsumowanieBox,
         listaR,
         h('p.maly-tekst', status),
         zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
@@ -909,7 +943,7 @@ export default {
               try { await api('sledztwo_rozmowa_koniec', { rozmowa_id: rozmowa.id }); await odswiezRozmowe(); skanuj(); }
               catch (e) { pokaz(blad(e)); }
             }, '.drugi.maly', { disabled: pisze })))));
-      if (!zakonczona && !pisze && zakladka === 'rozmowa') setTimeout(() => pole.focus(), 0);
+      if (!zakonczona && !pisze && zakladka === 'rozmowa' && naDole()) setTimeout(() => pole.focus({ preventScroll: true }), 0);
     }
 
     async function tura(polecenie, podejscie = '', tropId = 0) {

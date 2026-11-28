@@ -157,7 +157,9 @@ export default {
       const tr = droid.trasa;
       if (!tr || !tr.punkty?.length) return null;
       const postep = 1 - Math.max(0, (koniecDrogi - Date.now()) / 1000) / Math.max(1, calaDroga);
-      if (postep >= tr.do) return null; // w windzie / na innym piętrze
+      // Na tym samym piętrze droid zostaje w punkcie docelowym (nie znika przed odświeżeniem skanu);
+      // na inne piętro — znika w windzie.
+      if (postep >= tr.do) { if (tr.do < 1) return null; const o = tr.punkty[tr.punkty.length - 1]; return { x: o[0], y: o[1] }; }
       const pkt = tr.punkty;
       const dl = [0];
       for (let i = 1; i < pkt.length; i++) dl.push(dl[i - 1] + Math.hypot(pkt[i][0] - pkt[i - 1][0], pkt[i][1] - pkt[i - 1][1]));
@@ -634,7 +636,8 @@ export default {
           if (t && d.droid.pokoj === t.pokoj && Math.hypot(d.droid.x - t.x, d.droid.y - t.y) <= ZASIEG_TERMINALA) otworzKomputer({ terminal: z.terminal });
         }
         // W drodze co 15 s (rozmowy w drzwiach po drodze pojawiają się w meldunkach), na miejscu co minutę.
-        if (!koniec) zegarSkanu = setTimeout(skanuj, d.droid.stan === 'w_drodze' ? 15000 : 60000);
+        // W drodze: co 15 s, a tuż przed dotarciem — zaraz po czasie dotarcia (serwer rozlicza je przy odczycie).
+        if (!koniec) zegarSkanu = setTimeout(skanuj, d.droid.stan === 'w_drodze' ? Math.min(15000, Math.max(1500, d.droid.zostalo_s * 1000 + 1500)) : 60000);
       } catch (e) { wyczysc(planBox).append(h('div', { style: 'padding:20px' }, blad(e))); }
     }
 

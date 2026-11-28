@@ -1379,16 +1379,15 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
         $d = $q->fetch();
         if (!$d) throw new SledztwoBlad('Droid nie ma przydziału.');
         $teraz = sl_teraz();
-        $zCelu = false;
+        // Nowy rozkaz w drodze: droid rusza z miejsca, w którym właśnie jest (punkt na trasie, w windzie — przy windzie).
         if ($d['stan'] === 'w_drodze') {
-            $od = sl_z_utc($d['wyruszyl_utc']) ?? $teraz;
-            $do = sl_z_utc($d['dotrze_utc']) ?? $teraz;
-            $zCelu = $do <= $od || ($teraz - $od) * 2 >= ($do - $od);
+            [$sb, $sp, $start, $planStart] = sl_pozycja_w_drodze($db, $s, $d, $pule, $budynki);
+        } else {
+            $sb = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+            $sp = (int) $d['poziom'];
+            $planStart = $sb === $bid && $sp === $poziom ? $planCel : sl_plan($db, $s, $pule, $sb !== null ? ($budynki[$sb] ?? null) : null, $sp);
+            $start = sl_pozycja($db, $s, $d, $planStart);
         }
-        $sb = $zCelu ? ($d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null) : ($d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null);
-        $sp = $zCelu ? (int) $d['cel_poziom'] : (int) $d['poziom'];
-        $planStart = $sb === $bid && $sp === $poziom ? $planCel : sl_plan($db, $s, $pule, $sb !== null ? ($budynki[$sb] ?? null) : null, $sp);
-        $start = sl_pozycja($db, $s, $d, $planStart, $zCelu);
 
         // Odcinki trasy: [plan, trasa, sekundy od wyjścia do początku odcinka].
         if ($sb === $bid && $sp === $poziom) {
@@ -1455,6 +1454,56 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
     }
+}
+
+// Punkt na łamanej trasy po przejściu ułamka $u długości; [x, y, lokal] w granicach ścian.
+function sl_punkt_na_trasie(array $plan, array $pkt, float $u): array
+{
+    $u = max(0.0, min(1.0, $u));
+    $dl = [0.0];
+    for ($i = 1, $n = count($pkt); $i < $n; $i++) $dl[] = $dl[$i - 1] + hypot($pkt[$i][0] - $pkt[$i - 1][0], $pkt[$i][1] - $pkt[$i - 1][1]);
+    $cel = end($dl) * $u;
+    for ($i = 1, $n = count($pkt); $i < $n; $i++) {
+        if ($dl[$i] < $cel) continue;
+        $k = ($cel - $dl[$i - 1]) / max(0.0001, $dl[$i] - $dl[$i - 1]);
+        return sl_punkt($plan, (int) round($pkt[$i - 1][0] + ($pkt[$i][0] - $pkt[$i - 1][0]) * $k), (int) round($pkt[$i - 1][1] + ($pkt[$i][1] - $pkt[$i - 1][1]) * $k));
+    }
+    $o = end($pkt);
+    return sl_punkt($plan, (int) round($o[0]), (int) round($o[1]));
+}
+
+// Gdzie droid jest teraz, w drodze: [budynek, poziom, [x, y, lokal], plan]. Ten sam piętro — punkt na trasie wg czasu;
+// inne piętro — marsz do windy, jazda (pierwsza połowa: przy windzie startu, druga: przy windzie celu), marsz od windy.
+function sl_pozycja_w_drodze(PDO $db, array $s, array $d, array $pule, array $budynki): array
+{
+    $teraz = sl_teraz();
+    $od = sl_z_utc($d['wyruszyl_utc']) ?? $teraz;
+    $do = sl_z_utc($d['dotrze_utc']) ?? $teraz;
+    $b0 = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $b1 = $d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null;
+    $p0 = (int) $d['poziom'];
+    $p1 = (int) $d['cel_poziom'];
+    $plan0 = sl_plan($db, $s, $pule, $b0 !== null ? ($budynki[$b0] ?? null) : null, $p0);
+    $start = sl_pozycja($db, $s, $d, $plan0);
+    $minelo = max(0, $teraz - $od);
+    $calosc = max(1, $do - $od);
+    if ($b0 === $b1 && $p0 === $p1) {
+        $t = sl_trasa($plan0, $start, sl_pozycja($db, $s, $d, $plan0, true));
+        return [$b0, $p0, sl_punkt_na_trasie($plan0, $t['punkty'], $minelo / $calosc), $plan0];
+    }
+    $plan1 = sl_plan($db, $s, $pule, $b1 !== null ? ($budynki[$b1] ?? null) : null, $p1);
+    $w = sl_winda_xy();
+    $winda = [$w[0], $w[1], 'korytarz'];
+    $t1 = sl_trasa($plan0, $start, $winda);
+    $t2 = sl_trasa($plan1, $winda, sl_pozycja($db, $s, $d, $plan1, true));
+    $s1 = sl_sekundy_marszu($t1['dl']);
+    $s2 = sl_sekundy_marszu($t2['dl']);
+    if ($minelo < $s1) return [$b0, $p0, sl_punkt_na_trasie($plan0, $t1['punkty'], $minelo / max(1, $s1)), $plan0];
+    $wysiada = max($s1, $calosc - $s2);
+    if ($minelo < $wysiada) {
+        return ($minelo - $s1) * 2 < ($wysiada - $s1) ? [$b0, $p0, $winda, $plan0] : [$b1, $p1, $winda, $plan1];
+    }
+    return [$b1, $p1, sl_punkt_na_trasie($plan1, $t2['punkty'], ($minelo - $wysiada) / max(1, $s2)), $plan1];
 }
 
 // Trasa dla animacji na planie piętra, na którym droid jest (start): punkty i ułamek czasu, w którym droid je kończy

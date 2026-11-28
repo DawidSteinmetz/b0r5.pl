@@ -105,7 +105,8 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
   przeprasza i ustępuje 1,5 m. Droid domyślnie jest uprzejmy. Rozmowy w drzwiach trafiają do dziennika
   z czasem dojścia do progu (wpisy z przyszłości widać dopiero wtedy).
 - Lokal docelowy zamknięty / z nakazem / strzeżony: droid od razu idzie pod jego drzwi i tam czeka.
-- Nowy rozkaz w drodze: przed połową trasy droid zawraca z punktu startu, po połowie — rusza z poprzedniego celu.
+- Nowy rozkaz w drodze: droid rusza z miejsca, w którym akurat jest (`sl_pozycja_w_drodze`: punkt na trasie wg czasu;
+  w windzie — przy windzie piętra startu albo celu, zależnie od tego, która połowa jazdy minęła).
 - Dotarcie rozlicza serwer przy najbliższym odczycie (nie trzeba crona): pozycja, meldunek w dzienniku, wpis
   `sledztwo_szum` dla miejsc spoza fabuły.
 - Plan piętra deterministyczny z `crc32(seed|budynek|poziom)`: 10–18 pokoi po obu stronach korytarza, drzwi,

@@ -70,6 +70,9 @@ require __DIR__ . '/gospodarka.php';
 require __DIR__ . '/astro.php';
 require __DIR__ . '/gwiazdy.php';
 require __DIR__ . '/bitwa.php';
+require __DIR__ . '/ai.php';
+require __DIR__ . '/sledztwa.php';
+require __DIR__ . '/publiczne.php';
 
 session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'secure' => !empty($_SERVER['HTTPS'])]);
 session_name('dp_sesja');
@@ -84,6 +87,7 @@ function odpowiedz($dane, int $kod = 200): never
     if (function_exists('odpowiedz_bez_ukrytych_planet')) {
         $dane = odpowiedz_bez_ukrytych_planet($dane, ja());
     }
+    if (function_exists('eote_odpowiedz_ksztaltuj')) $dane = eote_odpowiedz_ksztaltuj($dane);
     while (ob_get_level()) ob_end_clean(); // przypadkowe wyjście (ostrzeżenia) nie psuje JSON
     http_response_code($kod);
     echo json_encode($dane, JSON_UNESCAPED_UNICODE);
@@ -103,7 +107,8 @@ function tabela_sql_dostepna(string $nazwa): bool
         'planety_gry', 'planety_widocznosc_konta', 'resynchronizacje', 'mapa_wykrycia_skokow', 'planety_cykle', 'planety_ksiezyce', 'wskazniki_zgody', 'zdjecia_gwiazd', 'wyczyny_progi', 'ustawienia_kont',
         'osoby_karta_eote', 'eote_cv_karty', 'eote_cv_wartosci', 'stocznia_naprawy',
         'mapa_udostepnienia', 'radar_baza_sygnatur', 'radar_analizy', 'radar_identyfikacje', 'npc_trasy', 'stocznia_stanowiska', 'gosp_towary', 'gosp_produkcja', 'gosp_obiekty', 'gosp_zuzycie', 'gosp_linie',
-        'mapa_bitwy', 'mapa_bitwy_uczestnicy', 'osoby', 'podmioty', 'znane_lokacje'];
+        'mapa_bitwy', 'mapa_bitwy_uczestnicy', 'osoby', 'podmioty', 'znane_lokacje',
+        'gosp_rynek', 'turystyka_linie', 'turystyka_przystanki', 'publiczne_kontrakty', 'publiczny_rynek'];
     if (!in_array($nazwa, $dozwolone, true)) return false;
     if (!array_key_exists($nazwa, $cache)) {
         try {
@@ -382,6 +387,9 @@ obsluz_czas($akcja, $post);
 obsluz_astro($akcja, $post);
 obsluz_gwiazdy($akcja, $post);
 obsluz_bitwa($akcja, $post);
+obsluz_ai($akcja, $post);
+obsluz_sledztwa($akcja, $post);
+obsluz_publiczne($akcja, $post);
 
 switch ($akcja) {
 
@@ -406,13 +414,100 @@ switch ($akcja) {
             ->execute([(string) $u['login'], $klucz, $wartosc, $wartosc]);
         odpowiedz(['ok' => true]);
 
+    case 'publiczny_panel':
+        if ($post) blad('Zła metoda.', 405);
+        // Publiczny wycinek: jawne układy, imperialne ISD z prawdziwym transponderem,
+        // notowania bez portfeli/sald oraz wyłącznie modelowe, regularne linie dostaw.
+        $db = polaczenie_bazy();
+        $znane = ['Alderaan','Bespin','Corellia','Coruscant','Dantooine','Endor','Eriadu','Fondor','Hoth','Kashyyyk','Kuat','Mandalore','Mattri','Mon Cala','Naboo','Ord Mantell','Ryloth','Tatooine','Yavin'];
+        $ph = implode(',', array_fill(0, count($znane), '?'));
+        $regiony = ['Głębokie Jądro','Światy Jądra','Kolonie','Wewnętrzne Rubieże','Obszar Ekspansji','Środkowe Rubieże','Zewnętrzne Rubieże','Przestrzeń Huttów','Nieznane Regiony','Dzika Przestrzeń'];
+        $planety = [];
+        try {
+            $q = $db->prepare("SELECT p.nazwa,p.region,p.x,p.y FROM mapa_planety p
+                LEFT JOIN planety_gry g ON g.planeta_id=p.id
+                WHERE COALESCE(g.zastrzezona,0)=0 AND (p.nazwa IN ($ph) OR EXISTS (SELECT 1 FROM gielde ge WHERE ge.planeta_id=p.id AND ge.aktywna=1))
+                ORDER BY EXISTS (SELECT 1 FROM gielde ge WHERE ge.planeta_id=p.id AND ge.aktywna=1) DESC, p.nazwa LIMIT 32");
+            $q->execute($znane);
+            $planety = array_map(fn($p) => ['nazwa'=>$p['nazwa'],'region'=>$regiony[(int)$p['region']] ?? '', 'x'=>(float)$p['x'],'y'=>(float)$p['y']], $q->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Throwable $e) {
+            // Giełda nie jest wymagana do rejestru planet; awaryjnie podajemy znane, niezajęte planety.
+            $q = $db->prepare("SELECT p.nazwa,p.region,p.x,p.y FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE COALESCE(g.zastrzezona,0)=0 AND p.nazwa IN ($ph) ORDER BY p.nazwa");
+            $q->execute($znane);
+            $planety = array_map(fn($p) => ['nazwa'=>$p['nazwa'],'region'=>$regiony[(int)$p['region']] ?? '', 'x'=>(float)$p['x'],'y'=>(float)$p['y']], $q->fetchAll(PDO::FETCH_ASSOC));
+        }
+        $isd = [];
+        try {
+            $q = $db->query("SELECT o.nazwa,o.klasa,p.nazwa AS planeta FROM mapa_obiekty o JOIN mapa_planety p ON p.id=o.planeta_id
+                LEFT JOIN planety_gry gp ON gp.planeta_id=p.id
+                WHERE COALESCE(gp.zastrzezona,0)=0 AND o.aktywny=1 AND o.typ IN ('statek','jednostka') AND (o.frakcja='Imperium' OR o.wlasciciel='Imperium')
+                  AND (o.klasa LIKE '%ISD%' OR o.nazwa LIKE '%ISD%') AND o.transponder_nazwa IS NULL
+                ORDER BY p.nazwa,o.nazwa LIMIT 40");
+            $isd = array_map(fn($o) => ['nazwa'=>$o['nazwa'],'klasa'=>$o['klasa'],'planeta'=>$o['planeta']], $q->fetchAll(PDO::FETCH_ASSOC));
+        } catch (Throwable $e) { /* starsza baza: brak publicznego rejestru ISD */ }
+        $gieldy = $notowania = [];
+        try {
+            $g = gielda_definicje();
+            $historia = gielda_dociagnij();
+            $publicznePlanety = array_fill_keys(array_map(fn($p) => mb_strtolower($p['nazwa']), $planety), true);
+            $widoczneGieldy = array_values(array_filter($g['gieldy'], fn($x) => isset($publicznePlanety[mb_strtolower($x['planeta'])])));
+            $gieldy = array_map(fn($x) => ['id'=>$x['id'],'nazwa'=>$x['nazwa'],'planeta'=>$x['planeta']], $widoczneGieldy);
+            $rynek = array_column($gieldy, null, 'id');
+            $licznikiRynkow = [];
+            foreach ($g['instrumenty'] as $i) {
+                if (empty($i['notowana']) || !isset($rynek[$i['gielda']]) || ($licznikiRynkow[$i['gielda']] ?? 0) >= 5) continue;
+                $licznikiRynkow[$i['gielda']] = ($licznikiRynkow[$i['gielda']] ?? 0) + 1;
+                $c = $historia[$i['symbol']]['c'] ?? [(float)$i['cena']];
+                $akt = (float)end($c); $pop = (float)($c[count($c)-2] ?? $akt);
+                $notowania[] = ['symbol'=>$i['symbol'],'nazwa'=>$i['nazwa'],'rodzaj'=>$i['rodzaj'],'planeta'=>$rynek[$i['gielda']]['planeta'],
+                    'kurs'=>$akt,'zmiana'=>$pop > 0 ? ($akt-$pop)/$pop*100 : 0,'jednostka'=>$i['jednostka']];
+            }
+            usort($notowania, fn($a,$b) => strcasecmp($a['planeta'],$b['planeta']) ?: strcasecmp($a['nazwa'],$b['nazwa']));
+            $notowania = array_slice($notowania, 0, 36);
+        } catch (Throwable $e) { $gieldy = $notowania = []; }
+        $kontrakty = [];
+        $trasyPubliczne = [];
+        try {
+            $q = $db->query("SELECT dest.nazwa AS planeta,o.nazwa AS odbiorca,l.producent,t.nazwa AS towar,l.ladownosc_t,l.odstep_s,l.klasa,
+                    dest.x AS x1,dest.y AS y1,prod.x AS x2,prod.y AS y2
+                FROM gosp_linie l JOIN gosp_obiekty o ON o.id=l.obiekt_id JOIN gosp_towary t ON t.kod=l.towar
+                JOIN mapa_planety dest ON LOWER(dest.nazwa)=LOWER(o.planeta) JOIN gielde ge ON ge.planeta_id=dest.id AND ge.aktywna=1
+                JOIN mapa_planety prod ON LOWER(prod.nazwa)=LOWER(l.producent)
+                LEFT JOIN planety_gry gd ON gd.planeta_id=dest.id LEFT JOIN planety_gry gp ON gp.planeta_id=prod.id
+                WHERE COALESCE(gd.zastrzezona,0)=0 AND COALESCE(gp.zastrzezona,0)=0
+                ORDER BY dest.nazwa,l.t_doba DESC LIMIT 48");
+            $wiersze = $q->fetchAll(PDO::FETCH_ASSOC);
+            $kontrakty = array_map(fn($x) => ['planeta'=>$x['planeta'],'odbiorca'=>$x['odbiorca'],'producent'=>$x['producent'],'towar'=>$x['towar'],
+                'ladownosc_t'=>(int)$x['ladownosc_t'],'odstep_h'=>round((int)$x['odstep_s']/3600,1),'klasa'=>$x['klasa']], $wiersze);
+            $trasyPubliczne = array_map(fn($x) => ['planeta'=>$x['planeta'],'producent'=>$x['producent'],'towar'=>$x['towar'],
+                'odbiorca'=>$x['odbiorca'],'ladownosc_t'=>(float)$x['ladownosc_t'],'odstep_h'=>round((int)$x['odstep_s']/3600,1),'klasa'=>$x['klasa'],
+                'x1'=>(float)$x['x1'],'y1'=>(float)$x['y1'],'x2'=>(float)$x['x2'],'y2'=>(float)$x['y2']], $wiersze);
+        } catch (Throwable $e) { /* giełda bez uruchomionej gospodarki */ }
+        odpowiedz(['planety'=>$planety,'isd'=>$isd,'gieldy'=>$gieldy,'notowania'=>$notowania,'kontrakty'=>$kontrakty,'trasy'=>$trasyPubliczne,'czas'=>czas_teraz()]);
+
     case 'mapa_dane':
-        $u = wymagaj_logowania();
+        $trybPubliczny = ($_GET['publiczny'] ?? '') === '1';
+        $u = $trybPubliczny ? null : ja();
+        if (!$u) {
+            // Gość widzi tylko układy jawne. Galaktyczne, niepowiązane trasy mogą zdradzać
+            // położenie tajnych światów; publiczne kontrakty pobiera osobny, filtrowany feed.
+            if (tabela_sql_dostepna('planety_gry')) {
+                $planety = polaczenie_bazy()->query('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica,p.typ_ciala
+                    FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE COALESCE(g.zastrzezona,0)=0 ORDER BY p.id')->fetchAll(PDO::FETCH_NUM);
+            } else {
+                $jawne = ['Alderaan','Bespin','Corellia','Coruscant','Dantooine','Endor','Eriadu','Fondor','Hoth','Kashyyyk','Kuat','Mandalore','Mattri','Mon Cala','Naboo','Ord Mantell','Ryloth','Tatooine','Yavin'];
+                $ph = implode(',', array_fill(0, count($jawne), '?'));
+                $q = polaczenie_bazy()->prepare("SELECT nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica,typ_ciala FROM mapa_planety WHERE nazwa IN ($ph) ORDER BY id");
+                $q->execute($jawne);
+                $planety = $q->fetchAll(PDO::FETCH_NUM);
+            }
+            odpowiedz(['planety' => $planety, 'szlaki' => []]);
+        }
         if (($u['rola'] ?? '') === 'mg') {
-            $planety = polaczenie_bazy()->query('SELECT nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica FROM mapa_planety ORDER BY id')
+            $planety = polaczenie_bazy()->query('SELECT nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica,typ_ciala FROM mapa_planety ORDER BY id')
                 ->fetchAll(PDO::FETCH_NUM);
         } elseif (tabela_sql_dostepna('planety_gry') && tabela_sql_dostepna('planety_widocznosc_konta')) {
-            $q = polaczenie_bazy()->prepare('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica
+            $q = polaczenie_bazy()->prepare('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica,p.typ_ciala
                 FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id
                 WHERE COALESCE(g.zastrzezona,0)=0 OR EXISTS (
                     SELECT 1 FROM planety_widocznosc_konta d WHERE d.planeta_id=p.id AND LOWER(d.konto_login)=LOWER(?)
@@ -420,7 +515,7 @@ switch ($akcja) {
             $q->execute([$u['login']]);
             $planety = $q->fetchAll(PDO::FETCH_NUM);
         } else {
-            $planety = polaczenie_bazy()->query('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica
+            $planety = polaczenie_bazy()->query('SELECT p.nazwa,p.region,p.x,p.y,p.grawitacja,p.slonca,p.ksiezyce,p.doba,p.rok,p.srednica,p.typ_ciala
                 FROM mapa_planety p LEFT JOIN planety_gry g ON g.planeta_id=p.id WHERE COALESCE(g.zastrzezona,0)=0 ORDER BY p.id')
                 ->fetchAll(PDO::FETCH_NUM);
         }
@@ -498,8 +593,9 @@ switch ($akcja) {
     // ----- holonet (komunikaty) -----
 
     case 'holonet':
-        wymagaj_logowania();
+        if ($post) blad('Zła metoda.', 405);
         $k = wczytaj('holonet');
+        if (($_GET['publiczny'] ?? '') === '1' || !ja()) $k = array_values(array_filter($k, fn($x) => !empty($x['publiczny'])));
         usort($k, fn($a, $b) => strcmp($b['data'], $a['data']));
         odpowiedz(['komunikaty' => $k]);
 
@@ -813,7 +909,7 @@ switch ($akcja) {
         if (!$post) blad('Zła metoda.', 405);
         wymagaj_mg();
         $k = ['id' => pole('id', 32) ?: id(), 'tytul' => pole('tytul', 160), 'tresc' => pole('tresc', 8000),
-            'zrodlo' => pole('zrodlo', 80), 'data' => pole('data', 10) ?: date('Y-m-d')];
+            'zrodlo' => pole('zrodlo', 80), 'data' => pole('data', 10) ?: date('Y-m-d'), 'publiczny' => !empty(wejscie()['publiczny'])];
         if ($k['tytul'] === '') blad('Tytuł jest wymagany.');
         zmien('holonet', function (&$h) use ($k) {
             $h = array_values(array_filter($h, fn($x) => $x['id'] !== $k['id']));

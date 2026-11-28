@@ -361,11 +361,31 @@ export function utworzScene(canvas) {
     if (t < l.od || t >= l.do) return v;
     const RAD = Math.PI / 180;
     const f = (t - l.od) / Math.max(1, l.do - l.od);
-    const kx = l.k0[0] + (l.k1[0] - l.k0[0]) * f, ky = l.k0[1] + (l.k1[1] - l.k0[1]) * f;
+    let kx, ky, kurs;
+    if (Array.isArray(l.trasa) && l.trasa.length >= 2) {
+      const odcinki = []; let calosc = 0;
+      for (let i = 0; i < l.trasa.length - 1; i++) {
+        const a = l.trasa[i], b = l.trasa[i + 1], dl = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (dl > 0) { odcinki.push([a, b, dl]); calosc += dl; }
+      }
+      let cel = f * calosc;
+      for (const [a, b, dl] of odcinki) {
+        if (cel <= dl) {
+          const p = cel / dl;
+          kx = a[0] + (b[0] - a[0]) * p; ky = a[1] + (b[1] - a[1]) * p;
+          kurs = Math.atan2(b[1] - a[1], b[0] - a[0]) / RAD;
+          break;
+        }
+        cel -= dl;
+      }
+    }
+    if (kx == null || ky == null) {
+      kx = l.k0[0] + (l.k1[0] - l.k0[0]) * f; ky = l.k0[1] + (l.k1[1] - l.k0[1]) * f;
+    }
     const R = (v.cykl.promien_orbity_au || 1) * KM_NA_AU_SCENA, kp = stanUkladu(v.cykl, t).katPlanety * RAD;
     const px = R * Math.cos(kp), py = R * Math.sin(kp);
     const d = Math.max(1, Math.hypot(kx - px, ky - py));
-    return { ...v, orbita: Math.atan2(ky - py, kx - px) / RAD, wysokosc_km: Math.max(300, d - (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2),
+    return { ...v, ...(kurs != null ? { kurs } : {}), orbita: Math.atan2(ky - py, kx - px) / RAD, wysokosc_km: Math.max(300, d - (Number(v.cykl.srednica_km) || SREDNICA_DOMYSLNA_KM) / 2),
       slonce: { kat: Math.atan2(-ky, -kx) / RAD, km: Math.max(1, Math.hypot(kx, ky)) } };
   }
 

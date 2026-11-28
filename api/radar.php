@@ -182,9 +182,10 @@ function radar_analizy_dokoncz(): void
 }
 
 // Kontakty radaru do mapy (dopisywane do obiektów, które gracz i tak widzi). Ze `strona` i `radar` (opis kontaktu).
-function radar_kontakty(array $u, array $widoczne): array
+function radar_kontakty(array $u, array $widoczne, ?string $celGlobalny = null): array
 {
-    if (($u['rola'] ?? '') === 'mg' || !radar_dostepny()) return [];
+    if (($u['rola'] ?? '') === 'mg') return radar_tlo([], [], [], false, true, $celGlobalny);
+    if (!radar_dostepny()) return [];
     radar_analizy_dokoncz();
     $db = polaczenie_bazy();
     $moje = radar_moje_okrety($u);
@@ -241,9 +242,11 @@ function radar_kontakty(array $u, array $widoczne): array
 
 // Ruch w tle: jednostki NPC ze stałych tras (npc_trasy, migracja 044) w układach w zasięgu radaru — każda w innej
 // fazie lotu (postój, lot do punktu skoku, dolot); w nadprzestrzeni niewidoczne. Sektor Hune pusty. Id ujemne (−id trasy).
-function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): array
+function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk, bool $globalnie = false, ?string $celGlobalny = null): array
 {
-    if (!$moje || !tabela_sql_dostepna('npc_trasy')) return [];
+    if ((!$moje && !$globalnie) || (!tabela_sql_dostepna('npc_trasy') && !(function_exists('gosp_dostepna') && gosp_dostepna()))) return [];
+    $celGlobalny = $celGlobalny !== null ? trim($celGlobalny) : null;
+    if ($celGlobalny === '') $celGlobalny = null;
     $db = polaczenie_bazy();
     $puste = [];
     foreach (katalog()['planety'] ?? [] as $p) {
@@ -251,33 +254,52 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
     }
     // Układy w zasięgu radarów (współrzędne mapy) → nazwy planet tych układów.
     $wZasiegu = [];
-    foreach ($moje as $m) {
-        $r = $m['zasieg'];
-        $q = $db->prepare('SELECT nazwa, x, y FROM mapa_planety WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?');
-        $q->execute([(float) $m['x'] - $r, (float) $m['x'] + $r, (float) $m['y'] - $r, (float) $m['y'] + $r]);
-        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
-            if (hypot((float) $p['x'] - (float) $m['x'], (float) $p['y'] - (float) $m['y']) <= $r) $wZasiegu[$p['nazwa']] = true;
+    if ($globalnie) {
+        if ($celGlobalny !== null && trim($celGlobalny) !== '') {
+            $q = $db->prepare('SELECT nazwa FROM mapa_planety WHERE LOWER(nazwa)=LOWER(?) LIMIT 1');
+            $q->execute([$celGlobalny]);
+            $celGlobalny = $q->fetchColumn() ?: null;
+            if ($celGlobalny === null) return [];
+            $wZasiegu[$celGlobalny] = true;
+        } else {
+            foreach ($db->query('SELECT nazwa FROM mapa_planety')->fetchAll(PDO::FETCH_COLUMN) as $nazwa) $wZasiegu[(string) $nazwa] = true;
+        }
+    } else {
+        foreach ($moje as $m) {
+            $r = $m['zasieg'];
+            $q = $db->prepare('SELECT nazwa, x, y FROM mapa_planety WHERE x BETWEEN ? AND ? AND y BETWEEN ? AND ?');
+            $q->execute([(float) $m['x'] - $r, (float) $m['x'] + $r, (float) $m['y'] - $r, (float) $m['y'] + $r]);
+            foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                if (hypot((float) $p['x'] - (float) $m['x'], (float) $p['y'] - (float) $m['y']) <= $r) $wZasiegu[$p['nazwa']] = true;
+            }
         }
     }
     if (!$wZasiegu) return [];
     $nazwy = array_keys($wZasiegu);
     $ph = implode(',', array_fill(0, count($nazwy), '?'));
-    $q = $db->prepare("SELECT t.*, pa.x AS ax, pa.y AS ay, pb.x AS bx, pb.y AS by_ FROM npc_trasy t
-        JOIN mapa_planety pa ON pa.nazwa = t.port_a JOIN mapa_planety pb ON pb.nazwa = t.port_b
-        WHERE t.aktywna = 1 AND (t.port_a IN ($ph) OR t.port_b IN ($ph))");
-    $q->execute([...$nazwy, ...$nazwy]);
+    $priorytetKuat = $globalnie ? "CASE WHEN t.port_a='Kuat' OR t.port_b='Kuat' THEN 0 ELSE 1 END, " : '';
+    $trasyNpc = [];
+    if (tabela_sql_dostepna('npc_trasy')) {
+        $q = $db->prepare("SELECT t.*, pa.x AS ax, pa.y AS ay, pb.x AS bx, pb.y AS by_ FROM npc_trasy t
+            JOIN mapa_planety pa ON pa.nazwa = t.port_a JOIN mapa_planety pb ON pb.nazwa = t.port_b
+            WHERE t.aktywna = 1 AND (t.port_a IN ($ph) OR t.port_b IN ($ph)) ORDER BY {$priorytetKuat}t.id");
+        $q->execute([...$nazwy, ...$nazwy]);
+        $trasyNpc = $q->fetchAll(PDO::FETCH_ASSOC);
+    }
     $teraz = czas_teraz();
     $wynik = [];
     $miejsca = radar_npc_miejsca($nazwy);
     // Planety z gospodarką (obiekty tła i linie dostaw, migracja 048): ich ruch liczy gospodarka, nie stare trasy.
     $gosp = function_exists('gosp_planety') ? gosp_planety() : [];
-    if ($gosp) $wynik = gosp_statki($wZasiegu, $ident, $trwa, $analityk, RADAR_TLO_MAKS);
-    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $t) {
-        if (count($wynik) >= RADAR_TLO_MAKS) break;
+    $limitTla = $celGlobalny !== null ? 10000 : RADAR_TLO_MAKS;
+    if ($gosp) $wynik = gosp_statki($wZasiegu, $ident, $trwa, $analityk, $limitTla, $globalnie, $celGlobalny);
+    foreach ($trasyNpc as $t) {
+        if (count($wynik) >= $limitTla) break;
         if (isset($puste[mb_strtolower($t['port_a'])]) || isset($puste[mb_strtolower($t['port_b'])])) continue;
         if (isset($gosp[mb_strtolower($t['port_a'])]) || isset($gosp[mb_strtolower($t['port_b'])])) continue;
-        $f = radar_npc_faza($t, $teraz, $miejsca);
-        if (!$f || !isset($wZasiegu[$f['port']])) continue; // w nadprzestrzeni albo poza zasięgiem
+        $f = radar_npc_faza($t, $teraz, $miejsca, $globalnie);
+        if (!$f || (!$globalnie && !isset($wZasiegu[$f['port']]))) continue; // w nadprzestrzeni poza radarem; MG ma podgląd galaktyczny
+        if ($celGlobalny !== null && mb_strtolower((string) ($f['skok']['planeta'] ?? '')) !== mb_strtolower($celGlobalny)) continue;
         $id = -(int) $t['id'];
         $idn = $ident[$id] ?? null;
         $jawny = (int) $t['rejestr'] === 1 || $idn;
@@ -296,6 +318,7 @@ function radar_tlo(array $moje, array $ident, array $trwa, bool $analityk): arra
         if ($f['atmosfera'] !== null) $o['atmosfera'] = $f['atmosfera'];
         if ($f['lot'] !== null) $o['podswietlny'] = $f['lot'];
         if ($f['k'] !== null) $o['uklad_k'] = $f['k'];
+        if ($f['skok'] ?? null) $o['lot'] = $f['skok'];
         $wynik[] = $o;
     }
     return $wynik;
@@ -353,7 +376,7 @@ function radar_npc_ladowisko(array $t, string $port, array $miejsca, string $str
 // nad powierzchnią → lądowanie przy kopalni, porcie czy magazynie → … i z powrotem tą samą procedurą.
 // Zwraca null w nadprzestrzeni, inaczej: port (układ), x/y mapy, planeta, lot podświetlny (km od słońca),
 // atmosfera (jak u jednostek graczy), lądowisko z geo, kurs i opis.
-function radar_npc_faza(array $t, int $teraz, array $miejsca = []): ?array
+function radar_npc_faza(array $t, int $teraz, array $miejsca = [], bool $globalnie = false): ?array
 {
     $h = crc32('npc|' . $t['id']);
     $a = ['nazwa' => $t['port_a'], 'x' => (float) $t['ax'], 'y' => (float) $t['ay']];
@@ -387,7 +410,21 @@ function radar_npc_faza(array $t, int $teraz, array $miejsca = []): ?array
     $tc = fmod($teraz + (float) $t['faza'] * $cykl, $cykl);
     foreach ($etapy as $e) {
         if ($tc >= $e[0]) { $tc -= $e[0]; continue; }
-        if ($e[1] === 'skok') return null;
+        if ($e[1] === 'skok') {
+            if (!$globalnie) return null;
+            $start = $kier > 0 ? $a : $b;
+            $cel = $kier > 0 ? $b : $a;
+            $postep = max(0.0, min(1.0, (float) $tc / max(1, (int) $e[0])));
+            $od = $teraz - (int) $tc;
+            return ['port' => $start['nazwa'], 'x' => $start['x'] + ($cel['x'] - $start['x']) * $postep,
+                'y' => $start['y'] + ($cel['y'] - $start['y']) * $postep, 'planeta' => null, 'lot' => null, 'k' => null,
+                'do' => $od + (int) $e[0], 'atmosfera' => null, 'ladowisko' => null, 'geo' => null,
+                'kurs' => fmod(rad2deg(atan2($cel['y'] - $start['y'], $cel['x'] - $start['x'])) + 360, 360),
+                'opis' => "skok: {$start['nazwa']} → {$cel['nazwa']}",
+                'skok' => ['x' => $cel['x'], 'y' => $cel['y'], 'start_x' => $start['x'], 'start_y' => $start['y'],
+                    'wejscie' => $od, 'eta' => $od + (int) $e[0], 'planeta' => $cel['nazwa'],
+                'predkosc_pc_doba' => $pc / (max(1, (int) $e[0]) / 86400), 'trasa' => "{$start['nazwa']} ⇄ {$cel['nazwa']}"]];
+        }
         [, $rodzaj, $port, $strona, $kier] = $e;
         $l = $lad[$strona];
         $cyklP = $strona === 'A' ? $cyklA : $cyklB;

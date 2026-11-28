@@ -176,12 +176,12 @@ let dane = null, daneKonta = null;
 async function wczytajDane(konto = '') {
   if (dane && daneKonta === konto) return dane;
   dane = null;
-  const { planety: surowePlanety, szlaki: suroweSzlaki } = await api('mapa_dane');
-  // [nazwa, region, x, y, grawitacja, słońca, księżyce, doba, rok, średnica]. Kolumny DECIMAL przychodzą
+  const { planety: surowePlanety, szlaki: suroweSzlaki } = await api('mapa_dane', undefined, konto === 'publiczny' ? { publiczny: '1' } : {});
+  // [nazwa, region, x, y, grawitacja, słońca, księżyce, doba, rok, średnica, typ ciała]. Kolumny DECIMAL przychodzą
   // z bazy jako tekst — zamiana na liczby (inaczej „+” skleja tekst i kamera dostaje NaN).
-  const planety = surowePlanety.map(([nazwa, r, x, y, g, slonca, ksiezyce, doba, rok, srednica]) => ({
+  const planety = surowePlanety.map(([nazwa, r, x, y, g, slonca, ksiezyce, doba, rok, srednica, typCiala]) => ({
     nazwa, region: REGIONY[r] || '', x: +x, y: +y, g: +g, slonca: +slonca, ksiezyce: +ksiezyce, doba: +doba, rok: +rok,
-    srednica: +srednica, klucz: norm(nazwa),
+    srednica: +srednica, typCiala: typCiala || 'planeta', klucz: norm(nazwa),
   }));
   const szlaki = suroweSzlaki.map((s) => {
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -244,6 +244,7 @@ export default {
     const ladowanie = ladowaniePelne(ctx.uzytkownik?.frakcja);
     const panelFlot = h('section.mapa-floty-panel', { hidden: true });
     const panelRadar = h('section.mapa-radar', { hidden: true });
+    const panelPubl = h('section.mapa-floty-panel.mapa-publ', { hidden: true }); // dane publiczne (przyciski gościa)
     const przyciskSzlaki = h('button.przycisk.maly.drugi', { onclick: () => { szlakiWidoczne = !szlakiWidoczne; przyciskSzlaki.classList.toggle('wl', szlakiWidoczne); odswiez(); } }, 'Szlaki');
     przyciskSzlaki.classList.add('wl');
     // Na wąskim ekranie (telefon) panel floty i karta szczegółów nie są otwarte naraz.
@@ -252,6 +253,7 @@ export default {
       panelFlot.hidden = !panelFlot.hidden;
       if (!panelFlot.hidden) { if (waski()) wybierz(null); odswiezFloty(); }
     } }, 'Floty / nawigacja');
+    if (ctx.gosc) { przyciskSzlaki.hidden = true; przyciskFloty.hidden = true; }
 
     // Gwiazdy tła z ziarna (szum, z bliska oznaczenia): ikonka w prawym górnym rogu, wybór zapamiętany w przeglądarce.
     let gwiazdyTla = true;
@@ -264,29 +266,137 @@ export default {
     przyciskGwiazd.innerHTML = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 8l3 10 10 3-10 3-3 10-3-10-10-3 10-3z"/><circle cx="9" cy="38" r="1.8"/><circle cx="39" cy="10" r="1.8"/><circle cx="40" cy="37" r="1.4"/><circle cx="8" cy="11" r="1.4"/></svg>';
     przyciskGwiazd.classList.toggle('wl', gwiazdyTla);
 
-    // Zbliżenie: małe ikonki w doku (obok głośnika), tylko gdy mapa jest otwarta — +/− (×4) i progi:
-    // galaktyka, sektor, układ, planeta (płynny przelot na zaznaczony obiekt albo moją pozycję).
-    const IKONY_ZOOMU = [
-      // 1. Moja pozycja: odznacza wybrany obiekt, okolica (sektor) wokół mnie.
-      ['<circle cx="24" cy="24" r="13"/><circle cx="24" cy="24" r="4"/><path d="M24 3v7M24 38v7M3 24h7M38 24h7"/>', 'Moja pozycja (okolica)', () => { wybierz(null); doProgu('sektor'); }],
-      // 2. Cała galaktyka.
-      ['<path d="M25 24c0-3 5-3 5 0s-7 7-11 2-1-12 7-12 14 7 10 16-13 10-18 5"/>', 'Cała galaktyka', () => calaGalaktyka(true)],
-      // Sektor: okolica wybranej planety (obiektu) albo mojej pozycji — bez odznaczania.
-      ['<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>', 'Sektor (okolica)', () => doProgu('sektor')],
-      // 3. Krawędź układu: wybranej planety albo mojej pozycji.
-      ['<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>', 'Układ (krawędź układu)', () => doProgu('uklad')],
-      // 4. Słońce: wybrana planeta i jej słońce albo najbliższe słońce i moja pozycja.
-      ['<circle cx="17" cy="24" r="8"/><path d="M17 10v-4M17 42v-4M3 24h-0M6 13l-2-2M28 13l2-2M6 35l-2 2M28 35l2 2"/><circle cx="38" cy="24" r="3.5"/>', 'Słońce i planeta', () => doProgu('slonce')],
-      // 5. Planeta i księżyce: wybrana planeta albo najbliższa mojej pozycji.
-      ['<circle cx="21" cy="27" r="10"/><circle cx="37" cy="12" r="3.5"/>', 'Planeta i księżyce', () => doProgu('planeta')],
-      // 6. Zbliżenie na planetę (tarcza na cały widok).
-      ['<circle cx="24" cy="24" r="18"/><path d="M24 6v36M6 24h36"/>', 'Zbliżenie na planetę', () => doProgu('tarcza')],
-    ].map(([ikona, tytul, akcja]) => ({ ikona, tytul, akcja }));
-    if (ctx.dok) ctx.dok(IKONY_ZOOMU);
+    // Przyciski zoomu w doku (tabela GUI, 28.11.2026):
+    // • po prawej — MOJA POZYCJA: z najbliższą planetą i z najbliższym słońcem (odcinek ja–cel w kadrze z marginesem),
+    //   w krawędzi układu, w sektorze;
+    // • po lewej — GDZIE LECĘ, tylko w locie: planeta celu, krawędź układu celu, sektor celu, cała trasa;
+    //   bez lotu, z wybraną planetą — WYBRANA PLANETA: sektor, krawędź układu, ze słońcem, z księżycami.
+    // Telefon: po 3 z każdej strony (bez sektora i całej trasy). Gość: bez przycisków zoomu (nie ma pozycji ani lotu).
+    const telefon = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+    const goscTelefon = telefon && !ctx.uzytkownik;
+    const STRZALKA = '<path d="M31 41h11M38 37l4 4-4 4"/>';
+    const IK = {
+      planeta: '<circle cx="21" cy="27" r="10"/><circle cx="37" cy="12" r="3.5"/>',
+      slonce: '<circle cx="17" cy="24" r="8"/><path d="M17 10v-4M17 42v-4M6 13l-2-2M28 13l2-2M6 35l-2 2M28 35l2 2"/><circle cx="38" cy="24" r="3.5"/>',
+      uklad: '<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>',
+      sektor: '<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>',
+      trasa: '<path d="M8 38c8-2 10-10 16-14s14-4 16-14"/><circle cx="8" cy="38" r="3"/><circle cx="40" cy="10" r="3"/>',
+    };
+    // Kadr dwóch punktów w jednym układzie (km od słońca): oba na ekranie z marginesem — odcinek między nimi
+    // wyznacza przekątną widoku.
+    function ramkaKm(c, a, b) {
+      const dx = Math.max(Math.abs(a[0] - b[0]), 2000), dy = Math.max(Math.abs(a[1] - b[1]), 2000);
+      const pxNaKmCel = Math.min(szer * 0.8 / dx, wys * 0.8 / dy);
+      return przelec(c.x, c.y, Math.min(ZOOM_MAKS, Math.max(PROG_UKLADU, pxNaKmCel * KM_NA_PC)), null, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+    }
+    async function najblizszaPlaneta(c) {
+      const wUkladzie = P.filter((p) => Math.abs(p.x - c.x) < 1e-3 && Math.abs(p.y - c.y) < 1e-3);
+      for (const p of wUkladzie) if (!cyklPlanety(p)) await cyklWczytany(p);
+      let najblizsza = null, odl = Infinity;
+      for (const p of wUkladzie) {
+        const k = kmWUkladzie(p);
+        if (!k || !c.k) continue;
+        const d = Math.hypot(k[0] - c.k[0], k[1] - c.k[1]);
+        if (d < odl) { odl = d; najblizsza = p; }
+      }
+      return najblizsza;
+    }
+    // Moja pozycja w układzie (bez zaznaczenia, z wczytanym układem).
+    async function mojaPozycjaWUkladzie() {
+      wybierz(null);
+      let c = celProgu();
+      if (c?.p && !cyklPlanety(c.p)) { await cyklWczytany(c.p); c = celProgu(); }
+      return c;
+    }
+    // Cel mojego lotu (nadprzestrzeń albo lot podświetlny) albo null, gdy nie lecę.
+    function celLotu() {
+      const o = mojZnacznik();
+      if (!o) return null;
+      if (o.lot && Number(o.lot.do || o.lot.eta || 0) > teraz()) {
+        const x = Number(o.lot.x), y = Number(o.lot.y);
+        const pl = o.lot.planeta ? wgKlucza.get(norm(o.lot.planeta)) : null;
+        return { x, y, k: o.lot_k || (pl && kmWUkladzie(pl)) || null, p: pl || ukladWPunkcie(x, y), pl, miedzyUkladami: true };
+      }
+      const l = o.podswietlny;
+      if (l && teraz() < l.do) {
+        const pl = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
+        return { x: l.x1, y: l.y1, k: l.k1 || (pl && kmWUkladzie(pl)) || null, p: pl || ukladWPunkcie(l.x1, l.y1), pl, miedzyUkladami: false };
+      }
+      return null;
+    }
+    async function calaTrasa() {
+      const cel = celLotu(), moj = mojZnacznik();
+      const poz = moj && pozycjaTeraz(moj);
+      if (!cel || !poz) return;
+      if (!cel.miedzyUkladami) {
+        const ja = await mojaPozycjaWUkladzie();
+        if (ja?.k && cel.k) return ramkaKm(ja, ja.k, cel.k);
+        return doProgu('uklad', celLotu);
+      }
+      const dx = Math.max(Math.abs(cel.x - poz.x), 1), dy = Math.max(Math.abs(cel.y - poz.y), 1);
+      return przelec((cel.x + poz.x) / 2, (cel.y + poz.y) / 2, Math.min(szer * 0.8 / dx, wys * 0.8 / dy));
+    }
+    function ikonyZoomu() {
+      // Gość — i zalogowany bez nawigacji (bez pozycji na mapie): zamiast przybliżeń trzy przyciski danych publicznych.
+      // Zalogowany z pozycją ma przyciski nawigacji; dane publiczne widzi w karcie planety.
+      if (ctx.gosc || !mojZnacznik()) return [
+        { ikona: '<path d="M6 30h36l-4 8H10z"/><path d="M12 30V18h24v12M18 18v-6h12v6"/><circle cx="18" cy="24" r="1.5"/><circle cx="24" cy="24" r="1.5"/><circle cx="30" cy="24" r="1.5"/>', tytul: 'Połączenia turystyczne', akcja: () => otworzPubliczne('linie') },
+        { ikona: '<path d="M8 16h22l10 8-10 8H8z"/><path d="M14 22h10M14 26h6"/>', tytul: 'Kontrakty handlowe', akcja: () => otworzPubliczne('towar') },
+        { ikona: '<path d="M8 40V8M8 40h32"/><path d="M14 32l8-9 6 5 10-13"/>', tytul: 'Dane gospodarcze', akcja: () => otworzPubliczne('ranking') },
+      ];
+      let prawo = [
+        { ikona: IK.planeta, tytul: 'Moja pozycja i najbliższa planeta', akcja: async () => {
+          const c = await mojaPozycjaWUkladzie();
+          const pl = c?.k && await najblizszaPlaneta(c);
+          return pl ? ramkaKm(c, c.k, kmWUkladzie(pl)) : doProgu('planeta');
+        } },
+        { ikona: IK.slonce, tytul: 'Moja pozycja i najbliższe słońce', akcja: async () => {
+          const c = await mojaPozycjaWUkladzie();
+          return c?.k ? ramkaKm(c, c.k, [0, 0]) : doProgu('slonce');
+        } },
+        { ikona: IK.uklad, tytul: 'Moja pozycja w układzie (krawędź)', akcja: () => { wybierz(null); doProgu('uklad'); } },
+        { ikona: IK.sektor, tytul: 'Moja pozycja w sektorze', akcja: () => { wybierz(null); doProgu('sektor'); } },
+      ];
+      let lewo = celLotu() ? [
+        { ikona: IK.planeta + STRZALKA, tytul: 'Gdzie lecę: planeta', akcja: () => doProgu(celLotu()?.pl ? 'planeta' : 'uklad', celLotu) },
+        { ikona: IK.uklad + STRZALKA, tytul: 'Gdzie lecę: krawędź układu', akcja: () => doProgu('uklad', celLotu) },
+        { ikona: IK.sektor + STRZALKA, tytul: 'Gdzie lecę: sektor', akcja: () => doProgu('sektor', celLotu) },
+        { ikona: IK.trasa, tytul: 'Gdzie lecę: cała trasa', akcja: calaTrasa },
+      ] : [];
+      // Nie lecę, a na mapie jest wybrana planeta: od lewej sektor, krawędź układu, słońce z planetą,
+      // planeta z księżycami. Nazwa planety w tytule — zmiana wyboru zmienia zestaw, więc dok się odświeża.
+      const wybrana = !lewo.length && wybrane?.planeta;
+      if (wybrana) {
+        const cel = () => ({ x: wybrana.x, y: wybrana.y, k: kmWUkladzie(wybrana), p: wybrana, pl: wybrana });
+        lewo = [
+          { ikona: IK.sektor, tytul: `${wybrana.nazwa}: w sektorze`, akcja: () => doProgu('sektor', cel) },
+          { ikona: IK.uklad, tytul: `${wybrana.nazwa}: w układzie (krawędź)`, akcja: () => doProgu('uklad', cel) },
+          { ikona: IK.slonce, tytul: `${wybrana.nazwa} i jej słońce`, akcja: () => doProgu('slonce', cel) },
+          { ikona: IK.planeta, tytul: `${wybrana.nazwa} i jej księżyce`, akcja: () => doProgu('planeta', cel) },
+        ];
+      }
+      if (telefon) { prawo = prawo.slice(0, 3); lewo = wybrana ? lewo.slice(1) : lewo.slice(0, 3); }
+      return [...lewo.map((x) => ({ ...x, strona: 'lewo' })), ...prawo];
+    }
+    // Lewa grupa pojawia się i znika z lotem: dok odświeżany, gdy zmienia się zestaw przycisków.
+    let zestawDoku = null;
+    function odswiezDokMapy() {
+      const lista = ikonyZoomu();
+      const zestaw = lista.map((x) => x.tytul).join('|');
+      if (zestaw === zestawDoku) return;
+      zestawDoku = zestaw;
+      ctx.dok?.(lista);
+    }
+    setTimeout(odswiezDokMapy, 0); // po uruchomieniu mapy (zmienne mapy są zadeklarowane niżej)
+    const zegarDoku = setInterval(odswiezDokMapy, 2000);
+    // Telefon: mapa domyślnie na pełnym ekranie — bez górnego paska i ramki doku (style w system.css, html.mapa-telefon).
+    if (goscTelefon) document.documentElement.classList.add('mapa-gosc');
+    document.documentElement.classList.add('mapa-otwarta');
+    if (telefon) document.documentElement.classList.add('mapa-telefon');
 
     w.append(plotno,
       h('div.mapa-gora', h('div.mapa-szukajka', szukaj, wyniki), h('div.mapa-przyciski', przyciskSzlaki, przyciskFloty, przyciskGwiazd), skalaEl),
-      panelFlot, panelRadar, karta, podpowiedz, wsp, ladowanie);
+      panelFlot, panelRadar, panelPubl, karta, podpowiedz, wsp, ladowanie);
 
     const c = plotno.getContext('2d');
     const cw = warstwa.getContext('2d');
@@ -313,8 +423,11 @@ export default {
     let wgKlucza = new Map();
     let dodatkowe = [];
     let odciskDodatkowych = '';
-    let szlakiWidoczne = true;
+    let szlakiWidoczne = !ctx.gosc;
+    let trasyPubliczne = [];
     let wybrane = null;     // { planeta } albo { szlak }
+    let celSzlakowZapytany = null;
+    let sekwencjaPozycji = 0;
     let najechane = null;
     let klucze = []; // klucze myśliwców w locie (api mapa_klucze)
     let wykrycieNad = null; // id wykrycia skoku pod kursorem (opis tylko wtedy)
@@ -358,6 +471,21 @@ export default {
       return obiektyMapy.filter((o) => norm(o.planeta || '') === p.klucz && !naPokladzie(o));
     }
 
+    const czyGM = () => ctx.uzytkownik?.rola === 'mg' || !!pozycja?.gm;
+    function graczeWUkladzie(p) {
+      if (!czyGM()) return [];
+      return obiektyMapy.filter((o) => {
+        if (!o.gracz || o.typ !== 'postac' || naPokladzie(o)) return false;
+        if (o.planeta) return norm(o.planeta) === p.klucz;
+        let naj = null, odl = Infinity;
+        for (const kandydat of P) {
+          const d = Math.hypot(Number(o.x) - kandydat.x, Number(o.y) - kandydat.y);
+          if (d < odl) { odl = d; naj = kandydat; }
+        }
+        return naj === p && odl < STREFA_UKLADU_PC;
+      });
+    }
+
     // Moja pozycja: własna postać albo statek, na którego pokładzie jestem.
     function mojZnacznik() {
       const ja = obiektyMapy.find((o) => o.ja);
@@ -373,13 +501,34 @@ export default {
       return (t - l.od) / Math.max(1, l.do - l.od);
     }
 
+    function punktNaTrasie(trasa, f) {
+      if (!Array.isArray(trasa) || trasa.length < 2) return null;
+      const odcinki = []; let calosc = 0;
+      for (let i = 0; i < trasa.length - 1; i++) {
+        const a = trasa[i], b = trasa[i + 1], dl = Math.hypot(Number(b[0]) - Number(a[0]), Number(b[1]) - Number(a[1]));
+        if (dl > 0) { odcinki.push([a, b, dl]); calosc += dl; }
+      }
+      let cel = Math.max(0, Math.min(1, f)) * calosc;
+      for (const [a, b, dl] of odcinki) {
+        if (cel <= dl) {
+          const p = cel / dl;
+          return [Number(a[0]) + (Number(b[0]) - Number(a[0])) * p, Number(a[1]) + (Number(b[1]) - Number(a[1])) * p,
+            Math.atan2(Number(b[1]) - Number(a[1]), Number(b[0]) - Number(a[0])) / RAD];
+        }
+        cel -= dl;
+      }
+      const [a, b] = odcinki.at(-1);
+      return [Number(b[0]), Number(b[1]), Math.atan2(Number(b[1]) - Number(a[1]), Number(b[0]) - Number(a[0])) / RAD];
+    }
+
     // Pozycja jednostki teraz: mapa (pc) i — w układzie — km od słońca; w locie podświetlnym po linii lotu.
     function pozycjaTeraz(o) {
       if (!o) return null;
       const pl = postepLotu(o);
       if (pl != null) {
         const l = o.podswietlny;
-        const k = l.k0 && l.k1 ? [l.k0[0] + (l.k1[0] - l.k0[0]) * pl, l.k0[1] + (l.k1[1] - l.k0[1]) * pl] : null;
+        const p = punktNaTrasie(l.trasa, pl);
+        const k = p ? p.slice(0, 2) : l.k0 && l.k1 ? [l.k0[0] + (l.k1[0] - l.k0[0]) * pl, l.k0[1] + (l.k1[1] - l.k0[1]) * pl] : null;
         return { x: l.x0 + (l.x1 - l.x0) * pl, y: l.y0 + (l.y1 - l.y0) * pl, k };
       }
       if (o.uklad_k) return { x: Number(o.x), y: Number(o.y), k: o.uklad_k };
@@ -415,6 +564,9 @@ export default {
     // Ciała mniejsze niż kilka pikseli są kropkami minimalnej wielkości. Układ widać, gdy jego brzeg
     // ma na ekranie co najmniej BRZEG_MIN_PX.
     const PROG_UKLADU = 2e4;
+    // Syntetyczne kontakty NPC nie są trafialne na mapie galaktyki. Pokazujemy je
+    // dopiero przy dużym zbliżeniu na układ, do którego są przypisane.
+    const PROG_NPC_GM = 2e5;
     const BRZEG_MIN_PX = 14;
     const PLANETA_MIN_PX = 3, SLONCE_MIN_PX = 4;
     // Strefa układu (pc), jak STREFA_UKLADU_PC na serwerze: te same współrzędne mapy = ten sam układ.
@@ -465,6 +617,10 @@ export default {
       if (!cykl) return null;
       const skm = skala / KM_NA_PC;
       const Rbrzeg = (cykl.krawedz_au || 50) * KM_NA_AU * skm;
+      if (p.typCiala === 'czarna_dziura') {
+        const [sx, sy] = naEkran(p.x, p.y);
+        return { R: 0, Rs: 0, Rbrzeg, f: 1, skm, rpS: 0, srednicaKm: 0, rp: 0, sx, sy, px: sx, py: sy, u: { katPlanety: 0, katSlonca: 180, ksiezyce: [] }, cykl, blackHole: true };
+      }
       if (Rbrzeg < BRZEG_MIN_PX) return null;
       if (cykl.macierz) {
         // Księżyc: miejsce na orbicie planety macierzystej (tam, gdzie rysuje go jej układ).
@@ -485,6 +641,15 @@ export default {
       const srednicaKm = cykl.srednica_km || 12000;
       const rp = Math.max(PLANETA_MIN_PX, srednicaKm / 2 * skm);
       return { R, Rs: R, Rbrzeg, f: 1, skm, rpS: rp, srednicaKm, rp, sx, sy, px: sx + Math.cos(a) * R, py: sy + Math.sin(a) * R, u, cykl };
+    }
+
+    function npcRadarWidocznyGM(o) {
+      if (!czyGM() || !(o?.id < 0) || !o.radar?.faza) return true;
+      const planeta = planetaObiektu(o);
+      if (!planeta || skala < PROG_NPC_GM || !wybrane?.planeta) return false;
+      if (planeta.klucz !== wybrane.planeta.klucz) return false;
+      const u = ukladNaEkranie(planeta);
+      return !!u && !u.ksiezyc && u.rp > 40;
     }
     const pozycjaPlanety = (p) => { const u = ukladNaEkranie(p); return u ? [u.px, u.py] : naEkran(p.x, p.y); };
 
@@ -812,6 +977,12 @@ export default {
         const u = ukladNaEkranie(p);
         if (!u || u.ksiezyc) continue; // księżyc rysuje układ planety macierzystej
         const { R, rp, sx, sy, px, py, skm } = u;
+        if (u.blackHole) {
+          if (!widac(sx, sy, 24)) continue;
+          c.save(); c.strokeStyle = 'rgba(255, 145, 75, 0.78)'; c.lineWidth = 3; c.beginPath(); c.ellipse(sx, sy, 19, 7, -0.35, 0, Math.PI * 2); c.stroke();
+          c.fillStyle = '#050608'; c.beginPath(); c.arc(sx, sy, 8, 0, Math.PI * 2); c.fill(); c.strokeStyle = 'rgba(255, 208, 135, 0.9)'; c.lineWidth = 1; c.beginPath(); c.arc(sx, sy, 8, 0, Math.PI * 2); c.stroke(); c.restore();
+          c.font = '11px ' + kroj; c.fillStyle = kolory.tekst; napis(c, p.nazwa, sx + 13, sy - 12); continue;
+        }
         // brzeg całego układu (przerywany okrąg) — tam kończy się skok „krawędź układu”
         if (u.Rbrzeg < OKRAG_MAKS) {
           c.save(); c.strokeStyle = 'rgba(160, 200, 220, 0.18)'; c.setLineDash([3, 7]); c.lineWidth = 1;
@@ -859,6 +1030,145 @@ export default {
         napis(c, p.nazwa, px + Math.min(rp, szer) * 0.71 + 5, py - Math.min(rp, wys) * 0.71 - 3);
       }
     }
+    // Podgląd obliczonego skoku: przerywane obwiednie studni i linia przewidywanego przelotu.
+    function rysujPlanSkoku(g) {
+      const plan = podgladTrasy;
+      if (!plan) return;
+      const podglad = plan.wynik;
+      // Mapa planet nie ma identyfikatorów SQL; kluczem jest nazwa planety.
+      const cele = new Set();
+      const dodajCialo = (p) => { if (p?.klucz) cele.add(p.klucz); };
+      const nazwaCelu = plan.dane.cel_planeta || podglad?.cel?.planeta || (!('x' in plan.dane) ? planSkoku?.planeta : '') || '';
+      let cel = wgKlucza.get(norm(nazwaCelu));
+      if (!cel) {
+        const xCel = Number(plan.dane.x ?? podglad?.cel?.x), yCel = Number(plan.dane.y ?? podglad?.cel?.y);
+        if (Number.isFinite(xCel) && Number.isFinite(yCel)) {
+          const system = P.find((p) => Math.hypot(p.x - xCel, p.y - yCel) < STREFA_UKLADU_PC);
+          cel = system && (P.find((p) => p.x === system.x && p.y === system.y && !cyklPlanety(p)?.macierz) || system);
+        }
+      }
+      dodajCialo(cel);
+      const ids = plan.dane.jednostki || [];
+      const jednostkiStartu = new Set(ids.map(Number));
+      (podglad?.jednostki || []).forEach((j) => { if (j.id != null) jednostkiStartu.add(Number(j.id)); });
+      jednostkiStartu.forEach((id) => {
+        const o = obiektyMapy.find((x) => Number(x.id) === Number(id));
+        dodajCialo(o && planetaObiektu(o));
+      });
+      for (const klucz of [...cele]) {
+        const p = wgKlucza.get(klucz);
+        const rodzic = p && cyklPlanety(p)?.macierz ? wgKlucza.get(norm(cyklPlanety(p).macierz.nazwa)) : null;
+        dodajCialo(rodzic);
+      }
+      // Studnie ciał są widoczne już podczas planowania na mapie galaktyki.
+      // Na małych skalach stosujemy minimalną średnicę symbolu; po zbliżeniu
+      // koło pokazuje rzeczywisty promień używany przez komputer (20/30 promieni).
+      const systemyPodgladu = new Map();
+      for (const klucz of cele) {
+        const p = wgKlucza.get(klucz);
+        const cykl = p && cyklPlanety(p);
+        const rodzic = cykl?.macierz ? wgKlucza.get(norm(cykl.macierz.nazwa)) : p;
+        if (rodzic) systemyPodgladu.set(`${rodzic.x}|${rodzic.y}`, rodzic);
+      }
+      g.save(); g.setLineDash([5, 5]); g.lineWidth = 1.4;
+      for (const root of systemyPodgladu.values()) {
+        const cyklSystemu = cyklPlanety(root);
+        if (!cyklSystemu) continue;
+        const skm = skala / KM_NA_PC;
+        const gwiazdy = cyklSystemu.gwiazdy?.length ? cyklSystemu.gwiazdy : [{ promien_km: PROMIEN_GWIAZDY_KM.G }];
+        const rSlonca = Math.max(...gwiazdy.map((gw) => Number(gw.promien_km || PROMIEN_GWIAZDY_KM[gw.typ] || 696000))) * 20 * skm;
+        const [sx, sy] = naEkran(root.x, root.y, 0, 0);
+        g.strokeStyle = 'rgba(255,190,90,.88)'; g.beginPath(); g.arc(sx, sy, Math.max(5, rSlonca), 0, Math.PI * 2); g.stroke();
+        for (const p of P) {
+          if (p.x !== root.x || p.y !== root.y) continue;
+          const cykl = cyklPlanety(p), k = kmWUkladzie(p);
+          if (!cykl || !k) continue;
+          const [px, py] = naEkran(root.x, root.y, k[0], k[1]);
+          const promien = Number(cykl.srednica_km || p.srednica || 12000) / 2 * 30 * skm;
+          g.strokeStyle = cykl.macierz ? 'rgba(255,110,100,.62)' : 'rgba(255,110,100,.82)';
+          g.beginPath(); g.arc(px, py, Math.max(cykl.macierz ? 3 : 5, promien), 0, Math.PI * 2); g.stroke();
+        }
+      }
+      // W galaktycznym widoku komputer traktuje układ jako studnię o promieniu
+      // STREFA_UKLADU_PC. Zaznacz te strefy na przewidywanej linii skoku — także
+      // dla układów pośrednich, które wcześniej w ogóle nie dostawały obwiedni.
+      if (plan.typ === 'skok') {
+        const celX = Number(plan.dane.x ?? podglad?.cel?.x ?? cel?.x);
+        const celY = Number(plan.dane.y ?? podglad?.cel?.y ?? cel?.y);
+        if (Number.isFinite(celX) && Number.isFinite(celY)) {
+          const starty = [...jednostkiStartu].map((id) => obiektyMapy.find((o) => Number(o.id) === id))
+            .filter((o) => o?.x != null && o?.y != null && Number.isFinite(Number(o.x)) && Number.isFinite(Number(o.y)))
+            .map((o) => [Number(o.x), Number(o.y)]);
+          const zablokowane = new Map();
+          for (const p of P) {
+            const klucz = `${p.x}|${p.y}`;
+            if (zablokowane.has(klucz) || p.x < Math.min(celX, ...starty.map((z) => z[0])) - STREFA_UKLADU_PC
+              || p.x > Math.max(celX, ...starty.map((z) => z[0])) + STREFA_UKLADU_PC
+              || p.y < Math.min(celY, ...starty.map((z) => z[1])) - STREFA_UKLADU_PC
+              || p.y > Math.max(celY, ...starty.map((z) => z[1])) + STREFA_UKLADU_PC) continue;
+            const trafia = starty.some(([x, y]) => {
+              const dx = celX - x, dy = celY - y, l2 = dx * dx + dy * dy;
+              const t = l2 ? Math.max(0, Math.min(1, ((p.x - x) * dx + (p.y - y) * dy) / l2)) : 0;
+              return Math.hypot(p.x - (x + dx * t), p.y - (y + dy * t)) <= STREFA_UKLADU_PC;
+            });
+            if (trafia) zablokowane.set(klucz, p);
+          }
+          g.save(); g.setLineDash([3, 5]); g.lineWidth = 1.5; g.strokeStyle = 'rgba(255,190,90,.72)';
+          for (const p of zablokowane.values()) {
+            const [x, y] = naEkran(p.x, p.y);
+            g.beginPath(); g.arc(x, y, Math.min(2 * Math.hypot(szer, wys), Math.max(6, STREFA_UKLADU_PC * skala)), 0, Math.PI * 2); g.stroke();
+          }
+          g.restore();
+        }
+      }
+      g.setLineDash([]); g.restore();
+      const punktCelu = () => {
+        const celObiekt = obiektyMapy.find((o) => Number(o.id) === Number(plan.dane.cel_obiekt_id));
+        if (celObiekt) return punktObiektu(celObiekt);
+        if (cel && (plan.dane.cel_planeta || Number.isFinite(Number(plan.dane.x ?? c.x)))) return pozycjaPlanety(cel);
+        const c = podglad?.cel || {};
+        const x = Number(plan.dane.x ?? c.x), y = Number(plan.dane.y ?? c.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return cel ? pozycjaPlanety(cel) : null;
+        const kx = plan.dane.kx ?? c.k?.[0], ky = plan.dane.ky ?? c.k?.[1];
+        return kx != null && ky != null ? naEkran(x, y, Number(kx), Number(ky)) : naEkran(x, y);
+      };
+      const trasy = podglad?.jednostki || [];
+      if (trasy.length) for (const j of trasy) {
+        const jednostka = obiektyMapy.find((o) => j.id != null && Number(o.id) === Number(j.id))
+          || obiektyMapy.find((o) => norm(o.nazwa) === norm(j.nazwa));
+        let a = jednostka ? punktObiektu(jednostka) : null, b;
+        const k0 = j.trasa_k0 || j.k0, k1 = j.trasa_k1 || j.k1;
+        const trasa = Array.isArray(j.trasa_k) && j.trasa_k.length >= 2
+          ? j.trasa_k.map((p) => naEkran(Number(j.x0), Number(j.y0), Number(p[0]), Number(p[1]))) : null;
+        if (trasa) a = trasa[0];
+        if (!a) a = k0 ? naEkran(Number(j.x0), Number(j.y0), Number(k0[0]), Number(k0[1])) : naEkran(Number(j.x0), Number(j.y0));
+        b = punktCelu();
+        if (!b && k0 && k1) b = naEkran(Number(j.x0), Number(j.y0), Number(k1[0]), Number(k1[1]));
+        if (!b && Number.isFinite(Number(j.x1)) && Number.isFinite(Number(j.y1))) b = naEkran(Number(j.x1), Number(j.y1));
+        if (!b) continue;
+        g.strokeStyle = j.kolizja ? '#ff5a4f' : '#a6adb5'; g.fillStyle = g.strokeStyle; g.lineWidth = 2;
+        g.setLineDash([6, 6]);
+        g.beginPath();
+        if (trasa) for (let i = 0; i < trasa.length - 1; i++) liniaNaEkranie(g, trasa[i][0], trasa[i][1], trasa[i + 1][0], trasa[i + 1][1]);
+        else liniaNaEkranie(g, a[0], a[1], b[0], b[1]);
+        g.stroke();
+        g.setLineDash([]);
+        for (const [x, y] of [a, b]) { g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill(); }
+      }
+      else {
+        const b = punktCelu();
+        if (b) for (const id of ids) {
+          const o = obiektyMapy.find((x) => Number(x.id) === Number(id));
+          if (!o) continue;
+          const a = punktObiektu(o);
+          g.strokeStyle = '#a6adb5'; g.fillStyle = g.strokeStyle; g.lineWidth = 2; g.setLineDash([6, 6]);
+          g.beginPath(); liniaNaEkranie(g, a[0], a[1], b[0], b[1]); g.stroke(); g.setLineDash([]);
+          g.beginPath(); g.arc(b[0], b[1], 4, 0, Math.PI * 2); g.fill();
+        }
+      }
+      g.restore();
+    }
+
     // Połowa długości okrętu na ekranie (px), gdy przerasta znacznik; inaczej null.
     function rozmiarNaEkranie(o) {
       if (!o || o.typ === 'postac' || !['statek', 'jednostka'].includes(o.typ) && !o.dlugosc_m) return null;
@@ -930,11 +1240,16 @@ export default {
           return [sx + Math.cos(katOsoby) * 11, sy + Math.sin(katOsoby) * 11];
         }
       }
+      if (wNadprzestrzeni(o) && Number.isFinite(Number(o.lot?.start_x)) && Number.isFinite(Number(o.lot?.start_y)) && Number.isFinite(Number(o.lot?.eta))) {
+        const l = o.lot, udzial = Math.max(0, Math.min(1, (teraz() - Number(l.wejscie || 0)) / Math.max(1, Number(l.eta) - Number(l.wejscie || 0))));
+        return naEkran(Number(l.start_x) + (Number(l.x) - Number(l.start_x)) * udzial, Number(l.start_y) + (Number(l.y) - Number(l.start_y)) * udzial);
+      }
       const pl = postepLotu(o);
       if (pl != null && o.podswietlny?.k0) {
-        // Lot w obrębie układu: po linii w km od słońca.
+        // Lot w obrębie układu: po łukowej trasie antykolizyjnej w km od słońca.
         const l = o.podswietlny;
-        return naEkran(l.x0, l.y0, l.k0[0] + (l.k1[0] - l.k0[0]) * pl, l.k0[1] + (l.k1[1] - l.k0[1]) * pl);
+        const p = punktNaTrasie(l.trasa, pl);
+        return naEkran(l.x0, l.y0, p ? p[0] : l.k0[0] + (l.k1[0] - l.k0[0]) * pl, p ? p[1] : l.k0[1] + (l.k1[1] - l.k0[1]) * pl);
       }
       // Punkt w układzie (np. między planetą a słońcem, brzeg układu): km od słońca. Kilka jednostek
       // w tym samym punkcie stoi w szyku (rozstaw w km — widać go dopiero przy dużym zbliżeniu).
@@ -963,7 +1278,8 @@ export default {
         const kat = pr.kat0 + lukDeg(pr.kat0, pr.kat1) * f, rKm = pr.r0 + (pr.r1 - pr.r0) * f;
         const [px, py] = pozycjaPlanety(p);
         const u = ukladNaEkranie(p);
-        const R = u ? Math.max(u.rp + 8, rKm * u.skm) : 14;
+        // Prawdziwa odległość od planety (bez minimum w pikselach) — przy oddaleniu okręt nie wyskakuje ponad sąsiadów.
+        const R = u ? rKm * u.skm : 0;
         return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
       }
       if (o.dok) {
@@ -971,7 +1287,7 @@ export default {
         const [kat, rKm] = miejsceWDoku(o);
         const [px, py] = pozycjaPlanety(p);
         const u = ukladNaEkranie(p);
-        const R = u ? Math.max(u.rp + 8, rKm * u.skm) : 14;
+        const R = u ? rKm * u.skm : 0;
         return [px + Math.cos(-kat * RAD) * R, py + Math.sin(-kat * RAD) * R];
       }
       const uPl = ukladNaEkranie(p);
@@ -979,11 +1295,6 @@ export default {
         // Lot w atmosferze: zejście z orbity i lot nad powierzchnią (lądowanie) albo lot i wznoszenie (start).
         const a = o.atmosfera, t = teraz();
         const rOrb = Math.max(uPl.rp + 8, ((uPl.srednicaKm || 12000) / 2 + 300) * uPl.skm);
-        if (a.rodzaj === 'lokalny') {
-          // Dostawa lokalna: cały czas nad powierzchnią, od zakładu do obiektu.
-          const [s, d] = geoLuk(a, (t - a.od) / Math.max(1, a.do - a.od));
-          return geoNaEkran(p, uPl, s, d, t);
-        }
         if (a.rodzaj === 'ladowanie') {
           const tz = a.od + a.faza_s;
           if (t < tz) return geoNaEkran(p, uPl, a.szer0, a.dl0, t, rOrb + (uPl.rp - rOrb) * ((t - a.od) / a.faza_s));
@@ -1028,24 +1339,26 @@ export default {
       const numerOrbity = orbita ? Math.max(0, grupyOrbit.indexOf(grupa)) : 0;
       const zwinieta = !!grupaZwinieta(o);
       const uklad = ukladNaEkranie(p);
-      let promien = uklad ? uklad.rp + 12 + numerOrbity * 11
-        : orbita ? (zwinieta ? 18 + numerOrbity * 10 : 26 + numerOrbity * 14) : 30;
+      // Okręty zawsze w prawdziwym położeniu względem innych obiektów: bez wachlarza i bez minimalnej odległości w pikselach
+      // (wcześniej przy oddaleniu okręt na orbicie odsuwał się o kilka–kilkadziesiąt pikseli w stronę swojego kąta orbity
+      // i lądował np. na północ od okrętu, który naprawdę stoi od niego bardziej na północ). Nakładające się okręty
+      // pokazuje zwinięta grupa (×N). Postacie (nie okręty) dalej stoją wokół planety.
+      let promien = uklad ? uklad.rp + 12 + numerOrbity * 11 : orbita ? 0 : 30;
       let rozrzutReal = null;
       if (uklad && orbita) {
         // Prawdziwa skala: promień orbity według podejścia (bliska 300 km nad powierzchnią, średnia 4 R,
         // daleka 15 R), ale nie bliżej kropki planety niż kilka pikseli; okręty obok siebie co trzy długości.
         const Rpl = (uklad.srednicaKm || 12000) / 2;
         const km = { bliska: Rpl + 300, srednia: Rpl * 4, daleka: Rpl * 15 }[o.podejscie || 'daleka'] || Rpl * 15;
-        const minimum = uklad.rp + 8 + numerOrbity * 7;
-        promien = Math.max(minimum, km * uklad.skm);
-        rozrzutReal = { f: promien > minimum ? 1 : 0, st: ((3 * Math.max(0.05, dlugoscOkretu(o) / 1000)) / km) / RAD };
+        promien = km * uklad.skm;
+        rozrzutReal = { st: ((3 * Math.max(0.05, dlugoscOkretu(o) / 1000)) / km) / RAD };
       }
       const [px, py] = pozycjaPlanety(p);
       if (orbita && (o.orbita != null || o.kurs != null)) {
         // Miejsce na orbicie (orbita_deg): jednostki floty wachlarzem wokół niego; strzałka = kurs dziobu.
         // W widoku układu: tylko prawdziwy odstęp (trzy długości okrętu) — znacznik stoi tam, gdzie flota jest naprawdę
-        // i skąd serwer liczy trasę; nakładające się okręty pokazuje zwinięta grupa (×N). Wachlarz tylko przy oddaleniu
-        // do galaktyki (planeta to kropka) — wcześniej w układzie rozchodził się nawet o ±90° i flota „wisiała” obok.
+        // i skąd serwer liczy trasę; nakładające się okręty pokazuje zwinięta grupa (×N). Przy oddaleniu do galaktyki promień
+        // jest zerowy (okręty w punkcie planety) — żaden wachlarz nie przestawia ich względem innych jednostek.
         if (o.flota?.szyk && uklad) {
           // Szyk: prowadząca w swoim miejscu na orbicie, reszta w stałych miejscach szyku (km) wokół niej.
           const { prowadzaca, km } = przesuniecieWSzyku(o, rodzina);
@@ -1093,7 +1406,8 @@ export default {
         const klucz = `${norm(o.flota.nazwa)}:${norm(o.flota.dowodca)}`;
         if (!floty.has(klucz)) floty.set(klucz, o.flota);
       }
-      const osoby = obecni.filter((o) => o.typ === 'postac').sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
+      const osoby = (czyGM() ? graczeWUkladzie(p) : []).concat(obecni.filter((o) => o.typ === 'postac' && !(czyGM() && o.gracz)))
+        .sort((a, b) => a.nazwa.localeCompare(b.nazwa, 'pl'));
       // Ruch cywilny w tle (ujemne id, z radaru) nie zaśmieca listy orbity — widać go na mapie.
       const jednostki = obecni.filter((o) => ['statek','jednostka'].includes(o.typ) && !(o.id < 0));
       return h('div.mapa-obecni',
@@ -1257,12 +1571,14 @@ export default {
     // Progi zbliżenia (przyciski w doku): sektor, układ (krawędź), słońce z planetą, planeta z księżycami, tarcza
     // planety. Cel: wybrana planeta (albo obiekt), a bez wyboru — moja pozycja; dla mojej pozycji „planeta” to
     // najbliższa planeta układu (ta, przy której stoję, albo najbliższa punktowi w układzie).
-    async function doProgu(prog) {
-      let c = celProgu();
+    // cel: funkcja zwracająca cel zamiast celProgu (np. cel mojego lotu — przyciski „gdzie lecę”); jej `pl` to planeta progu.
+    async function doProgu(prog, cel = null) {
+      const celTeraz = cel || celProgu;
+      let c = celTeraz();
       if (!c) return;
       // Z widoku galaktyki układ nie był jeszcze rysowany, więc nie ma jego danych — bez nich kamera trafiała
       // w słońce zamiast w planetę. Wczytaj i policz cel jeszcze raz.
-      if (c.p && prog !== 'sektor' && !cyklPlanety(c.p)) { await cyklWczytany(c.p); c = celProgu(); if (!c) return; }
+      if (c.p && prog !== 'sektor' && !cyklPlanety(c.p)) { await cyklWczytany(c.p); c = celTeraz(); if (!c) return; }
       const kr = Math.min(szer, wys) * 0.42; // promień widoku w px
       if (prog === 'sektor') return przelec(c.x, c.y, 4, null, c.k);
       const cykl = c.p ? cyklPlanety(c.p) : null;
@@ -1271,7 +1587,7 @@ export default {
         return przelec(c.x, c.y, Math.max(PROG_UKLADU, kr / (Rbrzeg / KM_NA_PC)), null, [0, 0]);
       }
       // Planeta progu: wybrana planeta (księżyc — jego planeta macierzysta przy tarczy) albo najbliższa celowi.
-      let pl = wybrane?.planeta || null;
+      let pl = (cel ? c.pl : wybrane?.planeta) || null;
       if (!pl) {
         const wUkladzie = P.filter((p) => Math.abs(p.x - c.x) < 1e-3 && Math.abs(p.y - c.y) < 1e-3);
         for (const p of wUkladzie) if (!cyklPlanety(p)) await cyklWczytany(p);
@@ -1313,6 +1629,8 @@ export default {
       if (gwiazdyTla) rysujGwiazdyTla(g, { naMape, naEkran, skala, szer, wys, napis, kroj });
       rysujRegiony(g);
       if (szlakiWidoczne) rysujSzlaki(g);
+      rysujPubliczne(g);
+      rysujPlanSkoku(g);
       rysujPlanety(g);
     }
 
@@ -1361,6 +1679,23 @@ export default {
     const szlakWidoczny = (s) => !(s.z > 2 && skala < 0.05);
 
     function rysujSzlaki(g) {
+      if (ctx.gosc) {
+        const planeta = wybrane?.planeta;
+        if (!szlakiWidoczne || !planeta) return;
+        const trasy = trasyPubliczne.filter((x) => norm(x.planeta) === planeta.klucz || norm(x.producent) === planeta.klucz);
+        g.strokeStyle = '#3ddc84';
+        g.globalAlpha = 0.82;
+        g.lineWidth = 2.4;
+        g.lineJoin = 'round';
+        for (const x of trasy) {
+          g.beginPath();
+          g.moveTo(...naEkran(x.x1, x.y1));
+          g.lineTo(...naEkran(x.x2, x.y2));
+          g.stroke();
+        }
+        g.globalAlpha = 1;
+        return;
+      }
       g.strokeStyle = kolory.akcent;
       g.globalAlpha = 0.38;
       g.lineJoin = 'round';
@@ -1397,7 +1732,8 @@ export default {
         napis(g, p.nazwa, sx + 8, sy + 4);
       }
       // Nazwy: tylko z bliska i bez nakładania się. Zajęte prostokąty trzymamy w kubełkach 100 px.
-      if (skala < 0.09) return;
+      const pokazNazwyPlanet = skala >= 0.09;
+      if (pokazNazwyPlanet) {
       g.font = `11px ${kroj}`;
       g.fillStyle = kolory.slaby;
       const kubly = new Map();
@@ -1441,6 +1777,25 @@ export default {
         g.strokeRect(tx - 4, ty - 12, szerTekstu + 8, 17);
         g.fillStyle = kolory.slaby;
         g.fillText(p.nazwa, tx, ty);
+      }
+      }
+      if (czyGM()) {
+        g.save();
+        g.font = `bold 10px ${kroj}`;
+        for (const p of P) {
+          const ile = graczeWUkladzie(p).length;
+          const [sx, sy] = naEkran(p.x, p.y);
+          if (sx < -20 || sy < -20 || sx > szer + 20 || sy > wys + 20) continue;
+          if (ile) {
+            g.fillStyle = kolory.akcent;
+            g.beginPath(); g.arc(sx, sy, 8, 0, Math.PI * 2); g.fill();
+            g.fillStyle = kolory.tlo;
+            g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(String(ile), sx, sy + 0.5);
+            g.textAlign = 'start'; g.textBaseline = 'alphabetic';
+          }
+        }
+        g.restore();
       }
     }
 
@@ -1543,8 +1898,35 @@ export default {
       rysujObiektyTla();
       rysujKlucze();
       const moj = mojZnacznik();
+      // Korytarze skoków są warstwą szczegółową: pokazuj tylko trasy kończące się
+      // w aktualnie klikniętym układzie. Bez wyboru nie zaśmiecają mapy GM.
+      const wybranyUklad = czyGM() ? wybrane?.planeta : null;
+      if (wybranyUklad) {
+        const skoki = new Map();
+        for (const o of obiektyMapy) {
+          if (!o.lot || !wNadprzestrzeni(o) || !Number.isFinite(Number(o.lot.start_x)) || !Number.isFinite(Number(o.lot.start_y))) continue;
+          const celPasuje = o.lot.planeta
+            ? norm(o.lot.planeta) === wybranyUklad.klucz
+            : Math.hypot(Number(o.lot.x) - wybranyUklad.x, Number(o.lot.y) - wybranyUklad.y) < STREFA_UKLADU_PC;
+          if (!celPasuje) continue;
+          const a = [Number(o.lot.start_x), Number(o.lot.start_y)], b = [Number(o.lot.x), Number(o.lot.y)];
+          const ka = a.map((v) => v.toFixed(4)).join(','), kb = b.map((v) => v.toFixed(4)).join(','), klucz = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+          if (!skoki.has(klucz)) skoki.set(klucz, { a, b, ile: 0 });
+          skoki.get(klucz).ile++;
+        }
+        for (const s of skoki.values()) {
+          const [ax, ay] = naEkran(...s.a), [bx, by] = naEkran(...s.b), [mx, my] = naEkran((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2);
+          c.save(); c.strokeStyle = '#3ddc84'; c.fillStyle = '#3ddc84'; c.globalAlpha = 0.4 + Math.min(0.55, Math.log2(s.ile + 1) * 0.16);
+          c.lineWidth = Math.min(6, 1.5 + Math.log2(s.ile) * 1.2); c.setLineDash([7, 6]); c.beginPath(); liniaNaEkranie(c, ax, ay, bx, by); c.stroke(); c.setLineDash([]);
+          c.font = `bold 11px ${kroj}`; napis(c, `×${s.ile}`, mx + 5, my - 5); c.restore();
+        }
+      }
       for (const o of obiektyMapy) {
         if (naPokladzie(o)) continue;
+        if (czyGM() && o.gracz && o.typ === 'postac') continue;
+        if (!npcRadarWidocznyGM(o)) continue;
+        // Korytarz ruchu pokazuje zagregowany strumień, ale rzeczywiste jednostki (np. Walako)
+        // pozostają widoczne jako poruszające się znaczniki także podczas skoku.
         const zw = grupaZwinieta(o);
         if (zw && !zw.glowny) continue;
         const [sx, sy] = punktObiektu(o);
@@ -1555,15 +1937,20 @@ export default {
           // Skok do punktu układu: linia kończy się w tym punkcie (km od słońca), nie w słońcu.
           const plCel = !o.lot_k && o.lot.planeta ? wgKlucza.get(norm(o.lot.planeta)) : null;
           const [cx, cy] = o.lot_k ? naEkran(o.lot.x, o.lot.y, o.lot_k[0], o.lot_k[1]) : plCel ? pozycjaPlanety(plCel) : naEkran(o.lot.x, o.lot.y);
-          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.65; c.setLineDash([5, 5]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+          c.save(); c.strokeStyle = '#3ddc84'; c.globalAlpha = 0.9; c.setLineDash([5, 5]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
           if (wNadprzestrzeni(o)) kursRys = Math.atan2(-(cy - sy), cx - sx) / RAD;
         }
         if (o.podswietlny && teraz() < o.podswietlny.do && (!(o.id < 0) || wybrane?.obiekt?.id === o.id)) { // tło: linia tylko zaznaczonej
           // Lot podświetlny: kropkowana linia do celu.
           const l = o.podswietlny, b = l.planeta ? wgKlucza.get(norm(l.planeta)) : null;
+          const punktyTrasy = Array.isArray(l.trasa) && l.trasa.length >= 2
+            ? l.trasa.map((p) => naEkran(l.x0, l.y0, Number(p[0]), Number(p[1]))) : null;
           const [cx, cy] = l.k1 && !b ? naEkran(l.x1, l.y1, l.k1[0], l.k1[1])
             : b && Math.hypot(l.x1 - l.x0, l.y1 - l.y0) < 0.05 ? pozycjaPlanety(b) : naEkran(l.x1, l.y1);
-          c.save(); c.strokeStyle = kolor; c.globalAlpha = 0.55; c.setLineDash([2, 4]); c.beginPath(); liniaNaEkranie(c, sx, sy, cx, cy); c.stroke(); c.setLineDash([]); c.restore();
+          c.save(); c.strokeStyle = '#3ddc84'; c.globalAlpha = 0.9; c.setLineDash([2, 4]); c.beginPath();
+          if (punktyTrasy) for (let i = 0; i < punktyTrasy.length - 1; i++) liniaNaEkranie(c, punktyTrasy[i][0], punktyTrasy[i][1], punktyTrasy[i + 1][0], punktyTrasy[i + 1][1]);
+          else liniaNaEkranie(c, sx, sy, cx, cy);
+          c.stroke(); c.setLineDash([]); c.restore();
         }
         if (sx < -12 || sy < -12 || sx > szer + 12 || sy > wys + 12) continue;
         if (zw && zw.ile > 1) {
@@ -1598,6 +1985,14 @@ export default {
           c.font = 'bold 12px monospace'; c.fillStyle = kolor;
           const label = nazwaPostaci(o);
           napis(c, label, sx + 10, sy - 7);
+        }
+        if ((wybrane?.obiekt?.id === o.id || o === moj) && o.podswietlny && teraz() < o.podswietlny.do) {
+          c.font = `10px ${kroj}`; c.fillStyle = '#3ddc84';
+          const v = `${liczba(o.podswietlny.predkosc_kms || 0, 1)} km/s`;
+          napis(c, `PRĘDKOŚĆ ${v}`, sx + 10, sy + 9);
+        } else if ((wybrane?.obiekt?.id === o.id || o === moj) && o.lot && wNadprzestrzeni(o)) {
+          c.font = `10px ${kroj}`; c.fillStyle = '#3ddc84';
+          napis(c, `PRĘDKOŚĆ ${liczba(o.lot.predkosc_pc_doba || 0, 1)} pc/dobę`, sx + 10, sy + 9);
         }
       }
       // Wykrycia radarowe skoków: kierunek, szacowany punkt wyjścia z marginesem błędu i ETA.
@@ -1661,6 +2056,7 @@ export default {
       let najblizszyObiekt = null, odlObiektu = 15;
       for (const obiekt of obiektyMapy) {
         if (naPokladzie(obiekt)) continue;
+        if (!npcRadarWidocznyGM(obiekt)) continue;
         const zw = grupaZwinieta(obiekt);
         if (zw && !zw.glowny) continue;
         const [px, py] = punktObiektu(obiekt);
@@ -1747,7 +2143,12 @@ export default {
     // Plan skoku pokazywany przerywanymi liniami w widoku układu karty planety:
     // { planeta, kierunek (°, skąd leci flota → planeta), wariant, reczny, policzony, aktywny }.
     let planSkoku = null;
+    let podgladTrasy = null; // szara prognoza pojawia się natychmiast po wybraniu skoku lub lotu
     let odswiezUkladKarty = null;
+    const pokazPrognoze = (typ, dane, wynik = null, stan = 'liczenie') => {
+      podgladTrasy = { typ, dane, wynik, stan };
+      brudna = true;
+    };
 
     function widokUkladu(p) {
       const W = 300, H = 220;
@@ -1761,8 +2162,15 @@ export default {
         if (!plotnoUkladu.isConnected) { clearInterval(zegar); return; }
         if (!cykl) return;
         const t = teraz();
-        const u = stanUkladu(cykl, t);
         const cx = W * 0.56, cy = H * 0.54, rp = 15;
+        if (cykl.gwiazdy?.[0]?.typ === 'BH') {
+          g.clearRect(0, 0, W, H); g.save(); g.strokeStyle = 'rgba(255, 145, 75, 0.9)'; g.lineWidth = 5; g.beginPath(); g.ellipse(cx, cy, 70, 20, -0.3, 0, Math.PI * 2); g.stroke();
+          g.strokeStyle = 'rgba(255, 210, 140, 0.55)'; g.lineWidth = 2; g.beginPath(); g.ellipse(cx, cy, 49, 12, -0.3, 0, Math.PI * 2); g.stroke();
+          g.fillStyle = '#030405'; g.beginPath(); g.arc(cx, cy, 27, 0, Math.PI * 2); g.fill(); g.strokeStyle = 'rgba(255, 218, 160, 0.8)'; g.lineWidth = 1; g.beginPath(); g.arc(cx, cy, 27, 0, Math.PI * 2); g.stroke(); g.restore();
+          if (!opis.childNodes.length || Date.now() - (opis._zmieniono || 0) >= 60000) { opis._zmieniono = Date.now(); wyczysc(opis).append(h('div', 'Supermasywna czarna dziura · brak planet i księżyców')); }
+          return;
+        }
+        const u = stanUkladu(cykl, t);
         const ekr = (kat) => -kat * RAD;
         g.clearRect(0, 0, W, H);
         // kierunek słońca: smuga światła od strony słońca
@@ -1905,16 +2313,27 @@ export default {
       el.prepend(pasek);
       return obietnica.finally(() => pasek.remove());
     };
+    const pobierzFlotyNawigacji = () => {
+      let zegar;
+      return Promise.race([
+        api('mapa_floty_gracza'),
+        new Promise((_, odrzuc) => { zegar = setTimeout(() => odrzuc(new Error('Serwer nawigacji nie odpowiedział w 20 sekund.')), 20000); }),
+      ]).finally(() => clearTimeout(zegar));
+    };
 
     // Krok 3 skoku: plan z komputera (albo obliczenia mostka), potem rozkaz i „Skok w toku”.
     function krokSkoku(k, dane, poRozkazie) {
-      const tresc = h('div', liczy());
+      const tresc = h('div', liczy(), h('p.slaby.maly-tekst', 'Na mapie: szara trasa — obliczana; zielona — realizowana.'));
+      pokazPrognoze('skok', dane);
       k.dalej('Skok w nadprzestrzeń', tresc);
       api('mapa_flota_rozkaz', { ...dane, plan: true }).then((w) => {
+        pokazPrognoze('skok', dane, w, 'gotowe');
         const wykonaj = h('button.przycisk.glowny.mapa-krok-akcja', { type: 'button', onclick: async () => {
           wykonaj.disabled = true;
           try {
             const r = await api('mapa_flota_rozkaz', dane);
+            podgladTrasy = null;
+            brudna = true;
             const info = h('p.maly-tekst');
             k.zamien('Skok w toku', h('div', tabelaPlanu([['Wejście w nadprzestrzeń', czasGry(r.wejscie)], ['ETA', czasGry(r.eta)]]),
               h('div.mapa-krok-przyciski', przyciskPrzerwij(r.rozkaz_id, info)), info));
@@ -1922,7 +2341,12 @@ export default {
             await pobierzPozycje();
           } catch (e) { wykonaj.disabled = false; tresc.append(blad(e)); }
         } }, 'Wykonaj skok');
-        wyczysc(tresc).append(tabelaPlanu([
+        const kolizje = (w.jednostki || []).map((j) => j.kolizja).filter(Boolean);
+        if (kolizje.length) { wykonaj.disabled = true; wykonaj.textContent = 'Trasa kolizyjna — zmień cel'; }
+        wyczysc(tresc).append(kolizje.length
+          ? h('div.komunikat.blad', `Uwaga: przewidywana trajektoria przecina ${[...new Set(kolizje)].join(', ')}. Zmień współrzędne, by wyznaczyć bezpieczną trasę.`)
+          : h('p.slaby.maly-tekst', 'Na mapie: szara linia — obliczana trasa; zielona — lot w toku. Bursztynowy i czerwony okrąg oznaczają studnie grawitacyjne.'),
+        tabelaPlanu([
           [w.tryb === 'reczny' ? 'Obliczenia mostka' : 'Komputer', czasTrwania(w.obliczenia_s)],
           ['Obrót na kurs', czasTrwania(w.manewr_s)],
           w.punkt_s > 0 ? ['Do punktu skoku', czasTrwania(w.punkt_s)] : null,
@@ -1931,35 +2355,39 @@ export default {
           ['ETA', czasGry(w.eta)],
           w.jednostki?.length ? ['Paliwo', w.jednostki.map((j) => `${j.nazwa}: ${j.paliwo}`).join(', ')] : null,
         ]), wykonaj);
-      }).catch((e) => wyczysc(tresc).append(blad(e)));
+      }).catch((e) => { pokazPrognoze('skok', dane, null, 'odrzucono'); wyczysc(tresc).append(blad(e)); });
     }
 
     // Krok 3 lotu podświetlnego: plan (dystans, prędkość, czas), „Leć”, potem „W locie” z „Przerwij lot”.
     function krokLotu(k, f, cel, czyLeci = () => true) {
       const jednostki = (f.jednostki || []).filter((j) => !j.rozkaz_id && !j.ladowisko_id && czyLeci(j));
-      const tresc = h('div', liczy());
-      k.dalej('Lot podświetlny', tresc);
-      if (!jednostki.length) { wyczysc(tresc).append(h('p.slaby.maly-tekst', 'Żadna jednostka nie może teraz lecieć (skok, lądowisko).')); return; }
+      const tresc = h('div', liczy(), h('p.slaby.maly-tekst', 'Na mapie: szara trasa — obliczana; zielona — realizowana.'));
       const dane = { flota_id: f.id, jednostki: jednostki.map((j) => j.obiekt_id), ...cel };
+      pokazPrognoze('lot', dane);
+      k.dalej('Lot podświetlny', tresc);
+      if (!jednostki.length) { podgladTrasy = null; wyczysc(tresc).append(h('p.slaby.maly-tekst', 'Żadna jednostka nie może teraz lecieć (skok, lądowisko).')); return; }
       api('mapa_flota_lot', { ...dane, plan: true }).then((w) => {
+        pokazPrognoze('lot', dane, w, 'gotowe');
         const lec = h('button.przycisk.glowny.mapa-krok-akcja', { type: 'button', onclick: async () => {
           lec.disabled = true;
           try {
             const r = await api('mapa_flota_lot', dane);
+            podgladTrasy = null;
+            brudna = true;
             const info = h('p.maly-tekst');
             k.zamien('W locie', h('div', tabelaPlanu([['Silniki', czasGry(r.start)], ['ETA', czasGry(r.eta)]]),
               h('div.mapa-krok-przyciski', przyciskPrzerwijLot(f, dane.jednostki, info)), info));
             await pobierzPozycje(); await odswiezFloty();
           } catch (e) { lec.disabled = false; tresc.append(blad(e)); }
         } }, 'Leć');
-        wyczysc(tresc).append(tabelaPlanu([
+        wyczysc(tresc).append(h('p.slaby.maly-tekst', 'Na mapie: szara linia — obliczana trasa; zielona — lot w toku.'), tabelaPlanu([
           ['Dystans', odlTrasy(w.km)],
           ['Prędkość', w.w_ukladzie ? `${liczba(w.predkosc_kms)} km/s (w układzie)` : w.pc_doba ? `${liczba(w.pc_doba, 1)} pc/doba` : `${liczba(w.predkosc_kms)} km/s`],
           ['Obrót na kurs', czasTrwania(w.manewr_s)],
           ['Lot', czasDlugi(w.lot_s)],
           ['ETA', czasGry(w.eta)],
         ]), lec);
-      }).catch((e) => wyczysc(tresc).append(blad(e)));
+      }).catch((e) => { pokazPrognoze('lot', dane, null, 'odrzucono'); wyczysc(tresc).append(blad(e)); });
     }
 
     function przyciskPrzerwijLot(f, ids, info) {
@@ -1998,7 +2426,7 @@ export default {
 
     function sekcjaNawigacji(p) {
       const sekcja = h('div.mapa-nawigacja');
-      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
+      zLadowaniem(sekcja, pobierzFlotyNawigacji(), 'Przeliczanie współrzędnych').then((dane) => {
         const floty = dane.floty || [];
         if (!floty.length) return;
         let f = floty[0];
@@ -2098,7 +2526,7 @@ export default {
             for (const j of wDoku) {
               const d = dokOkretu(j);
               opcje.push(opcja(`Oddokuj ${j.obiekt_nazwa || ''}`.trim(), d.do && d.do > teraz() ? `w drodze do ${d.oznaczenie} · ${czasGry(d.do)}` : `stanowisko ${d.oznaczenie}`, async () => {
-                try { await api('oddokuj', { obiekt_id: j.obiekt_id }); info.textContent = 'Okręt opuścił dok — bliska orbita.'; await pobierzPozycje(); await odswiezFloty(); }
+                try { await api('oddokuj', { obiekt_id: j.obiekt_id }); info.textContent = 'Oddokowanie rozpoczęte — okręt wraca tą samą trasą na orbitę.'; await pobierzPozycje(); await odswiezFloty(); }
                 catch (e) { info.textContent = e.message; }
               }));
             }
@@ -2156,7 +2584,7 @@ export default {
         };
         k.dalej(null, krok1());
         sekcja.append(h('div.slaby.maly-tekst', 'Nawigacja floty'), k.el);
-      }).catch(() => {});
+      }).catch((e) => sekcja.append(blad(e)));
       return sekcja;
     }
 
@@ -2180,7 +2608,7 @@ export default {
     // Karta punktu mapy dla dowódcy floty: krok 1 — skok albo lot; krok 3 — szczegóły i rozkaz.
     function sekcjaPunktu(pkt) {
       const sekcja = h('div.mapa-nawigacja');
-      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
+      zLadowaniem(sekcja, pobierzFlotyNawigacji(), 'Przeliczanie współrzędnych').then((dane) => {
         const floty = dane.floty || [];
         if (!floty.length) return;
         let f = floty[0];
@@ -2193,7 +2621,7 @@ export default {
             opcja('Lot podświetlny', pkt.k ? 'w układzie: ostrożnie, minuty–godziny' : 'silniki podświetlne', () => krokLotu(k, f, cel))));
         k.dalej(null, krok1());
         sekcja.append(h('div.slaby.maly-tekst', 'Nawigacja floty'), k.el);
-      }).catch(() => {});
+      }).catch((e) => sekcja.append(blad(e)));
       return sekcja;
     }
 
@@ -2237,7 +2665,7 @@ export default {
       const sekcja = h('div.mapa-nawigacja');
       if (!ob.ladowisko_id || !pl) return sekcja;
       const info = h('p.maly-tekst');
-      zLadowaniem(sekcja, api('mapa_floty_gracza'), 'Łączność z flotą').then((dane) => {
+      zLadowaniem(sekcja, pobierzFlotyNawigacji(), 'Przeliczanie współrzędnych').then((dane) => {
         const przyciski = [];
         for (const f of dane.floty || []) {
           for (const j of f.jednostki || []) {
@@ -2257,7 +2685,7 @@ export default {
           }
         }
         if (przyciski.length) sekcja.append(h('div.slaby.maly-tekst', 'Lądowanie przy obiekcie'), h('div.mapa-krok-lista', ...przyciski), info);
-      }).catch(() => {});
+      }).catch((e) => sekcja.append(blad(e)));
       return sekcja;
     }
 
@@ -2289,8 +2717,256 @@ export default {
       return sekcja;
     }
 
-    function wybierz(obiekt) {
+    function proceduraPrzechwycenia(okret) {
+      const sekcja = h('section.mapa-obiekt-flota', h('strong', 'Procedura przechwycenia'),
+        h('small.slaby', 'Szacunek: taśmociąg wynosi jeden klucz (4 maszyny) na minutę; poza alarmem przygotowanie załogi zajmuje 4 minuty na dodatkowy klucz.'));
+      const cele = obiektyMapy.filter((x) => x.id !== okret.id && ['statek', 'jednostka'].includes(x.typ) && !wNadprzestrzeni(x)
+        && (!okret.flota || x.flota?.kod !== okret.flota.kod)
+        && !(x.wlasciciel && okret.wlasciciel && norm(x.wlasciciel) === norm(okret.wlasciciel)));
+      const wyborCelu = h('select', h('option', { value: '' }, 'Wybierz kontakt'),
+        cele.map((x) => h('option', { value: String(x.id) }, `${x.nazwa}${x.planeta ? ` · ${x.planeta}` : ''}`)));
+      const alarm = h('select',
+        h('option', { value: 'normalny' }, 'Alarm normalny · 1 klucz w gotowości'),
+        h('option', { value: 'zolty' }, 'Alarm żółty · 4 klucze w gotowości'),
+        h('option', { value: 'czerwony' }, 'Alarm czerwony · 18 kluczy w gotowości'));
+      const liczbaKluczy = h('select'), wynik = h('div.mapa-obecni');
+      const nazwaKlucza = (n) => n === 1 ? 'klucz' : n >= 5 ? 'kluczy' : 'klucze';
+      const odswiezOpcje = () => {
+        const max = alarm.value === 'normalny' ? 3 : 18;
+        const poprzednia = Number(liczbaKluczy.value || 1);
+        liczbaKluczy.replaceChildren(...Array.from({ length: max }, (_, i) => h('option', { value: String(i + 1) }, `${i + 1} ${nazwaKlucza(i + 1)} · ${(i + 1) * 4} TIE`)));
+        liczbaKluczy.value = String(Math.min(poprzednia, max));
+      };
+      alarm.addEventListener('change', odswiezOpcje);
+      odswiezOpcje();
+      const oblicz = () => {
+        const cel = obiektyMapy.find((x) => String(x.id) === wyborCelu.value);
+        const ile = Number(liczbaKluczy.value || 1), tryb = alarm.value;
+        const gotowe = tryb === 'czerwony' ? 18 : tryb === 'zolty' ? 4 : 1;
+        const harmonogram = Array.from({ length: ile }, (_, i) => {
+          const nr = i + 1;
+          const mobilizacja = tryb === 'czerwony' || nr <= gotowe ? 0 : (nr - gotowe) * 240;
+          const transport = nr * 60;
+          return h('div.mapa-obecny', h('strong', `${nr}. klucz · 4 TIE`),
+            h('small', `start za ${czasTrwania(mobilizacja + transport)}${nr === 1 ? ' · kurs przechwytujący' : mobilizacja ? ` · przygotowanie załogi ${czasTrwania(mobilizacja)}` : ' · gotowy do startu'}`));
+        });
+        wyczysc(wynik).append(
+          h('div.mapa-osoba', `Cel: ${cel?.nazwa || 'kontakt nierozpoznany'}`),
+          h('div.mapa-osoba', `Łącznie: ${ile * 4} TIE · ${gotowe} ${nazwaKlucza(gotowe)} gotowych na alarmie`),
+          ...harmonogram,
+          h('small.slaby', 'Plan wyznacza starty i kurs przechwytujący. Wynik walki rozstrzyga MG.'));
+      };
+      sekcja.append(
+        h('label.maly-tekst', 'Kontakt', wyborCelu),
+        h('label.maly-tekst', 'Alarm', alarm),
+        h('label.maly-tekst', 'Wysłane klucze', liczbaKluczy),
+        h('button.przycisk.maly', { type: 'button', onclick: oblicz }, 'Oblicz mobilizację'), wynik);
+      return sekcja;
+    }
+
+    // ---------- Dane publiczne (migracja 096, api/publiczne.php) ----------
+    // Każdy — także gość — widzi rynek planety (legalny, zarejestrowany w B0R5), stałe kontrakty dostaw (bez godzin,
+    // tras i konkretnych statków) i linie turystyczne z rozkładami. Szarej strefy nikt nie szacuje.
+    let publLinia = null;   // linia turystyczna rysowana na mapie
+    let publTowar = null;   // { producenci: Set, odbiorcy: Set } — klucze planet podświetlonych dla towaru
+    let publZwin = null;    // zwijanie panelu publicznego (ustawiane przy otwarciu)
+    const kr = (n) => `${liczba(n)} kr`;
+    const tDoba = (n) => `${liczba(n, n < 10 ? 1 : 0)} t/d`;
+    const bladPubl = (el) => (e) => el.append(h('p.maly-tekst.mapa-blad', e?.message || 'Dane publiczne niedostępne.'));
+    function rysujPubliczne(g) {
+      if (publLinia) {
+        g.save();
+        g.strokeStyle = '#ffb347'; g.fillStyle = '#ffb347'; g.lineWidth = 2.4; g.globalAlpha = 0.9; g.setLineDash([8, 6]);
+        g.beginPath();
+        publLinia.przystanki.forEach((s, i) => { const [x, y] = naEkran(s.x, s.y); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+        g.stroke();
+        g.setLineDash([]);
+        for (const s of publLinia.przystanki) { const [x, y] = naEkran(s.x, s.y); g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); }
+        g.restore();
+      }
+      if (publTowar) {
+        g.save();
+        g.lineWidth = 2;
+        for (const [zbior, kolor] of [[publTowar.producenci, '#3ddc84'], [publTowar.odbiorcy, '#ff8b78']]) {
+          g.strokeStyle = kolor;
+          for (const k of zbior) {
+            const p = wgKlucza.get(k);
+            if (!p) continue;
+            const [x, y] = pozycjaPlanety(p);
+            g.beginPath(); g.arc(x, y, 9, 0, Math.PI * 2); g.stroke();
+          }
+        }
+        g.restore();
+      }
+    }
+    function doPlanety(nazwa) {
+      const p = wgKlucza.get(norm(nazwa));
+      if (!p) return;
+      if (waski()) panelPubl.hidden = true;
+      wybierz({ planeta: p });
+      przelec(p.x, p.y, Math.max(skala, 4));
+    }
+    const linkPlanety = (nazwa) => h('button.mapa-link', { type: 'button', onclick: () => doPlanety(nazwa) }, nazwa);
+    function pokazLinie(l) {
+      publLinia = l;
+      const xs = l.przystanki.map((s) => s.x), ys = l.przystanki.map((s) => s.y);
+      const dx = Math.max(Math.max(...xs) - Math.min(...xs), 50), dy = Math.max(Math.max(...ys) - Math.min(...ys), 50);
+      przelec((Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...ys) + Math.min(...ys)) / 2, Math.min(4, szer * 0.7 / dx, wys * 0.6 / dy));
+      odswiez();
+      // Panel zwija się, żeby nie zasłaniał trasy; rozwija go strzałka albo tytuł.
+      if (!panelPubl.hidden) publZwin?.(true);
+    }
+    // Kurs linii: odjazd, przystanki z godzinami (format gry) i przylot na koniec trasy.
+    const opisKursu = (k) => h('li',
+      h('b', `${k.etapy[0].planeta} → ${k.etapy[k.etapy.length - 1].planeta}`),
+      h('div.slaby.maly-tekst', k.etapy.map((e) => `${e.planeta} ${e.odlot ? `odl. ${czasGry(e.odlot)}` : `przyl. ${czasGry(e.przylot)}`}`).join(' · ')));
+    const kartaLinii = (l) => h('details.mapa-flota-sekcja',
+      h('summary', `${l.kod} · ${l.nazwa}`),
+      h('p.slaby.maly-tekst', l.opis),
+      h('table.tabela',
+        h('tr', h('th', 'Trasa'), h('td', ...l.przystanki.flatMap((s, i) => [i ? ' → ' : '', linkPlanety(s.planeta)]))),
+        h('tr', h('th', 'Przewoźnik'), h('td', l.operator)),
+        h('tr', h('th', 'Statek'), h('td', `${l.statek_klasa} · ${liczba(l.pasazerow)} miejsc`)),
+        h('tr', h('th', 'Odjazdy'), h('td', `co ${liczba(l.odstep_h, 1)} h w każdą stronę`)),
+        h('tr', h('th', 'Bilet (cała trasa)'), h('td', kr(l.cena_kr)))),
+      h('button.przycisk.maly.drugi', { type: 'button', onclick: () => pokazLinie(l) }, 'Pokaż trasę na mapie'),
+      h('div.slaby.maly-tekst', { style: 'margin-top:8px' }, 'Najbliższe kursy'),
+      h('ul.lista', l.kursy.map(opisKursu)));
+    // Tabele składane (.tabela-skladana): na wąskim ekranie pierwsza kolumna idzie na całą szerokość, a pozostałe
+    // stają pod nią w równych kolumnach z etykietą (data-etykieta) nad wartością — na komputerze zwykła tabela.
+    const tabelaKontraktow = (lista, kierunek) => h('table.tabela.tabela-skladana', { style: '--kolumny:2' },
+      h('tr.naglowek', h('th', 'Towar'), h('th', kierunek === 'do' ? 'Od' : 'Do'), h('th', 'Ilość')),
+      lista.map((k) => h('tr',
+        h('td', k.towar_nazwa),
+        h('td', { 'data-etykieta': kierunek === 'do' ? 'Od' : 'Do' }, linkPlanety(kierunek === 'do' ? k.producent : k.odbiorca_planeta), kierunek === 'z' ? h('div.slaby.maly-tekst', k.odbiorca) : null),
+        h('td', { 'data-etykieta': 'Ilość' }, tDoba(k.t_doba), h('div.slaby.maly-tekst', `${liczba(k.kursow_doba, 1)} kursów/d · ${k.klasa}`)))));
+    // Sekcja karty planety: gospodarka (legalne PKB, rynek), stałe kontrakty i połączenia turystyczne.
+    function sekcjaDanychPublicznych(p) {
+      const el = h('div.mapa-statki.mapa-publiczne');
+      zLadowaniem(el, api('publiczne_planeta', undefined, { planeta: p.nazwa }), 'Dane publiczne B0R5').then((d) => {
+        const sekcja = (tytul, otwarta, ...tresc) => h('details.mapa-flota-sekcja', { open: otwarta }, h('summary', tytul), ...tresc);
+        const rynek = d.rynek || [];
+        const przych = d.kontrakty_przychodzace || [], wych = d.kontrakty_wychodzace || [];
+        el.append(
+          sekcja('Gospodarka (rejestr B0R5)', !!rynek.length,
+            rynek.length ? h('table.tabela',
+              h('tr', h('th', 'PKB legalne'), h('td', `${kr(d.pkb.doba_kr)}/dobę`, h('div.slaby.maly-tekst', `${kr(d.pkb.rok_kr)} na rok standardowy (${d.pkb.dni_roku} dni)`)))) : null,
+            rynek.length ? h('table.tabela.tabela-skladana', { style: '--kolumny:3' },
+              h('tr.naglowek', h('th', 'Towar'), h('th', 'Produkcja'), h('th', 'Zużycie'), h('th', 'Cena')),
+              rynek.map((r) => h('tr',
+                h('td', r.towar_nazwa, r.szacunek ? h('span.slaby.maly-tekst.tabela-dopisek', 'szacunek') : null),
+                h('td', { 'data-etykieta': 'Produkcja' }, r.produkcja_t_doba ? tDoba(r.produkcja_t_doba) : '—'),
+                h('td', { 'data-etykieta': 'Zużycie' }, r.zuzycie_t_doba ? tDoba(r.zuzycie_t_doba) : '—'),
+                h('td', { 'data-etykieta': 'Cena' }, `${liczba(r.cena_kr_t, 2)} kr/t`, h('div.slaby.maly-tekst', `×${liczba(r.cena_indeks, 2)} średniej`)))))
+              : h('p.slaby.maly-tekst', 'Brak zarejestrowanego obrotu tej planety w B0R5.'),
+            h('p.slaby.maly-tekst', 'Tylko legalny obrót zarejestrowany w B0R5. Szarej strefy nikt nie umie oszacować.')),
+          sekcja(`Stałe kontrakty (${przych.length + wych.length})`, false,
+            przych.length ? h('div', h('div.slaby.maly-tekst', 'Dostawy na planetę'), tabelaKontraktow(przych, 'do')) : null,
+            wych.length ? h('div', h('div.slaby.maly-tekst', 'Dostawy z planety'), tabelaKontraktow(wych, 'z')) : null,
+            !przych.length && !wych.length ? h('p.slaby.maly-tekst', 'Brak jawnych kontraktów.') : null),
+          sekcja(`Połączenia turystyczne (${(d.linie || []).length})`, false,
+            d.linie?.length ? d.linie.map(kartaLinii) : h('p.slaby.maly-tekst', 'Żadna regularna linia turystyczna tu nie zawija.')));
+      }).catch(bladPubl(el));
+      return el;
+    }
+    // Panel publiczny (przyciski gościa w doku): linie turystyczne, kontrakty według towaru, ranking PKB.
+    function otworzPubliczne(rodzaj) {
+      wyczysc(panelPubl);
+      panelPubl.hidden = false;
+      if (waski()) { karta.hidden = true; panelFlot.hidden = true; }
+      const tresc = h('div');
+      // Nagłówek: tytuł (zwinięty panel pokazuje też wybraną linię), zwijanie — trasa i podświetlenia zostają na mapie — i zamknięcie.
+      const podpis = h('span.mapa-publ-podpis');
+      const zwin = h('button.mapa-publ-przycisk', { type: 'button' });
+      const ustawZwiniecie = (v) => {
+        panelPubl.classList.toggle('zwiniety', v);
+        zwin.textContent = v ? '▴' : '▾';
+        zwin.title = v ? 'Rozwiń panel' : 'Zwiń panel (trasa zostaje na mapie)';
+        zwin.setAttribute('aria-label', zwin.title);
+        podpis.textContent = publLinia ? `${publLinia.kod} · ${publLinia.nazwa}` : '';
+      };
+      zwin.onclick = () => ustawZwiniecie(!panelPubl.classList.contains('zwiniety'));
+      publZwin = ustawZwiniecie;
+      panelPubl.append(
+        h('div.mapa-publ-glowa',
+          h('h2', { onclick: () => panelPubl.classList.contains('zwiniety') && ustawZwiniecie(false) },
+            { linie: 'Połączenia turystyczne', towar: 'Kontrakty handlowe', ranking: 'Dane gospodarcze' }[rodzaj], podpis),
+          zwin,
+          h('button.mapa-publ-przycisk', { type: 'button', title: 'Zamknij (usuwa trasę z mapy)', 'aria-label': 'Zamknij',
+            onclick: () => { panelPubl.hidden = true; publLinia = null; publTowar = null; odswiez(); } }, '×')),
+        tresc);
+      ustawZwiniecie(false);
+      if (rodzaj === 'linie') {
+        zLadowaniem(tresc, api('publiczne_linie'), 'Rozkłady linii').then((d) => {
+          tresc.append(h('p.slaby.maly-tekst', 'Regularne linie pasażerskie. Godziny w czasie gry; kursy w obie strony.'),
+            ...(d.linie?.length ? d.linie.map(kartaLinii) : [h('p.slaby.maly-tekst', 'Brak regularnych linii.')]));
+        }).catch(bladPubl(tresc));
+      } else if (rodzaj === 'towar') {
+        const wynik = h('div');
+        const wybor = h('select', { onchange: () => pokazTowar(wybor.value, wynik) }, h('option', { value: '' }, 'Wybierz towar…'));
+        tresc.append(h('label.maly-tekst', 'Towar', wybor), wynik);
+        zLadowaniem(tresc, api('publiczne_towary'), 'Lista towarów').then((d) => {
+          for (const t of d.towary || []) wybor.append(h('option', { value: t.kod }, `${t.nazwa} · ${t.kategoria}`));
+        }).catch(bladPubl(tresc));
+      } else {
+        zLadowaniem(tresc, api('publiczne_ranking'), 'Ranking PKB').then((d) => {
+          tresc.append(h('p.slaby.maly-tekst', `Legalne PKB (rejestr B0R5): wartość zarejestrowanej produkcji, rok standardowy ${d.dni_roku} dni. Szara strefa nieoszacowana.`),
+            h('table.tabela', h('tr', h('th', 'Planeta'), h('th', 'PKB / rok')),
+              (d.ranking || []).map((x) => h('tr', h('td', linkPlanety(x.planeta), x.szacunek ? h('div.slaby.maly-tekst', 'częściowo szacunek') : null),
+                h('td', kr(x.rok_kr), h('div.slaby.maly-tekst', `${kr(x.doba_kr)}/d`))))));
+        }).catch(bladPubl(tresc));
+      }
+    }
+    function pokazTowar(kod, wynik) {
+      wyczysc(wynik);
+      publTowar = null;
+      odswiez();
+      if (!kod) return;
+      zLadowaniem(wynik, api('publiczne_towar', undefined, { towar: kod }), 'Rynek towaru').then((d) => {
+        publTowar = { producenci: new Set(d.producenci.map((x) => norm(x.planeta))), odbiorcy: new Set(d.odbiorcy.map((x) => norm(x.planeta))) };
+        odswiez();
+        const tabela = (lista, ile, nazwa) => h('table.tabela.tabela-skladana', { style: '--kolumny:2' },
+          h('tr.naglowek', h('th', 'Planeta'), h('th', nazwa), h('th', 'Cena')),
+          lista.map((x) => h('tr', h('td', linkPlanety(x.planeta)), h('td', { 'data-etykieta': nazwa }, tDoba(x[ile])),
+            h('td', { 'data-etykieta': 'Cena' }, `${liczba(x.cena_kr_t, 2)} kr/t`))));
+        wynik.append(
+          h('p.slaby.maly-tekst', 'Na mapie: zielone kółka — producenci, czerwone — odbiorcy.'),
+          h('div.slaby.maly-tekst', `Producenci (${d.producenci.length}) · od najtańszego`),
+          d.producenci.length ? tabela(d.producenci, 'produkcja_t_doba', 'Produkcja') : h('p.slaby.maly-tekst', 'Brak.'),
+          h('div.slaby.maly-tekst', `Odbiorcy (${d.odbiorcy.length}) · od najdroższego`),
+          d.odbiorcy.length ? tabela(d.odbiorcy, 'zuzycie_t_doba', 'Zużycie') : h('p.slaby.maly-tekst', 'Brak.'),
+          h('div.slaby.maly-tekst', `Stałe kontrakty (${d.kontrakty.length})`),
+          d.kontrakty.length ? h('table.tabela', h('tr', h('th', 'Od → do'), h('th', 'Ilość')),
+            d.kontrakty.map((k) => h('tr', h('td', linkPlanety(k.producent), ' → ', linkPlanety(k.odbiorca_planeta), h('div.slaby.maly-tekst', k.odbiorca)),
+              h('td', tDoba(k.t_doba), h('div.slaby.maly-tekst', `${liczba(k.kursow_doba, 1)} kursów/d`))))) : h('p.slaby.maly-tekst', 'Brak.'));
+      }).catch(bladPubl(wynik));
+    }
+
+    function sekcjaDostawPlanety(planeta) {
+      if (ctx.gosc) return null; // gość: kontrakty są w sekcji danych publicznych
+      if (!czyGM()) return null;
+      const sekcja = h('div.mapa-statki', h('div.slaby.maly-tekst', '✦ Transportowce przybywające · średnio na godzinę'));
+      zLadowaniem(sekcja, api('gosp_planeta_dostawy', undefined, { planeta: planeta.nazwa }), 'Zliczanie dostaw').then((d) => {
+        if (!d.dostawy?.length) {
+          sekcja.append(h('p.slaby.maly-tekst', 'Brak aktywnych szlaków dostaw na tę planetę.'));
+          return;
+        }
+        sekcja.append(h('ul.lista', d.dostawy.map((x) => h('li',
+          h('b', x.towar),
+          h('span.slaby', x.t_h == null
+            ? ` · ok. ${liczba(x.statki_h, 2)} przybyć/h`
+            : ` · ${liczba(x.t_h, 1)} t/h · ${liczba(x.statki_h, 2)} statków/h`),
+          h('small.slaby', `${x.szlaki} ${x.szlaki === 1 ? 'szlak' : x.szlaki >= 5 ? 'szlaków' : 'szlaki'}${x.trasa ? ` · ${x.trasa}` : ''}${x.t_h == null ? ' · tonaż nieokreślony w bazie' : ''}`)))));
+      }).catch((e) => sekcja.append(h('p.maly-tekst.mapa-blad', e.message)));
+      return sekcja;
+    }
+
+    function wybierz(obiekt, odswiezWarstweRuchu = true) {
       wybrane = obiekt;
+      setTimeout(odswiezDokMapy, 0); // lewa grupa: przybliżenia wybranej planety (po starcie mapy)
+      if (ctx.gosc) szlakiWidoczne = !!obiekt?.planeta;
+      if (odswiezWarstweRuchu) pobierzSzlakiWybranegoUkladu();
+      if (ctx.gosc) odswiez();
       podpowiedz.hidden = true;
       if (obiekt && waski()) panelFlot.hidden = true;
       wyczysc(karta);
@@ -2314,9 +2990,16 @@ export default {
         : postac ? widoki.findIndex((w) => w.obiekt?.id === postac.id) : -1;
       if (obiekt.obiekt) {
         const o = obiekt.obiekt;
+        const mostekDostepny = ['statek', 'jednostka'].includes(o.typ)
+          ? (ctx.mostki || []).find((x) => Number(x.obiekt_id) === Number(o.id)) : null;
+        const otworzMostek = mostekDostepny ? h('button.przycisk.drugi.maly', { type: 'button', onclick: (e) => {
+          e.stopPropagation(); ctx.otworzApp?.('mostek', { obiekt: o.id });
+        } }, mostekDostepny.pelny ? 'Otwórz mostek' : 'Otwórz moje stanowisko') : null;
         // Karta jednostki: szeroka, w dwóch kolumnach — po lewej dane, flota i lot, po prawej dowodzenie
-        // (radar) i pokład. Postać bez pokładu zostaje wąska.
+        // (procedura przechwycenia, radar) i pokład. Postać bez pokładu zostaje wąska.
         const prawa = [
+          czyGM() && o.id > 0 && ['statek', 'jednostka'].includes(o.typ) && /isd|star destroyer|niszczyciel gwiezdny/i.test(`${o.klasa || ''} ${o.nazwa || ''}`)
+            ? proceduraPrzechwycenia(o) : null,
           o.radar ? sekcjaRadaru(o) : null,
           o.id > 0 && ['statek', 'jednostka'].includes(o.typ) ? sekcjaKluczy(o) : null,
           o.typ !== 'postac' && !o.radar ? sekcjaPokladu(o) : null].filter(Boolean);
@@ -2329,7 +3012,7 @@ export default {
             o.planeta ? wiersz('Planeta', o.planeta) : null,
             o.na_ladowisku ? wiersz('Na lądowisku', o.na_ladowisku + (o.geo ? ` · ${Math.abs(o.geo.szer).toFixed(1)}°${o.geo.szer >= 0 ? 'N' : 'S'} ${Math.abs(o.geo.dl).toFixed(1)}°${o.geo.dl >= 0 ? 'E' : 'W'}` : '')) : null,
             o.geo && planetaObiektu(o) && cyklPlanety(planetaObiektu(o)) ? h('tr', h('th', 'Lokalna godzina'), zywa(() => lokalnyCzas(cyklPlanety(planetaObiektu(o)), o.geo.szer, o.geo.dl))) : null,
-            o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : o.atmosfera.rodzaj === 'lokalny' ? 'przelot nad powierzchnią' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
+            o.atmosfera && o.atmosfera.do > teraz() ? wiersz('W atmosferze', `${o.atmosfera.rodzaj === 'start' ? 'start i wznoszenie' : 'lądowanie'} · do ${czasGry(o.atmosfera.do)}`) : null,
             o.dok ? h('tr', h('th', 'Dok'), zywa(() => {
               const x = obiektyMapy.find((y) => y.id === o.id)?.dok || o.dok;
               return x.do && x.do > teraz() ? `lot łukiem do ${x.oznaczenie} · w doku za ${czasTrwania(x.do - teraz())}` : `stanowisko ${x.oznaczenie}`;
@@ -2339,7 +3022,13 @@ export default {
           o.flota ? h('div.mapa-obiekt-flota', h('strong', o.flota.nazwa), o.flota.grupa ? h('span.slaby', o.flota.grupa) : null,
             h('span', `Dowódca: ${o.flota.dowodca || 'nieprzypisany'}`),
             o.flota.tie_liczba == null ? null : h('span', `${o.flota.tie_liczba} myśliwców TIE`)) : null,
-          o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · ETA ${czasGry(o.podswietlny.do)}`) : null];
+          o.podswietlny && teraz() < o.podswietlny.do ? h('p.slaby.maly-tekst', `Lot podświetlny → ${o.podswietlny.planeta || `${liczba(o.podswietlny.x1, 1)} · ${liczba(o.podswietlny.y1, 1)}`} · prędkość ${liczba(o.podswietlny.predkosc_kms || 0, 1)} km/s · ETA ${czasGry(o.podswietlny.do)}`) : null,
+          o.lot && wNadprzestrzeni(o) ? h('p.slaby.maly-tekst', `Nadprzestrzeń · prędkość ${liczba(o.lot.predkosc_pc_doba || 0, 1)} pc/dobę · ETA ${czasGry(o.lot.eta)}`) : null,
+          czyGM() && o.id > 0 && ['statek', 'jednostka'].includes(o.typ) ? h('button.przycisk.maly', { type: 'button', onclick: () => {
+            const url = new URL('../../gm/mostek.html', import.meta.url); url.searchParams.set('obiekt', String(o.id));
+            window.open(url, '_blank', 'noopener');
+          } }, 'Testuj widok z mostka') : null,
+          otworzMostek];
         karta.classList.toggle('szeroka', prawa.length > 0);
         karta.append(zamknij, h('h2', nazwaPostaci(o)),
           h('div.mapa-znaczki', h('span.znaczek-cel', o.typ === 'postac' ? 'Pozycja postaci' : 'Pozycja jednostki')),
@@ -2391,10 +3080,12 @@ export default {
             wiersz('Współrzędne', `${liczba(p.x, 1)} · ${liczba(p.y, 1)}`),
             odleglosc !== null || (mojZnacznik() && p !== tuPlaneta) ? h('tr', h('th', 'Odległość od ciebie'),
               zywa(() => opisOdleglosci(pozycjaTeraz(mojZnacznik()), { x: p.x, y: p.y, k: kmWUkladzie(p) }) ?? (odleglosc !== null ? `${liczba(odleglosc)} pc` : null))) : null,
-            wiersz('Grawitacja', nieznane(p.g, `${liczba(p.g, 2)} G`)),
-            wiersz('Słońca · księżyce', nieznane(p.doba, `${p.slonca} · ${p.ksiezyce}`)),
-            wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
+            wiersz(p.typCiala === 'czarna_dziura' ? 'Obiekt centralny' : 'Grawitacja', p.typCiala === 'czarna_dziura' ? 'Czarna dziura' : nieznane(p.g, `${liczba(p.g, 2)} G`)),
+            wiersz(p.typCiala === 'czarna_dziura' ? 'Układ' : 'Słońca · księżyce', p.typCiala === 'czarna_dziura' ? '0 planet · 0 księżyców' : nieznane(p.doba, `${p.slonca} · ${p.ksiezyce}`)),
+            p.typCiala === 'czarna_dziura' ? null : wiersz('Doba · rok', nieznane(p.doba, `${liczba(p.doba, 1)} h · ${liczba(p.rok, 1)} dni`)),
             p.srednica > 0 ? wiersz('Średnica', `${liczba(p.srednica)} km`) : null),
+          p.typCiala === 'czarna_dziura' ? null : sekcjaDanychPublicznych(p),
+          p.typCiala === 'czarna_dziura' ? null : sekcjaDostawPlanety(p),
           (() => {
             // Lokacje orbitalne planety: pierścień stoczniowy i obłożenie doków.
             const r = (pozycja?.orbitalne || []).find((x) => norm(x.planeta) === p.klucz);
@@ -2404,8 +3095,8 @@ export default {
             return h('div.mapa-statki', h('div.slaby.maly-tekst', 'Orbita'), h('div', h('b', r.nazwa)),
               h('div.slaby.maly-tekst', `${liczba(r.wysokosc_km)} km nad powierzchnią · doki ISD: ${r.stanowiska.length} — budowa ${n[0]}, zajęte ${n[1]}, wolne ${n[2]}`));
           })(),
-          listaObecnych(p),
-          sekcjaNawigacji(p),
+          ctx.gosc ? null : listaObecnych(p),
+          ctx.gosc ? null : sekcjaNawigacji(p),
           widokUkladu(p),
           tutaj.length ? h('div.mapa-statki', h('div.slaby.maly-tekst', 'Statki twoich firm'),
             h('ul.lista', tutaj.map((s) => h('li', h('b', s.nazwa), h('span.slaby', ` · ${s.firma}`),
@@ -2618,9 +3309,22 @@ export default {
 
     // ---------- pozycja postaci ----------
 
+    function pobierzSzlakiWybranegoUkladu() {
+      if (!czyGM()) return;
+      const cel = wybrane?.planeta?.nazwa || '';
+      if (cel === celSzlakowZapytany) return;
+      celSzlakowZapytany = cel;
+      pobierzPozycje();
+    }
+
     async function pobierzPozycje() {
+      if (ctx.gosc) { pozycja = null; return; }
+      const numerZapytania = ++sekwencjaPozycji;
+      const celSzlakow = czyGM() ? wybrane?.planeta?.nazwa || '' : '';
       try {
-        pozycja = await api('mapa');
+        const dane = await api('mapa', undefined, celSzlakow ? { szlaki_do: celSzlakow } : undefined);
+        if (numerZapytania !== sekwencjaPozycji) return;
+        pozycja = dane;
       } catch {
         return; // bez zasięgu mapa działa dalej, tylko bez znaczników
       }
@@ -2854,7 +3558,7 @@ export default {
       const klucze = new Set(dodatkowe.map((p) => p.klucz));
       P = [...D.planety.filter((p) => !klucze.has(p.klucz)), ...dodatkowe];
       wgKlucza = new Map(P.map((p) => [p.klucz, p]));
-      if (wybrane?.planeta && !P.includes(wybrane.planeta)) wybierz(null);
+      if (wybrane?.planeta && !P.includes(wybrane.planeta)) wybierz(null, false);
       odswiez();
     }
 
@@ -2884,11 +3588,18 @@ export default {
     }
     const zapisWidoku = setInterval(zapiszWidok, 1500);
 
-    wczytajDane(String(ctx.uzytkownik?.login ?? ctx.uzytkownik?.id ?? '')).then(async (d) => {
+    wczytajDane(ctx.gosc ? 'publiczny' : String(ctx.uzytkownik?.login ?? ctx.uzytkownik?.id ?? '')).then(async (d) => {
       D = d;
       ustawDodatkowe([]);
       rozmiar();
       await pobierzPozycje();
+      if (ctx.gosc) {
+        try {
+          const jawne = await api('publiczny_panel');
+          trasyPubliczne = jawne.trasy || [];
+          if (wybrane?.planeta) wybierz(wybrane, false);
+        } catch { /* mapa publiczna pozostaje dostępna bez danych o kontraktach */ }
+      }
       // Zoom i kadr z bieżącego logowania (osobno dla każdego konta); bez zapisu — moja pozycja albo galaktyka.
       const zapisany = czytajWidok();
       if (zapisany) {
@@ -2913,6 +3624,8 @@ export default {
     });
 
     return () => {
+      clearInterval(zegarDoku);
+      document.documentElement.classList.remove('mapa-otwarta', 'mapa-telefon', 'mapa-gosc', 'stanowisko-paski');
       cancelAnimationFrame(ramka);
       clearInterval(odpytywanie);
       zapiszWidok();

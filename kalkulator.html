@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+  <!-- Podstawowe ustawienia strony, responsywności oraz czcionki Inter i JetBrains Mono -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kalkulator przepływu wody (24h)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            bgBase: '#0b0f14',
+            bgCard: '#121821',
+            bgInput: '#0d121a',
+            borderSubtle: '#1e293b',
+            accentCyan: '#22d3ee',
+            accentSky: '#38bdf8',
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    /* Ciemny schemat kontrolek systemowych (np. kalendarz i select) */
+    color-scheme: dark;
+
+    body {
+      background-color: #0b0f14;
+      color: #f1f5f9;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* Ukrycie strzałek w polu numerycznym dla czystszego wyglądu */
+    input[type='number']::-webkit-inner-spin-button,
+    input[type='number']::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    input[type='number'] {
+      -moz-appearance: textfield;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-bgBase text-slate-100 antialiased selection:bg-cyan-400/20 selection:text-cyan-200">
+  <main class="mx-auto max-w-3xl px-4 py-6 sm:py-10">
+
+    <!-- 1. Kompaktowy pasek podsumowania z aktualną (najnowszą) średnią 24h -->
+    <header
+      aria-label="Aktualna średnia z ostatnich 24h"
+      class="mb-5 flex flex-col gap-3 rounded-2xl border border-borderSubtle bg-bgCard px-5 py-4 sm:flex-row sm:items-center sm:justify-between shadow-xl shadow-black/30"
+    >
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="inline-block h-2 w-2 rounded-full bg-accentCyan"></span>
+          <h1 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Aktualna średnia z ostatnich 24h
+          </h1>
+        </div>
+        <p id="latestTimestampText" class="mt-1 font-mono text-xs text-slate-400">
+          Ostatni pomiar: –
+        </p>
+      </div>
+
+      <div class="flex items-baseline gap-2 sm:text-right">
+        <span
+          id="avg24hValue"
+          class="font-mono text-3xl sm:text-4xl font-bold tracking-tight text-accentCyan tabular-nums"
+        >
+          0,00
+        </span>
+        <span class="text-xs font-medium text-slate-400">
+          śr. / 24h
+        </span>
+      </div>
+    </header>
+
+    <!-- 2. Prosty pasek dodawania wpisu w jednej linii na desktopie -->
+    <section
+      aria-label="Dodaj wpis"
+      class="mb-5 rounded-2xl border border-borderSubtle bg-bgCard p-4 sm:p-5"
+    >
+      <form id="addEntryForm" class="grid grid-cols-1 gap-3 sm:grid-cols-12 sm:items-end" novalidate>
+        <!-- Wybór daty -->
+        <div class="sm:col-span-4">
+          <label for="entryDate" class="mb-1.5 block text-xs font-medium text-slate-300">
+            Data
+          </label>
+          <input
+            id="entryDate"
+            type="date"
+            required
+            class="w-full rounded-xl border border-borderSubtle bg-bgInput px-3.5 py-2.5 font-mono text-sm text-white transition focus:border-accentCyan focus:outline-none"
+          />
+        </div>
+
+        <!-- Wybór pełnej godziny (00:00 - 23:00) -->
+        <div class="sm:col-span-3">
+          <label for="entryHour" class="mb-1.5 block text-xs font-medium text-slate-300">
+            Godzina
+          </label>
+          <select
+            id="entryHour"
+            class="w-full rounded-xl border border-borderSubtle bg-bgInput px-3 py-2.5 font-mono text-sm text-white transition focus:border-accentCyan focus:outline-none"
+          ></select>
+        </div>
+
+        <!-- Pole przepływu -->
+        <div class="sm:col-span-3">
+          <label for="entryFlow" class="mb-1.5 block text-xs font-medium text-slate-300">
+            Przepływ
+          </label>
+          <input
+            id="entryFlow"
+            type="number"
+            step="any"
+            placeholder="np. 20"
+            required
+            class="w-full rounded-xl border border-borderSubtle bg-bgInput px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-500 transition focus:border-accentCyan focus:outline-none"
+          />
+        </div>
+
+        <!-- Przycisk Dodaj -->
+        <div class="sm:col-span-2">
+          <button
+            type="submit"
+            class="w-full rounded-xl bg-accentCyan px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-accentSky active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-accentCyan/50"
+          >
+            Dodaj
+          </button>
+        </div>
+      </form>
+
+      <!-- Komunikat walidacji (bez alertów) -->
+      <p id="formMessage" class="mt-2.5 hidden text-xs font-medium text-rose-400" role="alert"></p>
+    </section>
+
+    <!-- 3. Główna tabela wpisów ze średnią 24h dla każdej pozycji -->
+    <section
+      aria-label="Tabela przepływów i średnich 24h"
+      class="rounded-2xl border border-borderSubtle bg-bgCard overflow-hidden"
+    >
+      <div class="flex items-center justify-between border-b border-borderSubtle px-5 py-3.5">
+        <h2 class="text-sm font-semibold text-slate-200">
+          Dziennik pomiarów <span id="entriesCount" class="ml-1 font-mono text-xs font-normal text-slate-400">(0)</span>
+        </h2>
+
+        <button
+          type="button"
+          id="toggleSortBtn"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-borderSubtle bg-bgInput px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:border-accentCyan/50 hover:text-accentCyan"
+          title="Zmień kolejność wyświetlania wierszy"
+        >
+          <span id="sortLabel">Najnowsze na górze</span>
+          <span id="sortIcon" class="font-mono text-accentCyan">&darr;</span>
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="border-b border-borderSubtle bg-bgInput/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <th class="py-3 pl-5 pr-3">Data i godzina</th>
+              <th class="py-3 px-3 text-right">Czas h</th>
+              <th class="py-3 px-3 text-right">Przepływ</th>
+              <th class="py-3 px-3 text-right text-accentCyan">Średnia 24h</th>
+              <th class="py-3 pl-2 pr-4 text-right w-11"><span class="sr-only">Usuń</span></th>
+            </tr>
+          </thead>
+          <tbody id="entriesTableBody" class="divide-y divide-borderSubtle/70 text-sm tabular-nums">
+            <!-- Wiersze generowane przez JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Dyskretna stopka tabeli z akcjami -->
+      <footer class="flex flex-wrap items-center justify-between gap-3 border-t border-borderSubtle bg-bgInput/40 px-5 py-3 text-xs">
+        <span class="text-slate-500">
+          Każdy wiersz pokazuje średnią ważoną czasem z 24h wstecz.
+        </span>
+        <div class="flex items-center gap-4">
+          <button
+            type="button"
+            id="restoreSampleBtn"
+            class="font-medium text-slate-400 underline-offset-4 transition hover:text-accentCyan hover:underline"
+          >
+            Dane przykładowe
+          </button>
+          <button
+            type="button"
+            id="clearEntriesBtn"
+            class="font-medium text-slate-400 underline-offset-4 transition hover:text-rose-300 hover:underline"
+          >
+            Wyczyść wszystko
+          </button>
+        </div>
+      </footer>
+    </section>
+
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const STORAGE_KEY = 'kalkulator_wody_24h_wpisy_v3';
+      const MS_PER_HOUR = 3600 * 1000;
+      const WINDOW_HOURS = 24;
+
+      // Wstępne dane przykładowe z pliku użytkownika (17–22.11.2026)
+      const SAMPLE_CSV_RECORDS = [
+        { date: '2026-11-17', hour: 6, flow: 15 },
+        { date: '2026-11-18', hour: 6, flow: 15 },
+        { date: '2026-11-18', hour: 18, flow: 20 },
+        { date: '2026-11-19', hour: 6, flow: 20 },
+        { date: '2026-11-19', hour: 13, flow: 25 },
+        { date: '2026-11-20', hour: 6, flow: 25 },
+        { date: '2026-11-20', hour: 19, flow: 22 },
+        { date: '2026-11-20', hour: 20, flow: 19 },
+        { date: '2026-11-20', hour: 21, flow: 15 },
+        { date: '2026-11-21', hour: 6, flow: 15 },
+        { date: '2026-11-22', hour: 6, flow: 15 },
+      ];
+
+      let entries = [];
+      let sortNewestFirst = false;
+
+      // Elementy DOM
+      const avg24hValueEl = document.getElementById('avg24hValue');
+      const latestTimestampTextEl = document.getElementById('latestTimestampText');
+      const addEntryForm = document.getElementById('addEntryForm');
+      const entryDateInput = document.getElementById('entryDate');
+      const entryHourSelect = document.getElementById('entryHour');
+      const entryFlowInput = document.getElementById('entryFlow');
+      const formMessageEl = document.getElementById('formMessage');
+      const entriesCountEl = document.getElementById('entriesCount');
+      const entriesTableBody = document.getElementById('entriesTableBody');
+      const toggleSortBtn = document.getElementById('toggleSortBtn');
+      const sortLabelEl = document.getElementById('sortLabel');
+      const sortIconEl = document.getElementById('sortIcon');
+      const restoreSampleBtn = document.getElementById('restoreSampleBtn');
+      const clearEntriesBtn = document.getElementById('clearEntriesBtn');
+
+      /**
+       * Buduje timestamp (ms) dla pełnej godziny (bez minut i sekund)
+       */
+      function toFullHourMs(dateStr, hour) {
+        const parts = String(dateStr || '').split('-').map(Number);
+        if (parts.length !== 3 || parts.some(Number.isNaN)) return NaN;
+        const [y, m, d] = parts;
+        const h = Number(hour);
+        if (!Number.isInteger(h) || h < 0 || h > 23) return NaN;
+
+        const dt = new Date(y, m - 1, d, h, 0, 0, 0);
+        if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+          return NaN;
+        }
+        return dt.getTime();
+      }
+
+      /**
+       * Zwraca dzisiejszą datę (RRRR-MM-DD) i bieżącą godzinę zaokrągloną do pełnej godziny (0-23)
+       */
+      function getCurrentDateAndRoundedHour(now = new Date()) {
+        const rounded = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0);
+        if (now.getMinutes() >= 30) {
+          rounded.setHours(rounded.getHours() + 1);
+        }
+        const pad = (n) => String(n).padStart(2, '0');
+        return {
+          date: `${rounded.getFullYear()}-${pad(rounded.getMonth() + 1)}-${pad(rounded.getDate())}`,
+          hour: rounded.getHours(),
+        };
+      }
+
+      /**
+       * Formatuje timestamp pełnej godziny jako obiekt { date, time, full }
+       */
+      function formatHourTimestamp(ms) {
+        const dt = new Date(ms);
+        const pad = (n) => String(n).padStart(2, '0');
+        const date = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+        const time = `${pad(dt.getHours())}:00`;
+        return {
+          date,
+          time,
+          full: `${date} ${time}`,
+        };
+      }
+
+      function formatAvg(val) {
+        return new Intl.NumberFormat('pl-PL', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(Number.isFinite(val) ? val : 0);
+      }
+
+      function formatFlow(val) {
+        const rounded = Math.round(val * 100) / 100;
+        return new Intl.NumberFormat('pl-PL', {
+          minimumFractionDigits: Number.isInteger(rounded) ? 0 : 1,
+          maximumFractionDigits: 2,
+        }).format(Number.isFinite(rounded) ? rounded : 0);
+      }
+
+      /**
+       * Wypełnia listę rozwijaną pełnych godzin 00:00 - 23:00
+       */
+      function populateHourSelect() {
+        const fragment = document.createDocumentFragment();
+        for (let h = 0; h < 24; h++) {
+          const option = document.createElement('option');
+          option.value = String(h);
+          option.textContent = `${String(h).padStart(2, '0')}:00`;
+          fragment.appendChild(option);
+        }
+        entryHourSelect.appendChild(fragment);
+      }
+
+      /**
+       * Tworzy posortowaną listę wpisów z danych rekordowych { date, hour, flow }
+       */
+      function buildEntriesFromRecords(records) {
+        const byTs = new Map();
+        for (const rec of records) {
+          const tsMs = toFullHourMs(rec.date, rec.hour);
+          const flow = Number(rec.flow);
+          if (!Number.isNaN(tsMs) && Number.isFinite(flow)) {
+            byTs.set(tsMs, {
+              id: `${tsMs}-${Math.random().toString(36).slice(2, 7)}`,
+              tsMs,
+              flow,
+            });
+          }
+        }
+        return Array.from(byTs.values()).sort((a, b) => a.tsMs - b.tsMs);
+      }
+
+      /**
+       * Wczytuje wpisy z localStorage; przy pierwszym uruchomieniu ładuje dane przykładowe
+       */
+      function loadEntries() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw === null) {
+            return buildEntriesFromRecords(SAMPLE_CSV_RECORDS);
+          }
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          return parsed
+            .filter((item) => item && Number.isFinite(Number(item.tsMs)) && Number.isFinite(Number(item.flow)))
+            .map((item) => ({
+              id: String(item.id || `${item.tsMs}-${Math.random().toString(36).slice(2, 6)}`),
+              tsMs: Number(item.tsMs),
+              flow: Number(item.flow),
+            }))
+            .sort((a, b) => a.tsMs - b.tsMs);
+        } catch (_err) {
+          return buildEntriesFromRecords(SAMPLE_CSV_RECORDS);
+        }
+      }
+
+      /**
+       * Zapisuje wpisy do localStorage
+       */
+      function saveEntries() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+        } catch (_err) {
+          // Zignoruj błąd zapisu jeśli localStorage jest niedostępny
+        }
+      }
+
+      /**
+       * Wylicza dla KAŻDEGO chronologicznego wpisu:
+       * - czas trwania odcinka h (dla i = 0 wynosi 24h, dla i > 0 różnicę w pełnych godzinach)
+       * - średnią ważoną czasem z okna [ts[i] - 24h, ts[i]] (dzieloną przez łączny pokryty czas w oknie)
+       * - trend względem poprzedniego wpisu
+       */
+      function computeRowsWith24hAverage(sortedEntries) {
+        if (!sortedEntries.length) return [];
+
+        // Najpierw wyznaczamy odcinki czasowe [segStart, segEnd] dla wszystkich wpisów
+        const segments = sortedEntries.map((item, idx) => {
+          const durationHours =
+            idx === 0
+              ? WINDOW_HOURS
+              : Math.max(1, Math.round((item.tsMs - sortedEntries[idx - 1].tsMs) / MS_PER_HOUR));
+
+          const segEnd = item.tsMs;
+          const segStart = segEnd - durationHours * MS_PER_HOUR;
+
+          return {
+            ...item,
+            durationHours,
+            segStart,
+            segEnd,
+          };
+        });
+
+        // Dla każdego wpisu i liczymy średnią 24h w oknie [ts[i] - 24h, ts[i]]
+        const enriched = [];
+        for (let i = 0; i < segments.length; i++) {
+          const current = segments[i];
+          const winEnd = current.tsMs;
+          const winStart = winEnd - WINDOW_HOURS * MS_PER_HOUR;
+
+          let weightedFlowSum = 0;
+          let coveredHours = 0;
+
+          for (let j = 0; j <= i; j++) {
+            const seg = segments[j];
+            const overlapStart = Math.max(seg.segStart, winStart);
+            const overlapEnd = Math.min(seg.segEnd, winEnd);
+
+            if (overlapEnd > overlapStart) {
+              const overlapHours = (overlapEnd - overlapStart) / MS_PER_HOUR;
+              coveredHours += overlapHours;
+              weightedFlowSum += overlapHours * seg.flow;
+            }
+          }
+
+          const avg24h = coveredHours > 0 ? weightedFlowSum / coveredHours : current.flow;
+
+          // Subtelny wskaźnik trendu względem poprzedniego (starszego) wpisu
+          let trend = 'same';
+          if (i > 0) {
+            const prevAvg = enriched[i - 1].avg24h;
+            const diff = Math.round(avg24h * 100) - Math.round(prevAvg * 100);
+            if (diff > 0) trend = 'up';
+            else if (diff < 0) trend = 'down';
+          }
+
+          enriched.push({
+            ...current,
+            avg24h,
+            coveredHours,
+            trend,
+          });
+        }
+
+        return enriched;
+      }
+
+      function showError(msg) {
+        formMessageEl.textContent = msg;
+        formMessageEl.classList.remove('hidden');
+      }
+
+      function clearError() {
+        formMessageEl.textContent = '';
+        formMessageEl.classList.add('hidden');
+      }
+
+      /**
+       * Renderuje górny pasek podsumowania oraz pełną tabelę z wyliczoną średnią 24h dla każdego wiersza
+       */
+      function render() {
+        entries.sort((a, b) => a.tsMs - b.tsMs);
+
+        const computedRows = computeRowsWith24hAverage(entries);
+        entriesCountEl.textContent = `(${computedRows.length})`;
+
+        // Aktualizacja przycisku sortowania
+        sortLabelEl.textContent = sortNewestFirst ? 'Najnowsze na górze' : 'Chronologicznie';
+        sortIconEl.innerHTML = sortNewestFirst ? '&darr;' : '&uarr;';
+
+        if (!computedRows.length) {
+          avg24hValueEl.textContent = '0,00';
+          latestTimestampTextEl.textContent = 'Ostatni pomiar: brak wpisów';
+          entriesTableBody.innerHTML = `
+            <tr>
+              <td colspan="5" class="py-10 text-center text-xs text-slate-400">
+                Brak pomiarów. Dodaj wpis powyżej lub kliknij <span class="text-slate-200 font-medium">Dane przykładowe</span> w stopce.
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        // Górny pasek pokazuje najnowszy chronologiczny wpis
+        const latestRow = computedRows[computedRows.length - 1];
+        const latestFmt = formatHourTimestamp(latestRow.tsMs);
+        avg24hValueEl.textContent = formatAvg(latestRow.avg24h);
+        latestTimestampTextEl.textContent = `Ostatni pomiar: ${latestFmt.full}`;
+
+        const displayRows = sortNewestFirst ? [...computedRows].reverse() : computedRows;
+
+        entriesTableBody.innerHTML = displayRows
+          .map((row) => {
+            const fmt = formatHourTimestamp(row.tsMs);
+            const isLatest = row.id === latestRow.id;
+
+            let trendBadge = '<span class="inline-block w-3.5 text-center text-slate-600">&bull;</span>';
+            if (row.trend === 'up') {
+              trendBadge = '<span class="inline-block w-3.5 text-center text-emerald-400" title="Wzrost względem poprzedniego wpisu">&uarr;</span>';
+            } else if (row.trend === 'down') {
+              trendBadge = '<span class="inline-block w-3.5 text-center text-amber-400" title="Spadek względem poprzedniego wpisu">&darr;</span>';
+            }
+
+            return `
+              <tr class="transition hover:bg-bgInput/70 ${isLatest ? 'bg-cyan-950/15' : ''}">
+                <td class="py-3 pl-5 pr-3 font-mono text-xs sm:text-sm text-slate-200 whitespace-nowrap">
+                  <span>${fmt.date}</span>
+                  <span class="ml-1.5 text-slate-400">${fmt.time}</span>
+                </td>
+                <td class="py-3 px-3 text-right font-mono text-xs sm:text-sm text-slate-400 whitespace-nowrap">
+                  ${row.durationHours} h
+                </td>
+                <td class="py-3 px-3 text-right font-mono text-xs sm:text-sm font-medium text-slate-200 whitespace-nowrap">
+                  ${formatFlow(row.flow)}
+                </td>
+                <td class="py-3 px-3 text-right font-mono text-sm sm:text-base font-bold text-accentCyan whitespace-nowrap">
+                  <span>${formatAvg(row.avg24h)}</span>
+                  <span class="ml-1 text-xs font-semibold">${trendBadge}</span>
+                </td>
+                <td class="py-3 pl-2 pr-4 text-right">
+                  <button
+                    type="button"
+                    data-id="${row.id}"
+                    aria-label="Usuń wpis z ${fmt.full}"
+                    title="Usuń wpis"
+                    class="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition hover:bg-rose-500/15 hover:text-rose-300"
+                  >
+                    &times;
+                  </button>
+                </td>
+              </tr>
+            `;
+          })
+          .join('');
+      }
+
+      // Dodawanie nowego wpisu (lub nadpisanie istniejącego dla tej samej pełnej godziny)
+      addEntryForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        clearError();
+
+        const dateStr = entryDateInput.value;
+        const hourVal = parseInt(entryHourSelect.value, 10);
+        const rawFlow = String(entryFlowInput.value || '').replace(',', '.').trim();
+        const flowVal = Number(rawFlow);
+
+        if (!dateStr) {
+          showError('Wybierz datę pomiaru.');
+          return;
+        }
+
+        const tsMs = toFullHourMs(dateStr, hourVal);
+        if (Number.isNaN(tsMs)) {
+          showError('Nieprawidłowa data lub godzina.');
+          return;
+        }
+
+        if (rawFlow === '' || !Number.isFinite(flowVal)) {
+          showError('Wpisz poprawną wartość przepływu.');
+          entryFlowInput.focus();
+          return;
+        }
+
+        const existingIdx = entries.findIndex((item) => item.tsMs === tsMs);
+        if (existingIdx >= 0) {
+          entries[existingIdx].flow = flowVal;
+        } else {
+          entries.push({
+            id: `${tsMs}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            tsMs,
+            flow: flowVal,
+          });
+        }
+
+        saveEntries();
+        entryFlowInput.value = '';
+        render();
+        entryFlowInput.focus();
+      });
+
+      // Przełączanie kolejności sortowania tabeli (najnowsze na górze / chronologicznie)
+      toggleSortBtn.addEventListener('click', function () {
+        sortNewestFirst = !sortNewestFirst;
+        render();
+      });
+
+      // Usuwanie pojedynczego wiersza
+      entriesTableBody.addEventListener('click', function (event) {
+        const btn = event.target.closest('button[data-id]');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        entries = entries.filter((item) => item.id !== id);
+        saveEntries();
+        render();
+      });
+
+      // Przywrócenie danych przykładowych (17–22.11.2026)
+      restoreSampleBtn.addEventListener('click', function () {
+        clearError();
+        entries = buildEntriesFromRecords(SAMPLE_CSV_RECORDS);
+        saveEntries();
+        render();
+      });
+
+      // Wyczyszczenie wszystkich wpisów
+      clearEntriesBtn.addEventListener('click', function () {
+        clearError();
+        entries = [];
+        saveEntries();
+        render();
+      });
+
+      // Inicjalizacja na start: dzisiejsza data oraz bieżąca zaokrąglona pełna godzina
+      populateHourSelect();
+      const initialNow = getCurrentDateAndRoundedHour(new Date());
+      entryDateInput.value = initialNow.date;
+      entryHourSelect.value = String(initialNow.hour);
+      entries = loadEntries();
+      render();
+    })();
+  </script>
+</body>
+</html>

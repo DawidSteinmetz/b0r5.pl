@@ -1,0 +1,227 @@
+{
+ "wersja": 1,
+ "tryb": "gracz",
+ "imie": "Dave Stingert",
+ "gatunek": "czlowiek",
+ "kariera": "kadet",
+ "specjalizacje": [
+  "dowodca",
+  "mowca",
+  "oficer_pokladowy"
+ ],
+ "cechy": {
+  "krzepa": 2,
+  "zwinnosc": 2,
+  "intelekt": 3,
+  "spryt": 3,
+  "wola": 4,
+  "prezencja": 4
+ },
+ "umiejetnosci": {
+  "koordynacja": {
+   "ranga": 1
+  },
+  "pilotaz_plan": {
+   "ranga": 1
+  },
+  "walka_wrecz": {
+   "ranga": 1
+  },
+  "bijatyka": {
+   "ranga": 1
+  },
+  "bron_ciezka": {
+   "ranga": 1
+  },
+  "w_legendy": {
+   "ranga": 1
+  },
+  "w_ksenologia": {
+   "ranga": 1
+  },
+  "ulica": {
+   "ranga": 1
+  },
+  "przetrwanie": {
+   "ranga": 1
+  },
+  "kretactwo": {
+   "ranga": 1
+  },
+  "oszustwo": {
+   "ranga": 2
+  },
+  "pilotaz_kosm": {
+   "ranga": 2
+  },
+  "bron_lekka": {
+   "ranga": 2
+  },
+  "w_rubieze": {
+   "ranga": 2
+  },
+  "w_polswiatek": {
+   "ranga": 2
+  },
+  "mechanika": {
+   "ranga": 2
+  },
+  "medycyna": {
+   "ranga": 2
+  },
+  "atletyka": {
+   "ranga": 2
+  },
+  "odpornosc": {
+   "ranga": 2
+  },
+  "astronawigacja": {
+   "ranga": 3
+  },
+  "w_edukacja": {
+   "ranga": 3
+  },
+  "percepcja": {
+   "ranga": 3
+  },
+  "urok": {
+   "ranga": 3
+  },
+  "artyleria": {
+   "ranga": 3
+  },
+  "komputery": {
+   "ranga": 3
+  },
+  "opanowanie": {
+   "ranga": 4
+  },
+  "negocjacje": {
+   "ranga": 4
+  },
+  "w_jadro": {
+   "ranga": 4
+  },
+  "czujnosc": {
+   "ranga": 4
+  },
+  "zastraszanie": {
+   "ranga": 4
+  },
+  "przywodztwo": {
+   "ranga": 5
+  },
+  "dyscyplina": {
+   "ranga": 5
+  }
+ },
+ "talenty": [
+  {
+   "nazwa": "Głos dowodzenia",
+   "ranga": 2,
+   "poziom": 1,
+   "opis": "Testy Przywództwa łatwiejsze o rangę (kości wzmocnienia)."
+  },
+  {
+   "nazwa": "Autorytet",
+   "ranga": 2,
+   "poziom": 1,
+   "opis": "Opanowanie i Przywództwo łatwiejsze o rangę; trudniej podważyć twoje rozkazy."
+  },
+  {
+   "nazwa": "Natchniona przemowa",
+   "ranga": 1,
+   "poziom": 1,
+   "opis": "Akcja Przywództwa: każdy sukces przywraca sojusznikom w zasięgu 1 punkt wysiłku."
+  },
+  {
+   "nazwa": "Oficer pokładowy",
+   "ranga": 2,
+   "poziom": 2,
+   "opis": "Na mostku i w centrach kontroli: Dyscyplina i Czujność łatwiejsze o rangę."
+  },
+  {
+   "nazwa": "Dowódca polowy",
+   "ranga": 1,
+   "poziom": 2,
+   "opis": "Wysiłkiem i testem Przywództwa daje sojusznikom dodatkowy manewr."
+  },
+  {
+   "nazwa": "Zgrana załoga",
+   "ranga": 1,
+   "poziom": 3,
+   "opis": "Załoga twojego okrętu działa sprawniej: testy obsługi okrętu łatwiejsze o rangę, morale spada wolniej."
+  },
+  {
+   "nazwa": "Taktyk floty",
+   "ranga": 1,
+   "poziom": 4,
+   "opis": "Raz na starcie: twoja flota zaczyna z przewagą (np. wolny manewr całej formacji)."
+  },
+  {
+   "nazwa": "Hart",
+   "ranga": 1,
+   "poziom": 1,
+   "opis": "+1 do progu wysiłku za rangę."
+  }
+ ],
+ "grupa": 3,
+ "pd": {
+  "zdobyte": 1110
+ },
+ "kredyty": 2500,
+ "zobowiazanie": {
+  "typ": "Służba",
+  "wartosc": 10,
+  "opis": "Imperialna Marynarka Wojenna: rozkazy dowództwa sektora mają pierwszeństwo przed wszystkim.",
+  "dodatki": {
+   "pd": 0,
+   "kr": 0
+  }
+ },
+ "motywacja": {
+  "typ": "Ambicja",
+  "szczegol": "Władza",
+  "opis": "Admiralska szarfa — i flota, która pójdzie za nim w ogień."
+ },
+ "bronie": [
+  {
+   "nazwa": "Pistolet blasterowy",
+   "umiejetnosc": "bron_lekka",
+   "obr": 6,
+   "kryt": 3,
+   "zasieg": "średni",
+   "cechy": "Ogłuszanie"
+  }
+ ],
+ "pancerz": {
+  "nazwa": "Mundur oficera floty",
+  "pancerz": 0,
+  "obrona": 0
+ },
+ "ekwipunek": "Cylinder kodowy dowódcy, komunikator, datapad HOLOLINK, czapka oficerska.",
+ "wyglad": {
+  "wiek": "",
+  "plec": "mężczyzna",
+  "wzrost": "",
+  "opis": ""
+ },
+ "planeta": "",
+ "historia": {
+  "pochodzenie": "",
+  "historia": "Kapitan Imperialnej Marynarki Wojennej, dowódca gwiezdnego niszczyciela. Karierę zaczynał jako kadet akademii floty; przeszedł kolejne szczeble — chorąży, porucznik, komandor porucznik, komandor — aż do stopnia kapitana.",
+  "charakter": "",
+  "cele": "",
+  "kontakty": ""
+ },
+ "pochodne": {
+  "rany": null,
+  "wysilek": null,
+  "pancerz": null,
+  "obrona_w": null,
+  "obrona_d": null
+ },
+ "notatki_mg": "",
+ "rola": "Kapitan",
+ "poziom_kariery": 5
+}

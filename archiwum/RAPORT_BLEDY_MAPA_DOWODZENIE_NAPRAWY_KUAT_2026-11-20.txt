@@ -1,0 +1,98 @@
+RAPORT BŁĘDÓW I NOWEJ FUNKCJI — MAPA, DOWODZENIE I NAPRAWY
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+ZAKRES
+Raport porządkuje zgłoszone błędy oraz opisuje nową, uproszczoną funkcję naprawy okrętów na Kuat. Kod nie był modyfikowany.
+
+1. BRAK CIENIA DNIA I NOCY NA NAR SHADDAA
+Obecnie:
+Na mapie Nar Shaddaa nie widać cienia rozdzielającego stronę dzienną i nocną. Nie da się rozpoznać, która część planety jest oświetlona, a która znajduje się w nocy.
+
+Oczekiwane:
+Mapa Nar Shaddaa pokazuje czytelny podział na dzień i noc, zgodny z położeniem słońca i aktualnym obrotem ciała. Cień powinien przesuwać się wraz ze zmianą czasu w układzie.
+
+Kryterium poprawki:
+Na mapie można jednoznacznie wskazać oświetloną i nieoświetloną stronę Nar Shaddaa; granica cienia odpowiada kierunkowi światła.
+
+2. NIE MOŻNA WYZNACZYĆ KURSU PODŚWIETLNEGO W STUDNI GRAWITACYJNEJ
+Obecnie:
+Nadal nie można wyznaczyć kursu dla lotu podświetlnego w obrębie studni grawitacyjnej ciała niebieskiego.
+
+Oczekiwane:
+Gracz może wyznaczyć i wykonać kurs podświetlny w studni grawitacyjnej. Obecność studni nie powinna blokować lokalnego lotu podświetlnego. Jednocześnie trasa musi uwzględniać ciało niebieskie i nie może prowadzić przez planetę lub inne ciało będące przeszkodą.
+
+Kryterium poprawki:
+Można wybrać punkt docelowy w obrębie studni, zatwierdzić kurs podświetlny i rozpocząć lot. Kurs kolizyjny z ciałem niebieskim jest odrzucany albo bezpiecznie omijany.
+
+3. VENKA TARA WIDZI TAJNE PLANETY
+Obecnie:
+Gracz Venka Tara widzi na mapie Zephyrię i Havis III, mimo że są to obecnie planety tajne i powinny być znane tylko nielicznym.
+
+Oczekiwane:
+Widoczność Zephyrii i Havis III jest ograniczona do kont, którym MG jawnie nadał dostęp, oraz panelu MG. Venka Tara nie powinna otrzymywać nazw ani danych tych planet, jeśli nie ma przyznanego dostępu.
+
+Kryterium poprawki:
+Na koncie Venka Tara planety nie pojawiają się w mapie, wyszukiwarce ani innych dostępnych widokach, dopóki dostęp nie zostanie nadany. MG nadal może je zobaczyć i zarządzać uprawnieniami.
+
+4. NIEUPORZĄDKOWANE PRZYCISKI OBROTU FLOTY
+Obecnie:
+W oknie dowodzenia flotą przyciski obrotu +45°, +15° i −15° są w jednym rzędzie, a −45° samotnie w drugim. Układ jest niesymetryczny i utrudnia szybki wybór.
+
+Oczekiwane:
+Przyciski dodatnie i ujemne powinny być ułożone czytelnie, w logicznych parach. Co najmniej −15° i −45° powinny znajdować się obok siebie; warto zamienić pozycję −45° z obecnym przyciskiem −15°, aby znaki i wartości tworzyły spójny układ.
+
+Proponowany układ:
++15°  +45°  −15°  −45°
+
+Kryterium poprawki:
+Wszystkie cztery przyciski są w jednym, równym rzędzie na typowym rozmiarze okna; przy wąskim widoku układają się w dwa czytelne rzędy, bez samotnego przycisku.
+
+5. NOWY KOMPONENT: UPROSZCZONA NAPRAWA OKRĘTÓW NA KUAT
+Cel:
+Umożliwić graczowi po przylocie na Kuat szybkie oddanie okrętu do naprawy bez ręcznego konfigurowania każdej czynności.
+
+Oczekiwany przebieg:
+1. Gracz przylatuje na Kuat swoim ISD.
+2. W odpowiednim widoku pojawia się przycisk „Oddaj do naprawy” lub równoważna, jednoznaczna akcja.
+3. Jedno kliknięcie zgłasza okręt do kolejki napraw i rozpoczyna obsługę.
+4. Jeśli kolejka jest pusta, naprawa rozpoczyna się od razu — bez oczekiwania na ręczną akceptację.
+5. System tworzy naprawy dla uszkodzonych podzespołów. Każdy element otrzymuje osobną prognozę czasu oraz niezależny, losowany rzeczywisty czas wykonania.
+6. Naprawy mogą przebiegać równolegle zgodnie z dostępną liczbą stanowisk. Jeśli jednocześnie naprawiane są dwa elementy, pulpit pokazuje dwie osobne ikonki naprawy — po jednej dla każdego elementu.
+
+Informacja na pulpicie:
+- Dla każdego naprawianego podzespołu: nazwa elementu i prognozowany czas do zakończenia.
+- Dla całego okrętu: prognozowany łączny czas naprawy.
+- Dla każdej aktywnej naprawy osobna ikonka i osobne odliczanie; dwie równoległe naprawy oznaczają dwie ikonki.
+- Po zakończeniu naprawy odpowiednia ikonka i odliczanie znikają, a stan podzespołu zostaje zaktualizowany.
+
+Losowanie czasu:
+- Pierwszy randomizator wylicza prognozowany czas naprawy każdego podzespołu.
+- Drugi, niezależny randomizator wylicza faktyczny czas wykonania naprawy.
+- Prognoza jest szacunkiem, a nie gwarancją; rzeczywisty czas może być krótszy lub dłuższy.
+- Wartości należy wyliczać osobno dla każdego podzespołu, a nie jedną wspólną wartością dla całego okrętu.
+
+Kryteria poprawki:
+- Przy pustej kolejce jedno kliknięcie rozpoczyna naprawę.
+- Każdy uszkodzony podzespół ma własną prognozę i rzeczywisty czas.
+- Dwie naprawy prowadzone równolegle są widoczne jako dwie osobne pozycje/ikonki.
+- Całkowity czas prognozowany odpowiada planowi napraw wszystkich elementów i uwzględnia naprawy równoległe oraz ewentualne oczekiwanie w kolejce.
+- Po faktycznym zakończeniu element jest oznaczony jako naprawiony, niezależnie od różnicy między prognozą a rzeczywistym czasem.
+
+DO USTALENIA PRZY PROJEKTOWANIU
+- Ile stanowisk naprawczych na Kuat może pracować jednocześnie.
+- Czy kolejka i warsztat dotyczą wyłącznie ISD, czy docelowo również innych typów statków.
+- Jak wyliczać zakres prognozy i rzeczywistego czasu dla poszczególnych klas podzespołów.
+- Czy gracz widzi dokładny pozostały czas faktyczny, czy jedynie prognozę aktualizowaną w trakcie pracy.
+
+PRIORYTETY
+1. Naprawić możliwość wyznaczania kursu podświetlnego w studni grawitacyjnej bez dopuszczania kolizji z ciałem niebieskim.
+2. Ograniczyć widoczność Zephyrii i Havis III dla kont bez uprawnień.
+3. Przywrócić czytelny cień dnia i nocy na Nar Shaddaa.
+4. Uporządkować przyciski obrotu floty.
+5. Zaprojektować i wdrożyć uproszczony komponent napraw na Kuat.
+
+UWAGI
+- Punkt o widoczności planet dotyczy konkretnego konta wskazanego w zgłoszeniu; należy sprawdzić przypisane mu uprawnienia i dane zwracane przez API.
+- „Czas całości” napraw powinien uwzględniać równoległość: przy kilku stanowiskach suma czasów elementów nie musi być równa czasowi całego procesu.
+- Raport odzwierciedla zgłoszone objawy i oczekiwania. Nie przeprowadzono testów ani zmian kodu.

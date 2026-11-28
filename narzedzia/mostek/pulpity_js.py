@@ -24,7 +24,7 @@ def eksport():
             dane[klasa][nazwa] = [[e[0], e[1], e[2], e[3], *(e[4:6] if len(e) > 5 else (1, 1)), *(e[6:7])] for e in elementy]
             formaty.setdefault(klasa, {})[nazwa] = FORMATY[format_pulpitu(klasa, nazwa)]
     js = ('// PLIK GENEROWANY: python narzedzia/mostek/pulpity_js.py — nie edytuj, zmieniaj narzedzia/mostek/uklady/.\n'
-          '// Układy pulpitów (siatka 13×9, telefon 5×9): [typ, kolumna, wiersz, tekst, szer, wys, (tekst_min suwaka)].\n'
+          '// Układy pulpitów (siatka 13×9, telefon 5×10): [typ, kolumna, wiersz, tekst, szer, wys, (tekst_min suwaka)].\n'
           '// Typy: S suwak zakresu, R wzmocnij, Y suwak, G synchronizacja, B urządzenie / ekran, W polecenie.\n\n'
           f'export const KOLORY = {json.dumps(KOLORY, ensure_ascii=False)};\n'
           f'export const FORMATY = {json.dumps(formaty, ensure_ascii=False)};\n'

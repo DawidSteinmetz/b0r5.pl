@@ -172,26 +172,200 @@ function karta_pojazdy(array $lista): array
     return $wynik;
 }
 
-// Karta EotE NPC (osoby_karta_eote, migracja 040): JSON albo null.
+// Karty EotE są przechowywane jako wiersze SQL (węzły drzewa), nigdy jako blob JSON.
+function eote_sql_typ($wartosc, string $sciezka = ''): string
+{
+    $obiekty = ['', '/cechy', '/umiejetnosci', '/pd', '/zobowiazanie', '/zobowiazanie/dodatki', '/motywacja', '/pancerz', '/wyglad', '/historia', '/pochodne'];
+    if (in_array($sciezka, $obiekty, true)) return 'obiekt';
+    if (is_array($wartosc)) return array_is_list($wartosc) ? 'lista' : 'obiekt';
+    if (is_object($wartosc)) return 'obiekt';
+    if (is_bool($wartosc)) return 'logiczna';
+    if (is_int($wartosc) || is_float($wartosc)) return 'liczba';
+    if ($wartosc === null) return 'null';
+    return 'tekst';
+}
+
+// Do serializacji odtwarzamy obiekty JSON dla pól EotE, ale wewnątrz PHP zostają tablicami.
+function eote_json_ksztaltuj($wartosc, string $sciezka = '')
+{
+    if (!is_array($wartosc)) return $wartosc;
+    $typ = eote_sql_typ($wartosc, $sciezka);
+    $wynik = [];
+    foreach ($wartosc as $klucz => $element) {
+        $segment = str_replace(['~', '/'], ['~0', '~1'], (string) $klucz);
+        $wynik[$klucz] = eote_json_ksztaltuj($element, $sciezka . '/' . $segment);
+    }
+    return $typ === 'obiekt' ? (object) $wynik : $wynik;
+}
+
+function eote_odpowiedz_ksztaltuj($dane)
+{
+    if (!is_array($dane)) return $dane;
+    foreach ($dane as $klucz => $wartosc) {
+        if ($klucz === 'eote' && is_array($wartosc)) $dane[$klucz] = eote_json_ksztaltuj($wartosc);
+        else $dane[$klucz] = eote_odpowiedz_ksztaltuj($wartosc);
+    }
+    return $dane;
+}
+
+function eote_sql_splaszcz($wartosc, string $sciezka = '', int $glebokosc = 0): array
+{
+    if ($glebokosc > 32) blad('Karta ma zbyt głęboką strukturę.');
+    $typ = eote_sql_typ($wartosc, $sciezka);
+    $tekst = match ($typ) {
+        'obiekt', 'lista', 'null' => null,
+        'logiczna' => $wartosc ? '1' : '0',
+        default => (string) $wartosc,
+    };
+    $wynik = [['sciezka' => $sciezka, 'typ' => $typ, 'wartosc' => $tekst]];
+    if ($typ === 'obiekt' || $typ === 'lista') {
+        foreach ((array) $wartosc as $klucz => $element) {
+            $segment = str_replace(['~', '/'], ['~0', '~1'], (string) $klucz);
+            $podsciezka = $sciezka . '/' . $segment;
+            array_push($wynik, ...eote_sql_splaszcz($element, $podsciezka, $glebokosc + 1));
+            if (count($wynik) > 10000) blad('Karta zawiera zbyt wiele pól.');
+        }
+    }
+    return $wynik;
+}
+
+function eote_sql_zbuduj(array $wiersze): ?array
+{
+    if (!$wiersze) return null;
+    $wezly = [];
+    foreach ($wiersze as $w) $wezly[(string) $w['sciezka']] = $w;
+    $dzieci = [];
+    foreach ($wiersze as $w) {
+        $sc = (string) $w['sciezka'];
+        if ($sc === '') continue;
+        $i = strrpos($sc, '/');
+        $rodzic = $i === false ? '' : substr($sc, 0, $i);
+        $segment = $i === false ? $sc : substr($sc, $i + 1);
+        $segment = str_replace(['~1', '~0'], ['/', '~'], $segment);
+        $dzieci[$rodzic][$segment] = $sc;
+    }
+    $zbuduj = function (string $sc) use (&$zbuduj, $wezly, $dzieci) {
+        $w = $wezly[$sc] ?? null;
+        if (!$w) return null;
+        $typ = (string) $w['typ'];
+        if ($typ === 'obiekt' || $typ === 'lista') {
+            $out = [];
+            foreach ($dzieci[$sc] ?? [] as $klucz => $podsciezka) {
+                $out[$typ === 'lista' ? (int) $klucz : $klucz] = $zbuduj($podsciezka);
+            }
+            // API PHP operuje na tablicach asocjacyjnych także wewnątrz CV.
+            // stdClass zachowuje JSON-owe `{}`, ale późniejsze odczyty reguł
+            // (`$e['cechy']['prezencja']`) kończą się błędem typu.
+            return $out;
+        }
+        if ($typ === 'null') return null;
+        if ($typ === 'logiczna') return $w['wartosc'] === '1';
+        if ($typ === 'liczba') {
+            $v = (string) $w['wartosc'];
+            return preg_match('/^-?\d+$/', $v) ? (int) $v : (float) $v;
+        }
+        return (string) $w['wartosc'];
+    };
+    $karta = $zbuduj('');
+    return is_array($karta) ? $karta : null;
+}
+
+function eote_sql_odczytaj(string $typKlucza, string|int $wartosc): ?array
+{
+    if (!tabela_sql_dostepna('eote_cv_karty') || !tabela_sql_dostepna('eote_cv_wartosci')) return null;
+    $kolumna = $typKlucza === 'osoba_id' ? 'osoba_id' : 'legacy_uid';
+    $q = polaczenie_bazy()->prepare("SELECT id FROM eote_cv_karty WHERE {$kolumna} = ?");
+    $q->execute([$wartosc]);
+    $idKarty = $q->fetchColumn();
+    if ($idKarty === false) return null;
+    $q = polaczenie_bazy()->prepare('SELECT sciezka,typ,wartosc FROM eote_cv_wartosci WHERE karta_id = ? ORDER BY CHAR_LENGTH(sciezka), sciezka');
+    $q->execute([(int) $idKarty]);
+    return eote_sql_zbuduj($q->fetchAll(PDO::FETCH_ASSOC));
+}
+
+function eote_sql_zapisz(string $typKlucza, string|int $wartosc, array $e): void
+{
+    if (!tabela_sql_dostepna('eote_cv_karty') || !tabela_sql_dostepna('eote_cv_wartosci')) {
+        blad('Brakuje tabel CV w SQL. Zaimportuj api/migracje/042_karty_eote_sql.sql.');
+    }
+    $pola = eote_sql_splaszcz($e);
+    $db = polaczenie_bazy();
+    $wlasnaTransakcja = !$db->inTransaction();
+    if ($wlasnaTransakcja) $db->beginTransaction();
+    try {
+        $kolumna = $typKlucza === 'osoba_id' ? 'osoba_id' : 'legacy_uid';
+        $q = $db->prepare("SELECT id FROM eote_cv_karty WHERE {$kolumna} = ? FOR UPDATE");
+        $q->execute([$wartosc]);
+        $idKarty = $q->fetchColumn();
+        if ($idKarty === false) {
+            $q = $db->prepare("INSERT INTO eote_cv_karty ({$kolumna}) VALUES (?)");
+            $q->execute([$wartosc]);
+            $idKarty = $db->lastInsertId();
+        }
+        $db->prepare('DELETE FROM eote_cv_wartosci WHERE karta_id = ?')->execute([(int) $idKarty]);
+        $ins = $db->prepare('INSERT INTO eote_cv_wartosci (karta_id,sciezka,typ,wartosc) VALUES (?,?,?,?)');
+        foreach ($pola as $p) $ins->execute([(int) $idKarty, $p['sciezka'], $p['typ'], $p['wartosc']]);
+        if ($wlasnaTransakcja) $db->commit();
+    } catch (Throwable $e) {
+        if ($wlasnaTransakcja && $db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
+}
+
+function eote_legacy_gracza_usun(string $uid): void
+{
+    zmien('karty', function (&$k) use ($uid) {
+        unset($k[$uid]['eote']);
+        if (isset($k[$uid]) && !$k[$uid]) unset($k[$uid]);
+    });
+}
+
+function eote_gracz_odczytaj(string $uid, ?array $legacy = null): ?array
+{
+    $e = eote_sql_odczytaj('legacy_uid', $uid);
+    if ($e !== null) {
+        if (is_array($legacy)) eote_legacy_gracza_usun($uid);
+        return $e;
+    }
+    if (!is_array($legacy) || !isset($legacy['eote']) || !is_array($legacy['eote'])) return null;
+    // Jednorazowo przenieś stare CV z payloadu datapad_dane do tabel SQL.
+    if (tabela_sql_dostepna('eote_cv_karty') && tabela_sql_dostepna('eote_cv_wartosci')) {
+        eote_sql_zapisz('legacy_uid', $uid, $legacy['eote']);
+        eote_legacy_gracza_usun($uid);
+    }
+    return $legacy['eote'];
+}
+
 function eote_npc_odczytaj(int $osoba): ?array
 {
-    if (!$osoba || !tabela_sql_dostepna('osoby_karta_eote')) return null;
+    if (!$osoba) return null;
+    $e = eote_sql_odczytaj('osoba_id', $osoba);
+    if ($e !== null) return $e;
+    // Importuj automatycznie CV zapisane dawniej przez migrację 040.
+    if (!tabela_sql_dostepna('osoby_karta_eote')) return null;
     $q = polaczenie_bazy()->prepare('SELECT dane FROM osoby_karta_eote WHERE osoba_id = ?');
     $q->execute([$osoba]);
-    $v = $q->fetchColumn();
-    return $v === false ? null : json_decode((string) $v, true);
+    $stare = $q->fetchColumn();
+    $e = $stare === false ? null : json_decode((string) $stare, true);
+    if (is_array($e) && tabela_sql_dostepna('eote_cv_karty') && tabela_sql_dostepna('eote_cv_wartosci')) {
+        eote_sql_zapisz('osoba_id', $osoba, $e);
+        polaczenie_bazy()->prepare('DELETE FROM osoby_karta_eote WHERE osoba_id = ?')->execute([$osoba]);
+    }
+    return is_array($e) ? $e : null;
 }
+
 function eote_npc_zapisz(int $osoba, array $e): void
 {
-    $json = json_encode($e, JSON_UNESCAPED_UNICODE);
-    polaczenie_bazy()->prepare('INSERT INTO osoby_karta_eote (osoba_id, dane) VALUES (?, ?) ON DUPLICATE KEY UPDATE dane = VALUES(dane), zmieniono = CURRENT_TIMESTAMP')
-        ->execute([$osoba, $json]);
+    eote_sql_zapisz('osoba_id', $osoba, $e);
 }
 
 function karta(string $uid): array
 {
     $k = wczytaj('karty', [])[$uid] ?? [];
     $k = array_replace_recursive(karta_pusta(), $k);
+    $eote = eote_gracz_odczytaj($uid, is_array($k['eote'] ?? null) ? ['eote' => $k['eote']] : null);
+    if ($eote !== null) $k['eote'] = $eote;
+    else unset($k['eote']);
     $sql = pozycja_sql_odczytaj($uid);
     if ($sql !== null) {
         $k['pozycja'] = array_replace($k['pozycja'], $sql);
@@ -359,27 +533,28 @@ function obsluz_karty(string $akcja, bool $post): void
             if (isset($_GET['uid'])) {
                 $uid = (string) $_GET['uid'];
                 if (!in_array($uid, array_column(uzytkownicy(), 'id'), true)) blad('Nie ma takiego gracza.', 404);
-                odpowiedz(['eote' => karta($uid)['eote'] ?? null]);
+                $legacy = wczytaj('karty', [])[$uid]['eote'] ?? null;
+                odpowiedz(['eote' => eote_gracz_odczytaj($uid, is_array($legacy) ? ['eote' => $legacy] : null)]);
             }
             odpowiedz(['eote' => eote_npc_odczytaj((int) ($_GET['osoba'] ?? 0))]);
 
         case 'mg_eote_zapisz':
-            // Zapis CV: gracz (uid) — w karcie postaci; NPC (osoba_id) — w osoby_karta_eote; nowy NPC — podmiot + osoba + CV.
+            // CV gracza i NPC zapisujemy do wierszowych tabel SQL.
             if (!$post) blad('Zła metoda.', 405);
             wymagaj_mg();
             $w = wejscie();
             $e = $w['eote'] ?? null;
             if (!is_array($e)) blad('Brak karty.');
-            $json = json_encode($e, JSON_UNESCAPED_UNICODE);
-            if ($json === false || strlen($json) > 60000) blad('Karta jest za duża.');
-            $e = json_decode($json, true);
             if (!empty($w['uid'])) {
                 $uid = (string) $w['uid'];
                 if (!in_array($uid, array_column(uzytkownicy(), 'id'), true)) blad('Nie ma takiego gracza.', 404);
-                zmien('karty', function (&$k) use ($uid, $e) { $k[$uid]['eote'] = $e; });
+                eote_sql_zapisz('legacy_uid', $uid, $e);
+                eote_legacy_gracza_usun($uid);
                 odpowiedz(['ok' => true, 'uid' => $uid]);
             }
-            if (!tabela_sql_dostepna('osoby_karta_eote')) blad('Zaimportuj api/migracje/040_karta_eote.sql (karty NPC).');
+            if (!tabela_sql_dostepna('eote_cv_karty') || !tabela_sql_dostepna('eote_cv_wartosci')) {
+                blad('Zaimportuj api/migracje/042_karty_eote_sql.sql (karty graczy i NPC).');
+            }
             $osoba = (int) ($w['osoba_id'] ?? 0);
             $db = polaczenie_bazy();
             if (!$osoba) {

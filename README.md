@@ -1044,7 +1044,7 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## Dźwięk pokładu
 
-`js/rdzen/dzwiek.js` gra według sceny statku (ta sama, co tło):
+`js/rdzen/dzwiek.js` gra według sceny statku (tej samej, co tło); koniec utworu mostka nie zmienia sceny ani nie uruchamia skoku:
 
 - **wejście w skok** — `sound/hiper_wejscie.mp3`, potem w pętli `sound/hiper.mp3`; każda kopia startuje
   1 s przed końcem poprzedniej (płynne przenikanie, planowane w Web Audio co do milisekundy);

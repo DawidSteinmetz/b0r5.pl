@@ -1,14 +1,10 @@
-// Dźwięk pokładu: skok w nadprzestrzeń i tło mostka.
-//   wejście w skok — hiper_wejscie, potem pętla hiper (każda kopia startuje sekundę przed końcem
-//                    poprzedniej, z płynnym przenikaniem) aż do wyjścia;
-//   wyjście        — pętla urwana, hiper_wyjscie, zaraz po nim tło mostka;
-//   poza skokiem   — tło mostka w pętli (strumieniowo: plik jest duży, nie wczytujemy go w całości).
+// Poza nadprzestrzenią gra tło mostka; dźwięki hiper są uruchamiane wyłącznie przez sceny skoku.
 // Przeglądarka pozwala grać dopiero po pierwszym dotknięciu ekranu — wtedy dźwięk rusza.
 // Pliki leżą w sound/ i nie są w pamięci tabletu (service worker ich nie obsługuje).
 
 import { pamiec } from './narzedzia.js';
 
-const PLIKI = { wejscie: 'sound/hiper_wejscie.mp3', petla: 'sound/hiper.mp3', wyjscie: 'sound/hiper_wyjscie.mp3' };
+const PLIKI = { petla: 'sound/hiper.mp3' };
 const NAKLADKA = 1;        // s: o tyle kolejna kopia pętli zaczyna się przed końcem poprzedniej
 const WYPRZEDZENIE = 90;   // s: tyle pętli planujemy naprzód (karta w tle ma rzadkie zegary)
 const GLOSNOSC_TLA = 0.7;
@@ -16,15 +12,17 @@ const GLOSNOSC_TLA = 0.7;
 let ctx = null, glowny = null, wczytane = null;
 const bufory = {};
 let zrodla = [], nastepny = 0, zegarPetli = null;
-let tryb = null;           // 'skok' | 'tlo' | 'cisza'
+let tryb = null;           // 'skok' | 'wyjscie' | 'tlo' | 'cisza'
 let pokolenie = 0;         // unieważnia spóźnione wywołania po zmianie trybu
 let odblokowane = false, oczekujace = null;
 // Ostatnio przyjęta scena (czas zmiany, ms): scena starsza od niej to spóźniona albo „cofnięta” odpowiedź
-// serwera — ignorujemy ją, żeby skok nie przerywał się na chwilę (i nie grał wyjścia/wejścia bez skoku).
+// serwera — ignorujemy ją, żeby skok nie przerywał się na chwilę.
 let zmienionoSceny = 0;
-// Wejście i wyjście grają tylko raz dla danego skoku (klucz = czas zmiany sceny), także po odświeżeniu strony.
-const zagrane = (klucz) => { try { return sessionStorage.getItem('hololink.dzwiek.' + klucz) === '1'; } catch { return false; } };
-const oznacz = (klucz) => { try { sessionStorage.setItem('hololink.dzwiek.' + klucz, '1'); } catch { /* bez pamięci */ } };
+let ostatniaScena = null;
+let ostatniEfektPrzejscia = pamiec.czytaj('ostatni_efekt_przejscia', '');
+const efekt = new Audio();
+efekt.preload = 'none';
+let pokolenieEfektu = 0;
 let wyciszone = pamiec.czytaj('wyciszone', false);
 const sluchacze = new Set();
 
@@ -45,6 +43,12 @@ function kontekst() {
     glowny.connect(ctx.destination);
   }
   return ctx;
+}
+
+// Wspólny tor audio dla modułów efektów: efekty dziedziczą wyciszenie główne aplikacji.
+export function pobierzTorAudio() {
+  const audio = kontekst();
+  return audio && { ctx: audio, wyjscie: glowny };
 }
 
 function wczytaj() {
@@ -89,18 +93,14 @@ function petlaOd(t) {
   zegarPetli = setInterval(planujPetle, 5000);
 }
 
-function zatrzymajSkok(zanik = 0.3) {
+function zatrzymajSkok() {
   clearInterval(zegarPetli);
   zegarPetli = null;
   if (!ctx) return;
-  const t = ctx.currentTime;
   for (const { zr, g } of zrodla) {
-    try {
-      g.gain.cancelScheduledValues(t);
-      g.gain.setValueAtTime(g.gain.value, t);
-      g.gain.linearRampToValueAtTime(0, t + zanik);
-      zr.stop(t + zanik + 0.05);
-    } catch { /* źródło jeszcze nie wystartowało — stop i tak je usuwa */ }
+    try { zr.stop(); } catch { /* źródło już zatrzymane */ }
+    try { zr.disconnect(); } catch { /* źródło już odłączone */ }
+    try { g.disconnect(); } catch { /* wzmocnienie już odłączone */ }
   }
   zrodla = [];
 }
@@ -128,62 +128,100 @@ function tloStart(opoznienie = 0) {
   if (opoznienie > 0) startTla = setTimeout(start, opoznienie * 1000); else start();
 }
 
-function tloStop(zanik = 1) {
-  clearTimeout(startTla);
-  if (tlo.paused) return;
-  zmienGlosnosc(0, zanik, () => tlo.pause());
+// Odtwarzanie pliku przejścia jest jawnie związane ze sceną wejścia/wyjścia,
+// nigdy z końcem ani ponownym startem pliku mostka.
+function zagrajEfekt(plik, poKoncu) {
+  const id = ++pokolenieEfektu;
+  efekt.pause();
+  efekt.currentTime = 0;
+  efekt.src = `sound/${plik}.mp3`;
+  efekt.onended = () => { if (id === pokolenieEfektu) poKoncu?.(); };
+  efekt.play().catch(() => { if (id === pokolenieEfektu) poKoncu?.(); });
 }
 
-// Stan sceny z serwera: nazwa sceny, ile ms minęło od jej zmiany i chwila zmiany (ms). Bez sceny (wylogowanie) — cisza.
-// Dźwięki wejścia i wyjścia należą wyłącznie do skoku: wejście — świeża scena „wejscie”, wyjście — świeża scena
-// po skoku (nowsza niż sam skok), każde raz na skok. Nigdy jako zwykłe tło.
-export function ustawDzwiek(scena, odZmiany = Infinity, zmieniono = 0) {
-  const nowy = !scena ? 'cisza' : (scena === 'wejscie' || scena === 'nadswietlna') ? 'skok' : 'tlo';
+function zatrzymajEfekt() {
+  pokolenieEfektu++;
+  efekt.onended = null;
+  efekt.pause();
+  try { efekt.currentTime = 0; } catch { /* strumień jeszcze nie ma metadanych */ }
+}
+
+function odtworzPrzejscieRaz(scena, zmieniono, plik, poKoncu) {
+  const id = `${scena}:${Number(zmieniono) || 0}`;
+  if (id === ostatniEfektPrzejscia) { poKoncu?.(); return; }
+  ostatniEfektPrzejscia = id;
+  pamiec.zapisz('ostatni_efekt_przejscia', id);
+  zagrajEfekt(plik, poKoncu);
+}
+
+function tloStopNatychmiast() {
+  clearTimeout(startTla);
+  clearInterval(zegarTla);
+  zegarTla = null;
+  tlo.volume = 0;
+  tlo.pause();
+}
+
+// Jeśli przeglądarka mimo loop zgłosi koniec źródła, wolno jej wznowić wyłącznie ten sam mostek.
+tlo.addEventListener('ended', () => {
+  if (tryb !== 'tlo') return;
+  tlo.currentTime = 0;
+  tlo.play().catch(() => {});
+});
+
+// Dwa stany dźwięku: hyper podczas skoku oraz tło mostka w każdym innym stanie.
+export function ustawDzwiek(scena, odZmiany = Infinity, zmieniono = 0, hiper = false) {
+  // Sama nazwa „wyjscie” opisuje też orbitalne podejście i wznoszenie. Dźwięki
+  // hiper wolno uruchamiać wyłącznie, gdy API potwierdzi fazę skoku nadświetlnego.
+  const fazaHiper = hiper && ['wejscie', 'nadswietlna', 'wyjscie'].includes(scena);
+  const nowy = !scena ? 'cisza' : (fazaHiper && scena !== 'wyjscie') ? 'skok' : 'tlo';
   if (nowy !== 'cisza' && zmieniono && zmieniono < zmienionoSceny) return;
   if (nowy === 'cisza') zmienionoSceny = 0;
-  else if (zmieniono) zmienionoSceny = Math.max(zmienionoSceny, zmieniono);
-  if (!odblokowane) { oczekujace = nowy; return; }
-  if (nowy === tryb) return;
-  const poprzedni = tryb;
-  tryb = nowy;
-  const moje = ++pokolenie;
+  else if (zmieniono) {
+    if (zmieniono === zmienionoSceny && ostatniaScena && scena !== ostatniaScena) return;
+    zmienionoSceny = Math.max(zmienionoSceny, zmieniono);
+  }
+  if (!odblokowane) { oczekujace = { scena, odZmiany, zmieniono, hiper }; return; }
 
-  if (nowy === 'cisza') { zatrzymajSkok(0.5); tloStop(0.5); return; }
-
-  if (nowy === 'skok') {
-    tloStop(1);
-    if (!kontekst()) return;
-    wczytaj().then(() => {
-      if (moje !== pokolenie) return;
-      const t = ctx.currentTime + 0.05;
-      const klucz = `wejscie.${zmieniono}`;
-      if (scena === 'wejscie' && odZmiany < 8000 && zmieniono && !zagrane(klucz)) {
-        oznacz(klucz);
-        petlaOd(graj(bufory.wejscie, t, 0, NAKLADKA) - NAKLADKA);
-      } else petlaOd(t);
-    }).catch(() => {});
+  // Nie pozwól, by kolejne odpytywanie sceny ucięło jednorazowy dźwięk wyjścia.
+  if (tryb === 'wyjscie' && nowy === 'tlo' && scena !== 'wejscie') { ostatniaScena = scena; return; }
+  const poprzedniaScena = ostatniaScena;
+  ostatniaScena = scena;
+  if (nowy === 'cisza') {
+    tryb = 'cisza'; ostatniaScena = null; ++pokolenie; zatrzymajSkok(); zatrzymajEfekt(); tloStopNatychmiast(); return;
+  }
+  if (scena === 'wyjscie' && fazaHiper && poprzedniaScena !== 'wyjscie') {
+    tryb = 'wyjscie'; ++pokolenie; zatrzymajSkok(); tloStopNatychmiast();
+    odtworzPrzejscieRaz(scena, zmieniono, 'hiper_wyjscie', () => {
+      if (tryb !== 'wyjscie') return;
+      tryb = 'tlo'; tloStart(0);
+    });
     return;
   }
-
-  // Tło. Wyjście ze skoku (także przerwanego) słychać tylko, gdy przed chwilą trwał skok.
-  const kluczWyjscia = `wyjscie.${zmieniono}`;
-  if (poprzedni === 'skok' && odZmiany < 15000 && zmieniono && !zagrane(kluczWyjscia) && ctx && bufory.wyjscie) {
-    oznacz(kluczWyjscia);
-    zatrzymajSkok(0.3);
-    const t = ctx.currentTime + 0.05;
-    graj(bufory.wyjscie, t);
-    tloStart(bufory.wyjscie.duration);
-  } else {
-    zatrzymajSkok(1);
-    tloStart(0);
+  if (nowy === 'skok') {
+    if (tryb === 'skok') return;
+    tryb = 'skok'; zatrzymajEfekt(); tloStopNatychmiast();
+    const moje = ++pokolenie;
+    const startPetli = () => {
+      if (moje !== pokolenie || tryb !== 'skok') return;
+      if (!kontekst()) return;
+      wczytaj().then(() => {
+        if (moje === pokolenie && tryb === 'skok') petlaOd(ctx.currentTime + 0.05);
+      }).catch(() => {});
+    };
+    if (scena === 'wejscie' && fazaHiper) odtworzPrzejscieRaz(scena, zmieniono, 'hiper_wejscie', startPetli);
+    else startPetli(); // np. otwarcie aplikacji już w trwającej nadprzestrzeni
+    return;
   }
+  if (nowy === tryb) return;
+  tryb = 'tlo'; ++pokolenie; zatrzymajSkok(); zatrzymajEfekt(); tloStart(0);
 }
 
 function odblokuj() {
   if (odblokowane) return;
   odblokowane = true;
   kontekst()?.resume?.();
-  if (oczekujace) { const t = oczekujace; oczekujace = null; ustawDzwiek(t === 'skok' ? 'nadswietlna' : t === 'tlo' ? 'kosmos' : null); }
+  if (oczekujace) { const t = oczekujace; oczekujace = null; ustawDzwiek(t.scena, t.odZmiany, t.zmieniono, t.hiper); }
   for (const z of ['pointerdown', 'keydown', 'touchend']) document.removeEventListener(z, odblokuj, true);
 }
 for (const z of ['pointerdown', 'keydown', 'touchend']) document.addEventListener(z, odblokuj, true);

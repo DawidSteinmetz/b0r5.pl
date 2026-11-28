@@ -1,0 +1,14 @@
+{
+  "name": "HOLOLINK",
+  "short_name": "HOLOLINK",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#05080a",
+  "theme_color": "#05080a",
+  "icons": [
+    { "src": "assets/ikona.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

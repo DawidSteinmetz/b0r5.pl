@@ -6,7 +6,8 @@
 
 import { h, wyczysc } from '../rdzen/narzedzia.js';
 import { api } from '../rdzen/api.js';
-import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, zapiszZwroty, pulpityKlasy, oprawaPulpitu } from './konsole.js';
+import { konsola, KONSOLE, nowyStanKonsol, zapiszSlady, zapiszZwroty, pulpityKlasy, oprawaPulpitu, wlasna } from './konsole.js';
+import { OdtwarzaczDzwiekow } from '../rdzen/odtwarzacz_dzwiekow.js';
 
 const DOWODZENIE = { gracze: 'gracze', radus: 'AI: Radus (agresywny)', ackbar: 'AI: Ackbar (defensywny)', calrissian: 'AI: Calrissian (zrównoważony)' };
 const STATUS = { przygotowanie: 'w przygotowaniu', aktywna: 'trwa', zakonczona: 'zakończona', anulowana: 'anulowana' };
@@ -22,7 +23,7 @@ export default {
   nazwa: 'Symulacje',
   ikona: '<circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="9"/><path d="M24 4v6M24 38v6M4 24h6M38 24h6"/><path d="M24 24l8-8"/>',
   // Ikona tylko dla upoważnionych; stan.symulacje ustawia pulpit po zapytaniu bitwa_dostep.
-  dostep: (stan) => stan.uzytkownik?.rola === 'mg' || stan.symulacje === true,
+  dostep: (stan) => stan.uzytkownik?.rola === 'mg' || (stan.symulacje === true && !stan.stanowisko),
 
   uruchom(w, ctx) {
     const tresc = h('div');
@@ -30,8 +31,11 @@ export default {
     let zegar = null;
     let koniec = false;
     let oprawaSym = null;  // oprawa pulpitu (konsole.js): stała wielkość, komunikaty nad pulpitem, pełny ekran z doku
+    let powrotKioskZaplanowany = false;
+    const audio = new OdtwarzaczDzwiekow();
     // Tryb stanowiska (pulpit systemu otworzył symulację graczowi z przydziałem): tylko konsola, bez listy i nagłówka.
     const kiosk = !!ctx.parametr?.stanowisko;
+    if (kiosk) w.classList.add('widok-mostka-stanowisko');
 
     const panel = (tytul, ...zawartosc) => h('div.panel', h('h2', tytul), ...zawartosc);
     const para = (etykieta, wartosc) => h('tr', h('td.slaby', { style: 'width:120px;white-space:nowrap' }, etykieta), h('td', wartosc));
@@ -42,6 +46,7 @@ export default {
     async function lista() {
       zatrzymaj();
       oprawaSym?.zniszcz(); oprawaSym = null;
+      audio.wylaczOslony();
       ctx.ustawWstecz?.(null);
       try {
         dane = await api('bitwa_scenariusze');
@@ -144,6 +149,25 @@ export default {
       const wyborHz = h('select', { style: 'min-height:32px' });
       const komunikat = h('div');
       const naglowek = h('div');
+      let audioOsłonWlaczone = false;
+      const przyciskAudio = h('button.przycisk.drugi', {
+        style: 'width:100%',
+        onclick: async (e) => {
+          e.currentTarget.disabled = true;
+          try {
+            audioOsłonWlaczone = !audioOsłonWlaczone;
+            if (!audioOsłonWlaczone) audio.wylaczOslony();
+            else if (ostatni) await audio.ustawGeneratory(wlasna(ostatni).generatory);
+            e.currentTarget.textContent = audioOsłonWlaczone ? 'WYŁĄCZ DŹWIĘK OSŁON' : 'WŁĄCZ DŹWIĘK OSŁON';
+            if (audioOsłonWlaczone) wyczysc(komunikat);
+          } catch (err) {
+            audioOsłonWlaczone = false;
+            e.currentTarget.textContent = 'WŁĄCZ DŹWIĘK OSŁON';
+            wyczysc(komunikat).append(h('div.komunikat.blad', `Nie udało się uruchomić dźwięku: ${err.message || err}`));
+          } finally { e.currentTarget.disabled = false; }
+        },
+      }, 'WŁĄCZ DŹWIĘK OSŁON');
+      const panelAudio = panel('DŹWIĘK OSŁON', h('p.slaby.maly-tekst', 'Dwa generatory brzmią niezależnie i zmieniają ton zgodnie z osiąganym Hz. Lewy i prawy głos są lekko rozdzielone w stereo.'), przyciskAudio);
       const radar = h('div', { style: 'display:flex;justify-content:center' });
       const okrety = h('div');
       const klucze = h('div');
@@ -327,14 +351,21 @@ export default {
         zapiszZwroty(stanKonsol, s);
         const st = s.stanowiska || { pelny: true, moje: [] };
         if (!st.pelny && !st.moje.includes(widok)) widok = st.moje[0] || null;
+        if (kiosk && !st.pelny) widok = st.moje[0] || null;
         if (mostek && st.pelny && !widok) widok = KONSOLE[0];
         // Gracz ze stanowiskiem widzi tylko swój pulpit: bez nagłówka symulacji, zakładki tylko przy kilku pulpitach.
         naglowek.hidden = !st.pelny;
-        zakladki.hidden = !st.pelny && st.moje.length < 2;
+        zakladki.hidden = kiosk || (!st.pelny && st.moje.length < 2);
         if (!st.pelny && ['zakonczona', 'anulowana'].includes(s.status)) {
           wyczysc(konsolaEl).append(panel('SYMULACJA ZAKOŃCZONA', h('p.maly-tekst', 'Stanowisko zwolnione. Za chwilę powrót na pulpit.')));
           konsolaEl.hidden = false;
-          if (kiosk) setTimeout(() => ctx.pulpit?.(), 5000);
+          if (kiosk && !powrotKioskZaplanowany) { powrotKioskZaplanowany = true; setTimeout(() => ctx.pulpit?.(), 5000); }
+          return;
+        }
+        if (kiosk && !st.pelny && !st.moje.length) {
+          wyczysc(konsolaEl).append(panel('STANOWISKO ZABLOKOWANE', h('p.maly-tekst', 'Kapitan zwolnił przydział. Wracam do HOLOLINK.')));
+          konsolaEl.hidden = false;
+          if (!powrotKioskZaplanowany) { powrotKioskZaplanowany = true; setTimeout(() => ctx.pulpit?.(), 1200); }
           return;
         }
         rysujZakladki();
@@ -348,6 +379,14 @@ export default {
           return;
         }
         const trwa = s.status === 'aktywna' && !s.pauza;
+        if (audioOsłonWlaczone) {
+          const generatory = trwa ? wlasna(s).generatory : [];
+          audio.ustawGeneratory(generatory).catch((err) => {
+            audioOsłonWlaczone = false;
+            przyciskAudio.textContent = 'WŁĄCZ DŹWIĘK OSŁON';
+            wyczysc(komunikat).append(h('div.komunikat.blad', `Dźwięk osłon został zatrzymany: ${err.message || err}`));
+          });
+        }
         wyczysc(naglowek).append(panel(s.nazwa,
           h('table.tabela',
             para('Stan', `${STATUS[s.status] || s.status}${s.pauza ? ' · pauza' : ''}`),
@@ -432,13 +471,15 @@ export default {
       }
 
       przeglad.append(...(mostek ? [] : [stanowiskaEl]), panel('RADAR', radar), okrety, klucze, zdarzenia);
-      wyczysc(tresc).append(naglowek, zakladki, komunikat, konsolaEl, ...(mostek ? [stanowiskaEl] : []), przeglad, wynikXp);
+      if (kiosk) tresc.classList.add('panel-stanowiska');
+      wyczysc(tresc).append(naglowek, zakladki, komunikat, ...(kiosk ? [] : [panelAudio]), konsolaEl,
+        ...(mostek ? [stanowiskaEl] : []), przeglad, wynikXp);
       odswiez();
     }
 
     w.append(tresc);
     if (ctx.parametr?.bitwa) otworzSymulacje(Number(ctx.parametr.bitwa));
     else lista();
-    return () => { koniec = true; zatrzymaj(); oprawaSym?.zniszcz(); };
+    return () => { koniec = true; zatrzymaj(); oprawaSym?.zniszcz(); audio.zniszcz(); w.classList.remove('widok-mostka-stanowisko'); };
   },
 };

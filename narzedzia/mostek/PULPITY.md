@@ -30,18 +30,23 @@ generowane (patrz [README.md](README.md)).
 7. **Urządzenia docelowe:** pulpity są dla komputerów i tabletów. Telefony obsługują tylko klucze myśliwców
    (ekrany Klucz i Eskadra, rozdz. 1a).
 
-## 1a. Ekrany telefonu [U, 25.11.2026]
+## 1a. Ekrany telefonu [U, 25.11.2026; siatka 5×10 — 28.11.2026]
 
-Telefon obsługuje tylko klucze myśliwców. Siatka **5×9** kwadratowych komórek, pionowo; symetria względem kolumny 3;
+Telefon obsługuje tylko klucze myśliwców. Siatka **5×10** kwadratowych komórek, pionowo (nagłówek, radar 5×5, 4 rzędy po 5 przycisków); symetria względem kolumny 3;
 bez szarych suwaków zakresu (zabrałyby szerokość ekranu); kolory jak na pulpitach. W danych: `FORMATY = {nazwa: 'telefon'}`
 w pliku układów klasy. Wydruk: A4 pionowo, komórka 28 mm.
 
-- **Klucz** — zbliżenie pojedynczego klucza, wszystko na jednym ekranie: nagłówek ze stanem, ekran jak w radarze
-  (klucz zawsze w środku, okręgi 2 / 10 / 30 km), po bokach skręty, pod spodem figury (manewry) na kursie, moc i rozkazy.
+- **Klucz** — zbliżenie pojedynczego klucza, wszystko na jednym ekranie: nagłówek ze stanem, radar 5×5 (klucz zawsze
+  w środku, okręgi 2 / 10 / 30 km), pod nim tylko najważniejsze: skręty z PROSTO, figury unikowe (beczki, zygzak, pętla,
+  burst), atakowe (nurkowanie, ogon, nożyce, przelot) z odczytem Hz i rozkazy z czerwonym START / ATAK. Poza ekranem
+  zostały: rozejścia klucza, figury asa (spirala, skok cieniowy), split-S, zwarcie szyku, eskorta wskazanej jednostki,
+  suwaki mocy, „pobierz Hz celu” i IFF (te ostatnie bez mechaniki); kody figur w silniku bez zmian.
   Wejście: kliknięcie lampki „Klucz N” na pulpicie Myśliwce (na komputerze — nakładka nad pulpitem, powrót do pulpitu)
   albo w ekranie Eskadra. Każdy przycisk figury i rozkazu pokazuje po kliknięciu pasek przygotowania (sekundy do
   działania), potem czas działania i odnowienie (MECHANIKA 1.1); działająca figura wroga — ikona na ekranie.
-- **Eskadra** — 3 klucze: ekran ze środkiem eskadry (okręgi 5 / 15 / 40 km), lampki 3 kluczy, szyki i rozkazy.
+- **Eskadra** — 3 klucze: radar 5×5 ze środkiem eskadry (okręgi 5 / 15 / 40 km), lampki 3 kluczy na środku rzędu, po bokach rozejście klucza w lewo / w prawo,
+  skręty i figury unikowe dla całej eskadry (każdy klucz w locie dostaje tę samą figurę) i rozkazy z czerwonym
+  ATAK ESKADRY. Szyki (bez mechaniki) i zgrywanie kursów zdjęte z ekranu.
   Na pulpicie Myśliwce eskadrę tworzy rząd 3 lampek jednej burty (lewa: eskadry 1–3, prawa: 4–6).
 
 Pulpit Myśliwce zostaje bez zmian.
@@ -88,12 +93,7 @@ zostaje jednorazowy (tylko ta symulacja). Gracz ze stałym stanowiskiem widzi ap
 swoje pulpity; w trwającej symulacji jak dotąd — tryb stanowiska po zalogowaniu.
 
 **Obsługa** (26.11.2026): pulpit ma stałe proporcje siatki (kwadratowe komórki) i dopasowuje się do ekranu
-szerokością albo wysokością miejsca między górnym paskiem a dokiem — co pierwsze się skończy. Wielkość liczona jest tylko
-z okna i pasków, nigdy z treści nad pulpitem: komunikaty pokazują się nad pulpitem jako nakładka (znikają po 6 s), więc
-kliknięcie suwaka czy odmowa rozkazu nie zmieniają rozmiaru. Mostek i symulacja mają ten sam układ (konsole.js
-oprawaPulpitu). Przycisk w doku przełącza pulpit na pełny ekran: zakładki i panele znikają, pulpit wypełnia miejsce od
-dolnej krawędzi górnego paska do górnej krawędzi doku; strzałki na środku lewej i prawej krawędzi przełączają poprzedni
-i następny pulpit (w kółko) bez wychodzenia z pełnego ekranu; Esc albo ten sam przycisk wraca. Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
+szerokością albo wysokością (do dołu okna) — co pierwsze się skończy. Każdy element coś robi: bez mechaniki w symulacji ma stan lokalny konsoli (wzmocnij, synchronizacja,
 urządzenia, tryby i filtry — przełączniki świecące w kolorze typu; pozostałe polecenia — przyciski sprężynowe; żółte
 suwaki — uchwyt w miejscu dotknięcia; szare — dwa uchwyty zakresu), dymek mówi wtedy „bez wpływu na symulację”.
 Wciśnięcie: przycisk i napis zapadają się, sprężynowy wraca, przełącznik zostaje lekko wciśnięty. Szary suwak osłon
@@ -133,7 +133,7 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   start i powrót z każdego pokładu, rozkaz dla wybranego klucza, START.
 - **Klucz** (telefon) — nagłówek z lampą i stanem, ekran z kluczem w środku (2 / 10 / 30 km), wszystkie figury
   i rozkazy, Hz klucza; dotknięcie nagłówka — następny klucz. **Eskadra** — 3 klucze, ekran ze środkiem eskadry,
-  lampki ze zbliżeniem, rozkazy dla całej eskadry.
+  lampki ze zbliżeniem, skręty, figury i rozkazy dla całej eskadry.
 - **Nawigacja** — ekran 250 / 500 / 1000 km, wybór celu, odczyty kursu, prędkości, odległości i ETA (sterowanie ruchem
   czeka na model ruchu okrętu w silniku). **Kontrola ognia** — ekran celu (ogień okrętu — kolejny etap).
 - **Powiększanie** każdego ekranu sytuacyjnego: przyciski + i − w rogu (×2) oraz kółko myszy (×1,4), od ×1/16
@@ -157,7 +157,17 @@ własny okręt zawsze w środku, w skali, z minimalnym rozmiarem czytelnym na ek
   (rozkaz „cel_ognia”, 2 s), stan baterii i jonów. **Grawitacja** — odczyty (blokada Anchor/Lock nie działa w bitwie).
 - **Stanowiska pilotów**: MG albo kapitan przydziela graczowi „Klucz N” (jeden klucz) albo „Eskadra N” (klucze
   3N−2…3N) — pionowy pulpit na telefon. Gracz z przydziałem po zalogowaniu widzi tylko swój pulpit (bez paska,
-  doku, zegara i ikon pulpitu); po końcu symulacji wraca na pulpit.
+  doku, zegara i ikon pulpitu); po końcu symulacji wraca na pulpit. Mały znaczek w lewym górnym rogu pokazuje
+  na chwilę pasek i dok (Wstecz, Pulpit, Blokada) i chowa je ponownie — bez niego z telefonu nie było wyjścia.
+- **Pełny ekran pulpitu** (przycisk w doku): chowa górny pasek i dok; wyjście — znaczek w prawym górnym rogu albo Escape.
+- **Suwaki** (28.11.2026): uchwyt nie skacze — jedzie do nowej wartości (pełna skala w 4 s, np. 3600 → 1800 Hz ok. 2 s);
+  uchwyt można złapać i przeciągnąć, puszczenie ustawia wartość (jak dotknięcie w tym miejscu).
+- **Silniki za sterem**: rozkaz skrętu (np. zwrot o 90° z Nawigacji) przekłada konsolę Silniki — manewrowe po stronie
+  skrętu na ciąg, ich dysze wychylone, silnik główny po wewnętrznej przytłumiony, trym odchylenia w stronę skrętu;
+  wychylenie maleje, gdy dziób dochodzi do kursu, potem uchwyty wracają do nastaw. To obraz pracy steru (skręt liczy
+  serwer z rozkazu ster), nastawy się nie zmieniają. **STOP** na środku Silników (między „wyrównaj ciąg” a „równaj ciąg
+  z mocą reaktora”): pełne hamowanie i koniec skrętu jednym rozkazem ster, a silniki manewrowe wracają do
+  ustawień domyślnych (ciąg, dysze i trymy na środek, 50%).
 - Przygaszone elementy pulpitów nie mają jeszcze mechaniki.
 - Pomiar Hz jest na razie natychmiastowy w zasięgu 200 km (MECHANIKA 7: próbki, poziomy wiedzy, tryb bierny/aktywny —
   kolejny etap).

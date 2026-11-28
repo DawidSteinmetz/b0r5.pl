@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pl" class="aurebesh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05080a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="robots" content="noindex">
+  <title>HOLOLINK</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/ikona.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/ikona.svg">
+  <link rel="preload" href="assets/czcionki/aurebesh.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="css/system.css">
+</head>
+<body>
+  <div id="ekran">
+    <header id="pasek" hidden>
+      <div class="pasek-lewa">
+        <span class="sygnal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span id="pasek-siec">HOLONET</span>
+      </div>
+      <div class="pasek-srodek" id="pasek-tytul"></div>
+      <div class="pasek-prawa">
+        <button id="przelacznik-alfabetu" class="przelacznik" title="Transliteracja" aria-label="Transliteracja">
+          <span class="lat">Aa</span><span class="aur">Aa</span>
+        </button>
+        <span id="pasek-bateria" hidden></span>
+        <span id="pasek-zegar">--:--</span>
+      </div>
+    </header>
+    <main id="pulpit"></main>
+    <nav id="dok" hidden>
+      <button id="dok-wstecz" aria-label="Wstecz">◁</button>
+      <button id="dok-dom" aria-label="Pulpit">◯</button>
+      <button id="dok-blokada" aria-label="Zablokuj">▢</button>
+    </nav>
+  </div>
+  <div id="jasnosc" aria-hidden="true"></div>
+  <div id="zaklocenia" aria-hidden="true"></div>
+  <script type="module" src="js/system.js"></script>
+</body>
+</html>

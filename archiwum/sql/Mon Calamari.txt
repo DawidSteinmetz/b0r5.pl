@@ -1,0 +1,1219 @@
+-- ============================================================
+-- HOLOLINK — MON CALAMARI / MON CALA
+-- GEOGRAFIA PLANETARNA — EPOKA 3 BBY
+-- ============================================================
+-- Baza: hololink
+-- Tabela planet: mapa_planety
+-- ID Mon Calamari w dostarczonym zrzucie: 1459
+-- Tabela docelowa: lokalizacje
+-- MySQL 8.0+
+--
+-- LORE:
+-- CANON    - potwierdzone oficjalnym kanonem
+-- LEGENDS  - materiały Expanded Universe
+-- INFERRED - logiczne odtworzenie geografii
+-- CUSTOM   - autorskie uzupełnienie HOLOLINK
+--
+-- Współrzędne: NULL, jeśli brak wiarygodnych danych.
+-- Infrastruktura orbitalna jest oddzielona od powierzchni.
+-- Infrastruktura podwodna należy do odpowiednich regionów.
+--
+-- Skrypt:
+-- - nie tworzy nowych tabel trwałych;
+-- - nie zmienia struktury bazy;
+-- - nie nadpisuje istniejących rekordów;
+-- - przydziela ID na podstawie MAX(id);
+-- - wyszukuje rodziców po nazwie i planeta_id;
+-- - można uruchamiać wielokrotnie.
+-- ============================================================
+
+SET NAMES utf8mb4;
+
+DROP PROCEDURE IF EXISTS hololink_import_mon_calamari;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_mon_calamari;
+
+CREATE TEMPORARY TABLE tmp_mon_calamari (
+    nazwa VARCHAR(200) NOT NULL,
+    typ VARCHAR(20) NOT NULL,
+    rodzaj VARCHAR(20) DEFAULT NULL,
+    rodzic VARCHAR(200) DEFAULT NULL,
+    poziom INT NOT NULL,
+    publiczna TINYINT(1) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'aktywna',
+    opis TEXT NOT NULL,
+    PRIMARY KEY (nazwa)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO tmp_mon_calamari
+(nazwa,typ,rodzaj,rodzic,poziom,publiczna,status,opis)
+VALUES
+
+-- ============================================================
+-- 1. KORZENIE GEOGRAFICZNE
+-- ============================================================
+
+(
+'Mon Calamari — orbita',
+'orbita',NULL,NULL,0,0,'aktywna',
+'[LORE: CANON / LEGENDS] Orbitalna przestrzeń planety Mon Cala. Obejmuje infrastrukturę komunikacyjną, transportową i przemysłową. Nie jest powierzchnią planety. W 3 BBY pozostaje pod kontrolą Imperium.'
+),
+
+(
+'Mon Calamari — powierzchnia',
+'powierzchnia','inne',NULL,0,1,'aktywna',
+'[LORE: CANON] Główny korzeń geograficzny powierzchni Mon Cala, oceanicznego świata zamieszkanego przez Mon Calamari i Quarren. Obejmuje oceany, podwodne miasta, rafy, wyspy, osady i infrastrukturę. Nie jest pojedynczym miastem.'
+),
+
+-- ============================================================
+-- 2. ORBITALNA INFRASTRUKTURA
+-- ============================================================
+
+(
+'Calamari — orbitalny kompleks przemysłowy',
+'lokacja','inne','Mon Calamari — orbita',1,0,'aktywna',
+'[LORE: CANON / LEGENDS] Główny obszar orbitalnego przemysłu stoczniowego Mon Cala. Kompleks skupiający konstrukcję, remonty i obsługę jednostek kosmicznych. Szczegółowy podział na sektory jest INFERRED. W 3 BBY infrastruktura podlega kontroli imperialnej.'
+),
+
+(
+'Mon Calamari Orbital Shipyards',
+'lokacja','inne','Calamari — orbitalny kompleks przemysłowy',2,0,'aktywna',
+'[LORE: LEGENDS] Rozległe orbitalne stocznie Mon Calamari, rozwijane przez tysiąclecia przez Mon Calamari i Quarren. W okresie imperialnym wykorzystywane do produkcji i obsługi jednostek kosmicznych. Późniejsza rola jako głównego zaplecza floty Rebelii nie dotyczy jeszcze 3 BBY.'
+),
+
+(
+'Mon Calamari — sektor doków konstrukcyjnych',
+'lokacja','inne','Mon Calamari Orbital Shipyards',3,0,'aktywna',
+'[LORE: INFERRED] Obszar stanowisk konstrukcyjnych orbitalnych stoczni. Podział funkcjonalny HOLOLINK. Nie określa rzeczywistej liczby doków.'
+),
+
+(
+'Mon Calamari — sektor remontowy',
+'lokacja','inne','Mon Calamari Orbital Shipyards',3,0,'aktywna',
+'[LORE: INFERRED] Strefa obsługi technicznej, remontów i modernizacji jednostek. W 3 BBY może obsługiwać jednostki Imperium.'
+),
+
+(
+'Mon Calamari — terminal orbitalny',
+'lokacja','port','Calamari — orbitalny kompleks przemysłowy',2,0,'aktywna',
+'[LORE: INFERRED] Terminal obsługi personelu, zaopatrzenia i transportu komponentów pomiędzy powierzchnią a orbitą.'
+),
+
+(
+'Mon Calamari — kontrola ruchu orbitalnego',
+'lokacja','inne','Calamari — orbitalny kompleks przemysłowy',2,0,'aktywna',
+'[LORE: INFERRED] Placówka kontroli ruchu orbitalnego i koordynacji podejść do stoczni. W 3 BBY pod nadzorem imperialnym.'
+),
+
+(
+'Mon Calamari — centrum ochrony stoczni orbitalnych',
+'lokacja','baza','Calamari — orbitalny kompleks przemysłowy',2,0,'aktywna',
+'[LORE: INFERRED] Obiekt kontroli dostępu i ochrony orbitalnej infrastruktury stoczniowej. W 3 BBY służy zabezpieczeniu obiektów wykorzystywanych przez Imperium.'
+),
+
+(
+'Mon Calamari — dok konstrukcyjny A',
+'lokacja','inne','Mon Calamari — sektor doków konstrukcyjnych',4,0,'aktywna',
+'[LORE: CUSTOM] Autorski punkt infrastruktury HOLOLINK. Stanowisko montażu kadłubów jednostek kosmicznych.'
+),
+
+(
+'Mon Calamari — dok konstrukcyjny B',
+'lokacja','inne','Mon Calamari — sektor doków konstrukcyjnych',4,0,'aktywna',
+'[LORE: CUSTOM] Autorski punkt infrastruktury HOLOLINK. Dodatkowe stanowisko konstrukcyjne.'
+),
+
+(
+'Mon Calamari — hangar serwisowy orbitalny',
+'budynek','hangar','Mon Calamari — sektor remontowy',4,0,'aktywna',
+'[LORE: INFERRED] Zamknięty hangar obsługi technicznej jednostek kosmicznych i pojazdów pomocniczych.'
+),
+
+(
+'Mon Calamari — magazyn komponentów orbitalnych',
+'budynek','magazyn','Mon Calamari — sektor remontowy',4,0,'aktywna',
+'[LORE: INFERRED] Magazyn części, podzespołów, materiałów konstrukcyjnych i wyposażenia stoczniowego.'
+),
+
+-- ============================================================
+-- 3. REGIONY OCEANICZNE
+-- ============================================================
+
+(
+'Północny Ocean Mon Cala',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: INFERRED] Umowny region oceaniczny HOLOLINK. Obejmuje północne obszary zamieszkane i podwodne szlaki komunikacyjne.'
+),
+
+(
+'Południowy Ocean Mon Cala',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: INFERRED] Umowny region oceaniczny HOLOLINK. Obejmuje południowe obszary oceanu i rozproszone osady.'
+),
+
+(
+'Centralny Ocean Mon Cala',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: INFERRED] Centralny obszar oceaniczny obejmujący główne aglomeracje podwodne i połączenia komunikacyjne.'
+),
+
+(
+'Głębokie Strefy Oceaniczne Mon Cala',
+'lokacja','inne','Mon Calamari — powierzchnia',1,0,'aktywna',
+'[LORE: INFERRED] Rozległe obszary głębinowe. Obejmują środowiska o wysokim ciśnieniu, formacje skalne i potencjalne lokalizacje infrastruktury podwodnej.'
+),
+
+(
+'Region Raf Koralowych Mon Cala',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: CANON] Oceaniczne środowisko raf koralowych. Charakterystyczny element geografii planety.'
+),
+
+(
+'Region Lasów Wodorostów',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: CANON] Rozległe podwodne skupiska roślinności morskiej. Środowisko naturalne i biologiczne planety.'
+),
+
+-- ============================================================
+-- 4. CORAL CITY
+-- ============================================================
+
+(
+'Coral City',
+'lokacja','inne','Centralny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Jedno z najważniejszych miast Mon Calamari i tradycyjna stolica społeczności Mon Calamari. Ośrodek polityczny, administracyjny i kulturalny. Szczegółowa topografia dzielnic jest częściowo INFERRED. Nie należy utożsamiać automatycznie wszystkich przedstawień stolicy w różnych okresach.'
+),
+
+(
+'Coral City — centrum administracyjne',
+'lokacja','inne','Coral City',3,0,'aktywna',
+'[LORE: INFERRED] Centrum administracyjne miasta, obejmujące urzędy i zaplecze zarządzania miejskiego.'
+),
+
+(
+'Coral City — dzielnica mieszkalna',
+'lokacja','inne','Coral City',3,1,'aktywna',
+'[LORE: INFERRED] Podwodna dzielnica mieszkalna. Zabudowa dostosowana do środowiska oceanicznego.'
+),
+
+(
+'Coral City — dzielnica handlowa',
+'lokacja','inne','Coral City',3,1,'aktywna',
+'[LORE: INFERRED] Publiczny obszar handlu, usług i wymiany towarowej.'
+),
+
+(
+'Coral City — dzielnica reprezentacyjna',
+'lokacja','inne','Coral City',3,1,'aktywna',
+'[LORE: INFERRED] Reprezentacyjna część miasta, związana z życiem publicznym i kulturą Mon Calamari.'
+),
+
+(
+'Coral City — dzielnica edukacyjna',
+'lokacja','inne','Coral City',3,1,'aktywna',
+'[LORE: CUSTOM] Projektowana dzielnica instytucji edukacyjnych i szkolnictwa wyższego.'
+),
+
+(
+'Coral City — port podwodny',
+'lokacja','port','Coral City',3,0,'aktywna',
+'[LORE: INFERRED] Port obsługujący ruch podwodny, transport pasażerski i dostawy.'
+),
+
+(
+'Coral City — centrum transportowe',
+'lokacja','inne','Coral City',3,0,'aktywna',
+'[LORE: INFERRED] Węzeł komunikacyjny łączący dzielnice miejskie i szlaki oceaniczne.'
+),
+
+(
+'Coral City — komora komunikacyjna',
+'lokacja','inne','Coral City — centrum transportowe',4,0,'aktywna',
+'[LORE: CUSTOM] Wewnętrzna komora przesiadkowa podwodnego systemu transportowego.'
+),
+
+(
+'Coral City — kompleks handlowy',
+'lokacja','inne','Coral City — dzielnica handlowa',4,1,'aktywna',
+'[LORE: CUSTOM] Kompleks usługowo-handlowy HOLOLINK.'
+),
+
+(
+'Coral City — targowisko oceaniczne',
+'lokacja','inne','Coral City — dzielnica handlowa',4,1,'aktywna',
+'[LORE: CUSTOM] Publiczne targowisko z żywnością, produktami oceanicznymi i towarami codziennego użytku.'
+),
+
+(
+'Coral City — szpital miejski',
+'budynek','inne','Coral City',3,1,'aktywna',
+'[LORE: INFERRED] Placówka medyczna obsługująca mieszkańców miasta. Przystosowana do fizjologii Mon Calamari i Quarren.'
+),
+
+(
+'Coral City — centrum kultury',
+'budynek','inne','Coral City — dzielnica reprezentacyjna',4,1,'aktywna',
+'[LORE: CUSTOM] Publiczna placówka kultury, wystaw i wydarzeń społecznych.'
+),
+
+(
+'Coral City — biblioteka miejska',
+'budynek','inne','Coral City — dzielnica edukacyjna',4,1,'aktywna',
+'[LORE: CUSTOM] Biblioteka i archiwum wiedzy miejskiej.'
+),
+
+-- ============================================================
+-- 5. CENTRUM KRÓLEWSKIE I ADMINISTRACJA
+-- ============================================================
+
+(
+'Mon Cala — centrum królewskie',
+'lokacja','inne','Centralny Ocean Mon Cala',2,0,'aktywna',
+'[LORE: CANON] Ośrodek władzy monarchy Mon Cala. Planeta posiada tradycję monarchiczną. Szczegółowe granice kompleksu są INFERRED.'
+),
+
+(
+'Mon Cala — pałac królewski',
+'budynek','inne','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: CANON / INFERRED] Siedziba monarchy i administracji królewskiej. W okresie 3 BBY należy uwzględniać imperialną dominację polityczną, a nie pełną niezależność władzy lokalnej.'
+),
+
+(
+'Mon Calamari Council chamber',
+'budynek','inne','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: LEGENDS] Sala obrad rady Mon Calamari. Miejsce działalności politycznej i reprezentacji społeczności.'
+),
+
+(
+'Mon Cala — urząd administracji planetarnej',
+'budynek','biuro','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: INFERRED] Placówka administracji lokalnej. W 3 BBY działa w warunkach ograniczonej suwerenności pod kontrolą Imperium.'
+),
+
+(
+'Mon Cala — archiwum królewskie',
+'budynek','inne','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: CUSTOM] Archiwum dokumentów historycznych, genealogicznych i administracyjnych.'
+),
+
+(
+'Mon Cala — centrum łączności planetarnej',
+'budynek','inne','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: INFERRED] Węzeł komunikacji administracyjnej pomiędzy miastami planety.'
+),
+
+-- ============================================================
+-- 6. OSADY QUARREN
+-- ============================================================
+
+(
+'Foamwander City',
+'lokacja','inne','Południowy Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Główne miasto i ośrodek społeczności Quarren. Odrębna tradycja cywilizacyjna i społeczna. Szczegółowa topografia miasta w HOLOLINK jest INFERRED.'
+),
+
+(
+'Foamwander City — centrum społeczne',
+'lokacja','inne','Foamwander City',3,1,'aktywna',
+'[LORE: INFERRED] Centralny obszar życia społecznego i zgromadzeń Quarren.'
+),
+
+(
+'Foamwander City — dzielnica mieszkalna',
+'lokacja','inne','Foamwander City',3,1,'aktywna',
+'[LORE: INFERRED] Podwodna zabudowa mieszkalna społeczności Quarren.'
+),
+
+(
+'Foamwander City — dzielnica handlowa',
+'lokacja','inne','Foamwander City',3,1,'aktywna',
+'[LORE: INFERRED] Obszar handlu i wymiany gospodarczej Quarren.'
+),
+
+(
+'Foamwander City — port głębinowy',
+'lokacja','port','Foamwander City',3,0,'aktywna',
+'[LORE: INFERRED] Port dla jednostek podwodnych i transportu pomiędzy osadami.'
+),
+
+(
+'Quarren Town',
+'lokacja','inne','Południowy Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Osada związana ze społecznością Quarren. Nie jest utożsamiana z Foamwander City.'
+),
+
+(
+'Quarren Town — centrum zgromadzeń',
+'lokacja','inne','Quarren Town',3,1,'aktywna',
+'[LORE: CUSTOM] Miejsce spotkań społeczności i lokalnych przedstawicieli Quarren.'
+),
+
+(
+'Quarren Town — dzielnica mieszkalna',
+'lokacja','inne','Quarren Town',3,1,'aktywna',
+'[LORE: CUSTOM] Kompleks zabudowy mieszkalnej Quarren.'
+),
+
+(
+'Quarren Industrial Headquarters',
+'budynek','biuro','Foamwander City',3,0,'aktywna',
+'[LORE: LEGENDS] Siedziba organizacji przemysłowej Quarren. Obiekt związany z gospodarczą aktywnością tej społeczności.'
+),
+
+(
+'Quarren headquarters',
+'lokacja','inne','Foamwander City',3,0,'aktywna',
+'[LORE: LEGENDS] Ośrodek organizacyjny i przywódczy Quarren. Szczegółowe wykorzystanie w 3 BBY wymaga traktowania jako niepotwierdzonego historycznie.'
+),
+
+(
+'Quarren Command Center 12',
+'budynek','baza','Głębokie Strefy Oceaniczne Mon Cala',2,0,'aktywna',
+'[LORE: LEGENDS] Obiekt dowodzenia Quarren. Jego dokładna aktywność i podporządkowanie w 3 BBY nie są potwierdzone.'
+),
+
+-- ============================================================
+-- 7. POZOSTAŁE MIASTA I OSADY
+-- ============================================================
+
+(
+'Dac City',
+'lokacja','inne','Północny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: CANON] Miasto związane z historią monarchy Lee-Char i wydarzeniami wojny domowej na Mon Cala. Występowało jako ważny ośrodek polityczny. Szczegóły dzielnic są INFERRED.'
+),
+
+(
+'Dac City — kompleks pałacowy',
+'lokacja','inne','Dac City',3,0,'aktywna',
+'[LORE: CANON] Obszar pałacu, z którego Lee-Char sprawował władzę. Stan i funkcja w 3 BBY podlegają imperialnym realiom.'
+),
+
+(
+'Bel City',
+'lokacja','inne','Północny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: CANON] Jedno z miast Mon Cala. Szczegółowa topografia miejska nie jest ustalona.'
+),
+
+(
+'New Coral City',
+'lokacja','inne','Centralny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: CANON / LEGENDS] Miasto Mon Cala, w źródłach przedstawiane jako osada o zabudowie częściowo wyniesionej ponad powierzchnię oceanu. Nie należy utożsamiać go bezrefleksyjnie z Coral City.'
+),
+
+(
+'Coral Depths City',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Podwodne miasto położone w głębszych partiach oceanu.'
+),
+
+(
+'Domed City of Aquarius',
+'lokacja','inne','Centralny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Miasto podwodne o zabudowie kopułowej. Szczegółowy plan urbanistyczny nie jest potwierdzony.'
+),
+
+(
+'Wildwater City',
+'lokacja','inne','Region Lasów Wodorostów',2,1,'aktywna',
+'[LORE: LEGENDS] Osada miejska Mon Cala związana z obszarami oceanicznymi i środowiskiem wodnym.'
+),
+
+(
+'Crystal Reef',
+'lokacja','inne','Region Raf Koralowych Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Osada lub ośrodek związany z formacją rafową Crystal Reef.'
+),
+
+(
+'Reef Home City',
+'lokacja','inne','Region Raf Koralowych Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Miasto związane z obszarem rafowym. Szczegółowy układ zabudowy nieustalony.'
+),
+
+(
+'Heurkea Floating City',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: LEGENDS] Miasto pływające na powierzchni oceanu. Odrębne od typowych podwodnych aglomeracji.'
+),
+
+(
+'Morjanssik',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Miasto Quarren związane z przemysłem wydobywczym i głębinową działalnością gospodarczą.'
+),
+
+(
+'Sar Galva',
+'lokacja','inne','Południowy Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Osada Mon Cala wymieniana w materiałach dotyczących geografii planety.'
+),
+
+(
+'Nystullum',
+'lokacja','inne','Południowy Ocean Mon Cala',2,1,'aktywna',
+'[LORE: CANON / LEGENDS] Miasto Mon Cala. W historii planety związane z lokalną administracją i działalnością polityczną.'
+),
+
+(
+'Orotoru G’am',
+'lokacja','inne','Centralny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Ośrodek związany z kulturą i tradycją Mon Cala. W źródłach występuje również w kontekście obiektów królewskich.'
+),
+
+(
+'Hikahi',
+'lokacja','inne','Północny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Miejsce wymieniane w materiałach dotyczących geografii Mon Cala. Szczegółowa funkcja przestrzenna w HOLOLINK pozostaje nieustalona.'
+),
+
+-- ============================================================
+-- 8. OBIEKTY SPECJALNE I KULTUROWE
+-- ============================================================
+
+(
+'The Regency',
+'lokacja','inne','Coral City',3,0,'aktywna',
+'[LORE: LEGENDS] Obiekt związany z administracją i strukturami politycznymi Mon Cala. Szczegółowa funkcja w 3 BBY niepotwierdzona.'
+),
+
+(
+'Royal Command Bunker',
+'budynek','baza','Mon Cala — centrum królewskie',3,0,'aktywna',
+'[LORE: LEGENDS] Podziemny lub podwodny obiekt dowodzenia królewskiego. Historyczna infrastruktura obronna.'
+),
+
+(
+'Mourning Shrines',
+'lokacja','inne','Coral City — dzielnica reprezentacyjna',4,1,'aktywna',
+'[LORE: LEGENDS] Miejsca pamięci i kultu związane z tradycją Mon Cala.'
+),
+
+(
+'Moncaladrome',
+'lokacja','inne','Coral City',3,1,'aktywna',
+'[LORE: LEGENDS] Obiekt rozrywkowy i sportowy związany z życiem miejskim Mon Cala.'
+),
+
+(
+'Hall of Heroes — Dac',
+'budynek','inne','Dac City',3,1,'aktywna',
+'[LORE: LEGENDS] Obiekt pamięci i upamiętnienia bohaterów Mon Cala.'
+),
+
+-- ============================================================
+-- 9. ŚRODOWISKO NATURALNE
+-- ============================================================
+
+(
+'Algae Sward',
+'lokacja','inne','Region Lasów Wodorostów',2,1,'aktywna',
+'[LORE: LEGENDS] Rozległy obszar podwodnej roślinności i wodorostów.'
+),
+
+(
+'Seaweed Forest',
+'lokacja','inne','Region Lasów Wodorostów',2,1,'aktywna',
+'[LORE: LEGENDS] Podwodny las wodorostów. Naturalny obszar oceaniczny o znaczeniu biologicznym.'
+),
+
+(
+'Grand Reefs',
+'lokacja','inne','Region Raf Koralowych Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Rozległy system raf koralowych.'
+),
+
+(
+'Alopia Rift',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Szczelina oceaniczna. Naturalna formacja geograficzna.'
+),
+
+(
+'Murul Trench',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Rów oceaniczny. Głęboka strefa o wysokim ciśnieniu.'
+),
+
+(
+'Rako’s Rift',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Szczelina oceaniczna Mon Cala.'
+),
+
+(
+'Great Ungeness Trench',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Głęboki rów oceaniczny.'
+),
+
+(
+'Seascape Mountains',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Podwodna formacja górska.'
+),
+
+(
+'Hakawa Islands',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: LEGENDS] Archipelag wysp oceanicznych.'
+),
+
+(
+'Mkbuto Islands',
+'lokacja','inne','Mon Calamari — powierzchnia',1,1,'aktywna',
+'[LORE: LEGENDS] Archipelag wysp Mon Cala.'
+),
+
+(
+'Mkbuto Seatree Preserve',
+'lokacja','inne','Mkbuto Islands',2,1,'aktywna',
+'[LORE: LEGENDS] Chroniony obszar przyrodniczy związany z lokalną roślinnością.'
+),
+
+(
+'Valley of the Giant Oysters',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Naturalna dolina oceaniczna związana z wielkimi organizmami morskimi.'
+),
+
+(
+'Mester Reef',
+'lokacja','inne','Region Raf Koralowych Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Formacja rafowa.'
+),
+
+(
+'Marca Pala Sea',
+'lokacja','inne','Południowy Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Obszar morski wymieniany w geografii Mon Cala.'
+),
+
+(
+'Salinrerian Sea',
+'lokacja','inne','Północny Ocean Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Obszar morski Mon Cala.'
+),
+
+(
+'Soheras Trench',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,1,'aktywna',
+'[LORE: LEGENDS] Rów oceaniczny.'
+),
+
+-- ============================================================
+-- 10. INFRASTRUKTURA NAUKOWA I TECHNICZNA
+-- ============================================================
+
+(
+'Kee-Piru',
+'lokacja','inne','Coral City',3,0,'aktywna',
+'[LORE: LEGENDS] Ośrodek związany z technologią i działalnością Kee-Piru Computronics.'
+),
+
+(
+'Kee-Piru Computronics headquarters',
+'budynek','biuro','Kee-Piru',4,0,'aktywna',
+'[LORE: LEGENDS] Siedziba Kee-Piru Computronics. Obiekt korporacyjny związany z technologią i elektroniką.'
+),
+
+(
+'Pisces Base',
+'lokacja','baza','Głębokie Strefy Oceaniczne Mon Cala',2,0,'aktywna',
+'[LORE: LEGENDS] Podwodna baza. Szczegółowe przeznaczenie i stan w 3 BBY niepotwierdzone.'
+),
+
+(
+'Mon Calamari Communications Control',
+'budynek','inne','Coral City — centrum transportowe',4,0,'aktywna',
+'[LORE: LEGENDS] Obiekt kontroli i koordynacji łączności. Szczegółowe podporządkowanie w 3 BBY nieustalone.'
+),
+
+(
+'Traffic Control Central',
+'budynek','inne','Coral City — centrum transportowe',4,0,'aktywna',
+'[LORE: LEGENDS] Centralny obiekt zarządzania ruchem komunikacyjnym.'
+),
+
+(
+'Wave Works',
+'lokacja','inne','Centralny Ocean Mon Cala',2,0,'aktywna',
+'[LORE: LEGENDS] Obiekt przemysłowo-techniczny związany z infrastrukturą wodną.'
+),
+
+(
+'Mon Calamari underwater base',
+'lokacja','baza','Głębokie Strefy Oceaniczne Mon Cala',2,0,'aktywna',
+'[LORE: LEGENDS] Podwodna baza o nieustalonej szczegółowej funkcji. Wykorzystywana jako geograficzny punkt infrastruktury.'
+),
+
+(
+'Morjanssik Mine',
+'lokacja','inne','Morjanssik',3,0,'aktywna',
+'[LORE: LEGENDS] Obiekt wydobywczy związany z gospodarką głębinową Quarren.'
+),
+
+(
+'Whaladon Processing Center',
+'lokacja','inne','Głębokie Strefy Oceaniczne Mon Cala',2,0,'aktywna',
+'[LORE: LEGENDS] Zakład przetwórstwa związany z zasobami biologicznymi oceanu.'
+),
+
+-- ============================================================
+-- 11. MON CALAMARI SHIPYARDS — POWIERZCHNIA
+-- ============================================================
+
+(
+'Mon Calamari Shipyards — kompleks planetarny',
+'lokacja','inne','Centralny Ocean Mon Cala',2,0,'aktywna',
+'[LORE: CANON / LEGENDS] Główne zaplecze przemysłu stoczniowego planety. Obejmuje powierzchniowe i podwodne obiekty projektowe, administracyjne, logistyczne i produkcyjne oraz powiązania z orbitalnymi stoczniami. W 3 BBY infrastruktura pozostaje pod kontrolą imperialną.'
+),
+
+(
+'Mon Calamari Shipyards — kompleks administracyjny',
+'lokacja','inne','Mon Calamari Shipyards — kompleks planetarny',3,0,'aktywna',
+'[LORE: CUSTOM] Autorski kompleks administracyjny HOLOLINK. Powierzchniowe i podwodne zaplecze zarządzania przedsiębiorstwem stoczniowym.'
+),
+
+(
+'Mon Calamari Shipyards — biura zarządu',
+'budynek','biuro','Mon Calamari Shipyards — kompleks administracyjny',4,0,'aktywna',
+'[LORE: CUSTOM] Biura kierownictwa i zarządu przedsiębiorstwa stoczniowego. Obiekt korporacyjny o ograniczonym dostępie.'
+),
+
+(
+'Mon Calamari Shipyards — biuro administracji',
+'budynek','biuro','Mon Calamari Shipyards — kompleks administracyjny',4,0,'aktywna',
+'[LORE: CUSTOM] Biuro administracji przedsiębiorstwa, dokumentacji personalnej i bieżącej obsługi działalności.'
+),
+
+(
+'Mon Calamari Shipyards — biuro obsługi kontraktów',
+'budynek','biuro','Mon Calamari Shipyards — kompleks administracyjny',4,0,'aktywna',
+'[LORE: CUSTOM] Placówka obsługująca kontrakty stoczniowe, zamówienia i dokumentację handlową. W 3 BBY uwzględnia kontrakty imperialne.'
+),
+
+(
+'Mon Calamari Shipyards — placówka ochrony korporacyjnej',
+'budynek','baza','Mon Calamari Shipyards — kompleks administracyjny',4,0,'aktywna',
+'[LORE: CUSTOM] Obiekt ochrony korporacyjnej i kontroli dostępu do infrastruktury przemysłowej.'
+),
+
+(
+'Mon Calamari Shipyards — kompleks projektowy',
+'lokacja','inne','Mon Calamari Shipyards — kompleks planetarny',3,0,'aktywna',
+'[LORE: CUSTOM] Podwodny i powierzchniowy ośrodek projektowania jednostek kosmicznych.'
+),
+
+(
+'Mon Calamari Shipyards — biuro projektowe',
+'budynek','biuro','Mon Calamari Shipyards — kompleks projektowy',4,0,'aktywna',
+'[LORE: CUSTOM] Placówka projektowania konstrukcji statków kosmicznych i opracowywania dokumentacji technicznej.'
+),
+
+(
+'Mon Calamari Shipyards — centrum inżynieryjne',
+'budynek','inne','Mon Calamari Shipyards — kompleks projektowy',4,0,'aktywna',
+'[LORE: CUSTOM] Ośrodek inżynierii konstrukcyjnej, systemów napędowych i integracji wyposażenia.'
+),
+
+(
+'Mon Calamari Shipyards — dział dokumentacji technicznej',
+'budynek','biuro','Mon Calamari Shipyards — kompleks projektowy',4,0,'aktywna',
+'[LORE: CUSTOM] Archiwum projektowe i dział dokumentacji technicznej.'
+),
+
+(
+'Mon Calamari Shipyards — laboratorium badawcze',
+'budynek','inne','Mon Calamari Shipyards — kompleks projektowy',4,0,'aktywna',
+'[LORE: CUSTOM] Laboratorium badań materiałowych i technologii konstrukcji jednostek kosmicznych.'
+),
+
+(
+'Mon Calamari Shipyards — centrum kontroli jakości',
+'budynek','inne','Mon Calamari Shipyards — kompleks projektowy',4,0,'aktywna',
+'[LORE: CUSTOM] Ośrodek inspekcji i kontroli jakości komponentów oraz konstrukcji.'
+),
+
+(
+'Mon Calamari Shipyards — kompleks przemysłowy podwodny',
+'lokacja','inne','Mon Calamari Shipyards — kompleks planetarny',3,0,'aktywna',
+'[LORE: CUSTOM] Podwodny kompleks produkcyjny. Obejmuje warsztaty, zakłady prefabrykacji, magazyny i zaplecze techniczne. Nie jest częścią stoczni orbitalnych.'
+),
+
+(
+'Mon Calamari Shipyards — zakład prefabrykacji',
+'budynek','inne','Mon Calamari Shipyards — kompleks przemysłowy podwodny',4,0,'aktywna',
+'[LORE: CUSTOM] Podwodny zakład produkcji elementów konstrukcyjnych i komponentów jednostek kosmicznych.'
+),
+
+(
+'Mon Calamari Shipyards — warsztat techniczny',
+'budynek','inne','Mon Calamari Shipyards — kompleks przemysłowy podwodny',4,0,'aktywna',
+'[LORE: CUSTOM] Warsztat obsługi urządzeń przemysłowych, narzędzi i wyposażenia produkcyjnego.'
+),
+
+(
+'Mon Calamari Shipyards — magazyn komponentów podwodny',
+'budynek','magazyn','Mon Calamari Shipyards — kompleks przemysłowy podwodny',4,0,'aktywna',
+'[LORE: CUSTOM] Magazyn komponentów i materiałów dla podwodnych zakładów produkcyjnych.'
+),
+
+(
+'Mon Calamari Shipyards — centrum logistyczne',
+'lokacja','inne','Mon Calamari Shipyards — kompleks planetarny',3,0,'aktywna',
+'[LORE: CUSTOM] Kompleks obsługi dostaw, przeładunków i transportu pomiędzy zakładami podwodnymi, powierzchnią oraz orbitą.'
+),
+
+(
+'Mon Calamari Shipyards — biuro logistyki',
+'budynek','biuro','Mon Calamari Shipyards — centrum logistyczne',4,0,'aktywna',
+'[LORE: CUSTOM] Biuro koordynacji transportu materiałów, personelu i podzespołów.'
+),
+
+(
+'Mon Calamari Shipyards — terminal komponentów',
+'lokacja','port','Mon Calamari Shipyards — centrum logistyczne',4,0,'aktywna',
+'[LORE: CUSTOM] Terminal przeładunkowy dla komponentów transportowanych pomiędzy powierzchnią planety i orbitą.'
+),
+
+-- ============================================================
+-- 12. IMPERIALNA ADMINISTRACJA I KONTROLA
+-- ============================================================
+
+(
+'Mon Cala — strefa administracji imperialnej',
+'lokacja','inne','Mon Calamari — powierzchnia',1,0,'aktywna',
+'[LORE: INFERRED] Umowna strefa administracyjna Imperium na planecie. W 3 BBY Imperialna kontrola polityczna i gospodarcza jest nadrzędna wobec lokalnych struktur.'
+),
+
+(
+'Mon Cala — przedstawicielstwo imperialne',
+'budynek','biuro','Mon Cala — strefa administracji imperialnej',2,0,'aktywna',
+'[LORE: INFERRED] Placówka reprezentująca administrację Imperium i nadzorująca wykonywanie poleceń władz imperialnych.'
+),
+
+(
+'Mon Cala — biuro nadzoru przemysłu stoczniowego',
+'budynek','biuro','Mon Cala — strefa administracji imperialnej',2,0,'aktywna',
+'[LORE: INFERRED] Placówka nadzoru nad realizacją kontraktów i produkcją stoczniową na potrzeby Imperium.'
+),
+
+(
+'Mon Cala — posterunek bezpieczeństwa imperialnego',
+'budynek','baza','Mon Cala — strefa administracji imperialnej',2,0,'aktywna',
+'[LORE: INFERRED] Placówka bezpieczeństwa odpowiedzialna za ochronę obiektów administracyjnych i kontrolę dostępu.'
+),
+
+(
+'Mon Cala — punkt kontroli transportu',
+'lokacja','inne','Mon Cala — strefa administracji imperialnej',2,0,'aktywna',
+'[LORE: INFERRED] Punkt kontroli transportu i przepływu ładunków na obszarach strategicznych.'
+),
+
+(
+'Mon Cala — centrum kontroli dostaw',
+'budynek','biuro','Mon Cala — strefa administracji imperialnej',2,0,'aktywna',
+'[LORE: CUSTOM] Placówka koordynująca dostawy dla instalacji przemysłowych i imperialnych.'
+);
+
+-- ============================================================
+-- 13. IMPORT — BEZPIECZNE ID I HIERARCHIA
+-- ============================================================
+
+DELIMITER $$
+
+CREATE PROCEDURE hololink_import_mon_calamari()
+BEGIN
+
+    DECLARE v_planeta_id INT UNSIGNED DEFAULT NULL;
+    DECLARE v_planeta_count INT DEFAULT 0;
+    DECLARE v_next_id BIGINT UNSIGNED DEFAULT 0;
+    DECLARE v_parent_id BIGINT UNSIGNED DEFAULT NULL;
+    DECLARE v_nazwa VARCHAR(200);
+    DECLARE v_typ VARCHAR(20);
+    DECLARE v_rodzaj VARCHAR(20);
+    DECLARE v_rodzic VARCHAR(200);
+    DECLARE v_publiczna TINYINT;
+    DECLARE v_status VARCHAR(20);
+    DECLARE v_opis TEXT;
+    DECLARE v_done TINYINT DEFAULT 0;
+    DECLARE v_inserted INT DEFAULT 0;
+
+    DECLARE cur CURSOR FOR
+        SELECT nazwa,typ,rodzaj,rodzic,publiczna,status,opis
+        FROM tmp_mon_calamari
+        ORDER BY poziom,nazwa;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND
+        SET v_done = 1;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    -- Weryfikacja planety.
+    SELECT COUNT(*),MIN(id)
+    INTO v_planeta_count,v_planeta_id
+    FROM mapa_planety
+    WHERE LOWER(TRIM(nazwa)) = LOWER('Mon Calamari');
+
+    IF v_planeta_count <> 1 OR v_planeta_id <> 1459 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+        'Nie znaleziono dokładnie jednego rekordu Mon Calamari o ID 1459.';
+    END IF;
+
+    START TRANSACTION;
+
+    -- ID nie ma AUTO_INCREMENT.
+    SELECT COALESCE(MAX(id),0)+1
+    INTO v_next_id
+    FROM lokalizacje;
+
+    OPEN cur;
+
+    import_loop: LOOP
+
+        FETCH cur INTO
+            v_nazwa,
+            v_typ,
+            v_rodzaj,
+            v_rodzic,
+            v_publiczna,
+            v_status,
+            v_opis;
+
+        IF v_done = 1 THEN
+            LEAVE import_loop;
+        END IF;
+
+        -- Istniejący rekord pozostaje bez zmian.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = v_planeta_id
+              AND nazwa = v_nazwa
+        ) THEN
+
+            SET v_parent_id = NULL;
+
+            -- Wyszukiwanie rodzica po nazwie.
+            IF v_rodzic IS NOT NULL THEN
+
+                SET v_parent_id = (
+                    SELECT id
+                    FROM lokalizacje
+                    WHERE planeta_id = v_planeta_id
+                      AND nazwa = v_rodzic
+                    LIMIT 1
+                );
+
+                IF v_parent_id IS NULL THEN
+                    SIGNAL SQLSTATE '45000'
+                    SET MESSAGE_TEXT =
+                    'Brak rodzica dla lokalizacji — import przerwany.';
+                END IF;
+
+            END IF;
+
+            -- Jawny przydział ID.
+            INSERT INTO lokalizacje (
+                id,
+                typ,
+                rodzaj,
+                rodzic_id,
+                uklad_id,
+                planeta_id,
+                nazwa,
+                x_km,
+                y_km,
+                publiczna,
+                status,
+                opis
+            )
+            VALUES (
+                v_next_id,
+                v_typ,
+                v_rodzaj,
+                v_parent_id,
+                NULL,
+                v_planeta_id,
+                v_nazwa,
+                NULL,
+                NULL,
+                v_publiczna,
+                v_status,
+                v_opis
+            );
+
+            SET v_next_id = v_next_id + 1;
+            SET v_inserted = v_inserted + 1;
+
+        END IF;
+
+    END LOOP;
+
+    CLOSE cur;
+
+    COMMIT;
+
+    SELECT
+        'IMPORT ZAKOŃCZONY' AS wynik,
+        v_planeta_id AS planeta_id,
+        v_inserted AS dodane_rekordy,
+        (
+            SELECT COUNT(*)
+            FROM lokalizacje
+            WHERE planeta_id = v_planeta_id
+        ) AS wszystkie_lokalizacje_planety;
+
+END$$
+
+DELIMITER ;
+
+CALL hololink_import_mon_calamari();
+
+DROP PROCEDURE IF EXISTS hololink_import_mon_calamari;
+
+-- ============================================================
+-- 14. AUDYT PO IMPORCIE
+-- ============================================================
+
+SET @mon_calamari_id := 1459;
+
+-- 14.1 Liczba wszystkich lokalizacji.
+SELECT
+    COUNT(*) AS wszystkie_lokalizacje
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id;
+
+-- 14.2 Liczba rekordów według typu.
+SELECT
+    typ,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+GROUP BY typ
+ORDER BY typ;
+
+-- 14.3 Kontrola rodziców.
+SELECT
+    c.id,
+    c.nazwa,
+    c.rodzic_id,
+    p.nazwa AS rodzic
+FROM lokalizacje c
+LEFT JOIN lokalizacje p
+    ON p.id = c.rodzic_id
+   AND p.planeta_id = c.planeta_id
+WHERE c.planeta_id = @mon_calamari_id
+  AND c.rodzic_id IS NOT NULL
+  AND p.id IS NULL;
+
+-- 14.4 Duplikaty nazw.
+SELECT
+    planeta_id,
+    nazwa,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+GROUP BY planeta_id,nazwa
+HAVING COUNT(*) > 1;
+
+-- 14.5 Korzenie geograficzne.
+SELECT
+    id,
+    nazwa,
+    typ,
+    rodzic_id
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND rodzic_id IS NULL
+ORDER BY typ,nazwa;
+
+-- 14.6 Kontrola Coral City.
+SELECT
+    id,
+    nazwa,
+    typ,
+    status
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND nazwa LIKE '%Coral City%';
+
+-- 14.7 Kontrola miast Quarren.
+SELECT
+    id,
+    nazwa,
+    typ,
+    rodzic_id,
+    opis
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND (
+      nazwa LIKE '%Foamwander%'
+      OR nazwa LIKE '%Quarren%'
+      OR nazwa LIKE '%Morjanssik%'
+  )
+ORDER BY nazwa;
+
+-- 14.8 Kontrola przemysłu stoczniowego.
+SELECT
+    id,
+    nazwa,
+    typ,
+    rodzaj,
+    rodzic_id,
+    publiczna,
+    status
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND nazwa LIKE '%Shipyards%'
+ORDER BY nazwa;
+
+-- 14.9 Kontrola konkretnych biur stoczniowych.
+SELECT
+    id,
+    nazwa,
+    typ,
+    rodzaj,
+    publiczna,
+    status
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND nazwa LIKE '%Shipyards%'
+  AND rodzaj = 'biuro'
+ORDER BY nazwa;
+
+-- 14.10 Kontrola oddzielenia orbity i powierzchni.
+SELECT
+    nazwa,
+    typ,
+    rodzic_id,
+    opis
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND nazwa IN (
+      'Mon Calamari — orbita',
+      'Mon Calamari — powierzchnia',
+      'Mon Calamari Orbital Shipyards',
+      'Mon Calamari Shipyards — kompleks planetarny'
+  );
+
+-- 14.11 Kontrola lokalizacji bez współrzędnych.
+-- Oczekiwany wynik: większość nowych rekordów.
+SELECT
+    COUNT(*) AS rekordy_bez_wspolrzednych
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND x_km IS NULL
+  AND y_km IS NULL;
+
+-- 14.12 Kontrola statusów.
+SELECT
+    status,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+GROUP BY status;
+
+-- 14.13 Pełne drzewo lokalizacji.
+WITH RECURSIVE drzewo AS (
+    SELECT
+        id,
+        nazwa,
+        typ,
+        rodzaj,
+        rodzic_id,
+        0 AS poziom,
+        CAST(nazwa AS CHAR(4000)) AS sciezka
+    FROM lokalizacje
+    WHERE planeta_id = @mon_calamari_id
+      AND rodzic_id IS NULL
+
+    UNION ALL
+
+    SELECT
+        d.id,
+        d.nazwa,
+        d.typ,
+        d.rodzaj,
+        d.rodzic_id,
+        t.poziom + 1,
+        CONCAT(t.sciezka,' > ',d.nazwa)
+    FROM lokalizacje d
+    INNER JOIN drzewo t
+        ON d.rodzic_id = t.id
+    WHERE d.planeta_id = @mon_calamari_id
+)
+SELECT
+    poziom,
+    nazwa,
+    typ,
+    rodzaj,
+    sciezka
+FROM drzewo
+ORDER BY sciezka;
+
+-- 14.14 Kontrola obecności podstawowych elementów.
+SELECT
+    SUM(nazwa = 'Coral City') AS coral_city,
+    SUM(nazwa = 'Foamwander City') AS foamwander_city,
+    SUM(nazwa = 'Dac City') AS dac_city,
+    SUM(nazwa = 'Mon Calamari Orbital Shipyards') AS orbital_shipyards,
+    SUM(nazwa = 'Mon Calamari Shipyards — kompleks planetarny')
+        AS planetary_shipyards,
+    SUM(nazwa = 'Mon Calamari Shipyards — biura zarządu')
+        AS management_offices,
+    SUM(nazwa = 'Mon Calamari Shipyards — biuro projektowe')
+        AS design_office,
+    SUM(nazwa = 'Mon Calamari Shipyards — centrum inżynieryjne')
+        AS engineering_center
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id;
+
+-- 14.15 Kontrola rekordów o nieprawidłowym typie.
+SELECT
+    id,
+    nazwa,
+    typ,
+    rodzaj
+FROM lokalizacje
+WHERE planeta_id = @mon_calamari_id
+  AND (
+      typ NOT IN (
+          'uklad','orbita','powierzchnia',
+          'lokacja','budynek','ladowisko'
+      )
+      OR (
+          rodzaj IS NOT NULL
+          AND rodzaj NOT IN (
+              'hangar','port','hotel','bankomat',
+              'sklep','kantyna','biuro','garaz',
+              'baza','magazyn','platforma','inne'
+          )
+      )
+  );
+
+-- 14.16 Kontrola osieroconych lokalizacji.
+SELECT
+    c.id,
+    c.nazwa,
+    c.rodzic_id
+FROM lokalizacje c
+LEFT JOIN lokalizacje p
+    ON p.id = c.rodzic_id
+WHERE c.planeta_id = @mon_calamari_id
+  AND c.rodzic_id IS NOT NULL
+  AND (
+      p.id IS NULL
+      OR p.planeta_id <> @mon_calamari_id
+  );
+
+-- ============================================================
+-- KONIEC IMPORTU MON CALAMARI
+-- ============================================================

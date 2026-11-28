@@ -15,15 +15,17 @@ const CEL = path.join(KORZEN, 'api', 'schema.sql');
 const pliki = fs.readdirSync(MIGRACJE).filter((f) => /^\d{3}_.+\.sql$/.test(f)).sort();
 const numery = pliki.map((f) => Number(f.slice(0, 3)));
 numery.forEach((n, i) => {
-  if (n !== i + 1) throw new Error(`Luka albo duplikat w numeracji migracji przy ${pliki[i]} (oczekiwano ${String(i + 1).padStart(3, '0')}).`);
+  const poprzedni = i ? numery[i - 1] : 0;
+  if (n !== poprzedni && n !== poprzedni + 1) throw new Error(`Luka w numeracji migracji przy ${pliki[i]} (oczekiwano ${String(poprzedni + 1).padStart(3, '0')}).`);
 });
+const wersjaMax = Math.max(...numery);
 
 const naglowek = [
   '-- HOLOLINK — pełny schemat bazy dla NOWEJ, PUSTEJ bazy (MySQL 8.0.16+ / MariaDB 10.6+).',
   '-- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/',
   '-- i przebuduj: node narzedzia/sql/zbuduj.js',
   '-- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.',
-  `-- Zawiera migracje 001–${String(pliki.length).padStart(3, '0')} oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.`,
+  `-- Zawiera migracje 001–${String(wersjaMax).padStart(3, '0')} oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.`,
   '-- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.',
   '',
 ].join('\n');
@@ -43,8 +45,8 @@ if (process.argv.includes('--sprawdz')) {
     console.error('api/schema.sql jest nieaktualny. Uruchom: node narzedzia/sql/zbuduj.js');
     process.exit(1);
   }
-  console.log(`api/schema.sql aktualny (${pliki.length} migracji).`);
+  console.log(`api/schema.sql aktualny (${pliki.length} plików migracji, wersje 001–${wersjaMax}).`);
 } else {
   fs.writeFileSync(CEL, tresc);
-  console.log(`Zapisano api/schema.sql z ${pliki.length} migracji.`);
+  console.log(`Zapisano api/schema.sql z ${pliki.length} plików migracji (wersje 001–${wersjaMax}).`);
 }

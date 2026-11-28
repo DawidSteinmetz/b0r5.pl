@@ -26,8 +26,54 @@ function gosp_planety(): array
     return $w;
 }
 
+// Dostawy przychodzące na planetę: tonaż z t_doba oraz częstotliwość statków przeliczone na godzinę.
+function gosp_dostawy_planety(string $planeta): array
+{
+    $db = polaczenie_bazy();
+    $dostawy = [];
+    if (gosp_dostepna()) {
+    $q = $db->prepare("SELECT t.kod,t.nazwa,SUM(l.t_doba)/24 AS t_h,
+            SUM(3600.0/NULLIF(l.odstep_s,0)) AS statki_h,COUNT(*) AS szlaki
+        FROM gosp_linie l JOIN gosp_obiekty o ON o.id=l.obiekt_id JOIN gosp_towary t ON t.kod=l.towar
+        WHERE LOWER(o.planeta)=LOWER(?) GROUP BY t.kod,t.nazwa ORDER BY SUM(l.t_doba) DESC,t.nazwa");
+    $q->execute([$planeta]);
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $dostawy[] = ['kod' => $r['kod'], 'towar' => $r['nazwa'], 't_h' => (float) $r['t_h'],
+        'statki_h' => (float) $r['statki_h'], 'szlaki' => (int) $r['szlaki'], 'trasa' => null];
+    }
+    // Starsze, galaktyczne szlaki NPC są zapisane osobno i obejmują planety poza Kuat.
+    // Nie mają tonażu ładunku, więc pokazujemy częstotliwość przybyć bez zgadywania masy.
+    $planetyGospodarcze = gosp_planety();
+    if (tabela_sql_dostepna('npc_trasy') && !isset($planetyGospodarcze[mb_strtolower($planeta)])) {
+        $q = $db->prepare('SELECT t.id,t.port_a,t.port_b,t.ladunek,t.predkosc_au_h,t.postoj_h,pa.x AS ax,pa.y AS ay,pb.x AS bx,pb.y AS by_
+            FROM npc_trasy t JOIN mapa_planety pa ON pa.nazwa=t.port_a JOIN mapa_planety pb ON pb.nazwa=t.port_b
+            WHERE t.aktywna=1 AND (LOWER(t.port_a)=LOWER(?) OR LOWER(t.port_b)=LOWER(?))');
+        $q->execute([$planeta, $planeta]);
+        $grupy = [];
+        foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $towar = trim((string) $r['ladunek']) ?: 'ładunek nieokreślony';
+            $id = (int) $r['id'];
+            $pc = hypot((float) $r['bx'] - (float) $r['ax'], (float) $r['by_'] - (float) $r['ay']);
+            $predkosc = max(0.5, (float) $r['predkosc_au_h']) * 2.5;
+            $punktSkoku = 1.5 + (crc32('npc|' . $id) % 150) / 100;
+            $lot = $punktSkoku / $predkosc * 3600;
+            $skok = min(40, 3 + $pc / 150) * 3600;
+            $postoj = max(2, min(3, (float) $r['postoj_h'])) * 3600;
+            $wznoszenie = defined('START_WZNOSZENIE_S') ? START_WZNOSZENIE_S : 600;
+            $cykl = 2 * ($postoj + $wznoszenie + 2 * $lot + $skok + 900);
+            $klucz = mb_strtolower($towar);
+            if (!isset($grupy[$klucz])) $grupy[$klucz] = ['towar' => $towar, 't_h' => null, 'statki_h' => 0.0, 'szlaki' => 0, 'trasa' => null];
+            $grupy[$klucz]['statki_h'] += 3600 / max(1, $cykl);
+            $grupy[$klucz]['szlaki']++;
+            $grupy[$klucz]['trasa'] ??= $r['port_a'] . ' ↔ ' . $r['port_b'];
+        }
+        foreach ($grupy as $r) $dostawy[] = $r;
+    }
+    usort($dostawy, static fn($a, $b) => ($b['t_h'] ?? 0) <=> ($a['t_h'] ?? 0) ?: strcasecmp($a['towar'], $b['towar']));
+    return ['planeta' => $planeta, 'dostawy' => $dostawy];
+}
+
 // Statki linii dostaw przy planetach z $wZasiegu (nazwa => true). Format jak radar_tlo (kontakty radaru).
-function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk, int $limit): array
+function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk, int $limit, bool $globalnie = false, ?string $celGlobalny = null): array
 {
     if (!gosp_dostepna() || $limit <= 0) return [];
     $db = polaczenie_bazy();
@@ -38,7 +84,7 @@ function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk,
             pa.x AS ax, pa.y AS ay, pb.x AS bx, pb.y AS by_
         FROM gosp_linie l JOIN gosp_obiekty o ON o.id = l.obiekt_id JOIN gosp_towary t ON t.kod = l.towar
         JOIN mapa_planety pa ON pa.nazwa = l.producent JOIN mapa_planety pb ON pb.nazwa = o.planeta
-        WHERE o.planeta IN ($ph) OR l.producent IN ($ph)");
+        WHERE o.planeta IN ($ph) OR l.producent IN ($ph)" . ($globalnie ? " ORDER BY (l.producent='Kuat' OR o.planeta='Kuat') DESC, l.id" : ''));
     $q->execute([...$nazwy, ...$nazwy]);
     $teraz = czas_teraz();
     $wynik = [];
@@ -49,8 +95,30 @@ function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk,
             $tc = fmod($teraz + (float) $l['faza'] * $plan['cykl'] + $k * (int) $l['odstep_s'], $plan['cykl']);
             // Szybki odsiew: tylko statki przy planecie w zasięgu i poza nadprzestrzenią.
             $e = gosp_etap($plan, $tc);
-            if (!$e || $e['etap'][1] === 'skok' || !isset($wZasiegu[$e['etap'][2]['nazwa']])) continue;
-            $f = gosp_faza($l, $plan, $e, $teraz, $k);
+            if (!$e) continue;
+            if ($e['etap'][1] === 'skok') {
+                if (!$globalnie) continue;
+                [$dlugosc, , , , $kier] = $e['etap'];
+                $start = $kier > 0 ? $plan['a'] : $plan['b'];
+                $cel = $kier > 0 ? $plan['b'] : $plan['a'];
+                if ($celGlobalny !== null && mb_strtolower($cel['nazwa']) !== mb_strtolower($celGlobalny)) continue;
+                $postep = max(0.0, min(1.0, (float) $e['w'] / max(1, $dlugosc)));
+                $od = $teraz - (int) $e['w'];
+                $hs = crc32("gosp|{$l['id']}|{$k}");
+                $kod = strtoupper(base_convert((string) ($hs % 46656), 10, 36)) . '-' . ($hs % 90 + 10);
+                $typ = mb_convert_case(explode(' ', (string) $l['klasa'])[0], MB_CASE_TITLE);
+                $f = ['x' => $start['x'] + ($cel['x'] - $start['x']) * $postep, 'y' => $start['y'] + ($cel['y'] - $start['y']) * $postep,
+                    'nazwa' => "{$typ} {$kod}", 'planeta' => null, 'kurs' => fmod(rad2deg(atan2($cel['y'] - $start['y'], $cel['x'] - $start['x'])) + 360, 360),
+                    'lot' => null, 'skok' => ['x' => $cel['x'], 'y' => $cel['y'], 'start_x' => $start['x'], 'start_y' => $start['y'],
+                        'wejscie' => $od, 'eta' => $od + $dlugosc, 'planeta' => $cel['nazwa'],
+                        'predkosc_pc_doba' => hypot($cel['x'] - $start['x'], $cel['y'] - $start['y']) / (max(1, $dlugosc) / 86400)],
+                    'radar_trasa' => "{$start['nazwa']} ⇄ {$cel['nazwa']}", 'opis' => "skok: {$start['nazwa']} → {$cel['nazwa']}", 'do' => $od + $dlugosc,
+                    'ladunek' => $kier > 0 ? $l['towar_nazwa'] . ' · ' . number_format((float) $l['ladownosc_t'], 0, ',', ' ') . ' t' : 'pusty (powrót po ładunek)',
+                    'k' => null, 'atmosfera' => null, 'przelot' => null, 'dok' => null, 'geo' => null, 'ladowisko' => null];
+            } else {
+                if (!$globalnie && !isset($wZasiegu[$e['etap'][2]['nazwa']])) continue;
+                $f = gosp_faza($l, $plan, $e, $teraz, $k);
+            }
             $id = -(10000000 + (int) $l['id'] * 1000 + $k);
             $idn = $ident[$id] ?? null;
             $nazwa = $idn ? $idn['nazwa'] : $f['nazwa'];
@@ -58,12 +126,13 @@ function gosp_statki(array $wZasiegu, array $ident, array $trwa, bool $analityk,
                 'x' => $f['x'], 'y' => $f['y'], 'znacznik' => 'trojkat', 'strona' => 'neutralny', 'frakcja' => null, 'kurs' => $f['kurs'],
                 'radar' => ['transponder' => $nazwa, 'frakcja' => 'brak', 'udostepniony' => false, 'zidentyfikowany' => (bool) $idn, 'poszukiwany' => null,
                     'analiza_do' => isset($trwa[$id]) ? czas_z_utc((string) $trwa[$id]) : null, 'mozna_analizowac' => $analityk && !$idn && !isset($trwa[$id]),
-                    'trasa' => "{$l['producent']} → {$l['obiekt']}", 'ladunek' => $f['ladunek'], 'faza' => $f['opis'], 'faza_do' => $f['do']]];
+                    'trasa' => $f['radar_trasa'] ?? "{$l['producent']} → {$l['obiekt']}", 'ladunek' => $f['ladunek'] ?? '', 'faza' => $f['opis'], 'faza_do' => $f['do']]];
             foreach (['podswietlny' => 'lot', 'uklad_k' => 'k', 'atmosfera' => 'atmosfera', 'przelot' => 'przelot', 'dok' => 'dok', 'geo' => 'geo'] as $pole => $zr) {
                 if ($f[$zr] !== null) $o[$pole] = $f[$zr];
             }
             if ($f['ladowisko'] !== null) $o['na_ladowisku'] = $f['ladowisko'];
             if ($f['planeta'] !== null) $o['podejscie'] = 'bliska';
+            if ($f['skok'] ?? null) $o['lot'] = $f['skok'];
             $wynik[] = $o;
         }
     }
@@ -105,7 +174,7 @@ function gosp_obiekt_karta(int $id): array
         $plan = gosp_plan($l);
         // Najbliższy przylot: początek etapu „przylot” po stronie obiektu (B) dla któregokolwiek statku linii.
         $doPrzylotu = 0;
-        foreach ($plan['etapy'] as $e) { if ($e[1] === 'postoj' && $e[3] === 'B') break; $doPrzylotu += $e[0]; }
+        foreach ($plan['etapy'] as $e) { if ($e[1] === 'przylot' && $e[3] === 'B') break; $doPrzylotu += $e[0]; }
         $ile = max(1, (int) ceil($plan['cykl'] / max(60, (int) $l['odstep_s'])));
         $najblizej = null;
         for ($k = 0; $k < $ile; $k++) {
@@ -113,7 +182,7 @@ function gosp_obiekt_karta(int $id): array
             $za = fmod($doPrzylotu - $tc + 2 * $plan['cykl'], $plan['cykl']);
             if ($najblizej === null || $za < $najblizej) $najblizej = $za;
         }
-        $linie[] = ['towar' => $l['towar_nazwa'], 'producent' => $l['producent'] . ($plan['lokalna'] ? ' (dostawa lokalna)' : ''), 'ladownosc_t' => (int) $l['ladownosc_t'], 't_doba' => (float) $l['t_doba'],
+        $linie[] = ['towar' => $l['towar_nazwa'], 'producent' => $l['producent'], 'ladownosc_t' => (int) $l['ladownosc_t'], 't_doba' => (float) $l['t_doba'],
             'odstep_s' => (int) $l['odstep_s'], 'w_drodze' => $ile, 'przylot' => $teraz + (int) round((float) $najblizej), 'klasa' => $l['klasa']];
     }
     return ['obiekt' => ['id' => (int) $o['id'], 'planeta' => $o['planeta'], 'nazwa' => $o['nazwa'], 'rodzaj' => $o['rodzaj'], 'miejsce' => $o['miejsce'],
@@ -171,24 +240,13 @@ function gosp_plan(array $l): array
     $zaladunek = (int) round(max(1.0, (float) $l['postoj_h']) * 3600);
     $rozladunek = (int) round($zaladunek * 0.7);
     $pierscien = $l['miejsce'] === 'pierscien';
-    // Miejsce u producenta (zakład / kopalnia), stałe dla linii: szerokość i długość geograficzna.
-    $uProd = ['Zakład ' . $l['towar_nazwa'] . ' — ' . $l['producent'], rad2deg(asin(((($h >> 3) % 20001) / 10000 - 1) * 0.9)), (($h >> 9) % 36000) / 100 - 180];
-    if (!$pierscien && mb_strtolower((string) $l['producent']) === mb_strtolower((string) $l['planeta'])) {
-        // Dostawa lokalna (producent na tej samej planecie): bez skoku — lot w atmosferze od zakładu do obiektu i z powrotem.
-        $cyklP = astro_cykl((string) $l['planeta']);
-        $km = function_exists('atm_luk_km') ? atm_luk_km((float) $cyklP['srednica_km'] / 2, $uProd[1], $uProd[2], (float) $l['szer'], (float) $l['dl']) : 2000;
-        $atm = 2 * START_WZNOSZENIE_S + (int) round($km / (700 + $h % 500) * 3600);   // wznoszenie, przelot, zejście
-        $etapy = [[$zaladunek, 'postoj', $a, 'A', 1], [$atm, 'lokalny', $b, 'B', 1], [$rozladunek, 'postoj', $b, 'B', 1], [$atm, 'lokalny', $a, 'A', -1]];
-        return $cache[$l['id']] = ['etapy' => $etapy, 'cykl' => array_sum(array_column($etapy, 0)), 'a' => $a, 'b' => $b,
-            'u' => [1.0, 0.0], 'dj' => $dj, 'h' => $h, 'pierscien' => false, 'uProd' => $uProd, 'lokalna' => true];
-    }
     $przylotB = $pierscien ? 1200 + $h % 1200 : ATM_WEJSCIE_S + 600 + $h % 1500;   // przelot do doku / zejście i lot w atmosferze
     $odlotB = $pierscien ? 900 + $h % 900 : START_WZNOSZENIE_S;
     $etapy = [[$zaladunek, 'postoj', $a, 'A', 1], [START_WZNOSZENIE_S, 'start', $a, 'A', 1], [$lot, 'wylot', $a, 'A', 1], [$skok, 'skok', $b, '', 1],
               [$lot, 'dolot', $b, 'B', 1], [$przylotB, 'przylot', $b, 'B', 1], [$rozladunek, 'postoj', $b, 'B', 1], [$odlotB, 'start', $b, 'B', -1],
               [$lot, 'wylot', $b, 'B', -1], [$skok, 'skok', $a, '', -1], [$lot, 'dolot', $a, 'A', -1], [ATM_WEJSCIE_S + 900 + $h % 1200, 'przylot', $a, 'A', -1]];
     return $cache[$l['id']] = ['etapy' => $etapy, 'cykl' => array_sum(array_column($etapy, 0)), 'a' => $a, 'b' => $b,
-        'u' => [($b['x'] - $a['x']) / $pc, ($b['y'] - $a['y']) / $pc], 'dj' => $dj, 'h' => $h, 'pierscien' => $pierscien, 'uProd' => $uProd, 'lokalna' => false];
+        'u' => [($b['x'] - $a['x']) / $pc, ($b['y'] - $a['y']) / $pc], 'dj' => $dj, 'h' => $h, 'pierscien' => $pierscien];
 }
 
 function gosp_etap(array $plan, float $tc): ?array
@@ -216,17 +274,8 @@ function gosp_faza(array $l, array $plan, array $e, int $teraz, int $k): array
     $cykl = astro_cykl($port['nazwa']);
     $rp = (float) $cykl['srednica_km'] / 2;
     // Miejsca: u producenta — lądowisko kopalni/zakładu (stałe dla linii), przy obiekcie — jego lądowisko albo dok.
-    $uProd = $plan['uProd'];
+    $uProd = ['Zakład ' . $l['towar_nazwa'] . ' — ' . $l['producent'], rad2deg(asin(((($h >> 3) % 20001) / 10000 - 1) * 0.9)), (($h >> 9) % 36000) / 100 - 180];
     $obiektGeo = [$l['obiekt'], (float) $l['szer'], (float) $l['dl']];
-    if ($rodzaj === 'lokalny') {
-        // Lot w atmosferze między zakładem producenta a obiektem (ta sama planeta) — po łuku wielkiego koła.
-        [$z, $do] = $kier > 0 ? [$uProd, $obiektGeo] : [$obiektGeo, $uProd];
-        $f['planeta'] = $port['nazwa'];
-        $f['atmosfera'] = ['rodzaj' => 'lokalny', 'od' => $od, 'do' => $od + $dlugosc, 'szer0' => $z[1], 'dl0' => $z[2], 'szer1' => $do[1], 'dl1' => $do[2],
-            'faza_s' => 0, 'orbita' => null];
-        $f['opis'] = 'lot w atmosferze: ' . $z[0] . ' → ' . $do[0];
-        return $f;
-    }
     $ring = null;
     if ($strona === 'B' && $plan['pierscien'] && function_exists('doki_pierscienie')) {
         foreach (doki_pierscienie() as $p) if (mb_strtolower($p['planeta']) === mb_strtolower($port['nazwa'])) $ring = $p;

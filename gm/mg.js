@@ -390,6 +390,33 @@ async function konta(edytowany = null) {
   const { uzytkownicy } = await api('mg_uzytkownicy');
   let lokacjeStartu = [];
   try { lokacjeStartu = (await api('mg_karty')).lokacje || []; } catch { /* bez listy miejsc */ }
+  // Detektywi (śledztwa droida): null = moduł niedostępny (brak migracji 082) — wtedy bez przycisku.
+  let detektywi = null;
+  try { detektywi = new Map((await api('mg_detektywi')).detektywi.map((d) => [d.konto_login.toLowerCase(), d])); } catch { /* bez modułu śledztw */ }
+  // Wnioski detektywów o nakaz (śledztwa, migracja 086): MG wydaje albo odrzuca.
+  let nakazy = [];
+  if (detektywi) try { nakazy = (await api('mg_sledztwo_nakazy')).nakazy.filter((n) => n.stan === 'wniosek'); } catch { /* bez migracji 086 */ }
+  // Rozwiązane sprawy (migracja 094): ocena, prawda, uzasadnienie i tropy gracza z oznaczeniem prawdziwości.
+  let rozwiazane = [];
+  if (detektywi) try { rozwiazane = (await api('mg_sledztwa')).sledztwa.filter((x) => x.stan === 'rozwiazane').slice(0, 12); } catch { /* bez modułu */ }
+  const podgladSprawy = h('div');
+  const pokazSprawe = (id) => bezpiecznie(async () => {
+    const p = await api('mg_sledztwo_podglad', undefined, { id });
+    const r = p.rozwiazanie || {};
+    const w = r.wynik || {};
+    wyczysc(podgladSprawy).append(h('div', { style: 'margin-top:10px;padding:8px;border:1px solid var(--linia)' },
+      h('b', `Sprawa #${id}: ${w.ocena ?? '?'}/100`), h('p', w.prawda || ''),
+      h('ul', (w.szczegoly || []).map((x) => h('li', x))),
+      r.uzasadnienie ? h('p', h('i', `Uzasadnienie gracza (${r.kiedy || ''}, ${r.kiedy_lokalnie || ''}): `), r.uzasadnienie) : null,
+      h('div.slaby', `Tropy gracza (${(p.tropy || []).length}):`),
+      h('ul', (p.tropy || []).map((x) => h('li', `${Number(x.prawdziwy) ? '✓' : '✗'} [${x.rodzaj}${x.oznaczenie ? `, ${x.oznaczenie}` : ''}] ${x.tresc}`)))));
+  });
+  const decyzjaNakazu = (n, wydany) => bezpiecznie(async () => {
+    const decyzja = window.prompt(`${wydany ? 'Wydać' : 'Odrzucić'} nakaz: ${n.budynek} (sprawa #${n.sledztwo_id}, ${n.konto_login})?\nKomentarz biura (opcjonalnie):`, '');
+    if (decyzja === null) return;
+    await api('mg_sledztwo_nakaz_decyzja', { id: n.id, wydany, decyzja });
+    wyczysc(glowna); await konta();
+  });
   const e = edytowany || {};
   const nowe = !e.id;
   // Nowy gracz: domyślnie zaproszenie (gracz sam ustawia hasło kodem jednorazowym); hasło od MG — opcjonalnie.
@@ -438,10 +465,21 @@ async function konta(edytowany = null) {
         nowe ? h('label', h('span', zaproszenie, ' Zaproszenie (gracz sam ustawi hasło)')) : null,
         pole(nowe ? 'Hasło (tylko bez zaproszenia)' : 'Nowe hasło', f.klucz)),
       h('div.rzad', btn('Zapisz', zapisz, '.glowny'), e.id ? btn('Anuluj', () => { wyczysc(glowna); konta(); }) : null)),
+    ...(nakazy.length ? [h('div.karta', h('h2', `Wnioski o nakaz (${nakazy.length})`),
+      h('table', h('tr', h('th', 'Detektyw'), h('th', 'Sprawa'), h('th', 'Budynek'), h('th', 'Uzasadnienie'), h('th', '')),
+        nakazy.map((n) => h('tr', h('td', n.konto_login), h('td', `#${n.sledztwo_id} ${n.tytul || ''}`), h('td', n.budynek),
+          h('td', n.uzasadnienie),
+          h('td.rzad', btn('Wydaj', decyzjaNakazu(n, true), '.glowny'), btn('Odrzuć', decyzjaNakazu(n, false), '.zly'))))))] : []),
+    ...(rozwiazane.length ? [h('div.karta', h('h2', `Rozwiązane sprawy (${rozwiazane.length})`),
+      h('table', h('tr', h('th', 'Detektyw'), h('th', 'Sprawa'), h('th', 'Ocena'), h('th', '')),
+        rozwiazane.map((x) => h('tr', h('td', x.konto_login), h('td', `#${x.id} ${x.tytul || ''}`), h('td', x.ocena !== null ? `${x.ocena}/100` : '—'),
+          h('td', btn('Podgląd', pokazSprawe(x.id)))))),
+      podgladSprawy)] : []),
     h('div.karta.przewijana', h('h2', `Konta (${uzytkownicy.length})`),
       h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', 'Gotowość'), h('th', '')),
         uzytkownicy.map((x) => h('tr',
-          h('td', x.login, x.rola === 'mg' ? h('span.slaby', ' (MG)') : null),
+          h('td', x.login, x.rola === 'mg' ? h('span.slaby', ' (MG)') : null,
+            detektywi?.has(x.login.toLowerCase()) ? h('span.slaby', ' · detektyw') : null),
           h('td', x.postac), h('td', x.frakcja), h('td', [x.oddzial, x.ranga].filter(Boolean).join(' / ')), h('td', x.poziom),
           gotowosc(x),
           h('td.rzad',
@@ -452,6 +490,14 @@ async function konta(edytowany = null) {
               wyczysc(glowna); await konta();
               glowna.prepend(kartaZaproszenia(x.login, r.kod, r.wazne_do));
             })) : null,
+            detektywi ? (() => {
+              const d = detektywi.get(x.login.toLowerCase());
+              return btn(d ? 'Odbierz detektywa' : 'Nadaj detektywa', bezpiecznie(async () => {
+                if (d && !confirm(`Odebrać ${x.login} rolę detektywa?`)) return;
+                await api('mg_detektyw_ustaw', { login: x.login, detektyw: !d });
+                wyczysc(glowna); await konta();
+              }));
+            })() : null,
             btn('Usuń', bezpiecznie(async () => {
               if (!confirm(`Usunąć konto ${x.login}?`)) return;
               await api('mg_uzytkownik_usun', { id: x.id });
@@ -1422,16 +1468,17 @@ async function holonet(edytowany = null) {
     tytul: h('input', { value: e.tytul || '' }),
     zrodlo: h('input', { value: e.zrodlo || '', placeholder: 'np. Imperialne Biuro Informacji' }),
     data: h('input', { type: 'date', value: e.data || new Date().toISOString().slice(0, 10) }),
+    publiczny: h('input', { type: 'checkbox', checked: !!e.publiczny }),
     tresc: h('textarea', { style: 'font-family:inherit' }, e.tresc || ''),
   };
   const zapisz = bezpiecznie(async () => {
-    await api('mg_holonet_zapisz', { id: e.id || '', tytul: f.tytul.value, zrodlo: f.zrodlo.value, data: f.data.value, tresc: f.tresc.value });
+    await api('mg_holonet_zapisz', { id: e.id || '', tytul: f.tytul.value, zrodlo: f.zrodlo.value, data: f.data.value, tresc: f.tresc.value, publiczny: f.publiczny.checked });
     wyczysc(glowna); await holonet();
     glowna.prepend(msg('Opublikowano w holonecie.', 'ok'));
   });
   glowna.append(
     h('div.karta', h('h2', e.id ? 'Edycja komunikatu' : 'Nowy komunikat holonetu'),
-      h('div.siatka', pole('Tytuł', f.tytul), pole('Źródło', f.zrodlo), pole('Data', f.data)),
+      h('div.siatka', pole('Tytuł', f.tytul), pole('Źródło', f.zrodlo), pole('Data', f.data), pole('Dostępny publicznie', f.publiczny)),
       pole('Treść', f.tresc), h('br'),
       h('div.rzad', btn('Opublikuj', zapisz, '.glowny'), e.id ? btn('Anuluj', () => { wyczysc(glowna); holonet(); }) : null)),
     h('div.karta', h('h2', `Komunikaty (${komunikaty.length})`),

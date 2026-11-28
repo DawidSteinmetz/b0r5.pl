@@ -8,8 +8,8 @@ Y — suwak / regulacja (żółty), G — synchronizacja (zielony), B — urząd
 neutralny: wyrównaj, równaj, przełącz, tryb, polecenie (biały z ramką).
 """
 KOL, WIER = 13, 9
-# szeroki: 13×7 — niższy, szerszy pulpit (wariant Walako, suwaki zakresu na całą wysokość); telefon: pionowo, bez szarych suwaków
-FORMATY = {'pulpit': (13, 9), 'szeroki': (13, 7), 'telefon': (5, 9)}
+# szeroki: 13×7 — niższy, szerszy pulpit (wariant Walako, suwaki zakresu na całą wysokość); telefon: pionowo 5×10, bez szarych suwaków
+FORMATY = {'pulpit': (13, 9), 'szeroki': (13, 7), 'telefon': (5, 10)}
 KOMORKA_CM = 2.8
 KOLORY = {'S': '#999999', 'R': '#ff3333', 'Y': '#ffff99', 'G': '#99ff99', 'B': '#6666ff', 'W': '#ffffff'}
 

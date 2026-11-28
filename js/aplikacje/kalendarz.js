@@ -29,16 +29,18 @@ export default {
     if (!KULTURY[kulturaId]) kulturaId = 'imperial_coruscant';
     const K = () => KULTURY[kulturaId];
     const u = ctx.uzytkownik;
+    // Gość (portal publiczny): sam kalendarz — miesiące, dni, święta, kultury; zgłoszenia i rejestr po zalogowaniu.
+    const gosc = !u;
     // Kultury wybrane przez gracza (konto; kopia na tablecie). Brak wyboru = ekran wyboru przy pierwszym uruchomieniu.
     let wybrane = pamiec.czytaj('kultury_wybrane', null);
     let wyborOtwarty = false;
     const zapiszWybor = (lista) => {
       wybrane = lista;
       pamiec.zapisz('kultury_wybrane', lista);
-      api('ustawienie_zapisz', { klucz: 'kalendarz_kultury', wartosc: lista }).catch(() => {});
+      if (!gosc) api('ustawienie_zapisz', { klucz: 'kalendarz_kultury', wartosc: lista }).catch(() => {});
       if (!lista.includes(kulturaId)) { kulturaId = lista[0]; pamiec.zapisz('kultura', kulturaId); }
     };
-    api('ustawienie', undefined, { klucz: 'kalendarz_kultury' }).then((d) => {
+    if (!gosc) api('ustawienie', undefined, { klucz: 'kalendarz_kultury' }).then((d) => {
       const lista = Array.isArray(d.wartosc) ? d.wartosc.filter((id) => KULTURY[id]) : null;
       if (lista?.length && JSON.stringify(lista) !== JSON.stringify(wybrane)) {
         wybrane = lista; pamiec.zapisz('kultury_wybrane', lista);
@@ -80,6 +82,7 @@ export default {
     }
 
     async function wczytaj() {
+      if (gosc) { rysuj(); return; }
       try {
         ({ wpisy } = await api('harmonogram'));
         rysuj();
@@ -117,6 +120,7 @@ export default {
 
     // Okno zgłoszenia po dotknięciu dnia.
     function okno(ds) {
+      if (gosc) { powiadom('Zaloguj się, aby zgłosić dostępność'); return; }
       const postac = h('input', { maxlength: 40, value: u.postac });
       const status = wyborStatusu();
       const notatka = h('textarea', { maxlength: 120 });
@@ -149,7 +153,7 @@ export default {
       korzen.style.setProperty('--akcent-2', k.akcent2);
 
       // ----- lewa kolumna -----
-      const fPostac = h('input', { maxlength: 40, value: u.postac });
+      const fPostac = h('input', { maxlength: 40, value: u?.postac || '' });
       const fData = h('input', { type: 'date', value: dzisIso });
       const fStatus = wyborStatusu();
       const fNotatka = h('textarea', { maxlength: 120 });
@@ -158,20 +162,23 @@ export default {
           h('h2', '// Status systemu'),
           h('div.kal-tel', h('span', 'Rok GST'), h('b.ok', ig)),
           h('div.kal-tel', h('span', 'Kultura'), h('b', k.nazwa)),
-          h('div.kal-tel', h('span', 'Wpisy'), h('b.ok', wpisy.length))),
-        h('div.panel',
+          gosc ? null : h('div.kal-tel', h('span', 'Wpisy'), h('b.ok', wpisy.length))),
+        gosc ? h('div.panel',
+          h('h2', '// Dostęp publiczny'),
+          h('p.slaby.maly-tekst', 'Kalendarz kultur galaktyki: miesiące, dni tygodnia i święta. Zgłaszanie dostępności na sesje i rejestr zgłoszeń — po zalogowaniu.'),
+          h('button.przycisk', { style: 'width:100%', onclick: () => ctx.zaloguj?.() }, 'Zaloguj się')) : h('div.panel',
           h('h2', '// Dodaj wpis'),
           pole('Postać / gracz', fPostac), pole('Data sesji', fData), pole('Status', fStatus), pole('Notatka', fNotatka),
           h('div.rzad',
             h('button.przycisk', { onclick: () => zapisz({ data: fData.value, postac: fPostac.value, status: fStatus.value, notatka: fNotatka.value }) }, '► Zapisz'),
             h('button.przycisk.drugi', { onclick: wczytaj }, '↺ Odśwież'))),
-        h('div.panel',
+        gosc ? null : h('div.panel',
           h('h2', '// Ostatnie wpisy'),
           wpisy.length
             ? h('div.kal-lista', [...wpisy].reverse().map((e) => h('div.kal-wpis',
               h('div.kal-wpis-nazwa', e.postac),
               h('div.kal-wpis-meta', dataGry(e.data), ' • ', h('span.' + STATUSY[e.status][1], STATUSY[e.status][0])),
-              (e.uid === u.id || u.rola === 'mg') ? h('button.kal-usun', { onclick: () => usun(e) }, 'Usuń') : null)))
+              u && (e.uid === u.id || u.rola === 'mg') ? h('button.kal-usun', { onclick: () => usun(e) }, 'Usuń') : null)))
             : h('div.slaby.maly-tekst', 'Brak wpisów')));
 
       // ----- kalendarz -----
@@ -217,9 +224,9 @@ export default {
             h('div.kal-etykieta', `${k.miesiace[m]} // M.${mon}`),
             h('button.przycisk.drugi.maly', { onclick: () => { kur = new Date(y, m + 1, 1); rysuj(); }, 'aria-label': 'Następny miesiąc' }, '→'),
             h('button.przycisk.drugi.maly', { onclick: () => { const d = new Date(); kur = new Date(d.getFullYear(), d.getMonth(), 1); rysuj(); } }, 'Dziś'),
-            h('button.przycisk.maly', { onclick: eksport }, '⇩ Arkusz'))),
+            gosc ? null : h('button.przycisk.maly', { onclick: eksport }, '⇩ Arkusz'))),
         siatka,
-        rejestr);
+        gosc ? null : rejestr);
 
       // ----- pasek kultur: tylko wybrane + „+” (dodaj / usuń kultury) -----
       const kultury = h('div.zakladki', ...Object.entries(KULTURY).filter(([id]) => wybrane.includes(id)).map(([id, x]) =>
@@ -230,7 +237,7 @@ export default {
       wyczysc(korzen).append(
         h('div.app-glowa', h('h1', 'Kalendarz sesji'), h('span.podtytul', 'Harmonogram')),
         kultury,
-        h('div.kal-uklad', lewa, prawa),
+        gosc ? h('div.kal-uklad.kal-gosc', prawa) : h('div.kal-uklad', lewa, prawa),
         modal);
     }
 

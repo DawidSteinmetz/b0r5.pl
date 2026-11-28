@@ -1,10 +1,7 @@
 <?php
 // Giełda CDEX: spółki i towary notowane na giełdach planetarnych.
 //
-// DANE (pliki JSON w api/dane, poza gitem):
-//   gielda            — definicje: giełdy, instrumenty, ustawienia (edytuje MG).
-//   gielda_notowania  — kursy dzienne: { SYMBOL: { od: "Y-m-d", c: [kurs, kurs, ...] } }.
-//   gielda_portfele   — portfele postaci i ich historia transakcji.
+// Giełdy, instrumenty, kursy, portfele i transakcje są przechowywane w SQL.
 //
 // SKRYPT KURSÓW. Każdy dzień liczony jest z poprzedniego:
 //   ln P(d) = ln P(d−1) + powrót · (ln F(d) − ln P(d−1)) + σ · niepewność · ε(symbol, d)
@@ -176,8 +173,6 @@ function gielda_uzgodnij_katalog(): array
     $def = gielda_definicje();
     $k = wczytaj('katalog', []);
     [$nowaDef, $nowyKatalog] = gielda_katalog_z_instrumentow($def, $k);
-    $nowaDef = gielda_z_wejscia($nowaDef);
-    if ($nowaDef !== $def) zmien('gielda', function (&$g) use ($nowaDef) { $g = $nowaDef; }, []);
     if (($nowyKatalog['towary'] ?? []) !== ($k['towary'] ?? []) || ($nowyKatalog['spolki'] ?? []) !== ($k['spolki'] ?? [])) {
         zmien('katalog', function (&$d) use ($nowyKatalog) {
             $d['towary'] = $nowyKatalog['towary'];
@@ -251,9 +246,112 @@ function gielda_domyslna(): array
 
 function gielda_definicje(): array
 {
-    $g = wczytaj('gielda', null) ?? gielda_domyslna();
-    $g['ustawienia'] = ($g['ustawienia'] ?? []) + gielda_ustawienia_domyslne();
-    return $g;
+    $db = polaczenie_bazy();
+    try {
+        $db->query("SELECT kod FROM gielde LIMIT 0");
+        $db->query("SELECT kategoria,jednostka,pochodzenie FROM instrumenty LIMIT 0");
+        $db->query("SELECT instrument_id,data,kurs FROM kursy_dzienne LIMIT 0");
+    } catch (Throwable $e) {
+        throw new RuntimeException('Giełda SQL nie jest jeszcze przygotowana. Zaimportuj api/migracje/gielda_migracja.sql.');
+    }
+    $gieldy = $db->query("SELECT ge.kod AS id, ge.nazwa, mp.nazwa AS planeta FROM gielde ge JOIN mapa_planety mp ON mp.id=ge.planeta_id WHERE ge.aktywna=1 ORDER BY ge.id")->fetchAll(PDO::FETCH_ASSOC);
+    $ust = gielda_ustawienia_domyslne();
+    foreach ($db->query("SELECT klucz,wartosc FROM ustawienia WHERE klucz LIKE 'gielda.%'")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $klucz = substr((string)$r['klucz'], 7);
+        if (array_key_exists($klucz, $ust)) $ust[$klucz] = $klucz === 'historia_dni' ? (int)$r['wartosc'] : (float)$r['wartosc'];
+    }
+    $q = $db->query("SELECT i.symbol,i.nazwa,i.rodzaj,i.kategoria,ge.kod AS gielda,i.cena_bazowa AS cena,i.zmiennosc,i.notowany AS notowana,i.jednostka,i.pochodzenie,i.towar_id,i.firma_id,
+        tw.nazwa AS towar_nazwa,p.nazwa AS firma_nazwa FROM instrumenty i JOIN gielde ge ON ge.id=i.gielda_id LEFT JOIN towary tw ON tw.id=i.towar_id LEFT JOIN podmioty p ON p.id=i.firma_id ORDER BY i.id");
+    $instrumenty = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $bazowa=(float)($r['rodzaj']==='towar'?$ust['zmiennosc_towar']:$ust['zmiennosc_spolka']);
+        $instrumenty[] = ['symbol'=>(string)$r['symbol'],'nazwa'=>(string)$r['nazwa'],'rodzaj'=>$r['rodzaj'],'kategoria'=>(string)$r['kategoria'],
+            'gielda'=>(string)$r['gielda'],'cena'=>(float)$r['cena'],'zmiennosc'=>$bazowa*(float)$r['zmiennosc'],'notowana'=>(bool)$r['notowana'],
+            'jednostka'=>(string)$r['jednostka'],'pochodzenie'=>(string)($r['pochodzenie']??''),
+            'katalog_id'=>$r['towar_id']===null?'':(string)$r['towar_id'],'firma_id'=>$r['firma_id']===null?'':(string)$r['firma_id']];
+    }
+    return ['gieldy'=>$gieldy,'instrumenty'=>$instrumenty,'ustawienia'=>$ust];
+}
+
+function gielda_podmiot_uzytkownika(array $u): int
+{
+    $q = polaczenie_bazy()->prepare("SELECT p.podmiot_id FROM postacie p JOIN podmioty x ON x.id=p.podmiot_id WHERE x.typ='postac' AND x.nazwa=? LIMIT 1");
+    $q->execute([(string)($u['postac'] ?? '')]);
+    $id = $q->fetchColumn();
+    if (!$id) blad('Ta postać nie ma jeszcze rekordu SQL. Powiąż postać w tabeli postacie przed użyciem giełdy.', 409);
+    return (int)$id;
+}
+
+function gielda_portfel_sql(int $podmiotId): array
+{
+    $db = polaczenie_bazy();
+    $q = $db->prepare('SELECT i.symbol,p.ilosc,p.koszt_laczny FROM portfele_gieldowe p JOIN instrumenty i ON i.id=p.instrument_id WHERE p.podmiot_id=?');
+    $q->execute([$podmiotId]);
+    $pozycje = [];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $pozycje[$r['symbol']] = ['ilosc'=>(int)$r['ilosc'],'koszt'=>(int)$r['koszt_laczny']];
+    $q = $db->prepare("SELECT i.symbol,t.strona,t.ilosc,t.kurs,t.kurs*t.ilosc AS wartosc,t.prowizja,t.czas_utc FROM transakcje_gieldowe t JOIN instrumenty i ON i.id=t.instrument_id WHERE t.podmiot_id=? ORDER BY t.id DESC LIMIT " . GIELDA_HISTORIA_TRANSAKCJI);
+    $q->execute([$podmiotId]);
+    $historia = array_map(fn($r)=>['data'=>date('c',strtotime($r['czas_utc'].' UTC')),'typ'=>$r['strona']==='kupno'?'kup':'sprzedaj','symbol'=>$r['symbol'],'ilosc'=>(int)$r['ilosc'],'kurs'=>(float)$r['kurs'],'wartosc'=>(int)round((float)$r['wartosc']),'prowizja'=>(int)$r['prowizja']], $q->fetchAll(PDO::FETCH_ASSOC));
+    return ['pozycje'=>$pozycje,'historia'=>array_reverse($historia)];
+}
+
+function gielda_zapisz_sql(array $def): void
+{
+    $db = polaczenie_bazy();
+    $qPlaneta = $db->prepare('SELECT id FROM mapa_planety WHERE nazwa=? LIMIT 1');
+    $q = $db->prepare('INSERT INTO gielde (kod,planeta_id,nazwa,aktywna) VALUES (?,?,?,1) ON DUPLICATE KEY UPDATE planeta_id=VALUES(planeta_id),nazwa=VALUES(nazwa),aktywna=1');
+    foreach ($def['gieldy'] as $ge) {
+        $qPlaneta->execute([$ge['planeta']]); $pid = $qPlaneta->fetchColumn();
+        if (!$pid) blad("Giełda {$ge['id']}: planeta „{$ge['planeta']}” nie istnieje w SQL.");
+        $q->execute([$ge['id'],(int)$pid,$ge['nazwa']]);
+    }
+    $db->exec('UPDATE gielde SET aktywna=0');
+    $up = $db->prepare('UPDATE gielde SET planeta_id=?,nazwa=?,aktywna=1 WHERE kod=?');
+    $lookup = $db->prepare('SELECT id FROM gielde WHERE kod=?');
+    $insTowar = $db->prepare('SELECT id FROM towary WHERE (id=? AND ? REGEXP \'^[0-9]+$\') OR nazwa=? LIMIT 1');
+    $insFirma = $db->prepare("SELECT p.id FROM podmioty p JOIN firmy f ON f.podmiot_id=p.id WHERE p.id=? OR p.nazwa=? LIMIT 1");
+    $ins = $db->prepare('INSERT INTO instrumenty (symbol,nazwa,rodzaj,kategoria,jednostka,pochodzenie,gielda_id,towar_id,firma_id,cena_bazowa,zmiennosc,notowany) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE nazwa=VALUES(nazwa),rodzaj=VALUES(rodzaj),kategoria=VALUES(kategoria),jednostka=VALUES(jednostka),pochodzenie=VALUES(pochodzenie),gielda_id=VALUES(gielda_id),towar_id=VALUES(towar_id),firma_id=VALUES(firma_id),cena_bazowa=VALUES(cena_bazowa),zmiennosc=VALUES(zmiennosc),notowany=VALUES(notowany)');
+    $db->exec('UPDATE instrumenty SET notowany=0');
+    foreach ($def['instrumenty'] as $i) {
+        $lookup->execute([$i['gielda']]); $gid = $lookup->fetchColumn();
+        if (!$gid) blad("{$i['symbol']}: nie znaleziono giełdy SQL {$i['gielda']}.");
+        $towarId = $firmaId = null;
+        if ($i['rodzaj'] === 'towar') {
+            $kid=(string)($i['katalog_id']??''); $insTowar->execute([$kid,$kid,$i['nazwa']]); $towarId=$insTowar->fetchColumn();
+            if (!$towarId) {
+                $kategoria=mb_strtolower((string)$i['kategoria']);
+                $kategoria=strtr($kategoria,['ż'=>'z','ź'=>'z','ć'=>'c','ś'=>'s','ą'=>'a','ę'=>'e','ł'=>'l','ó'=>'o','ń'=>'n']);
+                if ($kategoria==='zywnosc') $kategoria='zywnosc';
+                if ($kategoria==='elektronika') $kategoria='technika';
+                if (!in_array($kategoria,['paliwo','surowce','zywnosc','medycyna','technika','bron','luksus','przyprawy'],true)) $kategoria='technika';
+                $db->prepare('INSERT INTO towary (nazwa,kategoria,jednostka,cena_bazowa,opis) VALUES (?,?,?,?,?)')->execute([$i['nazwa'],$kategoria,$i['jednostka'],(int)round((float)$i['cena']),'Pozycja katalogu giełdy CDEX.']);
+                $insTowar->execute(['','',$i['nazwa']]); $towarId=$insTowar->fetchColumn();
+            }
+        } else {
+            $fid=(string)($i['firma_id']??''); $insFirma->execute([$fid,$i['nazwa']]); $firmaId=$insFirma->fetchColumn();
+            if (!$firmaId) {
+                $db->prepare("INSERT INTO podmioty (typ,nazwa,status) VALUES ('firma',?,'aktywny')")->execute([$i['nazwa']]);
+                $firmaId=(int)$db->lastInsertId();
+                $profil=in_array($i['profil']??'',PROFILE_FIRM,true)?$i['profil']:'produkcja';
+                $db->prepare('INSERT INTO firmy (podmiot_id,profil,kapital_zakladowy,skala) VALUES (?,?,0,1)')->execute([$firmaId,$profil]);
+            }
+        }
+        $up->execute([$db->query('SELECT planeta_id FROM gielde WHERE id='.(int)$gid)->fetchColumn(),
+            $db->query('SELECT nazwa FROM gielde WHERE id='.(int)$gid)->fetchColumn(),$i['gielda']]);
+        $bazowa=(float)($i['rodzaj']==='towar'?$def['ustawienia']['zmiennosc_towar']:$def['ustawienia']['zmiennosc_spolka']);
+        $zm = isset($i['zmiennosc']) ? max(0.001,min(10,(float)$i['zmiennosc']/max(0.001,$bazowa))) : 1.0;
+        $ins->execute([$i['symbol'],$i['nazwa'],$i['rodzaj'],$i['kategoria'],$i['jednostka'],$i['pochodzenie'],(int)$gid,$towarId?(int)$towarId:null,$firmaId?(int)$firmaId:null,(float)$i['cena'],$zm,(int)($i['notowana']??true)]);
+    }
+    $ust = $db->prepare('INSERT INTO ustawienia (klucz,wartosc,opis) VALUES (?,?,?) ON DUPLICATE KEY UPDATE wartosc=VALUES(wartosc)');
+    foreach ($def['ustawienia'] as $k=>$v) $ust->execute(['gielda.'.$k,(string)$v,'Ustawienie giełdy CDEX']);
+}
+
+function gielda_wszystkie_portfele_sql(): array
+{
+    $q = polaczenie_bazy()->query("SELECT x.nazwa,i.symbol,p.ilosc,p.koszt_laczny FROM portfele_gieldowe p JOIN podmioty x ON x.id=p.podmiot_id JOIN instrumenty i ON i.id=p.instrument_id WHERE p.ilosc>0 ORDER BY x.nazwa,i.symbol");
+    $wynik=[];
+    foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $r) $wynik[$r['nazwa']][$r['symbol']]=['ilosc'=>(int)$r['ilosc'],'koszt'=>(int)$r['koszt_laczny']];
+    return $wynik;
 }
 
 // Planety, których dotyczy instrument: skąd pochodzi i gdzie jest notowany.
@@ -287,37 +385,40 @@ function gielda_dociagnij(): array
 {
     $g = gielda_definicje();
     $dzis = date('Y-m-d');
-    $not = wczytaj('gielda_notowania', []);
-    $brak = false;
-    foreach ($g['instrumenty'] as $i) {
-        if (($i['notowana'] ?? true) !== true) continue;
-        $n = $not[$i['symbol']] ?? null;
-        if (!$n || date('Y-m-d', strtotime($n['od'] . ' +' . (count($n['c']) - 1) . ' days')) < $dzis) $brak = true;
+    $db = polaczenie_bazy();
+    $not = [];
+    $rows = $db->query('SELECT i.symbol,k.data,k.kurs FROM kursy_dzienne k JOIN instrumenty i ON i.id=k.instrument_id WHERE k.data <= CURDATE() ORDER BY i.id,k.data')->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as $r) {
+        $sym = (string)$r['symbol'];
+        if (!isset($not[$sym])) $not[$sym] = ['od'=>(string)$r['data'],'c'=>[],'daty'=>[]];
+        $not[$sym]['c'][] = (float)$r['kurs'];
+        $not[$sym]['daty'][] = (string)$r['data'];
     }
-    if (!$brak) return $not;
-    return zmien('gielda_notowania', function (&$not) use ($g, $dzis) {
-        foreach ($g['instrumenty'] as $i) {
-            if (($i['notowana'] ?? true) !== true) continue;
-            $n = $not[$i['symbol']] ?? null;
-            if (!$n) {
-                $od = date('Y-m-d', strtotime($dzis . ' -' . max(30, (int) $g['ustawienia']['historia_dni']) . ' days'));
-                $n = ['od' => $od, 'c' => [round((float) $i['cena'], 2)]];
-            }
-            $ostatni = date('Y-m-d', strtotime($n['od'] . ' +' . (count($n['c']) - 1) . ' days'));
-            while ($ostatni < $dzis) {
-                $ostatni = date('Y-m-d', strtotime($ostatni . ' +1 day'));
-                $n['c'][] = gielda_krok((float) end($n['c']), $i, $g, $ostatni);
-            }
-            // Trzymamy najwyżej dwa lata.
-            if (count($n['c']) > GIELDA_MAX_DNI) {
-                $nadmiar = count($n['c']) - GIELDA_MAX_DNI;
-                $n['c'] = array_slice($n['c'], $nadmiar);
-                $n['od'] = date('Y-m-d', strtotime($n['od'] . " +$nadmiar days"));
-            }
-            $not[$i['symbol']] = $n;
+    $insert = $db->prepare('INSERT IGNORE INTO kursy_dzienne (instrument_id,data,kurs) VALUES (?,?,?)');
+    foreach ($g['instrumenty'] as $i) {
+        if (empty($i['notowana'])) continue;
+        $symbol = $i['symbol'];
+        if (empty($not[$symbol]['c'])) {
+            $q = $db->prepare('SELECT id FROM instrumenty WHERE symbol=?'); $q->execute([$symbol]); $iid = $q->fetchColumn();
+            if (!$iid) continue;
+            $od = date('Y-m-d', strtotime($dzis . ' -' . max(30, (int)$g['ustawienia']['historia_dni']) . ' days'));
+            $kurs = round((float)$i['cena'], 2);
+            $not[$symbol] = ['od'=>$od,'c'=>[$kurs],'daty'=>[$od]];
+            $insert->execute([(int)$iid,$od,$kurs]);
         }
-        return $not;
-    }, []);
+        $ostatni = (string)end($not[$symbol]['daty']);
+        $kurs = (float)end($not[$symbol]['c']);
+        $q = $db->prepare('SELECT id FROM instrumenty WHERE symbol=?'); $q->execute([$symbol]); $iid = $q->fetchColumn();
+        while ($ostatni < $dzis) {
+            $ostatni = date('Y-m-d', strtotime($ostatni . ' +1 day'));
+            $kurs = gielda_krok($kurs, $i, $g, $ostatni);
+            $insert->execute([(int)$iid,$ostatni,$kurs]);
+            $not[$symbol]['c'][] = $kurs; $not[$symbol]['daty'][] = $ostatni;
+        }
+    }
+    foreach ($not as &$n) { unset($n['daty']); if (count($n['c']) > GIELDA_MAX_DNI) { $nad = count($n['c'])-GIELDA_MAX_DNI; $n['c']=array_slice($n['c'],$nad); $n['od']=date('Y-m-d',strtotime($n['od']." +$nad days")); } }
+    unset($n);
+    return $not;
 }
 
 // Po zmianie wydarzeń dzisiejszy kurs liczy się od nowa (przy następnym wejściu na giełdę),
@@ -325,11 +426,8 @@ function gielda_dociagnij(): array
 function gielda_przelicz_dzis(): void
 {
     $dzis = date('Y-m-d');
-    zmien('gielda_notowania', function (&$not) use ($dzis) {
-        foreach ($not as &$n) {
-            if (count($n['c']) > 1 && date('Y-m-d', strtotime($n['od'] . ' +' . (count($n['c']) - 1) . ' days')) === $dzis) array_pop($n['c']);
-        }
-    }, []);
+    $db = polaczenie_bazy();
+    $db->prepare('DELETE FROM kursy_dzienne WHERE data=?')->execute([$dzis]);
 }
 
 function gielda_instrument(string $symbol): ?array
@@ -359,7 +457,7 @@ function gielda_z_wejscia(array $w): array
     $instrumenty = [];
     foreach ((array) ($w['instrumenty'] ?? []) as $x) {
         $sym = mb_strtoupper(trim((string) ($x['symbol'] ?? '')));
-        if (!preg_match('/^[A-Z0-9]{2,6}$/', $sym)) blad("Symbol „{$sym}”: 2–6 wielkich liter lub cyfr.");
+        if (!preg_match('/^[A-Z0-9.]{2,16}$/', $sym)) blad("Symbol „{$sym}”: 2–16 wielkich liter, cyfr lub kropek.");
         if (isset($instrumenty[$sym])) blad("Symbol {$sym} powtarza się.");
         $rodzaj = ($x['rodzaj'] ?? '') === 'spolka' ? 'spolka' : 'towar';
         $gid = mb_strtolower(trim((string) ($x['gielda'] ?? '')));
@@ -374,6 +472,8 @@ function gielda_z_wejscia(array $w): array
             'pochodzenie' => mb_substr(trim((string) ($x['pochodzenie'] ?? '')), 0, 80),
         ] + (isset($x['zmiennosc']) && $x['zmiennosc'] !== '' ? ['zmiennosc' => max(0.001, min(0.3, (float) $x['zmiennosc']))] : [])
           + (!empty($x['katalog_id']) ? ['katalog_id' => mb_substr((string) $x['katalog_id'], 0, 32)] : [])
+          + (!empty($x['firma_id']) ? ['firma_id' => mb_substr((string) $x['firma_id'], 0, 32)] : [])
+          + (in_array($x['profil'] ?? '', PROFILE_FIRM, true) ? ['profil' => $x['profil']] : [])
           + (array_key_exists('notowana', $x) ? ['notowana' => (bool) $x['notowana']] : []);
     }
     $u = (array) ($w['ustawienia'] ?? []) + gielda_ustawienia_domyslne();
@@ -391,11 +491,32 @@ function obsluz_gielda(string $akcja, bool $post): void
 {
     switch ($akcja) {
 
+        case 'gielda_publiczna':
+            if ($post) blad('Zła metoda.', 405);
+            $g = gielda_definicje();
+            $historia = gielda_dociagnij();
+            $publiczne = array_fill_keys(array_map('mb_strtolower', polaczenie_bazy()->query("SELECT p.nazwa FROM mapa_planety p
+                LEFT JOIN planety_gry gp ON gp.planeta_id=p.id WHERE COALESCE(gp.zastrzezona,0)=0")->fetchAll(PDO::FETCH_COLUMN)), true);
+            $gieldy = array_values(array_filter($g['gieldy'], fn($x) => isset($publiczne[mb_strtolower($x['planeta'])])));
+            $widoczne = array_fill_keys(array_column($gieldy, 'id'), true);
+            $lista = [];
+            foreach ($g['instrumenty'] as $i) {
+                if (empty($i['notowana']) || !isset($widoczne[$i['gielda']])) continue;
+                $c = $historia[$i['symbol']]['c'] ?? [(float)$i['cena']];
+                $ostatni = (float)end($c);
+                $poprzedni = (float)($c[count($c)-2] ?? $ostatni);
+                $lista[] = array_diff_key($i, ['cena'=>1, 'zmiennosc'=>1, 'katalog_id'=>1, 'firma_id'=>1]) + [
+                    'kurs'=>$ostatni, 'poprzedni'=>$poprzedni, 'seria'=>array_slice($c, -30),
+                ];
+            }
+            odpowiedz(['dzien'=>date('Y-m-d'), 'gieldy'=>$gieldy, 'instrumenty'=>$lista,
+                'prowizja'=>0, 'portfel'=>['pozycje'=>[], 'historia'=>[]], 'saldo'=>0, 'publiczny'=>true]);
+
         case 'gielda':
             $u = wymagaj_logowania();
             $g = gielda_definicje();
             $not = gielda_dociagnij();
-            $portfel = gielda_portfel(wczytaj('gielda_portfele', []), $u['id']);
+            $portfel = gielda_portfel_sql(gielda_podmiot_uzytkownika($u));
             $lista = [];
             foreach ($g['instrumenty'] as $i) {
                 if (($i['notowana'] ?? true) !== true && empty($portfel['pozycje'][$i['symbol']])) continue;
@@ -416,7 +537,7 @@ function obsluz_gielda(string $akcja, bool $post): void
             $sym = (string) ($_GET['s'] ?? '');
             $dni = max(5, min(GIELDA_MAX_DNI, (int) ($_GET['dni'] ?? 90)));
             $instrument = gielda_instrument($sym);
-            $n = $instrument && (($instrument['notowana'] ?? true) || !empty(gielda_portfel(wczytaj('gielda_portfele', []), ja()['id'])['pozycje'][$sym]))
+            $n = $instrument && (($instrument['notowana'] ?? true) || !empty(gielda_portfel_sql(gielda_podmiot_uzytkownika(ja()))['pozycje'][$sym]))
                 ? (gielda_dociagnij()[$sym] ?? null) : null;
             if (!$n) blad('Brak notowań tego instrumentu.', 404);
             $c = array_slice($n['c'], -$dni);
@@ -437,32 +558,30 @@ function obsluz_gielda(string $akcja, bool $post): void
             $kurs = (float) end($c);
             $wartosc = (int) round($kurs * $ilosc);
             $prowizja = max(1, (int) round($wartosc * (float) gielda_definicje()['ustawienia']['prowizja']));
-            $wpis = zmien('gielda_portfele', function (&$portfele) use ($u, $i, $typ, $ilosc, $kurs, $wartosc, $prowizja) {
-                $p = gielda_portfel($portfele, $u['id']);
-                $poz = $p['pozycje'][$i['symbol']] ?? ['ilosc' => 0, 'koszt' => 0];
-                $nazwy = bank_wlasciciele();
-                $tytul = ($typ === 'kup' ? 'Kupno' : 'Sprzedaż') . " {$ilosc} × {$i['symbol']} po " . number_format($kurs, 2, ',', ' ') . ' kr';
-                if ($typ === 'kup') {
-                    zmien('bank', function (&$bank) use ($u, $wartosc, $prowizja, $tytul, $nazwy) {
-                        bank_blad_przelewu(bank_obciaz($bank, $u['id'], $wartosc + $prowizja, 'CDEX — rozliczenia giełdowe', $tytul, $nazwy));
-                    }, bank_pusty());
-                    $poz = ['ilosc' => $poz['ilosc'] + $ilosc, 'koszt' => $poz['koszt'] + $wartosc + $prowizja];
-                } else {
-                    if ($ilosc > $poz['ilosc']) blad("W portfelu masz tylko {$poz['ilosc']} × {$i['symbol']}.");
-                    zmien('bank', function (&$bank) use ($u, $wartosc, $prowizja, $tytul, $nazwy) {
-                        bank_uznaj($bank, $u['id'], max(0, $wartosc - $prowizja), 'CDEX — rozliczenia giełdowe', $tytul, $nazwy);
-                    }, bank_pusty());
-                    // Koszt pozostałych jednostek maleje proporcjonalnie (średnia cena zakupu bez zmian).
-                    $koszt = $poz['ilosc'] ? (int) round($poz['koszt'] * ($poz['ilosc'] - $ilosc) / $poz['ilosc']) : 0;
-                    $poz = ['ilosc' => $poz['ilosc'] - $ilosc, 'koszt' => $koszt];
-                }
-                if ($poz['ilosc'] > 0) $p['pozycje'][$i['symbol']] = $poz;
-                else unset($p['pozycje'][$i['symbol']]);
-                $wpis = ['data' => date('c'), 'typ' => $typ, 'symbol' => $i['symbol'], 'ilosc' => $ilosc, 'kurs' => $kurs, 'wartosc' => $wartosc, 'prowizja' => $prowizja];
-                $p['historia'] = array_slice([...$p['historia'], $wpis], -GIELDA_HISTORIA_TRANSAKCJI);
-                $portfele[$u['id']] = $p;
-                return $wpis;
-            }, []);
+            $pid = gielda_podmiot_uzytkownika($u); $db = polaczenie_bazy();
+            $q = $db->prepare('SELECT id FROM instrumenty WHERE symbol=?'); $q->execute([$sym]); $iid = (int)$q->fetchColumn();
+            $q = $db->prepare('SELECT ilosc,koszt_laczny FROM portfele_gieldowe WHERE podmiot_id=? AND instrument_id=?'); $q->execute([$pid,$iid]);
+            $poz = $q->fetch(PDO::FETCH_ASSOC) ?: ['ilosc'=>0,'koszt_laczny'=>0];
+            if ($typ === 'sprzedaj' && $ilosc > (int)$poz['ilosc']) blad('W portfelu masz tylko '.(int)$poz['ilosc'].' × '.$sym.'.');
+            $nazwy = bank_wlasciciele();
+            $tytul = ($typ === 'kup' ? 'Kupno' : 'Sprzedaż') . " {$ilosc} × {$sym} po " . number_format($kurs, 2, ',', ' ') . ' kr';
+            zmien('bank', function (&$bank) use ($u,$typ,$wartosc,$prowizja,$tytul,$nazwy) {
+                if ($typ === 'kup') bank_blad_przelewu(bank_obciaz($bank,$u['id'],$wartosc+$prowizja,'CDEX — rozliczenia giełdowe',$tytul,$nazwy));
+                else bank_uznaj($bank,$u['id'],max(0,$wartosc-$prowizja),'CDEX — rozliczenia giełdowe',$tytul,$nazwy);
+            }, bank_pusty());
+            $db->beginTransaction();
+            try {
+                $q=$db->prepare('SELECT ilosc,koszt_laczny FROM portfele_gieldowe WHERE podmiot_id=? AND instrument_id=? FOR UPDATE'); $q->execute([$pid,$iid]);
+                $poz=$q->fetch(PDO::FETCH_ASSOC) ?: ['ilosc'=>0,'koszt_laczny'=>0];
+                if ($typ==='sprzedaj' && $ilosc>(int)$poz['ilosc']) throw new RuntimeException('W portfelu jest już za mało jednostek do sprzedaży.');
+                $iloscNowa=$typ==='kup'?(int)$poz['ilosc']+$ilosc:(int)$poz['ilosc']-$ilosc;
+                $kosztNowy=$typ==='kup'?(int)$poz['koszt_laczny']+$wartosc+$prowizja:((int)$poz['ilosc']?(int)round((int)$poz['koszt_laczny']*$iloscNowa/(int)$poz['ilosc']):0);
+                if ($iloscNowa>0) $db->prepare('INSERT INTO portfele_gieldowe (podmiot_id,instrument_id,ilosc,koszt_laczny) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE ilosc=VALUES(ilosc),koszt_laczny=VALUES(koszt_laczny)')->execute([$pid,$iid,$iloscNowa,$kosztNowy]);
+                else $db->prepare('DELETE FROM portfele_gieldowe WHERE podmiot_id=? AND instrument_id=?')->execute([$pid,$iid]);
+                $db->prepare('INSERT INTO transakcje_gieldowe (podmiot_id,instrument_id,strona,ilosc,kurs,prowizja,czas_utc) VALUES (?,?,?,?,?,?,UTC_TIMESTAMP())')->execute([$pid,$iid,$typ==='kup'?'kupno':'sprzedaz',$ilosc,$kurs,$prowizja]);
+                $db->commit();
+            } catch (Throwable $e) { if($db->inTransaction()) $db->rollBack(); throw $e; }
+            $wpis=['data'=>date('c'),'typ'=>$typ,'symbol'=>$sym,'ilosc'=>$ilosc,'kurs'=>$kurs,'wartosc'=>$wartosc,'prowizja'=>$prowizja];
             odpowiedz(['ok' => true, 'transakcja' => $wpis]);
 
         // ----- panel MG -----
@@ -475,10 +594,10 @@ function obsluz_gielda(string $akcja, bool $post): void
             $kursy = array_map(fn($n) => end($n['c']), $not);
             $postacie = bank_postacie();
             $portfele = [];
-            foreach (wczytaj('gielda_portfele', []) as $uid => $p) {
+            foreach (gielda_wszystkie_portfele_sql() as $postac => $pozycje) {
                 $wartosc = 0;
-                foreach ($p['pozycje'] ?? [] as $sym => $poz) $wartosc += (int) round(($kursy[$sym] ?? 0) * $poz['ilosc']);
-                if ($p['pozycje'] ?? []) $portfele[] = ['postac' => $postacie[$uid] ?? '?', 'pozycje' => $p['pozycje'], 'wartosc' => $wartosc];
+                foreach ($pozycje as $sym => $poz) $wartosc += (int) round(($kursy[$sym] ?? 0) * $poz['ilosc']);
+                if ($pozycje) $portfele[] = ['postac' => $postac, 'pozycje' => $pozycje, 'wartosc' => $wartosc];
             }
             odpowiedz(['gielda' => ['gieldy' => $g['gieldy'], 'instrumenty' => $g['instrumenty'], 'ustawienia' => $g['ustawienia']], 'kursy' => $kursy, 'portfele' => $portfele]);
 
@@ -487,16 +606,10 @@ function obsluz_gielda(string $akcja, bool $post): void
             wymagaj_mg();
             $nowa = gielda_z_wejscia(wejscie());
             $symbole = array_column($nowa['instrumenty'], 'symbol');
-            foreach (wczytaj('gielda_portfele', []) as $p) {
-                foreach (array_keys($p['pozycje'] ?? []) as $sym) {
-                    if (!in_array($sym, $symbole, true)) blad("Nie można usunąć {$sym}: gracze mają go w portfelach.");
-                }
-            }
+            foreach (gielda_wszystkie_portfele_sql() as $pozycje) foreach (array_keys($pozycje) as $sym) if (!in_array($sym, $symbole, true)) blad("Nie można usunąć {$sym}: gracze mają go w portfelach.");
             [$nowa, $kat] = gielda_katalog_z_instrumentow($nowa, katalog());
             $nowa = gielda_z_wejscia($nowa);
-            zmien('gielda', function (&$g) use ($nowa) {
-                $g = $nowa;
-            }, []);
+            gielda_zapisz_sql($nowa);
             zmien('katalog', function (&$k) use ($kat) {
                 $k['towary'] = $kat['towary'];
                 $k['spolki'] = $kat['spolki'];
@@ -536,12 +649,10 @@ function obsluz_gielda(string $akcja, bool $post): void
             odpowiedz(['historia' => $historia, 'prognoza' => $prognoza, 'bez_wydarzen' => $bez, 'dzis' => date('Y-m-d')]);
 
         case 'mg_gielda_przelicz':
-            // Od nowa cała historia (np. po dużej zmianie cen bazowych). Portfele zostają.
+            // Przelicza tylko dzisiejszy kurs. Zaimportowana historia z SQL pozostaje zachowana.
             if (!$post) blad('Zła metoda.', 405);
             wymagaj_mg();
-            zmien('gielda_notowania', function (&$n) {
-                $n = [];
-            }, []);
+            gielda_przelicz_dzis();
             gielda_dociagnij();
             odpowiedz(['ok' => true]);
     }

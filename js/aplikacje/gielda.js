@@ -70,13 +70,15 @@ export default {
 
     async function wczytaj() {
       try {
-        d = await api('gielda');
+        d = await api(ctx.gosc ? 'gielda_publiczna' : 'gielda');
       } catch (e) {
         pokaz(e.message);
         return false;
       }
       const dz = new Date(d.dzien + 'T12:00:00');
-      wyczysc(glowa).append(h('h1', 'Giełda CDEX'), h('span.podtytul', `Kurs dnia ${dzien(dz)} · na rachunku ${kr(d.saldo)}`));
+      wyczysc(glowa).append(h('h1', 'Giełda CDEX'), h('span.podtytul', ctx.gosc
+        ? `Notowania publiczne · ${dzien(dz)} · tryb tylko do odczytu`
+        : `Kurs dnia ${dzien(dz)} · na rachunku ${kr(d.saldo)}`));
       return true;
     }
 
@@ -85,7 +87,7 @@ export default {
 
     function zakladki() {
       const z = (k, t) => h('button' + (widok === k ? '.aktywna' : ''), { onclick: () => { widok = k; wybrany = null; rysuj(); } }, t);
-      return h('div.zakladki', z('notowania', 'Notowania'), z('portfel', 'Portfel'), z('historia', 'Transakcje'));
+      return h('div.zakladki', z('notowania', 'Notowania'), ctx.gosc ? null : z('portfel', 'Portfel'), ctx.gosc ? null : z('historia', 'Transakcje'));
     }
 
     // ---------- notowania ----------
@@ -132,6 +134,16 @@ export default {
       const pokazZakres = async (dni) => {
         zakres = dni;
         rysujPrzyciski();
+        if (ctx.gosc) {
+          wyczysc(miejsce).append(wykres(i.seria, { wys: 200 }));
+          const ceny = i.seria || [];
+          if (ceny.length) wyczysc(opis).append(
+            h('div', h('span.slaby', 'Zmiana'), zmiana(ceny.at(-1), ceny[0])),
+            h('div', h('span.slaby', 'Minimum'), h('b', kurs(Math.min(...ceny)))),
+            h('div', h('span.slaby', 'Maksimum'), h('b', kurs(Math.max(...ceny)))),
+            h('div', h('span.slaby', 'Średnia'), h('b', kurs(ceny.reduce((a, b) => a + b, 0) / ceny.length))));
+          return;
+        }
         try {
           const n = await api('gielda_notowania', undefined, { s: i.symbol, dni });
           wyczysc(miejsce).append(wykres(n.ceny, { wys: 200 }),
@@ -146,8 +158,8 @@ export default {
           pokaz(e.message);
         }
       };
-      const rysujPrzyciski = () => wyczysc(przyciski).append(...[[30, '30 dni'], [90, '90 dni'], [365, 'Rok'], [730, '2 lata']].map(([dni, t]) =>
-        h('button' + (zakres === dni ? '.aktywna' : ''), { onclick: () => pokazZakres(dni) }, t)));
+      const rysujPrzyciski = () => wyczysc(przyciski).append(...(ctx.gosc ? [] : [[30, '30 dni'], [90, '90 dni'], [365, 'Rok'], [730, '2 lata']].map(([dni, t]) =>
+        h('button' + (zakres === dni ? '.aktywna' : ''), { onclick: () => pokazZakres(dni) }, t))));
       pokazZakres(30);
 
       // Zlecenie: ilość → podsumowanie → zatwierdzenie.
@@ -197,6 +209,13 @@ export default {
           h('button.przycisk.drugi', { onclick: odswiezPodsumowanie }, 'Anuluj'));
       }
 
+      if (ctx.gosc) return h('div.panel',
+        h('div.rzad', h('div.rozpycha', h('h2', { style: 'margin:0' }, i.nazwa),
+          h('div.slaby.maly-tekst', `${i.symbol} · ${i.rodzaj === 'spolka' ? 'spółka' : 'towar'} · ${i.kategoria} · ${nazwaGieldy(i.gielda)}${i.pochodzenie ? ' · ' + i.pochodzenie : ''}`)),
+          h('div', { style: 'text-align:right' }, h('div.gielda-duzy-kurs', kurs(i.kurs)), h('div.maly-tekst', zmiana(i.kurs, i.poprzedni), h('span.slaby', ` za ${i.jednostka}`)))),
+        przyciski, miejsce, opis,
+        h('p.slaby.maly-tekst', 'Publiczne notowanie. Zaloguj się, aby składać zlecenia.'));
+
       return h('div',
         h('div.panel',
           h('div.rzad', h('div.rozpycha', h('h2', { style: 'margin:0' }, `${i.nazwa}`),
@@ -244,7 +263,7 @@ export default {
     function rysuj() {
       if (!d) return;
       const i = wybrany && instrument(wybrany);
-      wyczysc(tresc).append(zakladki(), i ? szczegoly(i) : { notowania, portfel, historia }[widok]());
+      wyczysc(tresc).append(zakladki(), i ? szczegoly(i) : (ctx.gosc ? notowania() : { notowania, portfel, historia }[widok]()));
     }
 
     ctx.ustawWstecz(() => {

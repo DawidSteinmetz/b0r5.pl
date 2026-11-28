@@ -476,7 +476,9 @@ export default {
             h('button.przycisk', { onclick: () => akcja('dokuj', { obiekt_id: p.id, stanowisko_id: 0 }, wynik) }, 'Dokuj (automat)'),
             sektor, stanowisko,
             h('button.przycisk.drugi', { onclick: () => { if (stanowisko.value) akcja('dokuj', { obiekt_id: p.id, stanowisko_id: Number(stanowisko.value) }, wynik); } }, 'Dokuj tutaj'))));
-      }).catch(() => {});
+      }).catch((e) => {
+        el.append(h('div.slaby.maly-tekst', `Nie można wczytać stanu doku: ${e.message}`));
+      });
       return el;
     }
 

@@ -98,9 +98,10 @@ function doki_okret(int $id): array
 {
     $orb = function_exists('floty_orbita_dostepna') && floty_orbita_dostepna() ? 'o.orbita_deg, o.rozbity,' : 'NULL AS orbita_deg, 0 AS rozbity,';
     $lot = function_exists('floty_lot_dostepny') && floty_lot_dostepny() ? 'o.lot_do_utc,' : 'NULL AS lot_do_utc,';
-    $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.planeta_id, o.ladowisko_id, {$orb} {$lot} o.kurs_deg, o.podejscie, o.podlot_start, o.podlot_cel,
+    $prz = przelot_dostepny() ? 'o.przelot_cel, o.przelot_od_utc, o.przelot_do_utc, o.przelot_kat0, o.przelot_r0_km, o.przelot_kat1, o.przelot_r1_km,' : '';
+    $q = polaczenie_bazy()->prepare("SELECT o.id, o.nazwa, o.planeta_id, p.nazwa AS planeta, o.ladowisko_id, {$orb} {$lot} {$prz} s.kat_deg AS dok_kat, o.dok_kat_start, o.dok_r_start_km, o.kurs_deg, o.podejscie, o.podlot_start, o.podlot_cel,
             o.podlot_od_utc, o.podlot_do_utc, o.dok_stanowisko_id, o.dok_do_utc, COALESCE(n.podswietlna_pc_doba, 20) AS pc_doba
-        FROM mapa_obiekty o LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = o.id WHERE o.id = ? AND o.aktywny = 1");
+        FROM mapa_obiekty o LEFT JOIN stocznia_stanowiska s ON s.id=o.dok_stanowisko_id LEFT JOIN mapa_naped_jednostki n ON n.obiekt_id = o.id LEFT JOIN mapa_planety p ON p.id = o.planeta_id WHERE o.id = ? AND o.aktywny = 1");
     $q->execute([$id]);
     return $q->fetch(PDO::FETCH_ASSOC) ?: blad('Nie ma takiego okrętu.');
 }
@@ -204,14 +205,48 @@ function obsluz_doki(string $akcja, bool $post): void
             if (!doki_moze($u, $id)) blad('Nie dowodzisz tym okrętem.', 403);
             $o = doki_okret($id);
             if (!$o['dok_stanowisko_id']) blad('Okręt nie stoi w doku.');
-            if (function_exists('floty_naprawy_dostepne') && floty_naprawy_dostepne()) {
-                $q = $db->prepare("SELECT 1 FROM stocznia_naprawy WHERE obiekt_id = ? AND stan IN ('kolejka','w_toku') LIMIT 1");
-                $q->execute([$id]);
-                if ($q->fetchColumn()) floty_naprawy_przerwij([$id]);
-            }
-            $db->prepare("UPDATE stocznia_stanowiska SET stan = 'wolne', obiekt_id = NULL, opis = 'Wolne stanowisko naprawcze', postep = 0 WHERE id = ?")->execute([(int) $o['dok_stanowisko_id']]);
-            $db->prepare('UPDATE mapa_obiekty SET dok_stanowisko_id = NULL, dok_od_utc = NULL, dok_do_utc = NULL, dok_kat_start = NULL, dok_r_start_km = NULL, podejscie = ? WHERE id = ?')
-                ->execute(['bliska', $id]);
+            $p = doki_pierscien_planety((int) $o['planeta_id']) ?? blad('Brak pierścienia orbitalnego dla tej planety.');
+            // Zablokuj okręt i stanowisko: zwolnienie doku i start animacji muszą być jednym atomowym ruchem.
+            $db->beginTransaction();
+            try {
+                $db->prepare('SELECT id FROM stocznia_stanowiska WHERE id=? FOR UPDATE')->execute([(int) $o['dok_stanowisko_id']]);
+                $db->prepare('SELECT id FROM mapa_obiekty WHERE id=? FOR UPDATE')->execute([$id]);
+                $o = doki_okret($id);
+                if (!$o['dok_stanowisko_id']) blad('Okręt nie stoi już w doku.');
+
+                // Po zakończonym dokowaniu pozycją źródłową jest dokładny kąt stanowiska. W trakcie
+                // podejścia bierzemy punkt interpolowany. W obu przypadkach cofamy ten sam łuk do zapisanego
+                // miejsca startu dokowania, zamiast kasować przelot i przestawiać orbitę pod statkiem.
+                $start = null;
+                if (przelot_dostepny()) {
+                    if ($o['dok_do_utc'] && czas_z_utc((string) $o['dok_do_utc']) > $teraz) {
+                        $start = przelot_miejsce(przelot_jednostka($id), $teraz);
+                    }
+                    if (!$start) $start = [(float) ($o['dok_kat'] ?? $o['orbita_deg'] ?? 0), (float) $p['promien_km']];
+                }
+                $celKat = $o['dok_kat_start'] !== null ? (float) $o['dok_kat_start'] : (float) ($start[0] ?? $o['orbita_deg'] ?? 0);
+                $celPromien = $o['dok_r_start_km'] !== null ? (float) $o['dok_r_start_km'] : null;
+                $podejscie = 'bliska';
+                if ($start) {
+                    $rp = (float) (astro_cykl((string) ($o['planeta'] ?? ''))['srednica_km'] ?? 12000) / 2;
+                    $promienie = ['bliska' => floty_promien_orbity_km($rp, 'bliska'), 'srednia' => floty_promien_orbity_km($rp, 'srednia'), 'daleka' => floty_promien_orbity_km($rp, 'daleka')];
+                    if ($celPromien === null) $celPromien = (float) ($promienie['bliska'] ?? $rp + 300);
+                    uasort($promienie, fn($a, $b) => abs((float) $a - $celPromien) <=> abs((float) $b - $celPromien));
+                    $podejscie = (string) array_key_first($promienie);
+                }
+                if (function_exists('floty_naprawy_dostepne') && floty_naprawy_dostepne()) {
+                    $q = $db->prepare("SELECT 1 FROM stocznia_naprawy WHERE obiekt_id = ? AND stan IN ('kolejka','w_toku') LIMIT 1");
+                    $q->execute([$id]);
+                    if ($q->fetchColumn()) floty_naprawy_przerwij([$id]);
+                }
+                if ($start && $celPromien !== null) {
+                    przelot_ustaw(przelot_jednostka($id), $start, [$celKat, $celPromien], 'orbita', $teraz);
+                }
+                $db->prepare("UPDATE stocznia_stanowiska SET stan = 'wolne', obiekt_id = NULL, opis = 'Wolne stanowisko naprawcze', postep = 0 WHERE id = ?")->execute([(int) $o['dok_stanowisko_id']]);
+                $db->prepare('UPDATE mapa_obiekty SET dok_stanowisko_id = NULL, dok_od_utc = NULL, dok_do_utc = NULL, dok_kat_start = NULL, dok_r_start_km = NULL, podejscie = ? WHERE id = ?')
+                    ->execute([$podejscie, $id]);
+                $db->commit();
+            } catch (Throwable $e) { if ($db->inTransaction()) $db->rollBack(); throw $e; }
             odpowiedz(['ok' => true]);
     }
 }

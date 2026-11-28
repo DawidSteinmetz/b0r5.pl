@@ -131,10 +131,10 @@ function scena_z_punktu_ukladu(array $o, array $gwiazdy, string $planeta, float 
     $cykl = astro_cykl($planeta);
     [$px, $py] = astro_pozycja_km($cykl, $teraz);
     $d = max(1.0, hypot($kx - $px, $ky - $py));
-    $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy, 'cykl' => $cykl,
+    $widok = array_replace(mapa_kurs_pola($o), ['gwiazdy' => $gwiazdy, 'cykl' => $cykl,
         'orbita' => round(floty_kat(rad2deg(atan2($ky - $py, $kx - $px))), 2),
         'wysokosc_km' => max(NISKA_ORBITA_KM, $d - (float) $cykl['srednica_km'] / 2),
-        'slonce' => ['kat' => round(floty_kat(rad2deg(atan2(-$ky, -$kx))), 2), 'km' => round(max(1.0, hypot($kx, $ky)))]];
+        'slonce' => ['kat' => round(floty_kat(rad2deg(atan2(-$ky, -$kx))), 2), 'km' => round(max(1.0, hypot($kx, $ky)))] ]);
     $kraw = (float) ($cykl['krawedz_au'] ?? 50) * ASTRO_KM_NA_AU;
     $typ = 'skalista'; // typ planety: z katalogu gry, gdy dostępny
     if (tabela_sql_dostepna('planety_gry')) {
@@ -253,15 +253,28 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
     $podejscie = $nav ? floty_podejscie_teraz($o, $teraz) : null;
     $odlWariantu = ['bliska' => 'blisko', 'srednia' => 'srednio', 'daleka' => 'daleko', 'krawedz' => 'krawedz'];
     if ($wejscie && $wejscie <= $teraz) {
-        // Wejście w nadprzestrzeń z widokiem sprzed skoku (słońce, planeta, gwiazdy w miejscu startu):
-        // tablet wygasza je płynnie, zanim smugi zgęstnieją. W locie okręt nie ma już planety,
-        // więc układ startu bierzemy z punktu startu skoku.
+        // Widok wejścia licz z rzeczywistego punktu skoku w układzie. Samo start_x/start_y
+        // wskazuje tylko układ (środek słońca), a bez kąta i odległości planeta byłaby
+        // rysowana domyślnie na kursie dziobu — nawet jeśli leży za okrętem.
         $start = scena_planeta_przy((float) $skok['start_x'], (float) $skok['start_y']);
-        $widok = mapa_kurs_pola($o) + ['gwiazdy' => scena_gwiazdy((float) $skok['start_x'], (float) $skok['start_y'])];
-        if ($start) $widok['cykl'] = astro_cykl($start['nazwa']);
-        return $baza + ['scena' => 'wejscie', 'planeta' => $start['typ'] ?? $typ,
-            'odleglosc' => $odlWariantu[$podejscie ?? ''] ?? 'srednio', 'miejsce' => 'Nadprzestrzeń',
-            'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs), 'widok' => $widok + ($start ? [] : ['bez_planety' => true])];
+        $gwiazdyStartu = scena_gwiazdy((float) $skok['start_x'], (float) $skok['start_y']);
+        $widok = mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdyStartu];
+        $widacPlanete = false;
+        $odlegloscWejscia = $odlWariantu[$podejscie ?? ''] ?? 'srednio';
+        if ($start && ($o['uklad_kx'] ?? null) !== null && ($o['uklad_ky'] ?? null) !== null) {
+            $zPunktu = scena_z_punktu_ukladu($o, $gwiazdyStartu, $start['nazwa'], (float) $o['uklad_kx'], (float) $o['uklad_ky'], $teraz, false);
+            $widok = $zPunktu['widok'];
+            $widacPlanete = true;
+            $promien = (float) ($widok['cykl']['srednica_km'] ?? 12000) / 2;
+            $d = $promien + (float) ($widok['wysokosc_km'] ?? 0);
+            $odlegloscWejscia = $d < $promien * 5 ? 'blisko' : ($d < $promien * 20 ? 'srednio' : 'daleko');
+        }
+        // Wejście jest krótkim zdarzeniem, nie stanem całego skoku. Jeśli API zwracałoby je
+        // przez cały lot, ponowne otwarcie pulpitu odtwarzałoby hiper_wejscie.mp3 w kółko.
+        $scenaSkoku = ($teraz - $wejscie) * 1000 < 3600 ? 'wejscie' : 'nadswietlna';
+        return $baza + ['scena' => $scenaSkoku, 'hiper' => true, 'planeta' => $start['typ'] ?? $typ,
+            'odleglosc' => $odlegloscWejscia, 'miejsce' => 'Nadprzestrzeń',
+            'zmieniono' => max($wejscie * 1000, $zmianaPozycjiMs), 'widok' => $widok + ($widacPlanete ? [] : ['bez_planety' => true])];
     }
     $gwiazdy = scena_gwiazdy((float) ($o['x'] ?? 0), (float) ($o['y'] ?? 0));
     $lotOd = czas_z_utc($o['lot_od_utc'] ?? null); $lotDo = czas_z_utc($o['lot_do_utc'] ?? null);
@@ -272,6 +285,15 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         $f = floty_lot_ulamek(($teraz - $lotOd) / max(1, $lotDo - $lotOd));
         $kx = (float) $o['lot_start_kx'] + ((float) $o['lot_cel_kx'] - (float) $o['lot_start_kx']) * $f;
         $ky = (float) $o['lot_start_ky'] + ((float) $o['lot_cel_ky'] - (float) $o['lot_start_ky']) * $f;
+        if (function_exists('floty_lot_pozycja')) {
+            $pozLotu = floty_lot_pozycja((int) $o['id'], $teraz);
+            if ($pozLotu && $pozLotu[2] !== null) {
+                $kx = (float) $pozLotu[2]; $ky = (float) $pozLotu[3];
+                // Mostek śledzi styczną kursu na łuku; planeta przesuwa się w dół widoku,
+                // kiedy okręt przechodzi nad jej północną krawędzią.
+                if (isset($pozLotu[4])) $o['kurs_deg'] = (float) $pozLotu[4];
+            }
+        }
         $planety = floty_planety_ukladu((float) $o['lot_start_x'], (float) $o['lot_start_y']);
         $pl = null; $min = INF;
         foreach ($planety as $p) {
@@ -302,14 +324,14 @@ function scena_okretu(int $okretId, int $zmianaPozycjiMs): ?array
         // Punkt w układzie (np. między planetą a słońcem, krawędź układu): planeta i słońce widziane
         // z tego miejsca — kierunek i rozmiar z odległości (km od słońca i od planety).
         // Świeże wyjście ze skoku w tym punkcie: animacja wyjścia z nadprzestrzeni.
-        $swieze = $przylot && $teraz - $przylot < 120;
+        $swieze = $przylot && $teraz - $przylot < 8;
         return $baza + scena_z_punktu_ukladu($o, $gwiazdy, (string) $pl['nazwa'], (float) $o['uklad_kx'], (float) $o['uklad_ky'], $teraz, $swieze)
-            + ['zmieniono' => $zmieniono];
+            + ['hiper' => $swieze, 'zmieniono' => $zmieniono];
     }
     if ($planeta === '') {
         // Świeże wyjście ze skoku w pustej przestrzeni (także awaryjne): animacja wyjścia bez planety.
-        $swieze = $przylot && $teraz - $przylot < 120;
-        return $baza + ['scena' => $swieze ? 'wyjscie' : 'kosmos', 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
+        $swieze = $przylot && $teraz - $przylot < 8;
+        return $baza + ['scena' => $swieze ? 'wyjscie' : 'kosmos', 'hiper' => $swieze, 'planeta' => 'skalista', 'odleglosc' => 'srednio', 'miejsce' => 'Przestrzeń', 'zmieniono' => $zmieniono,
             'widok' => mapa_kurs_pola($o) + ['gwiazdy' => $gwiazdy] + ($swieze ? ['bez_planety' => true] : [])];
     }
     if (!empty($o['ladowisko_id'])) {
@@ -587,6 +609,14 @@ function obsluz_sceny(string $akcja, bool $post): void
 
         case 'scena':
             $u = wymagaj_logowania();
+            $testowanyOkret = (int) ($_GET['obiekt'] ?? 0);
+            if ($testowanyOkret > 0) {
+                if (($u['rola'] ?? '') !== 'mg') blad('Widok mostka dowolnej jednostki jest dostępny tylko dla MG.', 403);
+                $teraz = teraz_ms();
+                $podglad = scena_okretu($testowanyOkret, $teraz);
+                if (!$podglad) blad('Nie udało się odczytać widoku tej jednostki. Sprawdź, czy obsługuje scenę mostka i czy wykonano wymagane migracje.');
+                odpowiedz(['scena' => $podglad, 'teraz' => $teraz]);
+            }
             ruch_dokoncz($u['id']);
             ruch_skoki_dokoncz();
             $liczniki = null;

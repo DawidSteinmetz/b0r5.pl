@@ -1,9 +1,9 @@
 // PLIK GENEROWANY: python narzedzia/mostek/pulpity_js.py — nie edytuj, zmieniaj narzedzia/mostek/uklady/.
-// Układy pulpitów (siatka 13×9, telefon 5×9): [typ, kolumna, wiersz, tekst, szer, wys, (tekst_min suwaka)].
+// Układy pulpitów (siatka 13×9, telefon 5×10): [typ, kolumna, wiersz, tekst, szer, wys, (tekst_min suwaka)].
 // Typy: S suwak zakresu, R wzmocnij, Y suwak, G synchronizacja, B urządzenie / ekran, W polecenie.
 
 export const KOLORY = {"S": "#999999", "R": "#ff3333", "Y": "#ffff99", "G": "#99ff99", "B": "#6666ff", "W": "#ffffff"};
-export const FORMATY = {"ISD_I": {"Osłony": [13, 7], "Turbolasery": [13, 7], "Silniki": [13, 7], "Reaktory": [13, 7], "Kontrola ognia": [13, 7], "Sensory": [13, 7], "Grawitacja": [13, 7], "Myśliwce": [13, 7], "Nawigacja": [13, 7], "Radar": [13, 7], "Klucz": [5, 9], "Eskadra": [5, 9]}};
+export const FORMATY = {"ISD_I": {"Osłony": [13, 7], "Turbolasery": [13, 7], "Silniki": [13, 7], "Reaktory": [13, 7], "Kontrola ognia": [13, 7], "Sensory": [13, 7], "Grawitacja": [13, 7], "Myśliwce": [13, 7], "Nawigacja": [13, 7], "Radar": [13, 7], "Klucz": [5, 10], "Eskadra": [5, 10]}};
 export const UKLADY = {
  "ISD_I": {
   "Osłony": [
@@ -686,6 +686,14 @@ export const UKLADY = {
     6,
     3,
     "wyrównaj ciąg silników",
+    1,
+    1
+   ],
+   [
+    "R",
+    7,
+    3,
+    "STOP",
     1,
     1
    ],
@@ -2872,81 +2880,33 @@ export const UKLADY = {
     1
    ],
    [
-    "W",
-    1,
-    2,
-    "łagodnie w lewo",
-    1,
-    1
-   ],
-   [
     "B",
-    2,
+    1,
     2,
     "EKRAN KLUCZA · klucz zawsze w środku · okręgi 2 / 10 / 30 km (dotknięcie zmienia skalę) · kurs i wektor · cele (dotknij, by wybrać) · okręt macierzysty · inne klucze",
-    3,
-    3
-   ],
-   [
-    "W",
     5,
-    2,
-    "łagodnie w prawo",
-    1,
-    1
+    5
    ],
    [
     "W",
     1,
-    3,
+    7,
     "ostro w lewo",
     1,
     1
    ],
    [
     "W",
-    5,
-    3,
-    "ostro w prawo",
-    1,
-    1
-   ],
-   [
-    "W",
-    1,
-    4,
-    "rozejście klucza w lewo",
-    1,
-    1
-   ],
-   [
-    "W",
-    5,
-    4,
-    "rozejście klucza w prawo",
-    1,
-    1
-   ],
-   [
-    "W",
-    1,
-    5,
-    "beczka w lewo (rozrzut ×1,6)",
-    1,
-    1
-   ],
-   [
-    "W",
     2,
-    5,
-    "zygzak (×1,3)",
+    7,
+    "łagodnie w lewo",
     1,
     1
    ],
    [
     "W",
     3,
-    5,
+    7,
     "PROSTO",
     1,
     1
@@ -2954,7 +2914,47 @@ export const UKLADY = {
    [
     "W",
     4,
+    7,
+    "łagodnie w prawo",
+    1,
+    1
+   ],
+   [
+    "W",
     5,
+    7,
+    "ostro w prawo",
+    1,
+    1
+   ],
+   [
+    "W",
+    1,
+    8,
+    "beczka w lewo (rozrzut ×1,6)",
+    1,
+    1
+   ],
+   [
+    "W",
+    2,
+    8,
+    "zygzak (×1,3)",
+    1,
+    1
+   ],
+   [
+    "W",
+    3,
+    8,
+    "pętla (zawrót górą)",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    8,
     "burst (×1,5)",
     1,
     1
@@ -2962,7 +2962,7 @@ export const UKLADY = {
    [
     "W",
     5,
-    5,
+    8,
     "beczka w prawo (×1,6)",
     1,
     1
@@ -2970,47 +2970,7 @@ export const UKLADY = {
    [
     "W",
     1,
-    6,
-    "pętla (zawrót górą)",
-    1,
-    1
-   ],
-   [
-    "W",
-    2,
-    6,
-    "spirala asa (×2, tylko as)",
-    1,
-    1
-   ],
-   [
-    "W",
-    3,
-    6,
-    "zwarcie szyku",
-    1,
-    1
-   ],
-   [
-    "W",
-    4,
-    6,
-    "skok cieniowy (×2,5, tylko as)",
-    1,
-    1
-   ],
-   [
-    "W",
-    5,
-    6,
-    "split-S (zawrót dołem)",
-    1,
-    1
-   ],
-   [
-    "W",
-    1,
-    7,
+    9,
     "atak z nurkowania",
     1,
     1
@@ -3018,79 +2978,39 @@ export const UKLADY = {
    [
     "W",
     2,
-    7,
-    "nożyce (pojedynek)",
-    1,
-    1
-   ],
-   [
-    "W",
-    3,
-    7,
+    9,
     "ogon (trzymaj się celu)",
-    1,
-    1
-   ],
-   [
-    "W",
-    4,
-    7,
-    "przelot przez cel",
-    1,
-    1
-   ],
-   [
-    "W",
-    5,
-    7,
-    "eskorta wskazanej jednostki",
-    1,
-    1
-   ],
-   [
-    "Y",
-    1,
-    8,
-    "suwak: moc na działka (podnosi Hz — dryf)",
-    1,
-    1
-   ],
-   [
-    "G",
-    2,
-    8,
-    "pobierz Hz celu z sensorów okrętu",
     1,
     1
    ],
    [
     "B",
     3,
-    8,
+    9,
     "odczyt: Hz klucza (baza / bieżący) · zmiany w cyklu",
     1,
     1
    ],
    [
-    "G",
+    "W",
     4,
-    8,
-    "IFF z kontrolą ognia okrętu",
+    9,
+    "nożyce (pojedynek)",
     1,
     1
    ],
    [
-    "Y",
+    "W",
     5,
-    8,
-    "suwak: moc na osłony i silniki",
+    9,
+    "przelot przez cel",
     1,
     1
    ],
    [
     "W",
     1,
-    9,
+    10,
     "patrol",
     1,
     1
@@ -3098,15 +3018,15 @@ export const UKLADY = {
    [
     "W",
     2,
-    9,
+    10,
     "ochrona okrętu",
     1,
     1
    ],
    [
-    "W",
+    "R",
     3,
-    9,
+    10,
     "START (gdy gotowy) · ATAK (w locie)",
     1,
     1
@@ -3114,7 +3034,7 @@ export const UKLADY = {
    [
     "W",
     4,
-    9,
+    10,
     "skan z bliska",
     1,
     1
@@ -3122,7 +3042,7 @@ export const UKLADY = {
    [
     "W",
     5,
-    9,
+    10,
     "powrót do hangaru",
     1,
     1
@@ -3146,18 +3066,18 @@ export const UKLADY = {
     5
    ],
    [
-    "B",
+    "W",
     1,
     7,
-    "Klucz 1 · start za mm:ss",
+    "rozejście klucza w lewo",
     1,
     1
    ],
    [
-    "G",
+    "B",
     2,
     7,
-    "zgraj kursy kluczy 1 i 2",
+    "Klucz 1 · start za mm:ss",
     1,
     1
    ],
@@ -3170,16 +3090,8 @@ export const UKLADY = {
     1
    ],
    [
-    "G",
-    4,
-    7,
-    "zgraj kursy kluczy 2 i 3",
-    1,
-    1
-   ],
-   [
     "B",
-    5,
+    4,
     7,
     "Klucz 3 · start za mm:ss",
     1,
@@ -3187,9 +3099,17 @@ export const UKLADY = {
    ],
    [
     "W",
+    5,
+    7,
+    "rozejście klucza w prawo",
+    1,
+    1
+   ],
+   [
+    "W",
     1,
     8,
-    "szyk: klin",
+    "ostro w lewo",
     1,
     1
    ],
@@ -3197,7 +3117,7 @@ export const UKLADY = {
     "W",
     2,
     8,
-    "szyk: linia",
+    "łagodnie w lewo",
     1,
     1
    ],
@@ -3205,7 +3125,7 @@ export const UKLADY = {
     "W",
     3,
     8,
-    "szyk: kolumna",
+    "PROSTO",
     1,
     1
    ],
@@ -3213,7 +3133,7 @@ export const UKLADY = {
     "W",
     4,
     8,
-    "szyk: rozproszony",
+    "łagodnie w prawo",
     1,
     1
    ],
@@ -3221,7 +3141,7 @@ export const UKLADY = {
     "W",
     5,
     8,
-    "szyk: parasol nad okrętem",
+    "ostro w prawo",
     1,
     1
    ],
@@ -3229,6 +3149,46 @@ export const UKLADY = {
     "W",
     1,
     9,
+    "beczka w lewo (rozrzut ×1,6)",
+    1,
+    1
+   ],
+   [
+    "W",
+    2,
+    9,
+    "zygzak (×1,3)",
+    1,
+    1
+   ],
+   [
+    "W",
+    3,
+    9,
+    "pętla (zawrót górą)",
+    1,
+    1
+   ],
+   [
+    "W",
+    4,
+    9,
+    "burst (×1,5)",
+    1,
+    1
+   ],
+   [
+    "W",
+    5,
+    9,
+    "beczka w prawo (×1,6)",
+    1,
+    1
+   ],
+   [
+    "W",
+    1,
+    10,
     "patrol",
     1,
     1
@@ -3236,15 +3196,15 @@ export const UKLADY = {
    [
     "W",
     2,
-    9,
-    "przechwycenie",
+    10,
+    "eskorta",
     1,
     1
    ],
    [
     "R",
     3,
-    9,
+    10,
     "ATAK ESKADRY",
     1,
     1
@@ -3252,15 +3212,15 @@ export const UKLADY = {
    [
     "W",
     4,
-    9,
-    "eskorta",
+    10,
+    "skan eskadry",
     1,
     1
    ],
    [
     "W",
     5,
-    9,
+    10,
     "powrót eskadry",
     1,
     1

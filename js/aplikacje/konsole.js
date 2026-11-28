@@ -249,6 +249,12 @@ function mierzPulpit() {
 const IKONA_PELNY = '<path d="M8 18V8h10M30 8h10v10M40 30v10H30M18 40H8V30"/>';
 const IKONA_ZWYKLY = '<path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/>';
 let pelnyEkranPulpitu = false;
+// Telefon: przy wejściu na pełny ekran pulpitu prosimy też przeglądarkę o pełny ekran (znika pasek adresu).
+// Wyjście z pulpitu go nie zamyka — system i tak trzyma datapad na pełnym ekranie.
+function pelnyEkranUrzadzenia() {
+  const el = document.documentElement;
+  try { if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); } catch { /* np. Safari na iPhonie */ }
+}
 export function oprawaPulpitu(ctx) {
   styleAnimacji();
   mierzPulpit();
@@ -259,9 +265,12 @@ export function oprawaPulpitu(ctx) {
   const strzalka = (kierunek, znak, tytul) => h('button.pulpit-strzalka.' + (kierunek < 0 ? 'lewa' : 'prawa'),
     { type: 'button', title: tytul, 'aria-label': tytul, onclick: () => przelacz?.(kierunek) }, znak);
   const strzalki = [strzalka(-1, '‹', 'Poprzedni pulpit'), strzalka(1, '›', 'Następny pulpit')];
+  // Na pełnym ekranie górny pasek i dok znikają — wyjście daje mały znaczek w rogu (i Escape).
+  const wyjscie = h('button.pulpit-wyjdz', { type: 'button', title: 'Zamknij pełny ekran pulpitu', 'aria-label': 'Zamknij pełny ekran pulpitu',
+    html: `<svg viewBox="0 0 48 48">${IKONA_ZWYKLY}</svg>`, onclick: () => ustawPelny(false) });
   let komunikatEl = null, zegarKomunikatu = null, obserwator = null, widoczna = false;
   const dok = () => ctx?.dok?.(widoczna ? [{ ikona: pelnyEkranPulpitu ? IKONA_ZWYKLY : IKONA_PELNY,
-    tytul: pelnyEkranPulpitu ? 'Zamknij pełny ekran pulpitu' : 'Pulpit na pełny ekran', akcja: () => ustawPelny(!pelnyEkranPulpitu) }] : null);
+    tytul: pelnyEkranPulpitu ? 'Zamknij pełny ekran pulpitu' : 'Pulpit na pełny ekran', akcja: () => { if (!pelnyEkranPulpitu) pelnyEkranUrzadzenia(); ustawPelny(!pelnyEkranPulpitu); } }] : null);
   const klawisz = (e) => { if (e.key === 'Escape' && pelnyEkranPulpitu) ustawPelny(false); };
   function ustawPelny(v) {
     pelnyEkranPulpitu = v;
@@ -285,7 +294,7 @@ export function oprawaPulpitu(ctx) {
         });
         obserwator.observe(komunikatEl, { childList: true });
       }
-      el.replaceChildren(ekran, nakladka, ...(zmien ? strzalki : []));
+      el.replaceChildren(ekran, nakladka, wyjscie, ...(zmien ? strzalki : []));
       if (komunikatEl) nakladka.replaceChildren(komunikatEl);
       if (!widoczna) { widoczna = true; ustawPelny(pelnyEkranPulpitu); }
     },
@@ -329,7 +338,42 @@ html.pulpit-pelny-ekran .pulpit-oprawa { position: fixed; left: 0; right: 0; top
 .pulpit-strzalka:hover, .pulpit-strzalka:active { opacity: 1; background: rgba(77,226,201,.18); }
 .pulpit-strzalka.lewa { left: 0; border-left: 0; border-radius: 0 10px 10px 0; }
 .pulpit-strzalka.prawa { right: 0; border-right: 0; border-radius: 10px 0 0 10px; }
-html.pulpit-pelny-ekran .pulpit-strzalka { display: block; }`));
+html.pulpit-pelny-ekran .pulpit-strzalka { display: block; }
+html.pulpit-pelny-ekran #pasek, html.pulpit-pelny-ekran #dok { display: none !important; }
+html.pulpit-pelny-ekran .pulpit-oprawa { padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+.pulpit-wyjdz { display: none; position: absolute; top: max(4px, env(safe-area-inset-top)); right: max(4px, env(safe-area-inset-right)); z-index: 10;
+  width: 30px; height: 30px; padding: 5px; border: 1px solid rgba(77,226,201,.45); border-radius: 50%; background: rgba(5,8,10,.72);
+  color: #4de2c9; cursor: pointer; opacity: .7; transition: opacity .15s, background .15s; }
+.pulpit-wyjdz:hover, .pulpit-wyjdz:active { opacity: 1; background: rgba(77,226,201,.18); }
+.pulpit-wyjdz svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+html.pulpit-pelny-ekran .pulpit-wyjdz { display: block; }`));
+}
+
+// Ruch uchwytów suwaków: wyświetlana pozycja jedzie do wartości docelowej ze stałą szybkością (pełna skala w 4 s,
+// np. 3600 → 1800 Hz ok. 2 s), zamiast skakać. Stan trzymany poza DOM, bo pulpit przerysowuje się co odczyt —
+// przerysowanie zaczyna od miejsca, w którym uchwyt akurat jest. Złapany uchwyt (chwyt) idzie za palcem.
+const ANIM_SUWAKOW = new Map();
+const SZYBKOSC_SUWAKA = 0.25;   // pełnej skali na sekundę
+let PRZECIAGNIETO = 0, petlaSuwakow = null, czasSuwakow = 0;
+function animSuwaka(klucz, cel) {
+  let a = ANIM_SUWAKOW.get(klucz);
+  if (!a) ANIM_SUWAKOW.set(klucz, a = { klucz, v: cel, cel, chwyt: false, rysuj: null });
+  if (!a.chwyt) a.cel = cel;
+  if (Math.abs(a.v - a.cel) > 1e-4 && !petlaSuwakow) { czasSuwakow = performance.now(); petlaSuwakow = requestAnimationFrame(krokSuwakow); }
+  return a;
+}
+function krokSuwakow(t) {
+  const dt = Math.min(0.1, Math.max(0, (t - czasSuwakow) / 1000));
+  czasSuwakow = t;
+  let ruch = false;
+  for (const a of ANIM_SUWAKOW.values()) {
+    if (a.chwyt || a.v === a.cel) continue;
+    const d = a.cel - a.v, krok = SZYBKOSC_SUWAKA * dt;
+    a.v = Math.abs(d) <= krok ? a.cel : a.v + Math.sign(d) * krok;
+    a.rysuj?.();
+    ruch = true;
+  }
+  petlaSuwakow = ruch ? requestAnimationFrame(krokSuwakow) : null;
 }
 
 function pulpit(klasa, nazwa, wiazania) {
@@ -404,6 +448,9 @@ function pulpit(klasa, nazwa, wiazania) {
         + `opacity:${w?.wl ? 1 : 0.7};${w?.wl ? `box-shadow:0 0 8px ${kol}` : ''}` }));
     }
     // Suwak zakresu: prowadnica z podziałką i dwoma uchwytami (górny — maksimum, dolny — minimum), skala od dołu do góry.
+    // Uchwyty nie skaczą: jadą do nowej wartości (ANIM_SUWAKOW), a złapany uchwyt idzie za palcem.
+    const pion = typ === 'S' || (wys || 1) > (sz || 1);
+    let suwakAnim = null;
     if (typ === 'S') {
       el.append(h('div', { style: `position:absolute;left:50%;top:9%;bottom:9%;width:8px;transform:translateX(-50%);background:#0c181b;border:1px solid ${KRAWEDZ};border-radius:4px` }),
         h('div', { style: 'position:absolute;left:22%;right:22%;top:9%;bottom:9%;background:repeating-linear-gradient(180deg,'
@@ -411,28 +458,78 @@ function pulpit(klasa, nazwa, wiazania) {
       if (w?.zakres) {
         const z = w.zakres;
         const jeden = z.min == null;   // suwak jednej wartości (Hz urządzenia): bez dolnego uchwytu
-        el.append(h('div', { style: `position:absolute;left:50%;width:4px;transform:translateX(-50%);background:${TURKUS}88;`
-          + `top:${(9 + 82 * (1 - z.max)).toFixed(1)}%;bottom:${(9 + 82 * (jeden ? 0 : z.min)).toFixed(1)}%` }));
-        for (const [v, k2] of jeden ? [[z.max, '#e8eef0']] : [[z.max, '#e8eef0'], [z.min, '#9aa4ab']]) {
-          el.append(h('div', { style: `position:absolute;left:18%;right:18%;height:10px;top:${(9 + 82 * (1 - v)).toFixed(1)}%;transform:translateY(-50%);`
-            + `background:linear-gradient(180deg,${k2},#3a444b);border:1px solid #0b1013;border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.6)` }));
-        }
+        const pasek = h('div', { style: `position:absolute;left:50%;width:4px;transform:translateX(-50%);background:${TURKUS}88;` });
+        const uchwyt = (k2) => h('div', { style: `position:absolute;left:18%;right:18%;height:10px;transform:translateY(-50%);`
+          + `background:linear-gradient(180deg,${k2},#3a444b);border:1px solid #0b1013;border-radius:3px;box-shadow:0 2px 4px rgba(0,0,0,.6)` });
+        const uMax = uchwyt('#e8eef0'), uMin = jeden ? null : uchwyt('#9aa4ab');
+        el.append(pasek, uMax, ...(uMin ? [uMin] : []));
+        const aMax = animSuwaka(klucz + '|max', z.max), aMin = jeden ? null : animSuwaka(klucz + '|min', z.min);
+        const rysuj = () => {
+          pasek.style.top = `${(9 + 82 * (1 - aMax.v)).toFixed(1)}%`;
+          pasek.style.bottom = `${(9 + 82 * (aMin ? aMin.v : 0)).toFixed(1)}%`;
+          uMax.style.top = `${(9 + 82 * (1 - aMax.v)).toFixed(1)}%`;
+          if (uMin) uMin.style.top = `${(9 + 82 * (1 - aMin.v)).toFixed(1)}%`;
+        };
+        aMax.rysuj = rysuj;
+        if (aMin) aMin.rysuj = rysuj;
+        rysuj();
+        // przeciągany jest bliższy uchwyt (jak przy dotknięciu)
+        suwakAnim = (v) => (!aMin || Math.abs(v - aMax.v) <= Math.abs(v - aMin.v) ? aMax : aMin);
       }
     }
     // Suwak żółty: rowek z podziałką i uchwytem (pozycja w.poz 0…1; pionowy, gdy element jest wyższy niż szerszy).
     if (typ === 'Y' && w?.poz != null) {
-      const pion = (wys || 1) > (sz || 1);
+      const u = h('div', { style: `position:absolute;${pion ? 'left:-4px;right:-4px;height:5px' : 'top:-4px;bottom:-4px;width:5px'};`
+        + `transform:translate(${pion ? '0,50%' : '-50%,0'});background:${kol};border-radius:2px;box-shadow:0 0 5px ${kol}` });
       el.append(h('div', { style: `position:absolute;${pion ? 'left:50%;top:22%;bottom:12%;width:6px;transform:translateX(-50%)' : 'top:62%;left:12%;right:12%;height:6px'};`
-        + `background:#0c181b;border:1px solid ${kol}99;border-radius:3px` },
-        h('div', { style: `position:absolute;${pion ? `left:-4px;right:-4px;bottom:${Math.round(w.poz * 100)}%;height:5px` : `top:-4px;bottom:-4px;left:${Math.round(w.poz * 100)}%;width:5px`};`
-          + `transform:translate(${pion ? '0,50%' : '-50%,0'});background:${kol};border-radius:2px;box-shadow:0 0 5px ${kol}` })));
+        + `background:#0c181b;border:1px solid ${kol}99;border-radius:3px` }, u));
+      const a = animSuwaka(klucz, w.poz);
+      a.rysuj = () => { u.style[pion ? 'bottom' : 'left'] = `${(a.v * 100).toFixed(1)}%`; };
+      a.rysuj();
+      suwakAnim = () => a;
     }
     const odswiezPo = () => { if (lokalny) biezaceOdswiez?.(); };
     const zapiszWcisniecie = () => WCISNIETE.set(klucz, Date.now());
-    if (w?.klik) el.addEventListener('click', (ev) => { zapiszWcisniecie(); w.klik(ev); odswiezPo(); });
+    const poPrzeciagnieciu = () => Date.now() - PRZECIAGNIETO < 400;
+    // Złap i przeciągnij: uchwyt idzie za palcem, puszczenie ustawia wartość (to samo, co dotknięcie w tym miejscu).
+    if (suwakAnim && (w?.ustawZakres || w?.ustawPoz || w?.klikX)) {
+      el.style.touchAction = 'none';
+      const wartosc = (ev, b) => Math.min(1, Math.max(0, typ === 'S' ? 1 - ((ev.clientY - b.top) / b.height - 0.09) / 0.82
+        : pion ? 1 - ((ev.clientY - b.top) / b.height - 0.22) / 0.66 : ((ev.clientX - b.left) / b.width - 0.12) / 0.76));
+      el.addEventListener('pointerdown', (ev0) => {
+        const b = el.getBoundingClientRect();
+        let a = null;
+        const ruch = (ev) => {
+          if (!a && Math.hypot(ev.clientX - ev0.clientX, ev.clientY - ev0.clientY) < 6) return;
+          const v = wartosc(ev, b);
+          if (!a) { a = suwakAnim(wartosc(ev0, b)); a.chwyt = true; }
+          a.v = a.cel = v;
+          a.rysuj?.();
+        };
+        const koniec = () => {
+          window.removeEventListener('pointermove', ruch);
+          window.removeEventListener('pointerup', koniec);
+          window.removeEventListener('pointercancel', koniec);
+          if (!a) return;
+          a.chwyt = false;
+          PRZECIAGNIETO = Date.now();
+          zapiszWcisniecie();
+          const v = a.v;
+          if (w.ustawZakres) w.ustawZakres(v, a.klucz.endsWith('|min') ? 'min' : 'max');
+          else if (w.ustawPoz && !w.klik && !w.klikX) w.ustawPoz(v);
+          else if (w.klikX) w.klikX(pion ? 0.5 : v, 1 - v);
+          odswiezPo();
+        };
+        window.addEventListener('pointermove', ruch);
+        window.addEventListener('pointerup', koniec);
+        window.addEventListener('pointercancel', koniec);
+      });
+    }
+    if (w?.klik) el.addEventListener('click', (ev) => { if (poPrzeciagnieciu()) return; zapiszWcisniecie(); w.klik(ev); odswiezPo(); });
     if (w?.klikS) el.addEventListener('click', (ev) => { zapiszWcisniecie(); const b = el.getBoundingClientRect(); w.klikS(ev.clientY - b.top < b.height / 2); });
-    if (w?.klikX) el.addEventListener('click', (ev) => { zapiszWcisniecie(); const b = el.getBoundingClientRect(); w.klikX(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), (ev.clientY - b.top) / b.height); });
+    if (w?.klikX) el.addEventListener('click', (ev) => { if (poPrzeciagnieciu()) return; zapiszWcisniecie(); const b = el.getBoundingClientRect(); w.klikX(Math.min(1, Math.max(0, (ev.clientX - b.left) / b.width)), (ev.clientY - b.top) / b.height); });
     if (w?.ustawZakres) el.addEventListener('click', (ev) => {
+      if (poPrzeciagnieciu()) return;
       zapiszWcisniecie();
       const b = el.getBoundingClientRect(), v = Math.min(1, Math.max(0, 1 - ((ev.clientY - b.top) / b.height - 0.09) / 0.82));
       const z = w.zakres || { max: 1, min: 0 };
@@ -440,8 +537,9 @@ function pulpit(klasa, nazwa, wiazania) {
       odswiezPo();
     });
     if (w?.ustawPoz && !w?.klik && !w?.klikX) el.addEventListener('click', (ev) => {
+      if (poPrzeciagnieciu()) return;
       zapiszWcisniecie();
-      const b = el.getBoundingClientRect(), pion = (wys || 1) > (sz || 1);
+      const b = el.getBoundingClientRect();
       const v = pion ? 1 - ((ev.clientY - b.top) / b.height - 0.22) / 0.66 : ((ev.clientX - b.left) / b.width - 0.12) / 0.76;
       w.ustawPoz(Math.min(1, Math.max(0, v)));
       odswiezPo();
@@ -1341,7 +1439,10 @@ function eskadra(s, st, akcje, stala = null) {
         obiekty: [...s.klucze.filter((x) => x.stan === 'w_locie'), ...s.jednostki] })) },
     'patrol': { klik: wszystkim('patrol') }, 'przechwycenie': { klik: wszystkim('atak') }, 'ATAK ESKADRY': { klik: wszystkim('atak') },
     'eskorta': { etykieta: 'eskorta (ochrona okrętu)', klik: wszystkim('ochrona') }, 'powrót eskadry': { klik: wszystkim('powrot') },
+    'skan eskadry': { klik: wszystkim('skan') },
   };
+  // Skręty i figury z ekranu Klucz — dla całej eskadry (każdy klucz w locie dostaje tę samą figurę).
+  for (const [tekst, kod] of Object.entries(FIGURY)) if (!(tekst in w)) w[tekst] = { klik: wszystkim(kod) };
   ['Klucz 1 · start za mm:ss', 'Klucz 2 · start za mm:ss', 'Klucz 3 · start za mm:ss'].forEach((tekst, i) => {
     const k = moje[i];
     if (k) w[tekst] = { ...lampa(k, `Klucz ${k.nr} · ${opisLampy(k)}`), klik: () => { st.zoomKlucz = k.id; akcje.odswiez(); } };
@@ -1486,6 +1587,15 @@ function silniki(s, st, akcje) {
     'suwak: trym pochylenia (silniki manewrowe)': n.suwak('trym_poch', 'trym pochylenia (optimum 50%)'),
     'suwak: trym odchylenia (silniki manewrowe)': n.suwak('trym_odch', 'trym odchylenia (dryf zwrotu)'),
     'wyrównaj ciąg silników': n.wyrownaj('silniki', 'wyrównaj ciąg silników'),
+    // STOP: pełne hamowanie i koniec skrętu (kurs zadany = obecny zwrot dziobu) rozkazem ster, a silniki manewrowe
+    // wracają do ustawień domyślnych — ciąg, dysze i trymy na środek (50%); wysyła tylko te, które ktoś przesunął.
+    'STOP': { wl: j.v_cel === 0 && Math.abs(skret) <= 0.5, etykieta: j.v_cel === 0 && j.v > 0.0005 ? `STOP · hamuje ${(j.v * 3600).toFixed(0)} km/h` : 'STOP',
+      klik: () => {
+        ster(akcje, j, N, { kurs: j.kurs, v: 0 });
+        for (const k of ['man_lg', 'man_pg', 'man_ld', 'man_pd', 'dysza_lg', 'dysza_pg', 'dysza_ld', 'dysza_pd', 'trym_odch', 'trym_poch']) {
+          if (Math.abs(n.N(k) - 0.5) > 1e-4) n.ustaw(k, 0.5);
+        }
+      } },
     'równaj ciąg z mocą reaktora': { etykieta: `równaj ciąg z mocą reaktora${j.zasil ? ` (silniki ${Math.round(j.zasil.v * 100)}%)` : ''}`,
       klik: () => ster(akcje, j, N, { v: Math.min(j.v_cel ?? j.v, vMax * Math.min(1, j.zasil?.v ?? 1)) }) },
     'synchronizacja lewych silników manewrowych z lewym silnikiem głównym': n.przelacznik('sync_man_l'),
@@ -1506,7 +1616,26 @@ function silniki(s, st, akcje) {
   for (const [kod, opis] of [['lg', 'lewy górny'], ['pg', 'prawy górny'], ['ld', 'lewy dolny'], ['pd', 'prawy dolny']]) {
     w[`wzmocnij ${opis} silnik manewrowy`] = n.wzmocnij('man_' + kod, `wzmocnij ${opis} manewrowy`);
   }
+  sterNaSilnikach(w, skret);
   return pulpit(j.profil, N, w);
+}
+
+// Skręt zadany sterem (np. „zwrot o 90°” z Nawigacji): konsola Silniki sama przekłada się, żeby go wykonać —
+// manewrowe burty po stronie skrętu na ciąg, ich dysze wychylone, silnik główny po wewnętrznej przytłumiony,
+// trym odchylenia w stronę skrętu. Wychylenie maleje, gdy dziób dochodzi do kursu, a po skręcie uchwyty
+// wracają do nastaw załogi. To obraz pracy steru (skręt liczy serwer z rozkazu ster) — nastawy się nie zmieniają.
+function sterNaSilnikach(w, skret) {
+  if (Math.abs(skret) <= 0.5) return;
+  const k = Math.min(1, Math.abs(skret) / 30), lewo = skret < 0;
+  const dopisz = (tekst, zmiana) => { if (w[tekst]) w[tekst] = { ...w[tekst], ...zmiana(w[tekst]), etykieta: `${w[tekst].etykieta ?? ''} · ster` }; };
+  for (const [kod, opis] of [['lg', 'lewego górnego'], ['pg', 'prawego górnego'], ['ld', 'lewego dolnego'], ['pd', 'prawego dolnego']]) {
+    const poStronie = kod[0] === (lewo ? 'l' : 'p');
+    dopisz(`suwak: ciąg ${opis} silnika manewrowego`, () => ({ poz: poStronie ? 0.5 + 0.5 * k : 0.5 - 0.3 * k }));
+    dopisz(`suwak: wychylenie dyszy ${opis} silnika manewrowego`, () => ({ poz: poStronie ? (lewo ? 0.5 - 0.4 * k : 0.5 + 0.4 * k) : 0.5 }));
+  }
+  const wewn = lewo ? 'lewego' : 'prawego';
+  dopisz(`suwak: maksymalny ciąg ${wewn} silnika głównego`, (s) => ({ zakres: { ...s.zakres, max: (s.zakres?.max ?? 1) * (1 - 0.35 * k) } }));
+  dopisz('suwak: trym odchylenia (silniki manewrowe)', () => ({ poz: lewo ? 0.5 - 0.3 * k : 0.5 + 0.3 * k }));
 }
 
 // ------------------------------------------------------------------------------------------- Turbolasery

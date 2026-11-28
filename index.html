@@ -7,7 +7,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="robots" content="noindex">
+  <meta name="description" content="HOLOLINK — publiczny węzeł galaktyczny: znane planety, jawne pozycje imperialnych ISD, notowania giełdowe i trasy dostaw.">
+  <meta name="robots" content="index,follow">
   <title>HOLOLINK</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/ikona.svg" type="image/svg+xml">
@@ -25,9 +26,10 @@
       </div>
       <div class="pasek-srodek" id="pasek-tytul"></div>
       <div class="pasek-prawa">
-        <button id="przelacznik-alfabetu" class="przelacznik" title="Transliteracja" aria-label="Transliteracja">
-          <span class="lat">Aa</span><span class="aur">Aa</span>
+        <button id="przelacznik-alfabetu" class="przelacznik" title="Zmień krój pisma" aria-label="Zmień krój pisma">
+          <span class="lat">Aa</span><span class="aur">Aa</span><span class="aur-klasyczny">Aa</span>
         </button>
+        <button id="pasek-pelny" type="button" hidden title="Pełny ekran" aria-label="Pełny ekran"><svg viewBox="0 0 48 48"></svg></button>
         <span id="pasek-bateria" hidden></span>
         <span id="pasek-zegar">--:--</span>
       </div>
@@ -39,6 +41,8 @@
       <button id="dok-blokada" aria-label="Zablokuj">▢</button>
     </nav>
   </div>
+  <button id="app-zwykly" type="button" aria-label="Zwykły widok" title="Zwykły widok (Esc)"><svg viewBox="0 0 48 48"><path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/></svg></button>
+  <button id="stanowisko-paski" type="button" aria-label="Pokaż pasek i dok" title="Pokaż pasek i dok"><svg viewBox="0 0 48 48"><path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/></svg></button>
   <div id="jasnosc" aria-hidden="true"></div>
   <div id="zaklocenia" aria-hidden="true"></div>
   <script type="module" src="js/system.js"></script>

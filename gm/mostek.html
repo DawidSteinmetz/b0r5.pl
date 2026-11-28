@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#05080a">
+  <title>Test widoku mostka — HOLOLINK</title>
+  <link rel="stylesheet" href="../css/system.css">
+  <style>
+    html, body, #ekran, #pulpit { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    #pulpit { position: absolute; inset: 0; }
+    #widok-mostka { display: block; width: 100%; height: 100%; }
+    #opis-mostka { position: fixed; z-index: 2; top: 12px; left: 14px; margin: 0; padding: 8px 12px; border: 1px solid var(--linia-mocna); border-radius: 6px; background: rgba(5,8,10,.78); color: var(--akcent); }
+    #blad-mostka { position: fixed; z-index: 3; inset: 50% 10% auto; transform: translateY(-50%); }
+  </style>
+</head>
+<body>
+  <div id="ekran">
+    <main id="pulpit"><canvas id="widok-mostka"></canvas><p id="opis-mostka">Podgląd testowy mostka · <a href="mapa.html">powrót do mapy GM</a></p><div id="blad-mostka" class="komunikat blad" hidden></div></main>
+  </div>
+  <script type="module">
+    import { api } from '../js/rdzen/api.js';
+    import { utworzScene } from '../js/rdzen/scena.js';
+    const id = Number(new URLSearchParams(location.search).get('obiekt'));
+    const canvas = document.querySelector('#widok-mostka'), blad = document.querySelector('#blad-mostka');
+    const render = utworzScene(canvas);
+    let timer;
+    async function pobierz() {
+      try {
+        const { scena, teraz } = await api('scena', undefined, { obiekt: String(id) });
+        render.ustaw({ ...scena, przesuniecie: teraz - Date.now() });
+        blad.hidden = true;
+      } catch (e) {
+        blad.textContent = e.message || 'Nie udało się wczytać widoku mostka.';
+        blad.hidden = false;
+      }
+    }
+    if (!Number.isInteger(id) || id <= 0) {
+      blad.textContent = 'Brak poprawnego identyfikatora jednostki.'; blad.hidden = false;
+    } else {
+      await pobierz(); render.start(); timer = setInterval(pobierz, 6000);
+    }
+    window.addEventListener('pagehide', () => { clearInterval(timer); render.stop(); }, { once: true });
+  </script>
+</body>
+</html>

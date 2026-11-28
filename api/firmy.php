@@ -76,11 +76,14 @@ function odpowiedz_bez_ukrytych_planet($dane, ?array $u)
     $oczysc = function ($wartosc) use (&$oczysc, $ukryte) {
         if (is_array($wartosc)) {
             foreach ($ukryte as $p) {
-                if (isset($wartosc['planeta']) && in_array((string) $wartosc['planeta'], [$p['id'], $p['nazwa']], true)) return null;
-                if (isset($wartosc['planeta_id']) && (string) $wartosc['planeta_id'] === $p['id']) return null;
+                if (isset($wartosc['planeta']) && is_scalar($wartosc['planeta'])
+                    && in_array((string) $wartosc['planeta'], [$p['id'], $p['nazwa']], true)) return null;
+                if (isset($wartosc['planeta_id']) && is_scalar($wartosc['planeta_id'])
+                    && (string) $wartosc['planeta_id'] === $p['id']) return null;
                 // Samo `id` może należeć do dowolnego rekordu; nazwę traktujemy jako
                 // planetę tylko wtedy, gdy obiekt ma także pola charakterystyczne dla mapy/katalogu.
-                $nazwaToPlaneta = mb_strtolower((string) ($wartosc['nazwa'] ?? '')) === mb_strtolower($p['nazwa']);
+                $nazwa = $wartosc['nazwa'] ?? '';
+                $nazwaToPlaneta = is_scalar($nazwa) && mb_strtolower((string) $nazwa) === mb_strtolower($p['nazwa']);
                 if ($nazwaToPlaneta && (array_key_exists('region', $wartosc) || array_key_exists('mapa', $wartosc)
                     || (array_key_exists('x', $wartosc) && array_key_exists('y', $wartosc)))) return null;
             }
@@ -923,7 +926,7 @@ function obsluz_firmy(string $akcja, bool $post): void
             $instrumenty = gielda_towary_z_katalogu($towary, $gielda['instrumenty'], $gielda['gieldy']);
             $instrumenty = gielda_spolki_do_instrumentow($spolki, $instrumenty, $gielda['gieldy']);
             $nowaGielda = gielda_z_wejscia(['gieldy' => $gielda['gieldy'], 'instrumenty' => $instrumenty, 'ustawienia' => $gielda['ustawienia']]);
-            zmien('gielda', function (&$g) use ($nowaGielda) { $g = $nowaGielda; }, []);
+            gielda_zapisz_sql($nowaGielda);
             zmien('katalog', function (&$k) use ($towary, $planety, $oferty, $lokacje, $spolki, $npc) {
                 $k = ['towary' => $towary, 'planety' => $planety, 'oferty' => $oferty, 'lokacje' => $lokacje,
                     'spolki' => $spolki, 'npc' => $npc, 'ustawienia' => $k['ustawienia'] ?? []];

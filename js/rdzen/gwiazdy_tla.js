@@ -15,11 +15,11 @@
 // - układy podwójne (jak Tatooine): część gwiazd ma towarzysza 0,05–50 j.a. od siebie; to jeden układ,
 //   więc towarzysz nie podlega regule odstępu.
 
-export const GWIAZDY_WERSJA = 1;
+export const GWIAZDY_WERSJA = 2;
 const ZIARNO = 0x484c4b31; // „HLK1”
 
 // Siatka galaktyki jak na mapach astronawigacyjnych: kolumny A–Z (2400 pc), wiersze 1–24 (3000 pc) od północy.
-// Siatka obejmuje cały dysk z zapasem; Coruscant (0, 0) wypada w L-9. Kwadrat siatki dzieli się na 8 × 10 kafli po 300 pc (numery 01–80).
+// Siatka obejmuje cały dysk z zapasem; Galactic Center (0, −2131,4) wypada w L-10. Kwadrat siatki dzieli się na 8 × 10 kafli po 300 pc (numery 01–80).
 const X0 = -27000, Y0 = 26700, KOL_PC = 2400, WIER_PC = 3000, KAFEL = 300;
 const TX = 26 * (KOL_PC / KAFEL), TY = 24 * (WIER_PC / KAFEL); // 208 × 240 kafli
 const KAF_W_KOL = KOL_PC / KAFEL, KAF_W_WIER = WIER_PC / KAFEL;
@@ -53,7 +53,7 @@ function szum(x, y) {
 }
 
 // Gęstość (bez jednostek): zgrubienie Głębokiego Jądra, dysk wykładniczy z dwoma ramionami spiralnymi, skupiska, brzeg.
-const EX = 1500, EY = -3000, EA = 23250, EB = 18600, E_COS = Math.cos(120 * Math.PI / 180), E_SIN = Math.sin(120 * Math.PI / 180);
+const EX = 0, EY = -2131.4, EA = 23250, EB = 18600, E_COS = Math.cos(120 * Math.PI / 180), E_SIN = Math.sin(120 * Math.PI / 180);
 // Przestrzeń znana: komórki 1000 pc z planetami bazy (9) i ich sąsiedztwo (4–5), wypieczone raz z mapy
 // (wersja 1 generatora). Daje minimum gwiazd wokół każdej znanej planety, także tam, gdzie ramiona już wygasły.
 // Dodanie planety później NIE zmienia tej tablicy (inaczej przesunęłyby się gwiazdy).
@@ -112,7 +112,7 @@ function znane(x, y) {
   const g = w(ix, iy) + (w(ix + 1, iy) - w(ix, iy)) * fx, d = w(ix, iy + 1) + (w(ix + 1, iy + 1) - w(ix, iy + 1)) * fx;
   return g + (d - g) * fy;
 }
-const CX = 600, CY = 300, TAN_SKRETU = Math.tan(16 * Math.PI / 180);
+const CX = 0, CY = -2131.4, TAN_SKRETU = Math.tan(16 * Math.PI / 180);
 export function gestosc(x, y) {
   const dx = x - CX, dy = y - CY, r = Math.hypot(dx, dy);
   const zgrubienie = 4 * Math.exp(-((r / 1800) ** 2));

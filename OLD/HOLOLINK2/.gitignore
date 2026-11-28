@@ -1,0 +1,10 @@
+# Dane gry (konta, dokumenty, harmonogram) żyją tylko na serwerze
+/api/dane/*
+!/api/dane/.htaccess
+/api/konfiguracja-bazy.php
+/archiwum/sql/*.sql
+
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini

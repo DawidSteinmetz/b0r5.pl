@@ -1,0 +1,31 @@
+RAPORT BŁĘDÓW — ZOOM MAPY I STUDNIA GRAWITACYJNA
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+1. ZOOM MAPY NIE JEST ZAPAMIĘTY W RAMACH LOGOWANIA GRACZA
+Obecnie:
+Poziom przybliżenia mapy nie jest zapamiętywany dla zalogowanego gracza w sposób oczekiwany. Po ponownym otwarciu mapy lub odświeżeniu widoku gracz może utracić wcześniej ustawiony zoom.
+
+Oczekiwane:
+Mapa zapamiętuje poziom zoomu w ramach bieżącego logowania gracza. Gdy gracz ponownie otworzy mapę podczas tej samej sesji, wraca do wcześniej ustawionego przybliżenia. Po zakończeniu logowania pamięć sesji może zostać wyzerowana; wymaganie nie oznacza globalnego ustawienia wspólnego dla wszystkich graczy.
+
+Kryterium poprawki:
+Zalogowany gracz ustawia zoom, zamyka i ponownie otwiera mapę — mapa wraca do ustawionego poziomu. Inne konto nie powinno dziedziczyć jego zoomu.
+
+2. STUDNIA GRAWITACYJNA NIE ZATRZYMUJE STATKU PRZED PLANETĄ
+Odtworzenie:
+Wykonaj lot statku w pobliżu planety, tak aby trasa przecinała jej obszar.
+
+Obecnie:
+Studnia grawitacyjna przepuściła statek. Statek przeleciał przez planetę tak, jakby nie stanowiła przeszkody.
+
+Oczekiwane:
+Planeta i inne ciała uwzględniane przez mechanikę studni grawitacyjnej nie mogą być przenikane przez statek. Jeżeli wybrana trasa przecina ciało niebieskie, system powinien ją zablokować albo wyznaczyć bezpieczny przebieg omijający przeszkodę. Lot podświetlny wewnątrz studni nadal może działać, ale nie może prowadzić przez samą planetę.
+
+Kryterium poprawki:
+Przy próbie lotu przez planetę statek nie pojawia się po jej drugiej stronie bez przeszkód. Otrzymuje czytelny komunikat o niedozwolonej trasie albo porusza się po trasie omijającej planetę. Zwykły lot w studni, który nie przecina ciała niebieskiego, nadal działa.
+
+UWAGI
+- Dla zoomu zakres zapamiętywania to bieżąca sesja/logowanie gracza.
+- Dla studni grawitacyjnej zgłoszenie opisuje zaobserwowany błąd ruchu; sposób blokowania lub omijania należy dopasować do istniejącego modelu lotu.
+- Kod nie był modyfikowany.

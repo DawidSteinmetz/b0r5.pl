@@ -437,6 +437,11 @@ function obsluz_poklad(string $akcja, bool $post): void
     if ($akcja === 'awanse' || $akcja === 'awans') { obsluz_awanse($akcja, $post); return; }
     if (in_array($akcja, ['doki', 'dokuj', 'oddokuj'], true)) { obsluz_doki($akcja, $post); return; }
     if ($akcja === 'gosp_obiekt') { wymagaj_logowania(); odpowiedz(gosp_obiekt_karta((int) ($_GET['id'] ?? 0))); }
+    if ($akcja === 'gosp_planeta_dostawy') {
+        $u = wymagaj_logowania();
+        if (($u['rola'] ?? '') !== 'mg') blad('Podgląd globalnych dostaw jest dostępny tylko dla MG.', 403);
+        odpowiedz(gosp_dostawy_planety(mb_substr(trim((string) ($_GET['planeta'] ?? '')), 0, 160)));
+    }
     if ($akcja === 'mg_minibaza') {
         // Minibaza gospodarki do pobrania (MG): plik SQL dla promptu kolejnej planety.
         wymagaj_mg();

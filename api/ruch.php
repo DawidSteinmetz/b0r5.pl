@@ -225,6 +225,7 @@ function mapa_kurs_sql(): string
         . (mapa_dlugosc_dostepna() ? ',m.dlugosc_m' : '')
         . (function_exists('floty_lot_dostepny') && floty_lot_dostepny()
             ? ',m.lot_start_x,m.lot_start_y,m.lot_cel_x,m.lot_cel_y,m.lot_cel_planeta_id,m.lot_km,m.lot_od_utc,m.lot_do_utc,(SELECT nazwa FROM mapa_planety WHERE id=m.lot_cel_planeta_id) AS lot_cel_planeta' : '')
+        . (function_exists('floty_lot_trasa_dostepna') && floty_lot_trasa_dostepna() ? ',m.lot_trasa_json' : '')
         . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? ',m.uklad_kx,m.uklad_ky,m.lot_start_kx,m.lot_start_ky,m.lot_cel_kx,m.lot_cel_ky' : '')
         // Lądowisko: statek stoi na powierzchni (mapa rysuje go na planecie, nie na orbicie).
         . (function_exists('floty_ladowanie_dostepne') && floty_ladowanie_dostepne() ? ',m.ladowisko_id,(SELECT nazwa FROM lokalizacje WHERE id=m.ladowisko_id) AS ladowisko_nazwa' : '')
@@ -261,9 +262,19 @@ function mapa_kurs_pola(array $r): array
     if (!empty($r['dlugosc_m'])) $w['dlugosc_m'] = (float) $r['dlugosc_m'];
     if (!empty($r['lot_do_utc'])) {
         // Lot podświetlny: tablet przesuwa znacznik po linii lotu (w układzie: między planetą a księżycem).
-        $w['podswietlny'] = ['od' => czas_z_utc((string) $r['lot_od_utc']), 'do' => czas_z_utc((string) $r['lot_do_utc']),
+        $odLotu = czas_z_utc((string) $r['lot_od_utc']); $doLotu = czas_z_utc((string) $r['lot_do_utc']);
+        $w['podswietlny'] = ['od' => $odLotu, 'do' => $doLotu,
             'x0' => (float) $r['lot_start_x'], 'y0' => (float) $r['lot_start_y'], 'x1' => (float) $r['lot_cel_x'], 'y1' => (float) $r['lot_cel_y'],
-            'planeta' => $r['lot_cel_planeta'] ?? null, 'km' => (float) $r['lot_km']];
+            'planeta' => $r['lot_cel_planeta'] ?? null, 'km' => (float) $r['lot_km'],
+            'predkosc_kms' => (float) $r['lot_km'] / max(1, $doLotu - $odLotu)];
+        if (!empty($r['lot_trasa_json'])) {
+            $trasa = json_decode((string) $r['lot_trasa_json'], true);
+            if (is_array($trasa) && count($trasa) >= 2) $w['podswietlny']['trasa'] = $trasa;
+        }
+        if (!empty($r['lot_trasa_json'])) {
+            $trasa = json_decode((string) $r['lot_trasa_json'], true);
+            if (is_array($trasa) && count($trasa) >= 2) $w['podswietlny']['trasa'] = $trasa;
+        }
         // Lot w obrębie układu: początek i cel w km od słońca.
         if (($r['lot_start_kx'] ?? null) !== null && ($r['lot_cel_kx'] ?? null) !== null) {
             $w['podswietlny'] += ['k0' => [(float) $r['lot_start_kx'], (float) $r['lot_start_ky']], 'k1' => [(float) $r['lot_cel_kx'], (float) $r['lot_cel_ky']]];
@@ -289,14 +300,14 @@ function mapa_obiekty_widoczne(array $u): array
         foreach (uzytkownicy() as $konto) {
             if (($konto['rola'] ?? '') !== 'mg') karta((string) $konto['id']);
         }
-        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru() . " ORDER BY m.typ,m.nazwa");
+        $q = polaczenie_bazy()->query("SELECT m.id,m.kod,m.typ,m.legacy_uid,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru() . " ORDER BY m.typ,m.nazwa");
     } else {
         karta((string) $u['id']);
-        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru((string) $u['id']) . " AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?) OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=? AND c.typ='postac' LIMIT 1)) ORDER BY m.typ,m.nazwa");
+        $q = polaczenie_bazy()->prepare("SELECT m.id,m.kod,m.typ,m.legacy_uid,m.nazwa,m.rodzaj,m.klasa,m.wlasciciel,m.status,m.planeta_id,m.na_pokladzie_id,p.nazwa AS planeta,m.x,m.y,m.kolor,m.znacznik,m.opis" . mapa_kurs_sql() . " FROM mapa_obiekty m LEFT JOIN mapa_planety p ON p.id=m.planeta_id WHERE m.aktywny=1 AND m.x IS NOT NULL AND m.y IS NOT NULL" . mapa_bez_hangaru((string) $u['id']) . " AND (m.legacy_uid=? OR EXISTS (SELECT 1 FROM mapa_obiekty_dostep d WHERE d.obiekt_id=m.id AND d.konto_login=?) OR m.id=(SELECT c.na_pokladzie_id FROM mapa_obiekty c WHERE c.legacy_uid=? AND c.typ='postac' LIMIT 1)) ORDER BY m.typ,m.nazwa");
         $q->execute([(string) $u['id'], (string) $u['login'], (string) $u['id']]);
     }
     $obiekty = array_map(static fn($r) => [
-        'id' => (int) $r['id'], 'kod' => $r['kod'], 'typ' => $r['typ'], 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
+        'id' => (int) $r['id'], 'kod' => $r['kod'], 'typ' => $r['typ'], 'gracz' => $r['typ'] === 'postac' && !empty($r['legacy_uid']), 'nazwa' => $r['nazwa'], 'rodzaj' => $r['rodzaj'],
         'klasa' => $r['klasa'], 'wlasciciel' => $r['wlasciciel'], 'status' => $r['status'], 'planeta' => $r['planeta'],
         'x' => (float) $r['x'], 'y' => (float) $r['y'], 'kolor' => $r['kolor'], 'znacznik' => $r['znacznik'], 'opis' => $r['opis'],
         'na_pokladzie_id' => empty($r['na_pokladzie_id']) ? null : (int)$r['na_pokladzie_id'],
@@ -333,14 +344,17 @@ function mapa_obiekty_widoczne(array $u): array
     if ($obiekty && tabela_sql_dostepna('mapa_rozkazy_skokow_jednostki')) {
         $ids = array_column($obiekty, 'id');
         $marks = implode(',', array_fill(0, count($ids), '?'));
-        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.wyjscie_x,j.wyjscie_y," . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? 'j.wyjscie_kx,j.wyjscie_ky,' : '') . "(SELECT nazwa FROM mapa_planety WHERE id=j.planeta_id) AS cel_planeta,j.eta_utc,j.kat_bledu,COALESCE(" . (mapa_kurs_sql() ? 'r.wejscie_utc,' : '') . "r.wydano_utc) AS wejscie_utc FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' AND j.obiekt_id IN ($marks)");
+        $q = polaczenie_bazy()->prepare("SELECT j.obiekt_id,j.start_x,j.start_y,j.wyjscie_x,j.wyjscie_y," . (function_exists('floty_uklad_dostepny') && floty_uklad_dostepny() ? 'j.wyjscie_kx,j.wyjscie_ky,' : '') . "(SELECT nazwa FROM mapa_planety WHERE id=j.planeta_id) AS cel_planeta,j.eta_utc,j.kat_bledu,COALESCE(" . (mapa_kurs_sql() ? 'r.wejscie_utc,' : '') . "r.wydano_utc) AS wejscie_utc FROM mapa_rozkazy_skokow_jednostki j JOIN mapa_rozkazy_skokow r ON r.id=j.rozkaz_id WHERE j.status='w_nadprzestrzeni' AND r.status='w_nadprzestrzeni' AND j.obiekt_id IN ($marks)");
         $q->execute($ids);
         $indeks = array_column($obiekty, null, 'id');
         foreach ($q->fetchAll(PDO::FETCH_ASSOC) as $lot) {
             $id = (int) $lot['obiekt_id'];
             if (isset($indeks[$id]) && ($lot['wyjscie_kx'] ?? null) !== null) $indeks[$id]['lot_k'] = [(float) $lot['wyjscie_kx'], (float) $lot['wyjscie_ky']];
-            if (isset($indeks[$id])) $indeks[$id]['lot'] = ['x' => (float) $lot['wyjscie_x'], 'y' => (float) $lot['wyjscie_y'], 'eta' => strtotime($lot['eta_utc'] . ' UTC'),
-                'wejscie' => strtotime($lot['wejscie_utc'] . ' UTC'), 'szum_stopnie' => (float) $lot['kat_bledu'], 'planeta' => $lot['cel_planeta']];
+            $eta = strtotime($lot['eta_utc'] . ' UTC'); $wejscie = strtotime($lot['wejscie_utc'] . ' UTC');
+            $predkosc = hypot((float) $lot['wyjscie_x'] - (float) $lot['start_x'], (float) $lot['wyjscie_y'] - (float) $lot['start_y'])
+                / (max(1, $eta - $wejscie) / 86400);
+            if (isset($indeks[$id])) $indeks[$id]['lot'] = ['x' => (float) $lot['wyjscie_x'], 'y' => (float) $lot['wyjscie_y'], 'start_x' => (float) $lot['start_x'], 'start_y' => (float) $lot['start_y'], 'eta' => $eta,
+                'wejscie' => $wejscie, 'predkosc_pc_doba' => $predkosc, 'szum_stopnie' => (float) $lot['kat_bledu'], 'planeta' => $lot['cel_planeta']];
         }
         $obiekty = array_values($indeks);
     }
@@ -917,7 +931,8 @@ function obsluz_ruch(string $akcja, bool $post): void
             // Obiekty tła gospodarki (huty, fabryki, porty, składy) — na tarczy planety albo na pierścieniu.
             if (function_exists('gosp_obiekty_mapy')) $wynik['obiekty_tla'] = gosp_obiekty_mapy();
             // Kontakty radaru: jednostki w zasięgu moich okrętów (kolor z transpondera) i ruch w tle.
-            if (function_exists('radar_kontakty')) $wynik['obiekty'] = array_merge($wynik['obiekty'], radar_kontakty($u, $wynik['obiekty']));
+            $celSzlakowGM = ($u['rola'] ?? '') === 'mg' ? mb_substr(trim((string) ($_GET['szlaki_do'] ?? '')), 0, 160) : null;
+            if (function_exists('radar_kontakty')) $wynik['obiekty'] = array_merge($wynik['obiekty'], radar_kontakty($u, $wynik['obiekty'], $celSzlakowGM));
             // Znacznik własnej postaci: mapa pokazuje przy nim pulsujące „Jesteś tutaj”.
             if (tabela_sql_dostepna('mapa_obiekty')) {
                 $q = polaczenie_bazy()->prepare("SELECT id FROM mapa_obiekty WHERE legacy_uid = ? AND typ = 'postac' LIMIT 1");

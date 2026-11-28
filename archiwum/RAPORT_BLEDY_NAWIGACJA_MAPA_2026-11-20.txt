@@ -1,0 +1,107 @@
+RAPORT BŁĘDÓW I ZMIAN — NAWIGACJA ORAZ MAPA
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+CEL
+Poniższy raport opisuje zgłoszone problemy i oczekiwane zachowanie. Nie wprowadza zmian w kodzie.
+
+1. NIECZYTELNE POLE WYBORU NA ISD
+Obecnie:
+W aplikacji Nawigacja, w polu wyboru na ISD, tło ma kolor powodujący zlewanie się z tekstem. Litery są praktycznie niewidoczne.
+
+Oczekiwane:
+Pole wyboru i jego lista mają czytelny kontrast zarówno w stanie zamkniętym, jak i po rozwinięciu. Tekst, tło, zaznaczona opcja i stan aktywny muszą być rozróżnialne.
+
+Warunek poprawki:
+Da się odczytać aktualnie wybrane miejsce oraz wszystkie pozycje listy na ISD.
+
+2. LICZNIK NAWIGACJI ZACHOWUJE SIĘ NIEPRAWIDŁOWO PO WYDANIU ROZKAZU
+Odtworzenie:
+W Nawigacji wybierz miejsce docelowe, a następnie kliknij „Idź”.
+
+Obecnie:
+Po wydaniu rozkazu licznik zaczyna działać nieprawidłowo („szaleje”) zamiast spokojnie odliczać czas podróży.
+
+Oczekiwane:
+Po zaakceptowaniu rozkazu licznik pokazuje jeden spójny czas do dotarcia, aktualizuje się regularnie i nie przeskakuje ani nie zeruje bez powodu. Po dotarciu odliczanie znika lub pokazuje stan zakończony.
+
+Do sprawdzenia podczas naprawy:
+Czy problem dotyczy tylko wyświetlania licznika, czy również czasu podróży/rozkazu po stronie serwera.
+
+3. UPROSZCZENIE PORUSZANIA SIĘ PO POKŁADACH
+Obecnie:
+Poruszanie się po pokładach opiera się na skomplikowanym systemie lokacji i przejść, który jest trudny do zrozumienia i obsługi.
+
+Oczekiwane:
+Poruszanie się po pokładzie ma być spójne i klarowne dla gracza. „Idź do promu” ma być skrótem do celu, a nie osobną mechaniką: powinno uruchamiać te same skrypty i zasady ruchu, co zwykłe przemieszczanie się po statku, tylko prezentować graczowi krótszą i łatwiejszą ścieżkę.
+
+Warunek poprawki:
+Zwykły wybór celu i skrót „Idź do promu” korzystają ze wspólnej obsługi ruchu. Skrót nie omija ani nie dubluje mechaniki; upraszcza jedynie wybór i rozpoczęcie trasy.
+
+4. TŁA POMIESZCZEŃ BEZ OKIEN
+Obecnie:
+Tło pomieszczeń podoba się i powinno zostać zachowane, ale pomieszczenia mają wyglądać jak zamknięte wnętrza bez okien.
+
+Oczekiwane:
+Zachować obecny udany wygląd tła, jednocześnie usunąć widok przestrzeni, planet lub innych elementów sugerujących okna. Ściany mają wyglądać na pełne i nieprzezroczyste.
+
+Warunek poprawki:
+W pomieszczeniu nie widać okna ani widoku na zewnątrz; pozostaje wrażenie wnętrza statku z pełnymi ścianami.
+
+5. MOŻLIWOŚĆ ZMIANY CELU W TRAKCIE RUCHU
+Odtworzenie:
+Wybierz cel albo uruchom szybką ścieżkę do hangaru, a następnie spróbuj wybrać inny cel przed zakończeniem ruchu.
+
+Obecnie:
+Nie jest zapewnione, że gracz może w dowolnym momencie zmienić cel podróży.
+
+Oczekiwane:
+Gracz może w każdej chwili wskazać nowy cel, również po uruchomieniu szybkiej ścieżki do hangaru. Nowy wybór zastępuje bieżący cel zgodnie z tymi samymi zasadami ruchu; szybka ścieżka nie blokuje ręcznej zmiany.
+
+Warunek poprawki:
+Zmiana celu jest możliwa przed zakończeniem podróży i nie pozostawia równolegle dwóch sprzecznych rozkazów ani liczników.
+
+6. ULUBIONE LOKACJE PRZY ZACHOWANIU PEŁNEJ LISTY
+Obecnie:
+Brakuje wygodnego sposobu oznaczania często używanych lokacji jako ulubionych.
+
+Oczekiwane:
+Gracz może dodawać lokacje do ulubionych. Ulubione są łatwo dostępne, ale pozostałe lokacje nadal pozostają w polu wyboru — oznaczenie jako ulubiona nie usuwa ani nie ukrywa reszty listy.
+
+Warunek poprawki:
+Można wybrać zarówno lokację ulubioną, jak i dowolną inną lokację z pełnej listy.
+
+7. PODWÓJNY TRÓJKĄT FLOTY NA MAPIE
+Obecnie:
+Na mapie pojawiają się dwa trójkątne znaczniki związane z flotą.
+
+Oczekiwane:
+Po rozłożeniu floty znika zbiorczy trójkąt floty, a na mapie pojawiają się wszystkie jednostki należące do tej floty. Nie powinien pozostać drugi, nakładający się lub osierocony trójkąt.
+
+Warunek poprawki:
+Widok pokazuje albo zbiorczy znacznik floty, albo osobne znaczniki jej jednostek — zgodnie z poziomem przybliżenia — bez duplikatów.
+
+8. NIEAKTUALNA STRZAŁKA PUNKTU WYJŚCIA Z NADŚWIETLNEJ
+Odtworzenie:
+Otwórz podgląd na mapie i wybierz wariant „Krawędź układu”.
+
+Obecnie:
+Strzałka na przybliżeniu/podglądzie nadal wskazuje kierunek do dalekiej orbity planety, mimo że wybranym celem jest krawędź całego układu.
+
+Oczekiwane:
+Strzałka i podgląd punktu wyjścia z nadświetlnej odzwierciedlają aktualnie wybrany wariant. Dla „Krawędzi układu” kierunek i punkt docelowy odnoszą się do krawędzi układu, a nie do dalekiej orbity planety. Zmiana wariantu celu odświeża strzałkę.
+
+Warunek poprawki:
+Po wybraniu „Krawędź układu” widoczny podgląd celu nie prowadzi do dalekiej orbity planety. Dla pozostałych wariantów nadal wskazuje właściwą orbitę.
+
+PRIORYTETY PRAKTYCZNE
+1. Naprawić licznik po wydaniu rozkazu oraz możliwość zmiany celu w trakcie podróży.
+2. Uprościć wspólny przepływ poruszania się po pokładzie i traktować „Idź do promu” jako skrót.
+3. Poprawić nieaktualny podgląd punktu wyjścia oraz duplikowanie znaczników floty na mapie.
+4. Poprawić kontrast pola wyboru na ISD i wygląd pomieszczeń.
+5. Dodać ulubione lokacje bez ograniczania pełnej listy wyboru.
+
+UWAGI
+- „Tło w pomieszczeniach rewelacja” oznacza, że obecny kierunek wizualny należy zachować; zmiana dotyczy braku okien i widoku na zewnątrz.
+- Dla licznika warto odróżnić błąd interfejsu od błędu samego rozkazu, sprawdzając czas i stan ruchu po stronie danych.
+- Raport oddaje zgłoszone zachowanie i oczekiwania; szczegóły techniczne wymagają późniejszego prześledzenia odpowiednich modułów.

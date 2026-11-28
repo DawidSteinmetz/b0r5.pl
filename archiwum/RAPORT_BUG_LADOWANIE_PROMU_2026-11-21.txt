@@ -1,0 +1,67 @@
+RAPORT BUGA — LĄDOWANIE PROMU NA PLANECIE I UPORZĄDKOWANIE JEGO OBSŁUGI
+Data: 2026-11-21
+Projekt: HOLOLINK
+
+ZGŁOSZENIE
+Lądowanie promu na planecie obecnie w praktyce w ogóle nie działa. Interfejs promu wymaga uporządkowania. Prom powinien latać według tych samych zasad co inne jednostki; jego szczególną cechą ma być możliwość lądowania. Informacja o możliwości lądowania powinna być widoczna jako osobna kolumna/atrybut jednostki.
+
+JAK DZIAŁA TERAZ — NA PODSTAWIE KODU
+W projekcie istnieją dwie ścieżki lądowania:
+
+A. Zwykłe lądowanie jednostki z mapy
+1. Gracz otwiera kartę planety i wybiera „Nawigacja floty”.
+2. Interfejs pokazuje jako zdolne do lądowania jednostki, które mają flagę `moze_ladowac = 1` i są na bliskiej orbicie tej planety.
+3. Gracz wybiera lądowisko z listy.
+4. Serwer sprawdza uprawnienie jednostki, zgodność planety, bliską orbitę, trwające wznoszenie/skok i dostępność lądowiska.
+5. Po pozytywnej walidacji jednostka dostaje `ladowisko_id` i status „na lądowisku”.
+
+B. Prom startujący z hangaru okrętu
+1. W Nawigacji gracz wybiera prom i lądowisko dostępne na planecie, przy której znajduje się okręt macierzysty.
+2. Akcja `prom_wylot` wyprowadza prom z hangaru i zapisuje cel lądowania.
+3. Jeśli prom jest już przy bliskiej orbicie, mechanizm próbuje posadzić go od razu.
+4. Jeśli jest dalej, prom wykonuje dolot do bliskiej orbity; po osiągnięciu etapu bliskiej orbity mechanizm aktualizujący hangary ma przypisać mu wskazane lądowisko.
+
+Interfejs rozróżnia te ścieżki: prom ma osobny panel w Nawigacji oraz akcję „Lot na planetę”, podczas gdy inne jednostki korzystają z nawigacji floty i akcji lądowania z karty planety.
+
+Dane o zdolności lądowania są już obecne w bazie jako `mapa_naped_jednostki.moze_ladowac`. Migracja 024 dodaje tę flagę i pola lądowiska; migracja 035 tworzy promy Lambda z flagą lądowania i celem automatycznego lądowania.
+
+JAK JEST — ZGŁOSZONY OBJAW
+Mimo istniejącego przepływu lądowania prom nie ląduje na planecie. Funkcja z perspektywy gracza jest niesprawna.
+
+JAK MA BYĆ
+1. Prom korzysta z tej samej mechaniki lotu co pozostałe jednostki floty: wspólne zasady wyboru celu, kursu, ruchu podświetlnego/nadświetlnego, dolotu, aktualizacji pozycji i liczników.
+2. Zdolność lądowania jest dodatkową właściwością jednostki. Nie tworzy odrębnego modelu lotu ani równoległej mechaniki przemieszczania.
+3. Jednostka ze zdolnością lądowania może po dotarciu na bliską orbitę wybrać dostępne lądowisko tej planety i poprawnie na nim wylądować.
+4. Jednostka bez tej zdolności nie otrzymuje akcji lądowania; ograniczenie jest walidowane również przez serwer.
+5. Informacja o zdolności lądowania jest widoczna jako osobna kolumna „Może lądować” w tabeli/edytorze jednostek, z czytelną wartością Tak/Nie. Powinna odnosić się do konkretnej jednostki, nie tylko do ogólnej klasy statku.
+6. Interfejs promu ma prezentować stan i dostępne czynności zgodnie z tym samym układem co dla pozostałych jednostek. Specjalne akcje promu ograniczają się do obsługi hangaru oraz lądowania/startu.
+
+KRYTERIA POPRAWKI
+- Prom z `moze_ladowac = 1`, znajdujący się na bliskiej orbicie, może wybrać prawidłowe lądowisko i po akcji rzeczywiście otrzymuje stan „na lądowisku”.
+- Jeśli prom rozpoczyna dalej od planety, interfejs pokazuje trwający dolot, a lądowanie następuje po jego zakończeniu bez konieczności ponownego wydawania rozkazu.
+- Po lądowaniu mapa, karta planety, Nawigacja i stan promu pokazują tę samą lokalizację.
+- Start z lądowiska ponownie umieszcza jednostkę na bliskiej orbicie i usuwa przypisanie do lądowiska.
+- Lądowisko musi należeć do tej samej planety i być widoczne/dostępne dla danego gracza.
+- Jednostka bez możliwości lądowania nie może wylądować ani przez interfejs, ani przez bezpośrednie wywołanie API.
+- Kolumna „Może lądować” pozwala MG łatwo sprawdzić i ustawić tę zdolność oddzielnie dla każdego statku.
+
+MIEJSCA W KODZIE ZWIĄZANE Z PRZEPŁYWEM
+- `js/aplikacje/nawigacja.js`: panel promów i akcja „Lot na planetę” (`rozkazyWylotu`, około linii 251–260).
+- `js/aplikacje/mapa.js`: lista jednostek kwalifikujących się do lądowania oraz wybór lądowiska (około linii 1452–1483).
+- `api/floty.php`: walidacja zwykłego lądowania (`floty_ladowanie`, około linii 895–920), wybór dostępnych lądowisk (`floty_ladowiska`, około linii 840), lot promu i zapis celu lądowania (`floty_prom_wylot`, około linii 1809–1838), automatyczne domknięcie lądowania (`floty_aktualizuj_hangary`, około linii 1757–1783).
+- `api/migracje/024_ladowanie_okretow_tracyn.sql`: kolumny lądowania i flaga `moze_ladowac`.
+- `api/migracje/035_promy_w_hangarach.sql`: promy Lambda, hangary oraz cel automatycznego lądowania.
+
+CO WYMAGA DIAGNOZY PRZY NAPRAWIE
+Kod zawiera warunki dla obu trybów, ale sama inspekcja nie wyjaśnia, dlaczego zgłoszone lądowanie całkowicie zawodzi w działającej grze. Trzeba sprawdzić konkretny przypadek i ustalić, na którym etapie przepływ się urywa:
+- czy właściwa migracja 024 i 035 jest zastosowana na używanej bazie;
+- czy dany prom ma `moze_ladowac = 1`;
+- czy lądowisko jest aktywne, należy do tej planety i jest widoczne dla gracza;
+- czy po locie prom osiąga stan bliskiej orbity oraz czy serwer wykonuje aktualizację zapisanego celu lądowania;
+- czy UI odświeża stan po zakończeniu dolotu i pokazuje błąd API zamiast pozostawiać nieaktualny status.
+
+OGRANICZENIA PRZEGLĄDU
+Przejrzałem kod i dokumentację statycznie. Nie uruchamiałem gry ani bazy i nie odtwarzałem lądowania, więc nie wskazuję jednej potwierdzonej przyczyny technicznej. Zgłoszony objaw traktuję jako błąd funkcjonalny wymagający naprawy i weryfikacji na konkretnym promie.
+
+PODSUMOWANIE
+Obecny projekt ma flagę możliwości lądowania i dwa odrębne wejścia do mechaniki lądowania. Oczekiwany kierunek to wspólny przepływ lotu dla promu i innych jednostek, z lądowaniem jako dodatkową zdolnością oraz czytelną kolumną „Może lądować”. Najpierw należy naprawić faktyczne domknięcie lądowania, a następnie uprościć i ujednolicić interfejs promu.

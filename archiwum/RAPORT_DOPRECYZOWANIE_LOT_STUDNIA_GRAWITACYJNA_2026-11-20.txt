@@ -1,0 +1,19 @@
+DOPRECYZOWANIE ZASAD RUCHU — STUDNIA GRAWITACYJNA
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+OBECNE / ZGŁOSZONE ZACHOWANIE
+Lot w studni grawitacyjnej działa, jeśli jest wykonywany jako lot podświetlny.
+
+OCZEKIWANE ZACHOWANIE
+Należy zachować możliwość przemieszczania się w obrębie studni grawitacyjnej przy użyciu napędu podświetlnego. Taki ruch jest lotem lokalnym i powinien być obsługiwany przez mechanikę lotu podświetlnego.
+
+ZASADA ROZDZIELENIA
+- W studni grawitacyjnej: ruch między punktami jest możliwy jako lot podświetlny.
+- Skok nadświetlny pozostaje odrębną mechaniką i nie powinien być utożsamiany z lotem podświetlnym.
+
+KRYTERIUM
+Statek może wykonać lot podświetlny w studni grawitacyjnej, a system rozpoznaje go jako taki i rozlicza według zasad lotu podświetlnego.
+
+UWAGI
+To doprecyzowanie reguły, a nie potwierdzenie błędu w kodzie. Nie zmieniałem kodu ani danych.

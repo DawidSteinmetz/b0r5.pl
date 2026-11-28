@@ -1,0 +1,59 @@
+RAPORT ZMIANY — HIERARCHICZNE USTAWIANIE POZYCJI PRZEZ MG
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+CEL
+Uprościć ustawianie pozycji postaci przez MG. Zamiast kilku niezależnych pól MG wybiera kolejne poziomy lokalizacji z zawężających się list.
+
+JAK JEST TERAZ
+W panelu MG → „Stan postaci” pozycję ustawia się w jednym formularzu z osobnymi polami:
+- lokacja — jedna długa lista lokacji,
+- planeta — pole tekstowe z podpowiedziami,
+- współrzędne — pole tekstowe,
+- miejsce — opis tekstowy,
+- budynek — osobna lista.
+
+Pola nie prowadzą MG przez wspólną hierarchię. Można więc wybrać lokację, planetę, budynek i opis miejsca osobno, bez czytelnego wskazania, jak te elementy są ze sobą powiązane. Pozycja statku/floty i wnętrze okrętu są opisane w danych projektu, ale formularz pozycji nadal prezentuje lokację i budynek jako oddzielne wybory.
+
+Podstawa w projekcie:
+- gm/mg.js, funkcja stanPostaci() (około linii 610–740): niezależne pola `lokacja`, `planeta`, `wspolrzedne`, `miejsce`, `budynek`.
+- README.md, sekcja „Plan wnętrza okrętów”: wnętrze jest drzewem sekcja → pokład → pomieszczenie; pozycja postaci może wskazywać okręt i pomieszczenie.
+- api/ruch.php: dane katalogu planet uwzględniają m.in. region i sektor.
+
+JAK MA BYĆ
+MG ustala pozycję etapami. Każdy następny wybór pokazuje elementy pasujące do wcześniejszego wyboru i prowadzi do konkretnej pozycji.
+
+Proponowana hierarchia:
+1. SEKTOR / REGION
+   Wybór z danych katalogowych SQL. Jeśli projekt rozróżnia sektor i region, można najpierw wybrać sektor, a potem region lub układ; jeśli nie, użyć dostępnego pola nadrzędnego bez tworzenia nowego poziomu na siłę.
+2. MIEJSCE GŁÓWNE
+   Zależnie od wybranego obszaru wybrać jedną z dostępnych gałęzi:
+   - planeta lub księżyc,
+   - flota,
+   - statek / okręt.
+3. MIEJSCE KONKRETNE
+   Zawęzić wybór do właściwych elementów:
+   - dla planety/księżyca: budynek lub lokacja,
+   - dla statku/okrętu: sekcja → pokład → pomieszczenie, w tym pokój albo kajuta,
+   - dla floty: wybrać konkretny statek we flocie, a następnie jego wnętrze, jeśli pozycja ma być na pokładzie.
+4. SZCZEGÓŁY KOŃCOWE
+   Wybrać konkretne pomieszczenie/lokację albo wskazać „bez przypisania do budynku/pomieszczenia”, gdy postać ma znajdować się na powierzchni, orbicie lub w ogólnej lokalizacji. Współrzędne i opis ręczny pozostają dostępne jako opcjonalne szczegóły, a nie podstawowy sposób wyszukiwania.
+5. PODSUMOWANIE
+   Przed zapisem formularz pokazuje pełną ścieżkę, np. „Sektor X → planeta Y → budynek Z → pokój 14” albo „Sektor X → flota A → statek B → pokład 3 → kajuta 12”. MG zatwierdza tę samą pozycję dla zaznaczonych postaci/NPC.
+
+ZASADY DZIAŁANIA
+- Każdy wybór zawęża następną listę; zmiana wcześniejszego poziomu czyści niepasujące wybory poniżej.
+- Lista pokazuje wyłącznie obiekty powiązane z wybraną gałęzią.
+- Pozycja może kończyć się na dowolnym poziomie: sektor/układ, planeta, flota, statek, lokacja, budynek lub pomieszczenie.
+- Wybór floty bez wskazania statku zachowuje dotychczasową regułę projektu: umieszcza postać na okręcie flagowym. Interfejs powinien wyjaśnić tę regułę i pozwolić wybrać inny statek z floty.
+- Wybór statku prowadzi do istniejącego drzewa wnętrza, jeśli statek ma zdefiniowane pomieszczenia.
+- Hierarchia ma korzystać z istniejących danych SQL/katalogów; nazwy nie powinny być ręcznie przepisywane, jeśli pozycja istnieje w bazie.
+- Pola tekstowe na współrzędne i opis pozostają jako opcjonalny wyjątek dla lokacji bez wpisu w katalogu.
+
+WARUNEK UZNANIA ZA GOTOWE
+MG może ustawić pozycję bez ręcznego przeszukiwania jednej długiej listy i bez przepisywania nazw między polami. Przykładowa ścieżka od sektora do konkretnego pokoju jest wybierana z list, a zapis przypisuje prawidłową lokację oraz, jeśli dotyczy, statek/flotę i pomieszczenie. Zmiana sektora lub obiektu nadrzędnego nie może pozostawić niezgodnego pokoju czy budynku.
+
+UWAGI
+- Zapis „SLQ” potraktowałem jako „SQL” — chodzi o wybór sektora lub nadrzędnego obszaru z danych katalogowych.
+- Dokładne nazwy poziomów trzeba dopasować do pól, które faktycznie istnieją w bazie (np. sektor, region, układ). Nie należy zakładać odrębnego poziomu, jeśli obecny model danych go nie przechowuje.
+- To opis oczekiwanego zachowania i projektu formularza; kodu ani danych nie zmieniałem.

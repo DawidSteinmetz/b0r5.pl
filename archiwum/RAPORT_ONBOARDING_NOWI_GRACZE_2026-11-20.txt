@@ -1,0 +1,60 @@
+RAPORT: WPROWADZANIE NOWYCH GRACZY
+Data: 2026-11-20
+Projekt: HOLOLINK
+Zakres: statyczny przegląd kodu i README; bez zmian w kodzie
+
+PODSUMOWANIE
+Obecny proces jest kontrolowany przez MG, ale rozdzielony między ręczne założenie konta, przekazanie hasła, ustawienie danych postaci i wprowadzenie gracza do aplikacji. Po pierwszym logowaniu gracz nie dostaje ścieżki startowej. Największe usprawnienie: jeden przepływ „dodaj gracza” po stronie MG, bezpieczne aktywowanie konta przez zaproszenie, gotowy szablon startowy postaci i krótki przewodnik po pierwszym logowaniu.
+
+JAK JEST TERAZ
+1. MG loguje się do /gm/. Przy pierwszym uruchomieniu zakłada konto MG.
+2. W zakładce „Konta” MG ręcznie tworzy konto gracza. Formularz wymaga loginu i hasła oraz pozwala ustawić nazwę postaci, frakcję, oddział, rangę, poziom uprawnień i rolę.
+3. Po zapisaniu panel informuje, żeby przekazać hasło graczowi osobno. Hasła nie można później odczytać.
+4. Gracz otwiera datapad i widzi ekran logowania („Identyfikator”, „Klucz dostępu”). Nie ma rejestracji ani instrukcji dla nowego gracza.
+5. Po zalogowaniu gracz trafia od razu na pulpit. Nie ma samouczka, listy kroków ani wskaźnika, czy przygotowanie postaci jest zakończone.
+6. MG uzupełnia pozostałe elementy osobno: pozycję i scenę w „Stan postaci”, dane karty postaci, statystyki, dokumenty lub inne elementy potrzebne do rozpoczęcia gry. README wskazuje, że poza notatnikiem kartę postaci ustawia MG.
+7. Zakładka „Rekrutacja” dotyczy puli kandydatów do zatrudniania przez firmy/komórki; nie jest procesem rekrutacji nowych graczy.
+
+DOWODY W PROJEKCIE
+- README.md, sekcja „Konta i bezpieczeństwo”: jedno konto, hasła jako hash, MG może hasło tylko ustawić na nowe.
+- README.md, sekcja „Wdrożenie”: konto MG zakłada się w /gm/, a konta graczy tworzy się z panelu MG.
+- gm/mg.js, funkcja konta() (około linii 360–400): formularz „Nowe konto gracza” ma login, hasło, postać, frakcję, oddział, rangę, poziom i rolę; po zapisie pojawia się komunikat o osobnym przekazaniu hasła.
+- gm/mg.js, formularz konta: pole hasła jest tworzone jako input type="text", więc wpisywane hasło pozostaje widoczne na ekranie.
+- api/index.php, akcja mg_uzytkownik_zapisz (około linii 605): zapisuje hash hasła; wymaga loginu i postaci.
+- js/system.js, ekranBlokady() (około linii 448–490): zawiera wyłącznie logowanie i odblokowanie, bez opcji utworzenia/aktywacji konta.
+- js/system.js, rozruch() (około linii 409–446): po rozruchu użytkownik bez sesji przechodzi na ekran blokady; po zalogowaniu trafia do pulpitu.
+- README.md, sekcja „Karta postaci”: większość pól karty i pozycję ustawia MG.
+
+CO UTRUDNIA OBECNY PROCES
+- MG musi ręcznie przepisać lub ustawić dane w kilku miejscach.
+- Hasło trzeba przekazać osobnym kanałem; pole hasła w formularzu jest jawne podczas wpisywania.
+- Gracz może nie wiedzieć, co zrobić po zalogowaniu ani czy jego postać jest już gotowa.
+- Brak wspólnego statusu „przygotowanie w toku / gotowe”, więc trudniej zobaczyć, co jeszcze blokuje start.
+- Nazwa „Rekrutacja” w panelu oznacza zatrudnianie fikcyjnej załogi, co może mylić przy szukaniu procesu nowych graczy.
+
+JAK POWINNO WYGLĄDAĆ
+Założenie projektowe: do gry zaprasza MG, a gracz sam ustawia sekret logowania. Proces pozostaje zamknięty i kontrolowany przez MG.
+
+1. MG wybiera w panelu „Dodaj gracza”.
+2. W jednym krótkim formularzu podaje tylko dane wymagane do przygotowania startu: nazwę gracza/login, imię postaci, frakcję oraz szablon początku (np. frakcja/oddział/ranga, miejsce startowe i scena). Opcjonalne pola zaawansowane pozostają w ustawieniach postaci.
+3. Panel tworzy oczekujące zaproszenie z jednorazowym kodem lub linkiem. MG przekazuje zaproszenie graczowi; nie ustawia i nie wysyła jego stałego hasła.
+4. Gracz otwiera zaproszenie, wybiera własne hasło i potwierdza podstawowe dane postaci. Kod traci ważność po użyciu lub po ustalonym terminie.
+5. Po pierwszym wejściu datapad pokazuje krótki przewodnik, który można wznowić: „Twoja postać”, „Gdzie jesteś”, „Holonet / wiadomość od MG”, „Mapa i następny krok”. Nie zmusza do przechodzenia przez zaawansowane aplikacje.
+6. MG widzi prostą listę gotowości: konto aktywowane, postać przypisana, pozycja/scena ustawiona, materiały startowe wysłane. Elementy zależne od kampanii mogą być opcjonalne.
+7. Szablon startowy wypełnia powtarzalne ustawienia, ale MG zachowuje możliwość ich edycji. Po spełnieniu wymaganych kroków status zmienia się na „Gotowy do gry”.
+
+OCZEKIWANY EFEKT
+- MG wykonuje przygotowanie gracza w jednym miejscu i nie powiela tych samych danych.
+- Gracz sam ustawia hasło i od razu wie, jaki jest następny krok.
+- Nieaktywne zaproszenia i niegotowe postacie są widoczne w panelu.
+- Nowy gracz dochodzi do pierwszej sensownej czynności w datapadzie bez ręcznego tłumaczenia całego interfejsu.
+- Zaawansowana konfiguracja pozostaje po stronie MG i nie obciąża gracza w pierwszym wejściu.
+
+KOLEJNOŚĆ USPRAWNIEŃ
+1. Poprawić widoczność pola hasła w obecnym formularzu (typ password) — mały, bezpośrednio potwierdzony problem.
+2. Uporządkować formularz „Dodaj gracza” i dodać szablony startowe wraz z checklistą MG.
+3. Dodać bezpieczne zaproszenie i samodzielne ustawienie hasła.
+4. Dodać przewodnik pierwszego logowania z możliwością pominięcia i wznowienia.
+
+UWAGI / OGRANICZENIA
+To analiza kodu i dokumentacji, nie obserwacja prawdziwego onboardingu z graczem. Nie oceniałem użyteczności na urządzeniu ani nie uruchamiałem aplikacji. Raport opisuje stan widoczny w plikach projektu; nie zakłada istnienia procesu zaproszeń lub samouczka, którego nie znalazłem w przejrzanych miejscach.

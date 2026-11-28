@@ -263,16 +263,13 @@ function floty_punkt_skoku_km(array $j, float $kierunek, int $teraz): ?array
     $k0 = [$pc[0] + cos($orb) * $ro, $pc[1] + sin($orb) * $ro];
     $a = deg2rad($kierunek);
     [$ux, $uy] = [cos($a), sin($a)];
-    [$px, $py] = [-$uy, $ux];
-    $bok = (($k0[0] - $pc[0]) * $px + ($k0[1] - $pc[1]) * $py) >= 0 ? 1 : -1;
     $d = max(PUNKT_SKOKU_KM, $ro * 1.5);
-    $cialo = [[$pc[0], $pc[1], $r + 50, 'planeta']];
     $kp = [$pc[0] + $ux * $d, $pc[1] + $uy * $d];
-    for ($s = 0.0; $s <= 8.0; $s += 0.5) {
-        $kp = [$pc[0] + $ux * $d + $px * $bok * $s * $ro, $pc[1] + $uy * $d + $py * $bok * $s * $ro];
-        if (!floty_odcinek_cialo($cialo, $k0, $kp)) break;
-    }
-    return [$k0, $kp, hypot($kp[0] - $k0[0], $kp[1] - $k0[1])];
+    $trasa = floty_trasa_antykolizyjna(floty_ciala((float) $j['x'], (float) $j['y'], $teraz), $k0, $kp);
+    if (!$trasa) return null;
+    $km = 0.0;
+    for ($i = 0; $i < count($trasa) - 1; $i++) $km += hypot($trasa[$i + 1][0] - $trasa[$i][0], $trasa[$i + 1][1] - $trasa[$i][1]);
+    return [$k0, $kp, $km, $trasa];
 }
 
 // ---------- lot podświetlny ----------
@@ -354,10 +351,10 @@ function floty_trasa_kolizja(float $x0, float $y0, float $x1, float $y1): ?strin
 // ---------- układ planetarny: pozycje w km od słońca i studnie wokół ciał ----------
 // Jednostka w układzie stoi przy planecie (planeta_id) albo w punkcie układu (uklad_kx/ky: km od słońca,
 // osie mapy; x, y = współrzędne układu). Studnie grawitacyjne otaczają ciała: słońce (20 jego promieni)
-// i planety (100 ich promieni). Komputer nie pozwala wyjść z nadprzestrzeni w studni ani przez nią
+// i planety (30 ich promieni). Komputer nie pozwala wyjść z nadprzestrzeni w studni ani przez nią
 // przeskoczyć czy przelecieć — poza skokiem automatem na orbitę planety (cel) i odlotem od planety (start).
 const STUDNIA_SLONCA_R = 20;
-const STUDNIA_PLANETY_R = 100;
+const STUDNIA_PLANETY_R = 30;
 const DALEKO_KM = 1.0e14; // „z nieskończoności”: kierunek nadejścia skoku w układzie celu
 
 function floty_uklad_dostepny(): bool
@@ -452,6 +449,85 @@ function floty_odcinek_cialo(array $ciala, array $a, array $b): ?string
     return null;
 }
 
+// Najkrótsza trasa polilinią omijającą ciała układu. Gdy odcinek przecina ciało,
+// prowadzi stycznie po łuku po jego północnej stronie (mapowe +Y), z zapasem 100 km.
+function floty_trasa_antykolizyjna(array $ciala, array $a, array $b): ?array
+{
+    $trasa = [$a, $b];
+    $odlegloscPunktu = static function (array $p, array $c): float {
+        return hypot($p[0] - $c[0], $p[1] - $c[1]);
+    };
+    $odcinekKolizja = static function (array $p, array $q, array $c) use ($odlegloscPunktu): bool {
+        $dx = $q[0] - $p[0]; $dy = $q[1] - $p[1]; $l2 = $dx * $dx + $dy * $dy;
+        $t = $l2 > 0 ? max(0.0, min(1.0, (($c[0] - $p[0]) * $dx + ($c[1] - $p[1]) * $dy) / $l2)) : 0.0;
+        return $odlegloscPunktu([$p[0] + $dx * $t, $p[1] + $dy * $t], $c) < (float) $c[2];
+    };
+    for ($iter = 0; $iter < count($ciala); $iter++) {
+        $kolizja = null; $indeks = null;
+        for ($i = 0; $i < count($trasa) - 1 && $indeks === null; $i++) {
+            foreach ($ciala as $j => $c) if ($odcinekKolizja($trasa[$i], $trasa[$i + 1], $c)) { $indeks = $i; $kolizja = $j; break; }
+        }
+        if ($indeks === null) return $trasa;
+        $c = $ciala[$kolizja]; $r = (float) $c[2] + 100.0; $cx = (float) $c[0]; $cy = (float) $c[1];
+        $p = $trasa[$indeks]; $q = $trasa[$indeks + 1];
+        $dp = hypot($p[0] - $cx, $p[1] - $cy); $dq = hypot($q[0] - $cx, $q[1] - $cy);
+        if ($dp <= $r || $dq <= $r) return null; // końcowy punkt nie może leżeć w ciele
+        $ap = atan2($p[1] - $cy, $p[0] - $cx); $aq = atan2($q[1] - $cy, $q[0] - $cx);
+        $tp = acos(min(1.0, $r / $dp)); $tq = acos(min(1.0, $r / $dq));
+        $kandydaci = [];
+        foreach ([-1, 1] as $sp) foreach ([-1, 1] as $sq) foreach ([-1, 1] as $kier) {
+            $a0 = $ap + $sp * $tp; $a1 = $aq + $sq * $tq;
+            $luk = fmod($a1 - $a0 + 8 * M_PI, 2 * M_PI);
+            if ($kier < 0) $luk = $luk > 0 ? $luk - 2 * M_PI : 0.0;
+            elseif ($luk > M_PI) $luk -= 2 * M_PI;
+            $sro = [$cx + cos($a0) * $r, $cy + sin($a0) * $r];
+            $ero = [$cx + cos($a1) * $r, $cy + sin($a1) * $r];
+            $punkty = [$p, $sro];
+            $kroki = max(2, (int) ceil(abs($luk) / deg2rad(3)));
+            for ($k = 1; $k < $kroki; $k++) {
+                $kat = $a0 + $luk * $k / $kroki;
+                $punkty[] = [$cx + cos($kat) * $r, $cy + sin($kat) * $r];
+            }
+            $punkty[] = $ero; $punkty[] = $q;
+            $bezpieczna = true; $dl = 0.0;
+            for ($k = 0; $k < count($punkty) - 1; $k++) {
+                $dl += hypot($punkty[$k + 1][0] - $punkty[$k][0], $punkty[$k + 1][1] - $punkty[$k][1]);
+                foreach ($ciala as $n => $inne) {
+                    if ($n === $kolizja) continue;
+                    if ($odcinekKolizja($punkty[$k], $punkty[$k + 1], $inne)) { $bezpieczna = false; break 2; }
+                }
+            }
+            if ($bezpieczna) $kandydaci[] = ['punkty' => $punkty, 'dl' => $dl, 'polnoc' => array_sum(array_column($punkty, 1)) / count($punkty)];
+        }
+        if (!$kandydaci) return null;
+        usort($kandydaci, static fn($x, $y) => abs($x['dl'] - $y['dl']) < 1 ? $y['polnoc'] <=> $x['polnoc'] : $x['dl'] <=> $y['dl']);
+        array_splice($trasa, $indeks, 2, $kandydaci[0]['punkty']);
+    }
+    for ($i = 0; $i < count($trasa) - 1; $i++) if (floty_odcinek_cialo($ciala, $trasa[$i], $trasa[$i + 1])) return null;
+    return $trasa;
+}
+
+// Pozycja oraz kierunek ruchu na trasie wieloodcinkowej (udział liczony po długości drogi).
+function floty_trasa_interpoluj(array $punkty, float $f): ?array
+{
+    if (count($punkty) < 2) return null;
+    $odcinki = []; $calosc = 0.0;
+    for ($i = 0; $i < count($punkty) - 1; $i++) {
+        $dl = hypot((float) $punkty[$i + 1][0] - (float) $punkty[$i][0], (float) $punkty[$i + 1][1] - (float) $punkty[$i][1]);
+        if ($dl > 0) { $odcinki[] = [$punkty[$i], $punkty[$i + 1], $dl]; $calosc += $dl; }
+    }
+    if ($calosc <= 0) return null;
+    $cel = max(0.0, min(1.0, $f)) * $calosc;
+    foreach ($odcinki as [$a, $b, $dl]) {
+        if ($cel <= $dl) return [(float) $a[0] + ((float) $b[0] - (float) $a[0]) * $cel / $dl,
+            (float) $a[1] + ((float) $b[1] - (float) $a[1]) * $cel / $dl,
+            floty_kat(rad2deg(atan2((float) $b[1] - (float) $a[1], (float) $b[0] - (float) $a[0])))];
+        $cel -= $dl;
+    }
+    $n = count($odcinki) - 1; [$a, $b] = $odcinki[$n];
+    return [(float) $b[0], (float) $b[1], floty_kat(rad2deg(atan2((float) $b[1] - (float) $a[1], (float) $b[0] - (float) $a[0])))];
+}
+
 // Punkt w studni (opis) albo null.
 function floty_punkt_w_studni(float $x, float $y, array $k, int $t): ?string
 {
@@ -516,6 +592,16 @@ function floty_lot_dostepny(): bool
     static $jest = null;
     if ($jest === null) {
         try { polaczenie_bazy()->query('SELECT lot_do_utc, lot_cel_planeta_id, rola_na_pokladzie FROM mapa_obiekty LIMIT 0'); $jest = true; }
+        catch (Throwable $e) { $jest = false; }
+    }
+    return $jest;
+}
+
+function floty_lot_trasa_dostepna(): bool
+{
+    static $jest = null;
+    if ($jest === null) {
+        try { polaczenie_bazy()->query('SELECT lot_trasa_json FROM mapa_obiekty LIMIT 0'); $jest = true; }
         catch (Throwable $e) { $jest = false; }
     }
     return $jest;
@@ -620,35 +706,49 @@ function floty_lot(array $odbiorcy, array $w): array
         $k0 = $poz ? ($poz[2] !== null ? [$poz[2], $poz[3]] : null) : (floty_uklad_dostepny() ? floty_poz_km($j, $teraz) : null);
         $pc = hypot($x - $x0, $y - $y0);
         $wUkladzie = $pc < LOT_W_UKLADZIE_PC && $k0 !== null && ($celK !== null || $celId);
-        $k1 = null;
+        $k1 = null; $trasaK = null;
         if ($wUkladzie) {
-            $k1 = $celK ?? floty_planeta_km($celId, $teraz);
-            // Start z orbity: okręt przechodzi po orbicie na stronę zwróconą ku celowi i stamtąd leci (nie ze środka
-            // planety i nie przez nią) — lot w obrębie własnej studni grawitacyjnej zawsze da się wyznaczyć.
-            if (!$poz && $odPl) {
-                $sr = (float) (astro_cykl((string) (ruch_planeta((string) $odPl)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
-                $ro = floty_promien_orbity_km($sr / 2, ($j['podejscie'] ?? null) ?: 'daleka') ?? $sr / 2 * 15;
-                $dl0 = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
-                $kat = $dl0 > 1 ? atan2($k1[1] - $k0[1], $k1[0] - $k0[0])
-                    : deg2rad(isset($j['orbita_deg']) && $j['orbita_deg'] !== null ? (float) $j['orbita_deg'] : floty_kurs_teraz($j, $teraz) + 180);
-                $k0 = [$k0[0] + cos($kat) * $ro, $k0[1] + sin($kat) * $ro];
-            }
-            // Cel — planeta: koniec lotu na jej dalekiej orbicie od strony nadlotu (nie w środku planety).
-            if (!$celK && $celId) {
-                $sr = (float) (astro_cykl((string) (ruch_planeta((string) $celId)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
-                $dl = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
-                $ro = min(floty_promien_orbity_km($sr / 2, 'daleka'), max(0.0, $dl - 1));
-                if ($dl > 0) $k1 = [$k1[0] - ($k1[0] - $k0[0]) / $dl * $ro, $k1[1] - ($k1[1] - $k0[1]) / $dl * $ro];
-            }
-            $km = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
-            // Lot podświetlny w studni grawitacyjnej jest dozwolony; nie wolno przelecieć przez samo ciało.
-            $ciala = floty_ciala($x, $y, $teraz);
-            if ($celK && ($s = floty_odcinek_cialo($ciala, $k1, $k1))) {
+            if ($celK && ($s = floty_odcinek_cialo(floty_ciala($x, $y, $teraz), $celK, $celK))) {
                 blad('Komputer nawigacyjny odrzuca cel: punkt leży wewnątrz ciała — ' . $s . '. Wskaż punkt obok.');
             }
-            if ($s = floty_odcinek_cialo($ciala, $k0, $k1)) {
-                blad('Komputer nawigacyjny odrzuca trasę: lot jednostki „' . $j['nazwa'] . '” prowadzi przez ' . $s . '. Leć etapami: najpierw do punktu obok, potem do celu.');
+            // Kurs przechwytujący: planety krążą, więc start liczony jest z miejsca jednostki w chwili ruszenia
+            // (po obrocie na kurs), a cel — tam, gdzie planeta będzie w chwili przylotu; ciała do omijania łukiem
+            // w połowie lotu. Kilka przybliżeń (czas lotu zależy od długości trasy, a ta od położenia celu).
+            $k0Teraz = $k0;
+            $kursJ = floty_kurs_teraz($j, $teraz);
+            $tStart = $teraz; $tKoniec = $teraz; $trasaK = null; $km = 0.0; $k1 = null;
+            for ($iter = 0; $iter < 4; $iter++) {
+                $k0 = $poz ? $k0Teraz : (floty_poz_km($j, $tStart) ?? $k0Teraz);
+                $k1 = $celK ?? floty_planeta_km($celId, $tKoniec);
+                // Zachowaj rzeczywiste miejsce jednostki na orbicie. Wcześniej podmienialiśmy je
+                // na punkt po stronie celu, co teleportowało statek i rysowało prostą przez planetę.
+                if (!$poz && $odPl) {
+                    $pStart = ruch_planeta((string) $odPl);
+                    $cyStart = astro_cykl((string) ($pStart['nazwa'] ?? ''));
+                    $sr = (float) ($cyStart['srednica_km'] ?? 12000);
+                    $ro = floty_promien_orbity_km($sr / 2, ($j['podejscie'] ?? null) ?: 'daleka') ?? $sr / 2 * 15;
+                    $kat = deg2rad(($j['orbita_deg'] ?? null) !== null ? (float) $j['orbita_deg'] : floty_kat($kursJ + 180));
+                    $k0 = [$k0[0] + cos($kat) * $ro, $k0[1] + sin($kat) * $ro];
+                }
+                // Cel — planeta: koniec lotu na jej dalekiej orbicie od strony nadlotu (nie w środku planety).
+                if (!$celK && $celId) {
+                    $sr = (float) (astro_cykl((string) (ruch_planeta((string) $celId)['nazwa'] ?? ''))['srednica_km'] ?? 12000);
+                    $dl = hypot($k1[0] - $k0[0], $k1[1] - $k0[1]);
+                    $ro = min(floty_promien_orbity_km($sr / 2, 'daleka'), max(0.0, $dl - 1));
+                    if ($dl > 0) $k1 = [$k1[0] - ($k1[0] - $k0[0]) / $dl * $ro, $k1[1] - ($k1[1] - $k0[1]) / $dl * $ro];
+                }
+                // Lot w układzie obchodzi ciała łukiem z północnej strony, zamiast przechodzić przez tarczę planety.
+                $ciala = floty_ciala($x, $y, (int) round(($tStart + $tKoniec) / 2));
+                $trasaK = floty_trasa_antykolizyjna($ciala, $k0, $k1);
+                if (!$trasaK) break;
+                $km = 0.0;
+                for ($i = 0; $i < count($trasaK) - 1; $i++) $km += hypot($trasaK[$i + 1][0] - $trasaK[$i][0], $trasaK[$i + 1][1] - $trasaK[$i][1]);
+                $kursI = floty_kat(rad2deg(atan2($trasaK[1][1] - $trasaK[0][1], $trasaK[1][0] - $trasaK[0][0])));
+                $tStart = $teraz + (int) floty_czas_manewru(floty_kat_roznica($kursJ, $kursI), $obrot);
+                $tKoniec = $tStart + (int) round($g ? floty_czas_lotu_w_ukladzie_s($km, $g) : $km / $v + LOT_ROZPED_S);
             }
+            if (!$trasaK) blad('Komputer nawigacyjny nie wyznaczył bezpiecznego łuku między ciałami układu. Wskaż inny punkt docelowy.');
+            if (count($trasaK) > 2 && !floty_lot_trasa_dostepna()) blad('Zaimportuj api/migracje/064_loty_lukowe_antykolizyjne.sql, aby zapisać bezpieczną trasę.');
         } else {
             $km = floty_lot_km($odPl, $x0, $y0, $celId, $x, $y);
             if ($pc >= LOT_W_UKLADZIE_PC && floty_uklad_dostepny() && ($s = floty_trasa_skoku($j + ['x' => $x0, 'y' => $y0], $x, $y, $celK, $celId, $teraz))) {
@@ -657,10 +757,10 @@ function floty_lot(array $odbiorcy, array $w): array
         }
         if ($km < 1) blad('Jednostka „' . $j['nazwa'] . '” już jest w tym miejscu.');
         $kursTeraz = floty_kurs_teraz($j, $teraz);
-        $kurs = $wUkladzie ? floty_kat(rad2deg(atan2($k1[1] - $k0[1], $k1[0] - $k0[0])))
+        $kurs = $wUkladzie ? floty_kat(rad2deg(atan2($trasaK[1][1] - $trasaK[0][1], $trasaK[1][0] - $trasaK[0][0])))
             : ($pc >= 0.05 ? floty_kat(rad2deg(atan2($y - $y0, $x - $x0))) : $kursTeraz);
-        $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => $x0, 'y0' => $y0, 'km' => $km, 'k0' => $wUkladzie ? $k0 : null, 'k1' => $k1,
-            'kurs0' => $kursTeraz, 'kurs' => $kurs, 'manewr' => floty_czas_manewru(floty_kat_roznica($kursTeraz, $kurs), $obrot)];
+        $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'planeta' => $odPl, 'x0' => $x0, 'y0' => $y0, 'km' => $km, 'k0' => $wUkladzie ? $k0 : null, 'k1' => $k1,
+            'trasa_k' => $trasaK, 'kurs0' => $kursTeraz, 'kurs' => $kurs, 'manewr' => floty_czas_manewru(floty_kat_roznica($kursTeraz, $kurs), $obrot)];
     }
     $km = max(array_column($wyliczone, 'km'));
     // Rozpęd i hamowanie (2 min) + przelot z prędkością przelotową najwolniejszej jednostki.
@@ -671,16 +771,23 @@ function floty_lot(array $odbiorcy, array $w): array
     $od = $teraz + max(array_column($wyliczone, 'manewr'));
     $do = $od + $lotS;
     $wynik = ['ok' => true, 'km' => round($km), 'predkosc_kms' => round($vMaks), 'pc_doba' => $wewnatrz ? null : $g, 'w_ukladzie' => $wewnatrz, 'manewr_s' => $od - $teraz, 'lot_s' => $lotS, 'start' => $od, 'eta' => $do,
-        'cel' => ['x' => $x, 'y' => $y, 'k' => $celK, 'planeta' => $celId ? ruch_planeta((string) $celId)['nazwa'] ?? null : null]];
+        'cel' => ['x' => $x, 'y' => $y, 'k' => $celK, 'planeta_id' => $celId,
+            'planeta' => $celId ? ruch_planeta((string) $celId)['nazwa'] ?? null : null],
+        'jednostki' => array_map(static fn($j) => ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'planeta' => $j['planeta'],
+            'x0' => $j['x0'], 'y0' => $j['y0'], 'k0' => $j['k0'], 'k1' => $j['k1'], 'trasa_k' => $j['trasa_k']], $wyliczone)];
     if (!empty($w['plan'])) return $wynik + ['plan' => true];
     $db->beginTransaction();
     try {
+        $maTrase = floty_lot_trasa_dostepna();
         $u = $db->prepare('UPDATE mapa_obiekty SET lot_start_x=?, lot_start_y=?, lot_cel_x=?, lot_cel_y=?, lot_cel_planeta_id=?, lot_km=?, lot_od_utc=?, lot_do_utc=?'
+            . ($maTrase ? ', lot_trasa_json=?' : '')
             . (floty_nawigacja_dostepna() ? ', podlot_start=NULL, podlot_cel=NULL, podlot_od_utc=NULL, podlot_do_utc=NULL' : '') . ' WHERE id=?');
         $uk = floty_uklad_dostepny() ? $db->prepare('UPDATE mapa_obiekty SET lot_start_kx=?, lot_start_ky=?, lot_cel_kx=?, lot_cel_ky=? WHERE id=?') : null;
         foreach ($wyliczone as $j) {
             floty_ustaw_manewr($db, $j['id'], $j['kurs0'], $j['kurs'], $teraz, $teraz + $j['manewr']);
-            $u->execute([$j['x0'], $j['y0'], $x, $y, $celId, round($j['km'], 1), czas_utc($od), czas_utc($do), $j['id']]);
+            $wartosci = [$j['x0'], $j['y0'], $x, $y, $celId, round($j['km'], 1), czas_utc($od), czas_utc($do)];
+            if ($maTrase) $wartosci[] = $j['trasa_k'] ? json_encode($j['trasa_k'], JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION) : null;
+            $u->execute([...$wartosci, $j['id']]);
             // Lot w układzie: początek i cel w km od słońca (cel bez planety = punkt układu).
             $uk?->execute([$j['k0'][0] ?? null, $j['k0'][1] ?? null, $j['k1'][0] ?? null, $j['k1'][1] ?? null, $j['id']]);
         }
@@ -694,7 +801,8 @@ function floty_lot_pozycja(int|string $id, int $teraz): ?array
 {
     if (!floty_lot_dostepny()) return null;
     $q = polaczenie_bazy()->prepare('SELECT lot_start_x,lot_start_y,lot_cel_x,lot_cel_y,lot_od_utc,lot_do_utc'
-        . (floty_uklad_dostepny() ? ',lot_start_kx,lot_start_ky,lot_cel_kx,lot_cel_ky' : '') . ' FROM mapa_obiekty WHERE id=? AND lot_do_utc IS NOT NULL');
+        . (floty_uklad_dostepny() ? ',lot_start_kx,lot_start_ky,lot_cel_kx,lot_cel_ky' : '')
+        . (floty_lot_trasa_dostepna() ? ',lot_trasa_json' : '') . ' FROM mapa_obiekty WHERE id=? AND lot_do_utc IS NOT NULL');
     $q->execute([(int) $id]);
     $r = $q->fetch(PDO::FETCH_ASSOC);
     if (!$r) return null;
@@ -702,6 +810,11 @@ function floty_lot_pozycja(int|string $id, int $teraz): ?array
     $f = floty_lot_ulamek($do > $od ? ($teraz - $od) / ($do - $od) : 1);
     // [x, y, kx, ky]: w locie w obrębie układu także km od słońca (inaczej null).
     $wUkladzie = ($r['lot_start_kx'] ?? null) !== null && ($r['lot_cel_kx'] ?? null) !== null;
+    if ($wUkladzie && !empty($r['lot_trasa_json'])) {
+        $trasa = json_decode((string) $r['lot_trasa_json'], true);
+        $poz = is_array($trasa) ? floty_trasa_interpoluj($trasa, $f) : null;
+        if ($poz) return [(float) $r['lot_start_x'], (float) $r['lot_start_y'], $poz[0], $poz[1], $poz[2]];
+    }
     return [(float) $r['lot_start_x'] + ((float) $r['lot_cel_x'] - (float) $r['lot_start_x']) * $f,
         (float) $r['lot_start_y'] + ((float) $r['lot_cel_y'] - (float) $r['lot_start_y']) * $f,
         $wUkladzie ? (float) $r['lot_start_kx'] + ((float) $r['lot_cel_kx'] - (float) $r['lot_start_kx']) * $f : null,
@@ -745,7 +858,8 @@ function floty_lot_przerwij(array $odbiorcy): array
 
 function floty_lot_zakoncz(PDO $db, int $id, float $x, float $y, ?int $planeta, int $teraz, bool $przylot, ?array $k = null): void
 {
-    $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=?, lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL,
+    $db->prepare('UPDATE mapa_obiekty SET x=?, y=?, planeta_id=?, lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL'
+        . (floty_lot_trasa_dostepna() ? ', lot_trasa_json=NULL' : '') . ',
         lot_cel_planeta_id=NULL, lot_km=NULL, lot_od_utc=NULL, lot_do_utc=NULL WHERE id=?')->execute([$x, $y, $planeta, $id]);
     if (floty_uklad_dostepny()) {
         $db->prepare('UPDATE mapa_obiekty SET lot_start_kx=NULL, lot_start_ky=NULL, lot_cel_kx=NULL, lot_cel_ky=NULL WHERE id=?')->execute([$id]);
@@ -1392,6 +1506,7 @@ function floty_rozkaz(string $login, array $w): array
         if ($aktywny->fetchColumn()) blad('Jednostka „' . $j['nazwa'] . '” już wykonuje skok.');
         if ($j['moc_reaktora'] === null) blad('Jednostka „' . $j['nazwa'] . '” nie ma profilu napędu.');
         $dx = $x - (float) $j['x']; $dy = $y - (float) $j['y']; $dystans = hypot($dx, $dy);
+        $trasaK0 = $trasaK1 = null;
         if ($dystans < STREFA_UKLADU_PC) {
             // Skok w obrębie układu: tylko do punktu układu, z miejsca poza studniami (długość w km).
             $k0 = floty_uklad_dostepny() ? floty_poz_km($j, $teraz) : null;
@@ -1400,6 +1515,7 @@ function floty_rozkaz(string $login, array $w): array
             if ($celPlanetaId && !$celK && $wariant === 'krawedz') blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Na jego brzeg leć dolotem albo wskaż punkt brzegu na mapie.');
             $kCel = $celK ?? ($celPlanetaId && $k0 ? floty_planeta_km($celPlanetaId, $teraz) : null);
             if (!$kCel || !$k0) blad('Jednostka „' . $j['nazwa'] . '” jest już w tym układzie. Do planet i księżyców układu leć podświetlnie, orbitę zmień dolotem.');
+            $trasaK0 = $k0; $trasaK1 = $kCel;
             $dx = $kCel[0] - $k0[0]; $dy = $kCel[1] - $k0[1];
             $dystans = hypot($dx, $dy) / KM_NA_PC;
         }
@@ -1408,7 +1524,7 @@ function floty_rozkaz(string $login, array $w): array
         $kolizja = floty_uklad_dostepny()
             ? floty_trasa_skoku($j, $x, $y, $doKrawedzi ? null : $celK, $celK || $doKrawedzi ? null : $celPlanetaId, $teraz)
             : floty_trasa_kolizja((float) $j['x'], (float) $j['y'], $x, $y);
-        if ($kolizja) {
+        if ($kolizja && empty($w['plan'])) {
             blad('Komputer nawigacyjny odrzuca trasę: skok jednostki „' . $j['nazwa'] . '” przecina studnię grawitacyjną ' . $kolizja . '. Wybierz inny cel albo skacz etapami.');
         }
         $stanReaktora = max(0, min(100, (int) $j['sprawnosc_reaktora'])) / 100;
@@ -1427,6 +1543,8 @@ function floty_rozkaz(string $login, array $w): array
         $punkt = floty_czas_do_punktu($j, $kursSkoku, $teraz);
         // Lot do punktu skoku to prawdziwy przelot w układzie (mapa i okno go pokazują); czas — z odległości.
         $punktKm = $punkt > 0 ? floty_punkt_skoku_km($j, $kursSkoku, $teraz) : null;
+        if ($punkt > 0 && !$punktKm) blad('Komputer nawigacyjny nie znalazł bezpiecznego łuku do punktu skoku przy planecie.');
+        if ($punktKm && count($punktKm[3] ?? []) > 2 && !floty_lot_trasa_dostepna()) blad('Zaimportuj api/migracje/064_loty_lukowe_antykolizyjne.sql, aby zapisać bezpieczny łuk do punktu skoku.');
         if ($punktKm) {
             $punkt = isset($j['podswietlna_pc_doba'])
                 ? (int) ceil(floty_czas_lotu_w_ukladzie_s($punktKm[2], (float) $j['podswietlna_pc_doba']))
@@ -1434,11 +1552,12 @@ function floty_rozkaz(string $login, array $w): array
         }
         $paliwoZuzyte = $dystans * (float) $j['paliwo_na_parsek'];
         if ((float) $j['paliwo'] < $paliwoZuzyte) blad('Jednostka „' . $j['nazwa'] . '” ma za mało paliwa.');
-        $bladMax = max((float) $j['szum_bazowy'], 0) + (100 - min((int) $j['sprawnosc_reaktora'], (int) $j['sprawnosc_hipernapedu'])) * 0.3 + (1 - $mnoznikMocy) * 10;
-        // Komputer: klasa 5 dzieli rozrzut przez 3, klasa 1 zwiększa go o 2/3; obliczenia ręczne ×2,5;
-        // komputer zhakowany po cichu ×6 (gra tego nie tłumaczy).
+        $bladMax = max((float) $j['szum_bazowy'], 0) + (100 - min((int) $j['sprawnosc_reaktora'], (int) $j['sprawnosc_hipernapedu'])) * 0.01 + (1 - $mnoznikMocy) * 0.5;
+        // Sprawność i zapas mocy zwiększają błąd stopniowo. Komputer i tryb ręczny
+        // modyfikują wynik, ale awaria nie może wyrzucić okrętu o całe układy od celu.
         $bladMax *= $tryb === 'reczny' ? 2.5 : (6 - $klasaKomputera) / 3;
-        if ($stanKomputera === 'zhakowany') $bladMax *= 6;
+        if ($stanKomputera === 'zhakowany') $bladMax *= 2;
+        $bladMax = min($bladMax, $stanKomputera === 'zhakowany' ? 5 : ($tryb === 'reczny' ? 4 : 2));
         $kat = random_int((int) round(-$bladMax * 1000), (int) round($bladMax * 1000)) / 1000;
         $kierunek = atan2($dy, $dx) + deg2rad($kat);
         // Skok w obrębie układu: rozrzut liczy się w km od celu (wyjście tam, gdzie wskazano, ± błąd).
@@ -1447,7 +1566,8 @@ function floty_rozkaz(string $login, array $w): array
         $koniecY = $wUkladzie ? $y + $dystans * (sin($kierunek) - sin(atan2($dy, $dx))) : (float) $j['y'] + $dystans * sin($kierunek);
         $wyliczone[] = ['id' => (int) $j['id'], 'nazwa' => $j['nazwa'], 'x0' => (float) $j['x'], 'y0' => (float) $j['y'],
             'x1' => $koniecX, 'y1' => $koniecY, 'kat' => $kat, 'moc' => $mnoznikMocy, 'paliwo' => $paliwoZuzyte, 'lot' => $czasLotu,
-            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr, 'punkt' => $punkt, 'punkt_km' => $punktKm];
+            'planeta' => (int) ($j['planeta_startu'] ?? 0), 'kurs0' => $kursTeraz, 'kurs' => $kursSkoku, 'manewr' => $manewr, 'punkt' => $punkt, 'punkt_km' => $punktKm,
+            'trasa_k0' => $trasaK0, 'trasa_k1' => $trasaK1, 'kolizja' => $kolizja];
     }
     // Obliczenia skoku (automat: sekundy zależne od klasy komputera; mostek ręcznie: 20 min),
     // potem obrót na kurs; wejście w nadprzestrzeń, gdy ostatnia jednostka stanie na kursie.
@@ -1463,7 +1583,9 @@ function floty_rozkaz(string $login, array $w): array
         // Tylko plan (bez rozkazu): co pokaże automat albo mostek przed potwierdzeniem.
         return ['ok' => true, 'plan' => true, 'tryb' => $tryb, 'wariant' => $wariant, 'obliczenia_s' => $obliczenia,
             'manewr_s' => $punktOd - $start, 'punkt_s' => $wejscie - $punktOd, 'lot_s' => $najpozniej - $wejscie, 'wejscie' => $wejscie, 'eta' => $najpozniej,
-            'jednostki' => array_map(static fn($j) => ['nazwa' => $j['nazwa'], 'paliwo' => round($j['paliwo'], 1), 'eta' => $j['eta']], $wyliczone)];
+            'jednostki' => array_map(static fn($j) => ['id' => $j['id'], 'nazwa' => $j['nazwa'], 'paliwo' => round($j['paliwo'], 1), 'eta' => $j['eta'],
+                'planeta' => $j['planeta'], 'x0' => $j['x0'], 'y0' => $j['y0'], 'x1' => $j['x1'], 'y1' => $j['y1'],
+                'trasa_k0' => $j['trasa_k0'], 'trasa_k1' => $j['trasa_k1'], 'kolizja' => $j['kolizja']], $wyliczone)];
     }
     $db->beginTransaction();
     try {
@@ -1487,14 +1609,18 @@ function floty_rozkaz(string $login, array $w): array
         // Lot do punktu skoku: po obrocie na kurs przelot podświetlny z orbity do punktu skoku (km od słońca);
         // na jego końcu jednostka stoi w punkcie układu, a o czasie wejścia skacze stamtąd.
         if (floty_lot_dostepny()) {
-            $lot = $db->prepare('UPDATE mapa_obiekty SET lot_start_x=?, lot_start_y=?, lot_cel_x=?, lot_cel_y=?, lot_cel_planeta_id=NULL, lot_km=?, lot_od_utc=?, lot_do_utc=?,
+            $maTrase = floty_lot_trasa_dostepna();
+            $lot = $db->prepare('UPDATE mapa_obiekty SET lot_start_x=?, lot_start_y=?, lot_cel_x=?, lot_cel_y=?, lot_cel_planeta_id=NULL, lot_km=?, lot_od_utc=?, lot_do_utc=?'
+                . ($maTrase ? ', lot_trasa_json=?' : '') . ',
                 lot_start_kx=?, lot_start_ky=?, lot_cel_kx=?, lot_cel_ky=? WHERE id=?');
             foreach ($wyliczone as $j) {
                 if (!$j['punkt_km'] || $j['punkt'] <= 0) continue;
                 [$k0, $kp, $km] = $j['punkt_km'];
+                $trasa = $j['punkt_km'][3] ?? [$k0, $kp];
                 $od = $start + $j['manewr'];
-                $lot->execute([$j['x0'], $j['y0'], $j['x0'], $j['y0'], round($km, 1), czas_utc($od), czas_utc($od + $j['punkt']),
-                    round($k0[0], 1), round($k0[1], 1), round($kp[0], 1), round($kp[1], 1), $j['id']]);
+                $wartosci = [$j['x0'], $j['y0'], $j['x0'], $j['y0'], round($km, 1), czas_utc($od), czas_utc($od + $j['punkt'])];
+                if ($maTrase) $wartosci[] = json_encode($trasa, JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
+                $lot->execute([...$wartosci, round($k0[0], 1), round($k0[1], 1), round($kp[0], 1), round($kp[1], 1), $j['id']]);
             }
         }
         if ($celK) $db->prepare('UPDATE mapa_rozkazy_skokow_jednostki SET wyjscie_kx=?, wyjscie_ky=? WHERE rozkaz_id=?')->execute([round($celK[0], 1), round($celK[1], 1), $rozkazId]);
@@ -1752,7 +1878,8 @@ function floty_przerwij_skok(array $u, int $id): array
                 if ($qo) $qo->execute([$o['id']]);
                 $lotOd = $qo ? czas_z_utc((string) $qo->fetchColumn()) : 0;
                 if ($poz && $lotOd && $teraz >= $lotOd) floty_lot_przerwij([(int) $o['id']]);
-                elseif ($poz) $db->prepare('UPDATE mapa_obiekty SET lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL, lot_cel_planeta_id=NULL,
+                elseif ($poz) $db->prepare('UPDATE mapa_obiekty SET lot_start_x=NULL, lot_start_y=NULL, lot_cel_x=NULL, lot_cel_y=NULL, lot_cel_planeta_id=NULL'
+                    . (floty_lot_trasa_dostepna() ? ', lot_trasa_json=NULL' : '') . ',
                     lot_km=NULL, lot_od_utc=NULL, lot_do_utc=NULL' . (floty_uklad_dostepny() ? ', lot_start_kx=NULL, lot_start_ky=NULL, lot_cel_kx=NULL, lot_cel_ky=NULL' : '') . ' WHERE id=?')->execute([$o['id']]);
                 $k = floty_kurs_teraz($o, $teraz);
                 floty_ustaw_manewr($db, (int) $o['id'], $k, $k, 0, 0);
@@ -2011,7 +2138,7 @@ function obsluz_floty(string $akcja, bool $post): void
     switch ($akcja) {
         case 'mapa_floty_gracza':
             $u = wymagaj_logowania();
-            odpowiedz(['floty' => floty_lista((string) $u['login'])]);
+            odpowiedz(['floty' => floty_lista((string) $u['login'], ($u['rola'] ?? '') === 'mg')]);
 
         case 'mapa_flota_podziel':
             if (!$post) blad('Zła metoda.', 405);

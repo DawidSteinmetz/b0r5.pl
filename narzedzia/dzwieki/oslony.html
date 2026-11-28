@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dźwięki osłon — strojenie</title>
+<style>
+  :root {
+    --tlo: #05080a; --linia: rgba(120, 220, 210, 0.22); --linia-mocna: rgba(120, 220, 210, 0.55);
+    --tekst: #b9efe6; --tekst-slaby: #6f9e98; --akcent: #4de2c9; --akcent-2: #f2b84b; --zly: #ff5e57; --ok: #6fe07a;
+    --promien: 6px; --lat: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--tlo); color: var(--tekst); font: 13px/1.4 var(--lat); }
+  main { max-width: 1040px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--akcent); margin: 0; }
+  h2 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--akcent-2); margin: 14px 0 0; font-weight: normal; }
+  .panel { border: 1px solid var(--linia); border-radius: var(--promien); background: rgba(77,226,201,.035); padding: 12px 14px; }
+  .panel > .etykieta { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--akcent);
+    border-bottom: 1px solid var(--linia); padding-bottom: 6px; margin-bottom: 10px; }
+  .segment { display: flex; }
+  .segment button { flex: 1; padding: 9px; font: inherit; letter-spacing: .1em; color: var(--tekst); background: rgba(11,16,18,.9);
+    border: 1px solid var(--linia-mocna); cursor: pointer; }
+  .segment button:first-child { border-radius: var(--promien) 0 0 var(--promien); }
+  .segment button:last-child { border-radius: 0 var(--promien) var(--promien) 0; }
+  .segment button + button { border-left: 0; }
+  .segment button.wl, .segment button:active { background: #1d8f7f; color: #fff; }
+  .wiersz { display: grid; grid-template-columns: minmax(160px, 220px) 1fr 72px; gap: 12px; align-items: center; margin: 8px 0; }
+  .wiersz label { color: var(--tekst-slaby); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wiersz output { text-align: right; color: var(--tekst); }
+  input[type=range] { width: 100%; accent-color: var(--akcent); }
+  .odczyt { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 6px; }
+  .odczyt b { font-size: 26px; color: var(--akcent-2); font-weight: normal; }
+  .odczyt span { color: var(--tekst-slaby); }
+  canvas { display: block; width: 100%; border: 1px solid var(--linia); border-radius: 4px; background: #020405; }
+  #siatka { aspect-ratio: 1; image-rendering: pixelated; width: 180px; margin: 0 auto; }
+  #fala { height: 70px; margin-top: 8px; }
+  .uwaga { color: var(--tekst-slaby); font-size: 12px; margin: 8px 0 0; }
+  .blad { color: var(--zly); }
+  .ok { color: var(--ok); }
+  #stanBazy { margin: 0 0 10px; }
+  .wzorce { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; }
+  .wzorzec { border: 1px solid var(--linia); border-radius: 4px; padding: 10px; color: var(--tekst-slaby); }
+  .wzorzec b { display: block; color: var(--tekst); font-weight: normal; margin-bottom: 6px; }
+  .wzorzec audio { display: block; width: 100%; height: 34px; }
+  .parametry { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 10px; }
+  details.parametry-zaawansowane > summary { color: var(--akcent-2); cursor: pointer; letter-spacing: .08em; }
+  details.parametry-zaawansowane[open] > summary { margin-bottom: 12px; }
+  @media (max-width: 600px) { main { padding: 12px; } .wiersz { grid-template-columns: 110px 1fr 54px; gap: 7px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dźwięki osłon · generowane na żywo</h1>
+
+  <section class="panel">
+    <div class="etykieta">Baza dźwięków</div>
+    <p id="stanBazy" class="uwaga">wczytywanie…</p>
+    <input id="plikBazy" type="file" accept=".json,application/json" hidden>
+    <div class="segment"><button id="wczytajJson" type="button">WCZYTAJ JSON DO ODSŁUCHU</button></div>
+    <div class="segment"><button id="zapisz" type="button">ZAPISZ JAKO</button><button id="kopiuj" type="button">KOPIUJ</button><button id="przywroc" type="button">Z BAZY</button></div>
+    <p class="uwaga">Wczytaj zapisany JSON, żeby podstawić ustawienia do stroików i od razu je odsłuchać. Import nie nadpisuje pliku; „ZAPISZ JAKO” zapisuje wybrane ustawienia do nowego pliku.</p>
+  </section>
+
+  <section class="panel">
+    <div class="etykieta">Wzorce brzmienia · sound/</div>
+    <p class="uwaga">Odtwórz punkt odniesienia, a potem dostrój efekty poniżej. Te pliki są tłem mostka i hipernapędu — nie zawierają gotowych wystrzałów ani trafień.</p>
+    <div class="wzorce">
+      <div class="wzorzec"><b>Mostek ISD · ciągłe tło</b><audio controls preload="none" src="../../sound/mostek_isd.mp3"></audio></div>
+      <div class="wzorzec"><b>Hipernapęd · ciągłe tło</b><audio controls preload="none" src="../../sound/hiper.mp3"></audio></div>
+      <div class="wzorzec"><b>Wejście w nadprzestrzeń</b><audio controls preload="none" src="../../sound/hiper_wejscie.mp3"></audio></div>
+      <div class="wzorzec"><b>Wyjście z nadprzestrzeni</b><audio controls preload="none" src="../../sound/hiper_wyjscie.mp3"></audio></div>
+    </div>
+  </section>
+
+  <h2>Osłona · buczenie</h2>
+
+  <section class="panel">
+    <div class="etykieta">Generator osłon</div>
+    <div class="segment"><button id="wl" type="button">WŁĄCZ</button><button id="wyl" type="button" class="wl">WYŁĄCZ</button></div>
+    <div class="odczyt"><b id="hz">0 Hz</b><span id="stan">wyłączone</span></div>
+    <canvas id="siatka" width="60" height="60"></canvas>
+    <canvas id="fala" width="800" height="140"></canvas>
+  </section>
+
+  <section class="panel">
+    <div class="etykieta">Częstotliwość osłon</div>
+    <div class="segment"><button id="presetISD" type="button">PROFIL ISD · WŁĄCZ I ODSŁUCHAJ</button></div>
+    <div class="wiersz"><label for="cel">docelowe Hz</label><input id="cel" type="range" min="0" max="1000" value="1000"><output id="celW"></output></div>
+    <p class="uwaga">Generator ma gładką podstawę 40 Hz przy zasilaniu 40 Hz. Wzrost zasilania płynnie podnosi ton i odsłania kolejne harmoniczne.</p>
+  </section>
+
+  <section class="panel">
+    <div class="etykieta">Kształt harmonicznego buczenia</div>
+    <div class="wiersz"><label for="tonMaks">ton przy 3600 Hz</label><input id="tonMaks" type="range" min="45" max="160" step="1"><output id="tonMaksW"></output></div>
+    <div class="wiersz"><label for="harmoniczne">gęstość harmonicznych</label><input id="harmoniczne" type="range" min="0" max="1" step="0.01"><output id="harmoniczneW"></output></div>
+    <p class="uwaga">Ton przy 40 Hz jest stałym punktem odniesienia. Zmień ton maksymalny i udział harmonicznych, aby dopasować charakter buczenia.</p>
+  </section>
+
+  <details class="panel parametry-zaawansowane"><summary>Zaawansowane strojenie osłon</summary><div id="panele-oslona" class="parametry"></div></details>
+
+  <h2>Trafienie w osłonę</h2>
+
+  <section class="panel">
+    <div class="etykieta">Energia trafienia</div>
+    <div class="segment"><button id="presetTrafienieISD" type="button">PROFIL TRAFIENIA ISD · ODSŁUCHAJ</button></div>
+    <div class="wiersz"><label for="energia">Hz energii</label><input id="energia" type="range" min="0" max="1000" value="800"><output id="energiaW"></output></div>
+    <div class="wiersz"><label for="sila">siła</label><input id="sila" type="range" min="0" max="1" step="0.01" value="1"><output id="silaW"></output></div>
+    <div class="segment"><button id="traf" type="button">TRAFIENIE</button><button id="salwa" type="button">SALWA ×5</button><button id="losowe" type="button">LOSOWE Hz</button></div>
+    <p class="uwaga">1 Hz = pojedynczy ciężki trzask, setki Hz = trzeszczenie, 3600 Hz = gęsty syk. Gdy osłona jest włączona, jej buczenie reaguje na trafienie.</p>
+  </section>
+
+  <details class="panel parametry-zaawansowane"><summary>Zaawansowane strojenie trafień</summary><div id="panele-trafienie" class="parametry"></div></details>
+
+  <h2>Nasz wystrzał · turbolaser</h2>
+
+  <section class="panel">
+    <div class="etykieta">Energia wystrzału</div>
+    <div class="segment"><button id="presetWystrzalISD" type="button">PROFIL DZIAŁA ISD · ODSŁUCHAJ</button></div>
+    <div class="wiersz"><label for="energiaW1">Hz energii</label><input id="energiaW1" type="range" min="0" max="1000" value="1000"><output id="energiaW1W"></output></div>
+    <div class="wiersz"><label for="silaW1">siła</label><input id="silaW1" type="range" min="0" max="1" step="0.01" value="1"><output id="silaW1W"></output></div>
+    <div class="segment" style="margin-bottom:8px"><button id="burtaL" type="button">LEWA</button><button id="burtaS" type="button" class="wl">LOSOWO</button><button id="burtaP" type="button">PRAWA</button></div>
+    <div class="segment"><button id="strzal" type="button">WYSTRZAŁ</button><button id="salwaW" type="button">SALWA ×4</button><button id="losoweW" type="button">LOSOWE Hz</button></div>
+    <p class="uwaga">Strzał oddawany przez nas — nie rusza osłony. ISD: 3600 Hz, MC80: 2187 Hz.</p>
+  </section>
+
+  <details class="panel parametry-zaawansowane"><summary>Zaawansowane strojenie wystrzałów</summary><div id="panele-wystrzal" class="parametry"></div></details>
+</main>
+
+<script type="module">
+import { DzwiekOslon, DOMYSLNE } from '../../js/rdzen/dzwiek_oslon.js';
+import { trafienieOslony, przygotujTrafienia, DOMYSLNE_TRAFIENIA } from '../../js/rdzen/dzwiek_trafienia.js';
+import { wystrzal, przygotujWystrzaly, DOMYSLNE_WYSTRZALU } from '../../js/rdzen/dzwiek_wystrzalu.js';
+import { wczytajBazeDzwiekow } from '../../js/rdzen/dzwieki_baza.js';
+
+// Grupa na stronie → klucz w bazie i wartości domyślne.
+const GRUPY = {
+  oslona: { klucz: 'oslona', domyslne: DOMYSLNE },
+  trafienie: { klucz: 'trafienie_oslony', domyslne: DOMYSLNE_TRAFIENIA },
+  wystrzal: { klucz: 'wystrzal_turbolasera', domyslne: DOMYSLNE_WYSTRZALU },
+};
+
+const $ = (id) => document.getElementById(id);
+// Suwaki Hz w skali logarytmicznej 1…3600.
+const doHz = (v) => Math.round(Math.pow(3600, v / 1000));
+const zHz = (hz) => Math.round((Math.log(Math.max(1, hz)) / Math.log(3600)) * 1000);
+
+// [klucz, etykieta, min, max, krok, skala wyświetlania]
+const PANELE = {
+  oslona: [
+    ['Czasy pola', [['narastanie', 'narastanie (s)', 1, 30, 0.5], ['wejscie', 'miękki start (s)', 0.1, 5, 0.1],
+      ['wyciszenie', 'wygaszenie (s)', 0.2, 8, 0.1], ['zmianaHz', 'przestrojenie (s)', 0.1, 8, 0.1]]],
+    ['Korpus tonu', [['rezonans', 'rezonans (Hz)', 40, 500, 5], ['rezonansDb', 'podbicie rezonansu (dB)', 0, 8, 0.5],
+      ['falowanie', 'wolne falowanie', 0, 0.08, 0.002, 100], ['glosnosc', 'głośność', 0, 0.9, 0.01]]],
+  ],
+  wystrzal: [
+    ['Trzask', [['trzask', 'poziom', 0, 2, 0.05], ['czasTrzasku', 'czas (s)', 0.005, 0.3, 0.005], ['rozrzut', 'rozrzut', 0, 1, 0.01]],
+      'Impulsy o gęstości równej Hz energii w wysokim paśmie: 1 Hz = kliknięcie, 3600 Hz = ostry syk.'],
+    ['Brzęk', [['brzek', 'poziom', 0, 2, 0.05], ['tonOd', 'ton (Hz)', 60, 1200, 5], ['opadanie', 'opadanie', 0, 0.9, 0.01],
+      ['czasBrzeku', 'czas (s)', 0.05, 1, 0.01], ['przester', 'przester', 0, 1, 0.01], ['przyciecie', 'przycięcie tonu', 0.5, 3, 0.05],
+      ['formant', 'ciało (Hz)', 150, 2000, 10], ['formantDb', 'ciało (dB)', 0, 18, 0.5], ['jasnosc', 'jasność (Hz)', 300, 12000, 50]],
+      '„Ton” dotyczy 3600 Hz energii; przy 1 Hz brzęk jest o oktawę niższy i ciemniejszy. „Opadanie” 0,3 = ton spada o 30%.'],
+    ['Huk', [['huk', 'poziom', 0, 2, 0.05], ['basHuku', 'bas (Hz)', 25, 200, 1], ['czasHuku', 'czas (s)', 0.05, 1.5, 0.01],
+      ['opoznienieHuku', 'po trzasku (s)', 0, 0.15, 0.005]]],
+    ['Ogon', [['echo', 'echo', 0, 1, 0.01], ['opoznienie', 'opóźnienie (s)', 0.01, 0.4, 0.005], ['sprzezenie', 'sprzężenie', 0, 0.85, 0.01]]],
+    ['Ogólne', [['szerokosc', 'rozrzut L/P', 0, 1, 0.05], ['rozstrojenie', 'rozstrojenie', 0, 0.5, 0.01], ['glosnosc', 'głośność', 0, 2, 0.01]],
+      'Rozstrojenie: różnica tonu między kolejnymi strzałami — w salwie brzmią jak różne działa.'],
+  ],
+  trafienie: [
+    ['Uderzenie', [['uderzenie', 'poziom', 0, 2, 0.05], ['basOd', 'bas od (Hz)', 30, 250, 1], ['basDo', 'bas do (Hz)', 10, 150, 1],
+      ['czasUderzenia', 'czas (s)', 0.05, 2, 0.05]]],
+    ['Wyładowanie energii', [['wyladowanie', 'poziom', 0, 2, 0.05], ['czasWyladowania', 'czas (s)', 0.05, 4, 0.05],
+      ['rzednienie', 'rzednienie ×', 1, 50, 0.5], ['rozrzut', 'rozrzut', 0, 1, 0.01], ['jasnosc', 'jasność (Hz)', 500, 16000, 50]],
+      'Impulsy o gęstości równej Hz energii; w trakcie wygasania rzedną („rzednienie” razy) i ciemnieją.'],
+    ['Dzwonienie pola', [['dzwonienie', 'poziom', 0, 2, 0.05], ['tonDzwonienia', 'ton (Hz)', 60, 3000, 5], ['czasDzwonienia', 'czas (s)', 0.1, 6, 0.05]]],
+    ['Ogólne', [['reakcja', 'reakcja osłony', 0, 1.5, 0.05], ['szerokosc', 'rozrzut L/P', 0, 1, 0.05], ['glosnosc', 'głośność', 0, 2, 0.01]]],
+  ],
+};
+
+const u = Object.fromEntries(Object.entries(GRUPY).map(([g, { domyslne }]) => [g, { ...domyslne }]));
+let baza = null;
+const suwaki = []; // { grupa, klucz, el, skala, pokaz }
+
+// --------------------------------------------------------------------------- panele z suwakami
+for (const [grupa, lista] of Object.entries(PANELE)) {
+  const kontener = $(`panele-${grupa}`);
+  for (const [tytul, pola, uwaga] of lista) {
+    const sekcja = document.createElement('section');
+    sekcja.className = 'panel';
+    sekcja.innerHTML = `<div class="etykieta">${tytul}</div>`;
+    for (const [klucz, etykieta, min, max, krok, skala = 1] of pola) {
+      const id = `${grupa}-${klucz}`;
+      const w = document.createElement('div');
+      w.className = 'wiersz';
+      w.innerHTML = `<label for="${id}" title="${etykieta}">${etykieta}</label><input id="${id}" type="range" min="${min}" max="${max}" step="${krok}"><output></output>`;
+      sekcja.append(w);
+      const el = w.querySelector('input'), out = w.querySelector('output');
+      const s = { grupa, klucz, el, skala, pokaz: () => { out.textContent = (+el.value).toString(); } };
+      el.addEventListener('input', () => {
+        u[grupa][klucz] = +el.value / skala; s.pokaz();
+        if (grupa === 'oslona') oslony?.ustaw(klucz, u.oslona[klucz]);
+        zapiszSzkic();
+      });
+      suwaki.push(s);
+    }
+    if (uwaga) { const p = document.createElement('p'); p.className = 'uwaga'; p.textContent = uwaga; sekcja.append(p); }
+    kontener.append(sekcja);
+  }
+}
+
+const szybkieOslony = [['tonMaks', 'tonMaksW'], ['harmoniczne', 'harmoniczneW']];
+for (const [id, outId] of szybkieOslony) {
+  const el = $(id), out = $(outId);
+  el.value = u.oslona[id]; out.textContent = u.oslona[id];
+  el.addEventListener('input', () => {
+    u.oslona[id] = +el.value; out.textContent = el.value;
+    oslony?.ustaw(id, u.oslona[id]);
+    zapiszSzkic();
+  });
+}
+
+function pokazWartosci() {
+  for (const s of suwaki) { s.el.value = u[s.grupa][s.klucz] * s.skala; s.pokaz(); }
+  for (const [id, outId] of szybkieOslony) { $(id).value = u.oslona[id]; $(outId).textContent = u.oslona[id]; }
+  if (oslony) for (const k of Object.keys(u.oslona)) oslony.ustaw(k, u.oslona[k]);
+}
+
+function ustawProfil(grupa, wartosci) {
+  Object.assign(u[grupa], wartosci);
+  pokazWartosci();
+  zapiszSzkic();
+}
+
+// --------------------------------------------------------------------------- baza i szkic
+const KLUCZ_SZKICU = 'dzwieki_szkic';
+const dane = () => ({ wersja: 1, zapisano: new Date().toISOString(),
+  ...Object.fromEntries(Object.entries(GRUPY).map(([g, { klucz }]) => [klucz, { ...u[g] }])) });
+const takieSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function stanBazy(tekst, klasa = '') { $('stanBazy').textContent = tekst; $('stanBazy').className = `uwaga ${klasa}`; }
+function normalizujGrupe(grupa, domyslne, wartosci) {
+  const v = { ...(wartosci || {}) };
+  // Migracja starszych zapisów: ich próg/uniesienie sterowały tonem końcowym.
+  if (grupa === 'oslona') {
+    if (!('harmoniczne' in v) && Number.isFinite(Number(v.mocTonu))) v.harmoniczne = Number(v.mocTonu);
+    if (!('tonMaks' in v) && Number.isFinite(Number(v.progTonu))) {
+      const prog = Math.max(1, Number(v.progTonu)), uniesienie = Number(v.uniesienie ?? 0.1);
+      v.tonMaks = Math.max(45, Math.min(160, prog * Math.pow(3600 / prog, uniesienie)));
+    }
+    if (!('tonPrzy40' in v)) v.tonPrzy40 = 40;
+  }
+  return { ...domyslne,
+    ...Object.fromEntries(Object.entries(v).filter(([k, n]) => k in domyslne && Number.isFinite(Number(n))).map(([k, n]) => [k, Number(n)])),
+  };
+}
+
+// Szkic zapisujemy tylko po ruszeniu suwaka; zgodny z bazą — usuwamy.
+function zapiszSzkic() {
+  try {
+    if (zgodneZBaza()) localStorage.removeItem(KLUCZ_SZKICU);
+    else localStorage.setItem(KLUCZ_SZKICU, JSON.stringify(u));
+  } catch { /* bez pamięci przeglądarki */ }
+  pokazStan();
+}
+const zgodneZBaza = () => !!baza
+  && Object.entries(GRUPY).every(([g, { klucz, domyslne }]) => takieSame(normalizujGrupe(g, domyslne, baza[klucz]), u[g]));
+function pokazStan() {
+  const zBazy = zgodneZBaza();
+  stanBazy(zBazy ? 'zgodne z bazą' : 'niezapisane zmiany (szkic w tej przeglądarce)', zBazy ? 'ok' : '');
+}
+
+function zBazy() {
+  for (const [g, { klucz, domyslne }] of Object.entries(GRUPY)) u[g] = normalizujGrupe(g, domyslne, baza?.[klucz]);
+}
+
+$('wczytajJson').addEventListener('click', () => $('plikBazy').click());
+$('plikBazy').addEventListener('change', async (e) => {
+  const plik = e.target.files?.[0];
+  if (!plik) return;
+  try {
+    const daneJson = JSON.parse(await plik.text());
+    let wczytaneGrupy = 0;
+    for (const [g, { klucz, domyslne }] of Object.entries(GRUPY)) {
+      const grupa = daneJson?.[klucz] ?? daneJson?.[g];
+      if (!grupa || typeof grupa !== 'object' || Array.isArray(grupa)) continue;
+      const rozpoznane = Object.keys(grupa).some((k) => k in domyslne)
+        || (g === 'oslona' && ['progTonu', 'mocTonu'].some((k) => k in grupa));
+      if (!rozpoznane) continue;
+      u[g] = normalizujGrupe(g, domyslne, grupa);
+      wczytaneGrupy++;
+    }
+    if (!wczytaneGrupy) throw new Error('JSON nie zawiera ustawień osłon, trafień ani wystrzałów.');
+    pokazWartosci();
+    zapiszSzkic();
+    stanBazy(`wczytano ${plik.name} · gotowe do odsłuchu`, 'ok');
+  } catch (err) {
+    stanBazy(`nie wczytano JSON: ${err.message}`, 'blad');
+  } finally {
+    e.target.value = '';
+  }
+});
+
+async function start() {
+  baza = await wczytajBazeDzwiekow({ odNowa: true });
+  zBazy();
+  let szkic = null;
+  try { szkic = JSON.parse(localStorage.getItem(KLUCZ_SZKICU) || 'null'); } catch { /* brak szkicu */ }
+  // Ze szkicu bierzemy tylko parametry, które dźwięk nadal ma (po przebudowie stare znikają).
+  if (szkic) for (const [g, { domyslne }] of Object.entries(GRUPY)) {
+    for (const [k, v] of Object.entries(szkic[g] || {})) if (k in domyslne) u[g][k] = v;
+  }
+  pokazWartosci();
+  pokazStan();
+  if (baza?.zapisano) $('stanBazy').textContent += ` · baza z ${new Date(baza.zapisano).toLocaleString('pl-PL')}`;
+}
+
+$('zapisz').addEventListener('click', async () => {
+  const tekst = JSON.stringify(dane(), null, 2) + '\n';
+  try {
+    if (window.showSaveFilePicker) {
+      const uchwyt = await window.showSaveFilePicker({ suggestedName: 'dzwieki_baza.json',
+        types: [{ description: 'Baza dźwięków', accept: { 'application/json': ['.json'] } }] });
+      const w = await uchwyt.createWritable();
+      await w.write(tekst); await w.close();
+      baza = JSON.parse(tekst);
+      try { localStorage.removeItem(KLUCZ_SZKICU); } catch { /* bez pamięci przeglądarki */ }
+      stanBazy(`zapisano do ${uchwyt.name} · ${new Date().toLocaleTimeString('pl-PL')}`, 'ok');
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([tekst], { type: 'application/json' }));
+      a.download = 'dzwieki_baza.json'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      stanBazy('Ta przeglądarka nie udostępnia okna „Zapisz jako”. Plik pobrano automatycznie. Włącz w ustawieniach pobierania pytanie o miejsce zapisu albo otwórz stronę w aktualnym Chrome/Edge przez localhost.', 'blad');
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') stanBazy(`nie zapisano: ${e.message}`, 'blad');
+  }
+});
+
+$('kopiuj').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify(dane(), null, 2)); stanBazy('skopiowano ustawienia do schowka', 'ok'); }
+  catch (e) { stanBazy(`nie skopiowano: ${e.message}`, 'blad'); }
+});
+
+$('przywroc').addEventListener('click', async () => {
+  baza = await wczytajBazeDzwiekow({ odNowa: true });
+  zBazy();
+  try { localStorage.removeItem(KLUCZ_SZKICU); } catch { /* bez pamięci przeglądarki */ }
+  pokazWartosci();
+  zapiszSzkic();
+});
+
+// --------------------------------------------------------------------------- dźwięk
+let ctx = null, oslony = null, analizator = null, gotoweTrafienia = null;
+
+function kontekst() {
+  if (!ctx) {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    analizator = new AnalyserNode(ctx, { fftSize: 2048 });
+    // Wspólny ogranicznik na wyjściu: salwy i nakładające się dźwięki nie przesterują (w grze — szyna główna).
+    const ogranicznik = new DynamicsCompressorNode(ctx, { threshold: -3, knee: 1, ratio: 20, attack: 0.001, release: 0.12 });
+    analizator.connect(ogranicznik).connect(ctx.destination);
+  }
+  ctx.resume();
+  return ctx;
+}
+
+// Jedna osłona na stronę — szybkie podwójne kliknięcie WŁĄCZ nie może utworzyć drugiej, której nie dałoby się wyłączyć.
+let tworzenie = null;
+function gotowe() {
+  tworzenie ||= (async () => {
+    const o = new DzwiekOslon(kontekst(), analizator, u.oslona);
+    await o.przygotuj();
+    return (oslony = o);
+  })().catch((e) => { tworzenie = null; throw e; });
+  return tworzenie;
+}
+
+const pokazCel = () => { $('celW').textContent = doHz(+$('cel').value); };
+pokazCel();
+$('cel').addEventListener('input', () => { pokazCel(); oslony?.ustawHz(doHz(+$('cel').value)); });
+
+// Punkt wyjścia dla ciężkiego, stabilnego pola dużego okrętu. Ustawienia zostają
+// szkicem do odsłuchu; zapis do bazy nadal odbywa się osobnym przyciskiem.
+$('presetISD').addEventListener('click', async () => {
+  const preset = {
+    narastanie: 9, wejscie: 1.2, wyciszenie: 4, zmianaHz: 2.2,
+    tonPrzy40: 40, tonMaks: 90, harmoniczne: 0.78,
+    rezonans: 125, rezonansDb: 2, falowanie: 0.012, glosnosc: 0.58,
+  };
+  ustawProfil('oslona', preset);
+  $('cel').value = 1000;
+  pokazCel();
+  try {
+    const o = await gotowe();
+    o.wlacz(3600, u.oslona.narastanie);
+    $('wl').classList.add('wl'); $('wyl').classList.remove('wl');
+  } catch (e) { stanBazy(e.message, 'blad'); }
+});
+
+$('wl').addEventListener('click', async () => {
+  try {
+    const o = await gotowe();
+    o.wlacz(doHz(+$('cel').value));
+    $('wl').classList.add('wl'); $('wyl').classList.remove('wl');
+  } catch (e) { stanBazy(e.message, 'blad'); }
+});
+$('wyl').addEventListener('click', () => {
+  oslony?.wylacz();
+  $('wyl').classList.add('wl'); $('wl').classList.remove('wl');
+});
+
+// Trafienia
+const pokazEnergie = () => { $('energiaW').textContent = doHz(+$('energia').value); $('silaW').textContent = $('sila').value; };
+pokazEnergie();
+$('energia').addEventListener('input', pokazEnergie);
+$('sila').addEventListener('input', pokazEnergie);
+
+async function traf(hz, sila) {
+  const c = kontekst();
+  gotoweTrafienia ||= przygotujTrafienia(c);
+  await gotoweTrafienia;
+  trafienieOslony(c, analizator, u.trafienie, { hz, sila, oslona: oslony?.wlaczone ? oslony : null });
+}
+$('traf').addEventListener('click', () => traf(doHz(+$('energia').value), +$('sila').value));
+$('presetTrafienieISD').addEventListener('click', () => {
+  ustawProfil('trafienie', {
+    glosnosc: 0.9, uderzenie: 0.78, basOd: 78, basDo: 26, czasUderzenia: 0.68,
+    wyladowanie: 0.48, czasWyladowania: 1.15, rzednienie: 6, rozrzut: 0.52, jasnosc: 6200,
+    dzwonienie: 0.72, tonDzwonienia: 165, czasDzwonienia: 3.4, reakcja: 0.85, szerokosc: 0.62,
+  });
+  const hz = 1450;
+  $('energia').value = zHz(hz); $('sila').value = 0.92; pokazEnergie();
+  traf(hz, 0.92);
+});
+$('salwa').addEventListener('click', () => {
+  const hz = doHz(+$('energia').value), sila = +$('sila').value;
+  for (let i = 0; i < 5; i++) setTimeout(() => traf(hz, sila * (0.75 + 0.25 * Math.random())), i * (180 + Math.random() * 220));
+});
+$('losowe').addEventListener('click', () => {
+  const hz = Math.round(Math.pow(3600, Math.random()));
+  $('energia').value = zHz(hz); pokazEnergie();
+  traf(hz, +$('sila').value);
+});
+
+// Nasze wystrzały
+let burta = null; // -1 lewa, 1 prawa, null losowo
+for (const [id, wart] of [['burtaL', -0.7], ['burtaS', null], ['burtaP', 0.7]]) {
+  $(id).addEventListener('click', () => {
+    burta = wart;
+    for (const b of ['burtaL', 'burtaS', 'burtaP']) $(b).classList.toggle('wl', b === id);
+  });
+}
+const pokazW1 = () => { $('energiaW1W').textContent = doHz(+$('energiaW1').value); $('silaW1W').textContent = $('silaW1').value; };
+pokazW1();
+$('energiaW1').addEventListener('input', pokazW1);
+$('silaW1').addEventListener('input', pokazW1);
+let gotoweWystrzaly = null;
+async function strzel(hz, sila) {
+  const c = kontekst();
+  gotoweWystrzaly ||= przygotujWystrzaly(c);
+  await gotoweWystrzaly;
+  wystrzal(c, analizator, u.wystrzal, { hz, sila, pan: burta });
+}
+$('presetWystrzalISD').addEventListener('click', () => {
+  ustawProfil('wystrzal', {
+    glosnosc: 0.48, trzask: 0.78, czasTrzasku: 0.065, rozrzut: 0.3,
+    brzek: 0.62, tonOd: 145, opadanie: 0.42, czasBrzeku: 0.46, przester: 0.58,
+    przyciecie: 1.18, formant: 360, formantDb: 7, jasnosc: 4400,
+    huk: 0.94, basHuku: 59, czasHuku: 0.44, opoznienieHuku: 0.035,
+    echo: 0.2, opoznienie: 0.13, sprzezenie: 0.28, szerokosc: 0.52, rozstrojenie: 0.12,
+  });
+  $('energiaW1').value = 1000; $('silaW1').value = 1; pokazW1();
+  strzel(3600, 1);
+});
+$('strzal').addEventListener('click', () => strzel(doHz(+$('energiaW1').value), +$('silaW1').value));
+$('salwaW').addEventListener('click', () => {
+  const hz = doHz(+$('energiaW1').value), sila = +$('silaW1').value;
+  for (let i = 0; i < 4; i++) setTimeout(() => strzel(hz, sila * (0.85 + 0.15 * Math.random())), i * (140 + Math.random() * 120));
+});
+$('losoweW').addEventListener('click', () => {
+  const hz = Math.round(Math.pow(3600, Math.random()));
+  $('energiaW1').value = zHz(hz); pokazW1();
+  strzel(hz, +$('silaW1').value);
+});
+
+// --------------------------------------------------------------------------- podgląd
+// Siatka 60×60 jak na konsoli osłon: świeci co (3600 / f)-ta żyła; przy Hz nie dzielącym 3600 — najbliższy rozkład.
+const sc = $('siatka').getContext('2d'), obraz = sc.createImageData(60, 60);
+const fc = $('fala').getContext('2d'), probki = new Float32Array(2048);
+function rysuj() {
+  requestAnimationFrame(rysuj);
+  const f = oslony ? oslony.hz() : 0, wl = oslony?.wlaczone;
+  $('hz').textContent = `${f < 10 ? f.toFixed(1) : Math.round(f)} Hz`;
+  const stan = !oslony ? 'wyłączone' : wl ? (f < doHz(+$('cel').value) - 0.5 ? 'narastanie' : 'praca') : f > 0 ? 'wygasanie' : 'wyłączone';
+  $('stan').textContent = f > 0 ? `${stan} · ton ${oslony.ton(f).toFixed(f < 10 ? 1 : 0)} Hz` : stan;
+  const jasnosc = oslony?.obwiednia ? Math.min(1, oslony.obwiednia.gain.value * 1.2) : 0;
+  const ile = Math.round(f);
+  for (let i = 0; i < 3600; i++) {
+    const swieci = ile > 0 && Math.floor((i + 1) * ile / 3600) !== Math.floor(i * ile / 3600);
+    const p = i * 4;
+    obraz.data[p] = swieci ? 77 * jasnosc + 16 : 16;
+    obraz.data[p + 1] = swieci ? 226 * jasnosc + 26 : 26;
+    obraz.data[p + 2] = swieci ? 201 * jasnosc + 34 : 34;
+    obraz.data[p + 3] = 255;
+  }
+  sc.putImageData(obraz, 0, 0);
+  const W = $('fala').width, H = $('fala').height;
+  fc.fillStyle = '#020405'; fc.fillRect(0, 0, W, H);
+  if (!analizator) return;
+  analizator.getFloatTimeDomainData(probki);
+  fc.strokeStyle = '#4de2c9'; fc.lineWidth = 2; fc.beginPath();
+  for (let i = 0; i < probki.length; i++) {
+    const x = (i / probki.length) * W, y = H / 2 - probki[i] * H * 0.45;
+    i ? fc.lineTo(x, y) : fc.moveTo(x, y);
+  }
+  fc.stroke();
+}
+rysuj();
+start();
+</script>
+</body>
+</html>

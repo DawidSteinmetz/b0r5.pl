@@ -1,0 +1,1169 @@
+/* ============================================================
+   HOLOLINK – IMPERIAL STAR DESTROYER TYPE I
+   KOMPLETNY INWENTARZ WNĘTRZA
+   MySQL 8.0+ / MariaDB
+
+   Model:
+   - jeden korzeń jednostki;
+   - sekcje konstrukcyjne;
+   - pokłady funkcjonalne;
+   - strefy;
+   - konkretne pomieszczenia.
+
+   Import:
+   - bez trwałych tabel pomocniczych;
+   - bez zmian schematu;
+   - bez przypisywania planety i układu;
+   - bez nadpisywania opisów i statusów;
+   - istniejące rekordy: korekta wyłącznie rodzic_id;
+   - transakcja i kontrola osieroconych rekordów.
+
+   UWAGA:
+   Nazwy z prefiksem ISD-I stanowią przestrzeń nazw
+   tej mapy modelowej.
+   ============================================================ */
+
+SET NAMES utf8mb4;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_isd1;
+
+CREATE TEMPORARY TABLE tmp_isd1 (
+    nazwa VARCHAR(200) NOT NULL PRIMARY KEY,
+    rodzic VARCHAR(200) DEFAULT NULL,
+    typ VARCHAR(20) NOT NULL,
+    rodzaj VARCHAR(20) DEFAULT NULL,
+    opis TEXT NOT NULL
+) ENGINE=InnoDB;
+
+INSERT INTO tmp_isd1
+(nazwa, rodzic, typ, rodzaj, opis)
+VALUES
+
+/* ============================================================
+   00 – KORZEŃ
+   ============================================================ */
+
+('Imperial Star Destroyer Type I – wnętrze',
+ NULL, 'lokacja', 'inne',
+ '[LORE: CANON / LEGENDS / INFERRED] Kompleksowa mapa wnętrza Imperial I-class Star Destroyer produkcji Kuat Drive Yards. Model przestrzenny obejmuje sekcje dziobową, centralną, rufową, nadbudówkę, pokłady, pomieszczenia dowodzenia, techniczne, mieszkalne, lotnicze i wojskowe. Numeracja i szczegółowy podział pokładów są modelem projektowym HOLOLINK, a nie oficjalnym planem stoczniowym.'),
+
+/* ============================================================
+   01 – GŁÓWNY PODZIAŁ KONSTRUKCYJNY
+   ============================================================ */
+
+('ISD-I – Sekcja dziobowa',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: INFERRED] Przednia część kadłuba obejmująca pomieszczenia nawigacyjne, sensory, systemy namierzania, przednie baterie uzbrojenia, stanowiska traktora i infrastrukturę dziobową. Dostęp wojskowy.'),
+
+('ISD-I – Sekcja centralna',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: INFERRED] Centralna część kadłuba zawierająca główne przestrzenie mieszkalne, logistyczne, techniczne, medyczne i komunikacyjne.'),
+
+('ISD-I – Sekcja rufowa',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: INFERRED] Rufowa część okrętu obejmująca maszynownię, zespoły napędowe, instalacje energetyczne i pomieszczenia obsługi silników.'),
+
+('ISD-I – Nadbudówka dowodzenia',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: CANON / INFERRED] Charakterystyczna nadbudówka mostka i zaplecza dowodzenia. Obejmuje mostek, pomieszczenia sztabowe, kwatery dowódcze, systemy komunikacyjne i stanowiska kontroli.'),
+
+('ISD-I – Sekcja górna',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: INFERRED] Górne przestrzenie kadłuba i nadbudówki, obejmujące pomieszczenia dowodzenia, sensory, stanowiska obserwacyjne i instalacje techniczne.'),
+
+('ISD-I – Sekcja dolna',
+ 'Imperial Star Destroyer Type I – wnętrze','lokacja','inne',
+ '[LORE: CANON / INFERRED] Dolna część kadłuba obejmująca główne hangary, doki, pokłady desantowe, magazyny i infrastrukturę obsługi jednostek pokładowych.'),
+
+/* ============================================================
+   02 – MODEL POKŁADÓW
+   ============================================================ */
+
+('ISD-I – Pokład 01 – mostek i dowodzenie',
+ 'ISD-I – Nadbudówka dowodzenia','lokacja','inne',
+ '[LORE: INFERRED] Projektowy pokład dowodzenia. Najważniejsze stanowiska kontroli okrętu i infrastruktura dowództwa.'),
+
+('ISD-I – Pokład 02 – sztab i oficerowie',
+ 'ISD-I – Nadbudówka dowodzenia','lokacja','inne',
+ '[LORE: LEGENDS / INFERRED] Projektowy pokład pomieszczeń sztabowych, oficerskich, odpraw i administracji dowódczej.'),
+
+('ISD-I – Pokład 03 – sensory i łączność',
+ 'ISD-I – Sekcja dziobowa','lokacja','inne',
+ '[LORE: INFERRED] Pokład infrastruktury sensorycznej, komunikacyjnej, komputerowej i analizy sygnałów.'),
+
+('ISD-I – Pokład 04 – nawigacja i operacje',
+ 'ISD-I – Sekcja dziobowa','lokacja','inne',
+ '[LORE: INFERRED] Pokład nawigacji, systemów operacyjnych i kontroli ruchu okrętu.'),
+
+('ISD-I – Pokład 05 – załoga oficerska',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pokład zakwaterowania oficerów i personelu specjalistycznego.'),
+
+('ISD-I – Pokład 06 – załoga',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pokład pomieszczeń marynarskich, sanitarnych, rekreacyjnych i socjalnych.'),
+
+('ISD-I – Pokład 07 – załoga',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Dodatkowa strefa zakwaterowania personelu okrętu.'),
+
+('ISD-I – Pokład 08 – logistyka',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pokład magazynów, zaopatrzenia, dystrybucji materiałów i transportu wewnętrznego.'),
+
+('ISD-I – Pokład 09 – medyczny',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pokład głównego zaplecza medycznego.'),
+
+('ISD-I – Pokład 10 – więzienie i bezpieczeństwo',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: LEGENDS / INFERRED] Pokład kontrolowany przez służby bezpieczeństwa i ochronę okrętu.'),
+
+('ISD-I – Pokład 11 – szturmowcy',
+ 'ISD-I – Sekcja dolna','lokacja','inne',
+ '[LORE: CANON / INFERRED] Pokład koszar, uzbrojenia i przygotowania oddziałów szturmowych.'),
+
+('ISD-I – Pokład 12 – transport i desant',
+ 'ISD-I – Sekcja dolna','lokacja','inne',
+ '[LORE: INFERRED] Pokład obsługi transportowców, jednostek desantowych i wyposażenia wojsk lądowych.'),
+
+('ISD-I – Pokład 13 – hangary',
+ 'ISD-I – Sekcja dolna','lokacja','inne',
+ '[LORE: CANON] Pokład głównej infrastruktury lotniczej i hangarowej.'),
+
+('ISD-I – Pokład 14 – uzbrojenie',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pokład obsługi baterii uzbrojenia, stanowisk kierowania ogniem i magazynów amunicji.'),
+
+('ISD-I – Pokład 15 – reaktor i energia',
+ 'ISD-I – Sekcja rufowa','lokacja','inne',
+ '[LORE: INFERRED] Pokład infrastruktury energetycznej, reaktora i dystrybucji energii.'),
+
+('ISD-I – Pokład 16 – maszynownia',
+ 'ISD-I – Sekcja rufowa','lokacja','inne',
+ '[LORE: CANON / INFERRED] Pokład napędu głównego i urządzeń pomocniczych.'),
+
+('ISD-I – Pokład 17 – systemy pomocnicze',
+ 'ISD-I – Sekcja rufowa','lokacja','inne',
+ '[LORE: INFERRED] Pokład urządzeń podtrzymywania życia, wentylacji, gospodarki wodnej i systemów awaryjnych.'),
+
+/* ============================================================
+   03 – MOSTEK
+   ============================================================ */
+
+('ISD-I – Mostek główny',
+ 'ISD-I – Pokład 01 – mostek i dowodzenie','budynek','biuro',
+ '[LORE: CANON] Główne centrum dowodzenia okrętem w charakterystycznej nadbudówce. Dostęp wyłącznie dla dowództwa i upoważnionego personelu.'),
+
+('ISD-I – Stanowisko kapitana',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Główne stanowisko dowódcy okrętu.'),
+
+('ISD-I – Stanowiska oficerów mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: CANON / INFERRED] Stanowiska oficerów wachtowych i personelu dowodzenia.'),
+
+('ISD-I – Stanowisko nawigacyjne mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: CANON / INFERRED] Stanowisko kontroli kursu, położenia i manewrów okrętu.'),
+
+('ISD-I – Stanowisko komunikacyjne mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Obsługa komunikacji operacyjnej i rozkazów.'),
+
+('ISD-I – Stanowisko sensorów mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Prezentacja danych sensorów i wykrytych jednostek.'),
+
+('ISD-I – Stanowisko taktyczne mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Analiza sytuacji taktycznej i koordynacja walki.'),
+
+('ISD-I – Stanowisko kontroli uzbrojenia mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Nadzór nad systemami uzbrojenia i autoryzacja użycia broni.'),
+
+('ISD-I – Stanowisko kontroli lotów mostka',
+ 'ISD-I – Mostek główny','budynek','biuro',
+ '[LORE: INFERRED] Nadzór dowództwa nad operacjami lotniczymi.'),
+
+('ISD-I – Centrum operacyjne',
+ 'ISD-I – Pokład 01 – mostek i dowodzenie','budynek','biuro',
+ '[LORE: INFERRED] Pomieszczenie koordynacji operacji okrętu i przekazywania informacji dowództwu.'),
+
+('ISD-I – Centrum łączności dowodzenia',
+ 'ISD-I – Pokład 01 – mostek i dowodzenie','budynek','biuro',
+ '[LORE: INFERRED] Zabezpieczone pomieszczenie komunikacji dowódczej.'),
+
+('ISD-I – Sala odpraw dowództwa',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Sala odpraw operacyjnych dla dowódcy i oficerów sztabowych.'),
+
+('ISD-I – Sala narad sztabu',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Pomieszczenie narad dowództwa.'),
+
+('ISD-I – Centrum wywiadowcze',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Analiza danych wywiadowczych, informacji o przeciwniku i celach operacyjnych.'),
+
+('ISD-I – Centrum analizy danych',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Analiza raportów, danych sensorów i informacji operacyjnych.'),
+
+('ISD-I – Gabinet dowódcy',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Prywatny gabinet dowódcy okrętu.'),
+
+('ISD-I – Kwatera kapitana',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','inne',
+ '[LORE: LEGENDS / INFERRED] Prywatne pomieszczenia mieszkalne kapitana.'),
+
+('ISD-I – Kwatery oficerów sztabowych',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne oficerów sztabu.'),
+
+('ISD-I – Kwatera adiutanta dowódcy',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenie personelu bezpośrednio wspierającego dowódcę.'),
+
+/* ============================================================
+   04 – SENSORY I ŁĄCZNOŚĆ
+   ============================================================ */
+
+('ISD-I – Centrum sensorów',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Centralna obsługa danych sensorów okrętu.'),
+
+('ISD-I – Centrum wykrywania dalekiego zasięgu',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Analiza sygnałów i wykrywanie obiektów w przestrzeni kosmicznej.'),
+
+('ISD-I – Centrum walki elektronicznej',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Obsługa zakłóceń, przeciwdziałania elektronicznego i analizy sygnałów.'),
+
+('ISD-I – Centrum kryptograficzne',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Zabezpieczona obsługa szyfrowanej komunikacji imperialnej.'),
+
+('ISD-I – Serwerownia główna',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','inne',
+ '[LORE: INFERRED] Główne systemy komputerowe i infrastruktura przetwarzania danych.'),
+
+('ISD-I – Archiwum danych pokładowych',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie dokumentacji technicznej, operacyjnej i administracyjnej.'),
+
+('ISD-I – Pomieszczenie głównego komputera',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','inne',
+ '[LORE: INFERRED] Zabezpieczone pomieszczenie centralnych systemów obliczeniowych.'),
+
+('ISD-I – Centrum transmisji dalekiego zasięgu',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: CANON / INFERRED] Obsługa transmisji komunikacyjnych, w tym łączności dalekiego zasięgu.'),
+
+('ISD-I – Centrum monitorowania systemów okrętowych',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Nadzór nad stanem instalacji i systemów jednostki.'),
+
+('ISD-I – Pomieszczenie komunikacji wewnętrznej',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','inne',
+ '[LORE: INFERRED] Obsługa systemów komunikacji pokładowej.'),
+
+/* ============================================================
+   05 – NAWIGACJA
+   ============================================================ */
+
+('ISD-I – Centrum nawigacji',
+ 'ISD-I – Pokład 04 – nawigacja i operacje','budynek','biuro',
+ '[LORE: CANON / INFERRED] Centrum kontroli nawigacji okrętu.'),
+
+('ISD-I – Pomieszczenie navicomputera',
+ 'ISD-I – Pokład 04 – nawigacja i operacje','budynek','inne',
+ '[LORE: CANON / INFERRED] Zabezpieczone pomieszczenie komputerów nawigacyjnych.'),
+
+('ISD-I – Centrum planowania skoków nadprzestrzennych',
+ 'ISD-I – Pokład 04 – nawigacja i operacje','budynek','biuro',
+ '[LORE: INFERRED] Planowanie tras i parametrów skoków nadprzestrzennych.'),
+
+('ISD-I – Stanowisko kontroli manewrów',
+ 'ISD-I – Pokład 04 – nawigacja i operacje','budynek','biuro',
+ '[LORE: INFERRED] Kontrola manewrów i orientacji okrętu.'),
+
+('ISD-I – Pomieszczenie map gwiezdnych',
+ 'ISD-I – Pokład 04 – nawigacja i operacje','budynek','biuro',
+ '[LORE: INFERRED] Opracowywanie i przechowywanie map nawigacyjnych.'),
+
+/* ============================================================
+   06 – KWATERY I ZAPLECZE SOCJALNE
+   ============================================================ */
+
+('ISD-I – Strefa kwater oficerskich',
+ 'ISD-I – Pokład 05 – załoga oficerska','lokacja','inne',
+ '[LORE: INFERRED] Strefa zakwaterowania oficerów.'),
+
+('ISD-I – Kwatery starszych oficerów',
+ 'ISD-I – Strefa kwater oficerskich','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne starszych oficerów.'),
+
+('ISD-I – Kwatery oficerów młodszych',
+ 'ISD-I – Strefa kwater oficerskich','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne młodszych oficerów.'),
+
+('ISD-I – Mesa oficerska',
+ 'ISD-I – Pokład 05 – załoga oficerska','budynek','kantyna',
+ '[LORE: INFERRED] Zaplecze gastronomiczne oficerów.'),
+
+('ISD-I – Salon oficerski',
+ 'ISD-I – Pokład 05 – załoga oficerska','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenie wypoczynkowe oficerów.'),
+
+('ISD-I – Strefa kwater marynarskich A',
+ 'ISD-I – Pokład 06 – załoga','lokacja','inne',
+ '[LORE: INFERRED] Pierwsza z projektowych stref zakwaterowania marynarzy.'),
+
+('ISD-I – Strefa kwater marynarskich B',
+ 'ISD-I – Pokład 07 – załoga','lokacja','inne',
+ '[LORE: INFERRED] Druga z projektowych stref zakwaterowania marynarzy.'),
+
+('ISD-I – Sypialnie wieloosobowe A',
+ 'ISD-I – Strefa kwater marynarskich A','budynek','inne',
+ '[LORE: INFERRED] Wieloosobowe pomieszczenia mieszkalne marynarzy.'),
+
+('ISD-I – Sypialnie wieloosobowe B',
+ 'ISD-I – Strefa kwater marynarskich B','budynek','inne',
+ '[LORE: INFERRED] Wieloosobowe pomieszczenia mieszkalne marynarzy.'),
+
+('ISD-I – Kwatery podoficerów',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne podoficerów.'),
+
+('ISD-I – Kwatery techników',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne personelu technicznego.'),
+
+('ISD-I – Kwatery inżynierów',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia mieszkalne personelu inżynieryjnego.'),
+
+('ISD-I – Kwatery personelu łączności',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Zakwaterowanie specjalistów komunikacji.'),
+
+('ISD-I – Kwatery nawigatorów',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Zakwaterowanie personelu nawigacyjnego.'),
+
+('ISD-I – Kwatery operatorów uzbrojenia',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Zakwaterowanie załóg baterii uzbrojenia.'),
+
+('ISD-I – Kantyna główna',
+ 'ISD-I – Pokład 06 – załoga','budynek','kantyna',
+ '[LORE: INFERRED] Główna przestrzeń gastronomiczna marynarzy.'),
+
+('ISD-I – Kantyna pomocnicza',
+ 'ISD-I – Pokład 07 – załoga','budynek','kantyna',
+ '[LORE: INFERRED] Dodatkowy punkt wydawania posiłków.'),
+
+('ISD-I – Główna kuchnia okrętowa',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Przygotowywanie posiłków dla personelu.'),
+
+('ISD-I – Magazyn żywności',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie zapasów żywności.'),
+
+('ISD-I – Pomieszczenie wypoczynkowe załogi',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Wspólna przestrzeń wypoczynku marynarzy.'),
+
+('ISD-I – Sala rekreacyjna',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenie rekreacyjne personelu.'),
+
+('ISD-I – Pralnia główna',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Obsługa prania i konserwacji odzieży.'),
+
+('ISD-I – Szatnie załogi',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia przechowywania mundurów i odzieży.'),
+
+('ISD-I – Sanitariaty załogi',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Zaplecze sanitarne marynarzy.'),
+
+('ISD-I – Łaźnie załogi',
+ 'ISD-I – Pokład 07 – załoga','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenia higieniczne załogi.'),
+
+/* ============================================================
+   07 – LOGISTYKA
+   ============================================================ */
+
+('ISD-I – Główny magazyn zaopatrzenia',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Centralny magazyn materiałów i zaopatrzenia okrętu.'),
+
+('ISD-I – Magazyn części zamiennych',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Części zamienne do urządzeń i instalacji okrętowych.'),
+
+('ISD-I – Magazyn narzędzi',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie narzędzi warsztatowych.'),
+
+('ISD-I – Magazyn materiałów technicznych',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Materiały eksploatacyjne i techniczne.'),
+
+('ISD-I – Magazyn mundurów',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie umundurowania.'),
+
+('ISD-I – Centrum dystrybucji zaopatrzenia',
+ 'ISD-I – Pokład 08 – logistyka','budynek','biuro',
+ '[LORE: INFERRED] Zarządzanie przepływem materiałów i zaopatrzenia.'),
+
+('ISD-I – Terminal logistyczny',
+ 'ISD-I – Pokład 08 – logistyka','budynek','biuro',
+ '[LORE: INFERRED] System ewidencji i wydawania materiałów.'),
+
+('ISD-I – Strefa przeładunkowa',
+ 'ISD-I – Pokład 08 – logistyka','lokacja','magazyn',
+ '[LORE: INFERRED] Obszar przyjmowania i przekazywania ładunków.'),
+
+('ISD-I – Magazyn wody',
+ 'ISD-I – Pokład 08 – logistyka','budynek','magazyn',
+ '[LORE: INFERRED] Zbiorniki i zapasy wody użytkowej.'),
+
+('ISD-I – Winda towarowa główna',
+ 'ISD-I – Pokład 08 – logistyka','budynek','inne',
+ '[LORE: INFERRED] Pionowy transport materiałów między pokładami.'),
+
+/* ============================================================
+   08 – MEDBAY
+   ============================================================ */
+
+('ISD-I – Główny kompleks medyczny',
+ 'ISD-I – Pokład 09 – medyczny','lokacja','inne',
+ '[LORE: INFERRED] Główne zaplecze medyczne okrętu.'),
+
+('ISD-I – Izba przyjęć',
+ 'ISD-I – Główny kompleks medyczny','budynek','biuro',
+ '[LORE: INFERRED] Przyjmowanie rannych i chorych.'),
+
+('ISD-I – Sala operacyjna',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Przeprowadzanie operacji.'),
+
+('ISD-I – Sala zabiegowa',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Zabiegi medyczne i stabilizacja pacjentów.'),
+
+('ISD-I – Oddział szpitalny',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Hospitalizacja załogi.'),
+
+('ISD-I – Oddział intensywnej opieki',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Opieka nad pacjentami w stanie ciężkim.'),
+
+('ISD-I – Izolatki medyczne',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Izolacja pacjentów wymagających odosobnienia.'),
+
+('ISD-I – Laboratorium medyczne',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Diagnostyka i analizy medyczne.'),
+
+('ISD-I – Apteka okrętowa',
+ 'ISD-I – Główny kompleks medyczny','budynek','magazyn',
+ '[LORE: INFERRED] Wydawanie i przechowywanie leków.'),
+
+('ISD-I – Magazyn sprzętu medycznego',
+ 'ISD-I – Główny kompleks medyczny','budynek','magazyn',
+ '[LORE: INFERRED] Sprzęt ratowniczy i medyczny.'),
+
+('ISD-I – Gabinet lekarzy',
+ 'ISD-I – Główny kompleks medyczny','budynek','biuro',
+ '[LORE: INFERRED] Konsultacje i badania.'),
+
+('ISD-I – Pomieszczenie personelu medycznego',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Zaplecze personelu medycznego.'),
+
+('ISD-I – Punkt pierwszej pomocy',
+ 'ISD-I – Pokład 11 – szturmowcy','budynek','inne',
+ '[LORE: INFERRED] Lokalny punkt stabilizacji rannych oddziałów lądowych.'),
+
+('ISD-I – Pomieszczenie dekontaminacji',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Usuwanie skażeń biologicznych i chemicznych.'),
+
+('ISD-I – Kostnica',
+ 'ISD-I – Główny kompleks medyczny','budynek','inne',
+ '[LORE: INFERRED] Przechowywanie ciał zmarłych członków załogi.'),
+
+/* ============================================================
+   09 – WIĘZIENIE I BEZPIECZEŃSTWO
+   ============================================================ */
+
+('ISD-I – Kompleks więzienny',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','lokacja','inne',
+ '[LORE: LEGENDS / INFERRED] Zabezpieczony kompleks przetrzymywania więźniów i jeńców.'),
+
+('ISD-I – Cele więzienne',
+ 'ISD-I – Kompleks więzienny','budynek','inne',
+ '[LORE: LEGENDS / INFERRED] Standardowe cele więzienne.'),
+
+('ISD-I – Cele izolacyjne',
+ 'ISD-I – Kompleks więzienny','budynek','inne',
+ '[LORE: INFERRED] Cele o zaostrzonym rygorze.'),
+
+('ISD-I – Pomieszczenia przesłuchań',
+ 'ISD-I – Kompleks więzienny','budynek','biuro',
+ '[LORE: LEGENDS / INFERRED] Przesłuchania zatrzymanych.'),
+
+('ISD-I – Stanowisko straży więziennej',
+ 'ISD-I – Kompleks więzienny','budynek','biuro',
+ '[LORE: INFERRED] Posterunek nadzoru więzienia.'),
+
+('ISD-I – Pomieszczenie kontroli więźniów',
+ 'ISD-I – Kompleks więzienny','budynek','inne',
+ '[LORE: INFERRED] Kontrola osób zatrzymanych.'),
+
+('ISD-I – Centrum monitoringu bezpieczeństwa',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','biuro',
+ '[LORE: INFERRED] Monitoring systemów bezpieczeństwa.'),
+
+('ISD-I – Główna zbrojownia ochrony',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','magazyn',
+ '[LORE: INFERRED] Broń i wyposażenie oddziałów ochrony.'),
+
+('ISD-I – Centrum alarmowe',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','biuro',
+ '[LORE: INFERRED] Obsługa alarmów i incydentów bezpieczeństwa.'),
+
+('ISD-I – Punkt kontroli dostępu',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','biuro',
+ '[LORE: INFERRED] Kontrola dostępu do pomieszczeń zastrzeżonych.'),
+
+('ISD-I – Posterunek ochrony mostka',
+ 'ISD-I – Pokład 01 – mostek i dowodzenie','budynek','biuro',
+ '[LORE: INFERRED] Ochrona głównego centrum dowodzenia.'),
+
+('ISD-I – Posterunek ochrony reaktora',
+ 'ISD-I – Pokład 15 – reaktor i energia','budynek','biuro',
+ '[LORE: INFERRED] Ochrona sekcji energetycznej.'),
+
+('ISD-I – Posterunek ochrony hangarów',
+ 'ISD-I – Pokład 13 – hangary','budynek','biuro',
+ '[LORE: INFERRED] Kontrola dostępu do hangarów.'),
+
+/* ============================================================
+   10 – SZTURMOWCY I WOJSKA LĄDOWE
+   ============================================================ */
+
+('ISD-I – Kompleks koszar szturmowców',
+ 'ISD-I – Pokład 11 – szturmowcy','lokacja','inne',
+ '[LORE: CANON / INFERRED] Zakwaterowanie i zaplecze jednostek szturmowych.'),
+
+('ISD-I – Koszary szturmowców A',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','inne',
+ '[LORE: INFERRED] Wieloosobowe pomieszczenia zakwaterowania szturmowców.'),
+
+('ISD-I – Koszary szturmowców B',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','inne',
+ '[LORE: INFERRED] Dodatkowa strefa zakwaterowania szturmowców.'),
+
+('ISD-I – Kwatery oficerów szturmowców',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','inne',
+ '[LORE: INFERRED] Kwatery dowódców oddziałów szturmowych.'),
+
+('ISD-I – Zbrojownia szturmowców',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie broni oddziałów szturmowych.'),
+
+('ISD-I – Magazyn pancerzy szturmowców',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','magazyn',
+ '[LORE: INFERRED] Magazyn pancerzy i elementów wyposażenia.'),
+
+('ISD-I – Sala treningowa szturmowców',
+ 'ISD-I – Kompleks koszar szturmowców','budynek','inne',
+ '[LORE: INFERRED] Trening i przygotowanie bojowe.'),
+
+('ISD-I – Sala odpraw desantowych',
+ 'ISD-I – Pokład 11 – szturmowcy','budynek','biuro',
+ '[LORE: INFERRED] Planowanie operacji naziemnych.'),
+
+('ISD-I – Centrum dowodzenia wojsk lądowych',
+ 'ISD-I – Pokład 11 – szturmowcy','budynek','biuro',
+ '[LORE: INFERRED] Dowodzenie oddziałami desantowymi.'),
+
+('ISD-I – Magazyn wyposażenia wojsk lądowych',
+ 'ISD-I – Pokład 11 – szturmowcy','budynek','magazyn',
+ '[LORE: INFERRED] Sprzęt i wyposażenie wojsk desantowych.'),
+
+/* ============================================================
+   11 – TRANSPORT I POJAZDY
+   ============================================================ */
+
+('ISD-I – Strefa transportu desantowego',
+ 'ISD-I – Pokład 12 – transport i desant','lokacja','inne',
+ '[LORE: INFERRED] Obsługa transportu sił lądowych i jednostek desantowych.'),
+
+('ISD-I – Garaż pojazdów wojskowych',
+ 'ISD-I – Strefa transportu desantowego','budynek','garaz',
+ '[LORE: CANON / LEGENDS] Przechowywanie pojazdów wojskowych przewożonych przez okręt.'),
+
+('ISD-I – Garaż AT-AT',
+ 'ISD-I – Strefa transportu desantowego','budynek','garaz',
+ '[LORE: CANON / LEGENDS] Stanowiska przechowywania i obsługi kroczących transporterów AT-AT. Typowy przewożony kontyngent obejmuje do 20 maszyn.'),
+
+('ISD-I – Garaż AT-ST i AT-DP',
+ 'ISD-I – Strefa transportu desantowego','budynek','garaz',
+ '[LORE: CANON / LEGENDS] Garaż mniejszych pojazdów kroczących, w tym AT-ST lub AT-DP zależnie od wyposażenia.'),
+
+('ISD-I – Garaż Imperial Troop Transport',
+ 'ISD-I – Strefa transportu desantowego','budynek','garaz',
+ '[LORE: CANON / LEGENDS] Przechowywanie transporterów wojskowych. Typ wyposażenia zależy od egzemplarza.'),
+
+('ISD-I – Warsztat pojazdów lądowych',
+ 'ISD-I – Strefa transportu desantowego','budynek','inne',
+ '[LORE: INFERRED] Naprawy i konserwacja pojazdów wojskowych.'),
+
+('ISD-I – Magazyn części pojazdów',
+ 'ISD-I – Strefa transportu desantowego','budynek','magazyn',
+ '[LORE: INFERRED] Części zamienne do pojazdów desantowych.'),
+
+('ISD-I – Pokład załadunkowy wojsk lądowych',
+ 'ISD-I – Strefa transportu desantowego','lokacja','platforma',
+ '[LORE: INFERRED] Przygotowanie i załadunek wyposażenia oddziałów lądowych.'),
+
+('ISD-I – Doki jednostek desantowych',
+ 'ISD-I – Pokład 12 – transport i desant','lokacja','hangar',
+ '[LORE: CANON / INFERRED] Stanowiska obsługi i przechowywania jednostek desantowych.'),
+
+('ISD-I – Stanowisko obsługi promów Lambda',
+ 'ISD-I – Doki jednostek desantowych','budynek','hangar',
+ '[LORE: CANON] Obsługa promów Lambda-class T-4a. Typowy wykaz wyposażenia podaje osiem jednostek.'),
+
+('ISD-I – Stanowisko obsługi jednostek Sentinel',
+ 'ISD-I – Doki jednostek desantowych','budynek','hangar',
+ '[LORE: LEGENDS / zależne od wyposażenia] Stanowisko obsługi jednostek desantowych Sentinel-class.'),
+
+('ISD-I – Magazyn sprzętu desantowego',
+ 'ISD-I – Pokład 12 – transport i desant','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie wyposażenia operacji desantowych.'),
+
+/* ============================================================
+   12 – HANGARY I LOTNICTWO
+   ============================================================ */
+
+('ISD-I – Kompleks głównych hangarów',
+ 'ISD-I – Pokład 13 – hangary','lokacja','hangar',
+ '[LORE: CANON] Kompleks hangarowy dolnej części kadłuba. Obejmuje hangary myśliwskie, hangar szturmowy, stanowiska odzyskiwania i infrastrukturę obsługi.'),
+
+('ISD-I – Główny hangar myśliwski',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON] Główna przestrzeń obsługi skrzydła myśliwskiego. Standardowy kontyngent wynosi 72 maszyny.'),
+
+('ISD-I – Główny hangar szturmowy',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON] Hangar atakowy przeznaczony dla transportowców, promów i jednostek desantowych.'),
+
+('ISD-I – Pomocniczy hangar dziobowy',
+ 'ISD-I – Sekcja dziobowa','budynek','hangar',
+ '[LORE: CANON] Mniejszy hangar przedni wykorzystywany do obsługi promów wyższych rangą oficerów i jako zapasowa infrastruktura hangarowa.'),
+
+('ISD-I – Zapasowa zatoka odbioru myśliwców',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON] Mniejsza zatoka przeznaczona do odbioru powracających TIE.'),
+
+('ISD-I – Stanowisko rozładunku pilotów',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: CANON] Strefa opuszczania maszyn i wyprowadzania pilotów po powrocie z misji.'),
+
+('ISD-I – Centrum kontroli ruchu lotniczego',
+ 'ISD-I – Pokład 13 – hangary','budynek','biuro',
+ '[LORE: INFERRED] Kontrola ruchu jednostek w hangarach i przestrzeni bezpośrednio przy okręcie.'),
+
+('ISD-I – Stanowiska kontrolerów lotów',
+ 'ISD-I – Centrum kontroli ruchu lotniczego','budynek','biuro',
+ '[LORE: INFERRED] Stanowiska personelu kierującego startami i lądowaniami.'),
+
+('ISD-I – Pokład startowy TIE',
+ 'ISD-I – Główny hangar myśliwski','lokacja','platforma',
+ '[LORE: CANON / INFERRED] Przestrzeń przygotowania i wypuszczania myśliwców.'),
+
+('ISD-I – Stanowiska startowe TIE',
+ 'ISD-I – Pokład startowy TIE','lokacja','platforma',
+ '[LORE: CANON / INFERRED] Stanowiska organizacji startów eskadr.'),
+
+('ISD-I – Stanowiska odzyskiwania TIE',
+ 'ISD-I – Główny hangar myśliwski','lokacja','platforma',
+ '[LORE: CANON / INFERRED] Obszar odbioru i zabezpieczania powracających myśliwców.'),
+
+('ISD-I – Zespół transferu myśliwców',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: CANON] System transportu myśliwców pomiędzy zatoką odbioru a stanowiskami obsługi i hangarami startowymi.'),
+
+('ISD-I – Tunele transferowe TIE',
+ 'ISD-I – Kompleks głównych hangarów','lokacja','inne',
+ '[LORE: CANON] Tunele transportowe wykorzystywane do przemieszczania myśliwców.'),
+
+('ISD-I – Zespół hangarów startowych TIE',
+ 'ISD-I – Kompleks głównych hangarów','lokacja','hangar',
+ '[LORE: CANON] Zespół stanowisk startowych otaczających otwarcie głównego hangaru.'),
+
+('ISD-I – Hangar serwisowy TIE',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON / INFERRED] Obsługa techniczna myśliwców.'),
+
+('ISD-I – Strefa tankowania TIE',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: CANON / INFERRED] Tankowanie jednostek pokładowych.'),
+
+('ISD-I – Strefa dozbrajania TIE',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: INFERRED] Przygotowanie uzbrojenia maszyn do kolejnych misji.'),
+
+('ISD-I – Warsztat napraw myśliwców',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: INFERRED] Naprawy kadłubów, układów napędowych i systemów pokładowych myśliwców.'),
+
+('ISD-I – Magazyn części myśliwców',
+ 'ISD-I – Kompleks głównych hangarów','budynek','magazyn',
+ '[LORE: INFERRED] Magazyn części zamiennych do maszyn pokładowych.'),
+
+('ISD-I – Opancerzony magazyn TIE Bomber',
+ 'ISD-I – Kompleks głównych hangarów','budynek','magazyn',
+ '[LORE: CANON] Opancerzona przestrzeń przechowywania bombowców i ich uzbrojenia, ograniczająca skutki przypadkowej detonacji.'),
+
+('ISD-I – Pomieszczenie obsługi droidów hangarowych',
+ 'ISD-I – Kompleks głównych hangarów','budynek','inne',
+ '[LORE: INFERRED] Obsługa i serwis droidów pomocniczych.'),
+
+('ISD-I – Kwatery pilotów',
+ 'ISD-I – Pokład 13 – hangary','budynek','inne',
+ '[LORE: INFERRED] Zakwaterowanie pilotów skrzydła pokładowego.'),
+
+('ISD-I – Sala odpraw pilotów',
+ 'ISD-I – Pokład 13 – hangary','budynek','biuro',
+ '[LORE: INFERRED] Odprawy misji lotniczych.'),
+
+('ISD-I – Gotowość bojowa pilotów',
+ 'ISD-I – Pokład 13 – hangary','budynek','inne',
+ '[LORE: INFERRED] Pomieszczenie oczekiwania pilotów w gotowości do startu.'),
+
+('ISD-I – Szatnia pilotów',
+ 'ISD-I – Pokład 13 – hangary','budynek','inne',
+ '[LORE: INFERRED] Przechowywanie kombinezonów i wyposażenia pilotów.'),
+
+('ISD-I – Warsztat wyposażenia lotniczego',
+ 'ISD-I – Pokład 13 – hangary','budynek','inne',
+ '[LORE: INFERRED] Konserwacja wyposażenia obsługi lotniczej.'),
+
+('ISD-I – Magazyn paliwa lotniczego',
+ 'ISD-I – Pokład 13 – hangary','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie materiałów eksploatacyjnych dla jednostek pokładowych.'),
+
+('ISD-I – Magazyn uzbrojenia lotniczego',
+ 'ISD-I – Pokład 13 – hangary','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie uzbrojenia maszyn pokładowych.'),
+
+('ISD-I – Stanowisko obsługi TIE Fighter',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON] Obsługa podstawowych myśliwców TIE/ln.'),
+
+('ISD-I – Stanowisko obsługi TIE Bomber',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON] Obsługa bombowców TIE/sa.'),
+
+('ISD-I – Stanowisko obsługi TIE Interceptor',
+ 'ISD-I – Kompleks głównych hangarów','budynek','hangar',
+ '[LORE: CANON / zależne od wyposażenia] Obsługa TIE/IN w konfiguracjach skrzydła wykorzystujących interceptory.'),
+
+('ISD-I – Stanowisko obsługi promów',
+ 'ISD-I – Główny hangar szturmowy','budynek','hangar',
+ '[LORE: CANON] Obsługa promów i jednostek transportowych.'),
+
+('ISD-I – Stanowisko obsługi transportowców',
+ 'ISD-I – Główny hangar szturmowy','budynek','hangar',
+ '[LORE: CANON / INFERRED] Obsługa transportowców i jednostek pomocniczych.'),
+
+/* ============================================================
+   13 – UZBROJENIE
+   ============================================================ */
+
+('ISD-I – Kompleks uzbrojenia',
+ 'ISD-I – Pokład 14 – uzbrojenie','lokacja','inne',
+ '[LORE: CANON / INFERRED] Główna infrastruktura obsługi uzbrojenia okrętu.'),
+
+('ISD-I – Centrum kontroli uzbrojenia',
+ 'ISD-I – Kompleks uzbrojenia','budynek','biuro',
+ '[LORE: INFERRED] Nadzór nad bateriami uzbrojenia.'),
+
+('ISD-I – Centrum kierowania ogniem',
+ 'ISD-I – Kompleks uzbrojenia','budynek','biuro',
+ '[LORE: INFERRED] Koordynacja ostrzału i przydział celów.'),
+
+('ISD-I – Magazyn amunicji główny',
+ 'ISD-I – Kompleks uzbrojenia','budynek','magazyn',
+ '[LORE: INFERRED] Zabezpieczone składowanie amunicji i komponentów uzbrojenia.'),
+
+('ISD-I – Magazyn torped i pocisków',
+ 'ISD-I – Kompleks uzbrojenia','budynek','magazyn',
+ '[LORE: INFERRED] Składowanie amunicji rakietowej. Konkretne wyposażenie zależy od konfiguracji okrętu.'),
+
+('ISD-I – Warsztat naprawy uzbrojenia',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: INFERRED] Naprawy i konserwacja systemów uzbrojenia.'),
+
+('ISD-I – Stanowisko baterii turbolaserowych dziobowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa dziobowych baterii XX-9.'),
+
+('ISD-I – Stanowisko baterii turbolaserowych lewej burty',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa baterii XX-9 lewej burty.'),
+
+('ISD-I – Stanowisko baterii turbolaserowych prawej burty',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa baterii XX-9 prawej burty.'),
+
+('ISD-I – Stanowisko dział jonowych dziobowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa dziobowych dział jonowych NK-7.'),
+
+('ISD-I – Stanowisko dział jonowych burtowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa dział jonowych rozmieszczonych na burtach.'),
+
+('ISD-I – Stanowisko dział jonowych rufowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa rufowych dział jonowych.'),
+
+('ISD-I – Stanowisko ciężkich wież turbolaserowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa sześciu podwójnych ciężkich wież turbolaserowych.'),
+
+('ISD-I – Stanowisko ciężkich wież jonowych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON] Obsługa dwóch podwójnych ciężkich wież jonowych.'),
+
+('ISD-I – Stanowisko dział przeciwlotniczych',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: CANON / LEGENDS] Obsługa uzbrojenia obrony punktowej.'),
+
+('ISD-I – Stanowisko wyrzutni torped',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: zależne od wyposażenia] Obsługa wyrzutni i systemów rakietowych, jeżeli zamontowano je w danej konfiguracji.'),
+
+('ISD-I – Centrum kontroli projektorów traktora',
+ 'ISD-I – Kompleks uzbrojenia','budynek','biuro',
+ '[LORE: CANON] Koordynacja projektorów wiązek ściągających.'),
+
+('ISD-I – Obsługa przedniego projektora traktora',
+ 'ISD-I – Sekcja dziobowa','budynek','inne',
+ '[LORE: CANON] Obsługa przedniego systemu traktora.'),
+
+('ISD-I – Pomieszczenie zasilania baterii uzbrojenia',
+ 'ISD-I – Kompleks uzbrojenia','budynek','inne',
+ '[LORE: INFERRED] Zasilanie i dystrybucja energii dla systemów uzbrojenia.'),
+
+/* ============================================================
+   14 – REAKTOR I ENERGIA
+   ============================================================ */
+
+('ISD-I – Kompleks energetyczny',
+ 'ISD-I – Pokład 15 – reaktor i energia','lokacja','inne',
+ '[LORE: CANON / INFERRED] Główna infrastruktura energetyczna okrętu.'),
+
+('ISD-I – Główna komora reaktora',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: CANON / INFERRED] Komora głównego reaktora jonizacji słonecznej. Strefa najwyższego poziomu bezpieczeństwa.'),
+
+('ISD-I – Stanowisko kontroli reaktora',
+ 'ISD-I – Kompleks energetyczny','budynek','biuro',
+ '[LORE: INFERRED] Kontrola pracy głównego reaktora.'),
+
+('ISD-I – Centrum monitorowania energii',
+ 'ISD-I – Kompleks energetyczny','budynek','biuro',
+ '[LORE: INFERRED] Monitorowanie produkcji i wykorzystania energii.'),
+
+('ISD-I – Rozdzielnia główna',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Rozdział energii do głównych systemów okrętu.'),
+
+('ISD-I – Magistrala energetyczna główna',
+ 'ISD-I – Kompleks energetyczny','lokacja','inne',
+ '[LORE: INFERRED] Główne ciągi dystrybucji energii.'),
+
+('ISD-I – Systemy chłodzenia reaktora',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Układy chłodzenia i odprowadzania ciepła.'),
+
+('ISD-I – Pomieszczenie pomp chłodziwa',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Pompy obiegu chłodzenia.'),
+
+('ISD-I – Wymienniki ciepła',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Instalacje wymiany i odprowadzania ciepła.'),
+
+('ISD-I – System awaryjnego odprowadzania energii',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Instalacje zabezpieczenia energetycznego.'),
+
+('ISD-I – System awaryjnego odcięcia reaktora',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Zabezpieczenia i urządzenia odcinające pracę reaktora.'),
+
+('ISD-I – Pomieszczenie osłon radiacyjnych',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Kontrola zabezpieczeń i osłon strefy reaktora.'),
+
+('ISD-I – Warsztat energetyczny',
+ 'ISD-I – Kompleks energetyczny','budynek','inne',
+ '[LORE: INFERRED] Naprawy urządzeń energetycznych.'),
+
+('ISD-I – Generatory awaryjne',
+ 'ISD-I – Pokład 15 – reaktor i energia','budynek','inne',
+ '[LORE: INFERRED] Awaryjne źródła zasilania.'),
+
+('ISD-I – Banki akumulatorów',
+ 'ISD-I – Pokład 15 – reaktor i energia','budynek','inne',
+ '[LORE: INFERRED] Magazynowanie energii dla systemów awaryjnych.'),
+
+/* ============================================================
+   15 – NAPĘD
+   ============================================================ */
+
+('ISD-I – Kompleks maszynowni',
+ 'ISD-I – Pokład 16 – maszynownia','lokacja','inne',
+ '[LORE: CANON / INFERRED] Główna infrastruktura napędowa okrętu.'),
+
+('ISD-I – Główna maszynownia',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: INFERRED] Centrum obsługi i nadzoru napędu.'),
+
+('ISD-I – Zespół silnika jonowego lewego',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: CANON] Obsługa jednego z trzech głównych silników jonowych.'),
+
+('ISD-I – Zespół silnika jonowego centralnego',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: CANON] Obsługa centralnego silnika jonowego.'),
+
+('ISD-I – Zespół silnika jonowego prawego',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: CANON] Obsługa jednego z trzech głównych silników jonowych.'),
+
+('ISD-I – Centrum kontroli napędu',
+ 'ISD-I – Kompleks maszynowni','budynek','biuro',
+ '[LORE: INFERRED] Sterowanie głównymi zespołami napędowymi.'),
+
+('ISD-I – Pomieszczenie serwisowe silników',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: INFERRED] Konserwacja silników i ich instalacji.'),
+
+('ISD-I – System chłodzenia napędu',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: INFERRED] Instalacje chłodzenia głównych zespołów napędowych.'),
+
+('ISD-I – Pomieszczenie napędu manewrowego',
+ 'ISD-I – Kompleks maszynowni','budynek','inne',
+ '[LORE: INFERRED] Obsługa silników manewrowych.'),
+
+('ISD-I – Kompleks hipernapędu',
+ 'ISD-I – Pokład 16 – maszynownia','lokacja','inne',
+ '[LORE: CANON / INFERRED] Infrastruktura napędu nadświetlnego.'),
+
+('ISD-I – Generator hipernapędu',
+ 'ISD-I – Kompleks hipernapędu','budynek','inne',
+ '[LORE: CANON / INFERRED] Główny generator hipernapędu.'),
+
+('ISD-I – Pomieszczenie napędu nadświetlnego',
+ 'ISD-I – Kompleks hipernapędu','budynek','inne',
+ '[LORE: INFERRED] Instalacje systemów napędu nadświetlnego.'),
+
+('ISD-I – Pomieszczenie kontroli hipernapędu',
+ 'ISD-I – Kompleks hipernapędu','budynek','biuro',
+ '[LORE: INFERRED] Kontrola i diagnostyka hipernapędu.'),
+
+/* ============================================================
+   16 – SYSTEMY POMOCNICZE
+   ============================================================ */
+
+('ISD-I – Kompleks podtrzymywania życia',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','lokacja','inne',
+ '[LORE: INFERRED] Infrastruktura utrzymywania warunków życia na pokładach.'),
+
+('ISD-I – Centrum kontroli atmosfery',
+ 'ISD-I – Kompleks podtrzymywania życia','budynek','biuro',
+ '[LORE: INFERRED] Kontrola składu atmosfery i warunków środowiskowych.'),
+
+('ISD-I – Stacja oczyszczania powietrza',
+ 'ISD-I – Kompleks podtrzymywania życia','budynek','inne',
+ '[LORE: INFERRED] Filtracja i oczyszczanie powietrza.'),
+
+('ISD-I – System wentylacji głównej',
+ 'ISD-I – Kompleks podtrzymywania życia','budynek','inne',
+ '[LORE: INFERRED] Główne instalacje wentylacyjne.'),
+
+('ISD-I – Stacja uzdatniania wody',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Oczyszczanie i uzdatnianie wody.'),
+
+('ISD-I – Oczyszczalnia ścieków',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Przetwarzanie ścieków.'),
+
+('ISD-I – Centrum gospodarki odpadami',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Segregacja i przetwarzanie odpadów.'),
+
+('ISD-I – Centrum przeciwpożarowe',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','biuro',
+ '[LORE: INFERRED] Nadzór nad systemami wykrywania i gaszenia pożarów.'),
+
+('ISD-I – Magazyn sprzętu ratowniczego',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','magazyn',
+ '[LORE: INFERRED] Sprzęt do usuwania awarii i ratowania załogi.'),
+
+('ISD-I – Warsztat systemów pomocniczych',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Naprawy instalacji pomocniczych.'),
+
+/* ============================================================
+   17 – KOMUNIKACJA WEWNĘTRZNA
+   ============================================================ */
+
+('ISD-I – Główny korytarz dziobowy',
+ 'ISD-I – Sekcja dziobowa','lokacja','inne',
+ '[LORE: INFERRED] Główny ciąg komunikacyjny sekcji dziobowej.'),
+
+('ISD-I – Główny korytarz centralny',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Główny ciąg komunikacyjny sekcji centralnej.'),
+
+('ISD-I – Główny korytarz rufowy',
+ 'ISD-I – Sekcja rufowa','lokacja','inne',
+ '[LORE: INFERRED] Główny ciąg komunikacyjny sekcji rufowej.'),
+
+('ISD-I – Korytarze techniczne',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','lokacja','inne',
+ '[LORE: INFERRED] Sieć przejść technicznych dla personelu serwisowego.'),
+
+('ISD-I – Szyby wind osobowych',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Pionowy transport personelu pomiędzy pokładami.'),
+
+('ISD-I – Szyby wind towarowych',
+ 'ISD-I – Pokład 08 – logistyka','lokacja','inne',
+ '[LORE: INFERRED] Transport materiałów i wyposażenia.'),
+
+('ISD-I – Klatki schodowe',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Alternatywne ciągi komunikacyjne.'),
+
+('ISD-I – Przejścia serwisowe',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Wąskie przejścia dla ekip technicznych.'),
+
+('ISD-I – Główne śluzy bezpieczeństwa',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: INFERRED] Kontrolowane przejścia między strefami.'),
+
+('ISD-I – Punkty orientacyjne i terminale',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: CUSTOM] Projektowe punkty nawigacji wewnętrznej HOLOLINK.'),
+
+/* ============================================================
+   18 – SYSTEMY EWAKUACYJNE I DROIDY
+   ============================================================ */
+
+('ISD-I – Kompleks kapsuł ratunkowych',
+ 'ISD-I – Sekcja centralna','lokacja','inne',
+ '[LORE: CANON / INFERRED] Infrastruktura ewakuacyjna okrętu.'),
+
+('ISD-I – Strefa rozmieszczenia kapsuł ratunkowych',
+ 'ISD-I – Kompleks kapsuł ratunkowych','budynek','inne',
+ '[LORE: CANON / INFERRED] Stanowiska kapsuł ewakuacyjnych i ich wyposażenia.'),
+
+('ISD-I – Centrum obsługi droidów',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Serwis droidów naprawczych, transportowych i pomocniczych.'),
+
+('ISD-I – Warsztat droidów naprawczych',
+ 'ISD-I – Centrum obsługi droidów','budynek','inne',
+ '[LORE: INFERRED] Naprawa i konserwacja droidów technicznych.'),
+
+('ISD-I – Magazyn droidów',
+ 'ISD-I – Centrum obsługi droidów','budynek','magazyn',
+ '[LORE: INFERRED] Przechowywanie droidów i części zamiennych.'),
+
+('ISD-I – Pomieszczenie robotów naprawczych',
+ 'ISD-I – Pokład 17 – systemy pomocnicze','budynek','inne',
+ '[LORE: INFERRED] Zaplecze robotów wykorzystywanych do napraw instalacji.'),
+
+/* ============================================================
+   19 – OCHRONA I DOSTĘP
+   ============================================================ */
+
+('ISD-I – Punkt kontroli dostępu do maszynowni',
+ 'ISD-I – Pokład 16 – maszynownia','budynek','biuro',
+ '[LORE: INFERRED] Kontrola dostępu do instalacji napędowych.'),
+
+('ISD-I – Punkt kontroli dostępu do magazynów',
+ 'ISD-I – Pokład 08 – logistyka','budynek','biuro',
+ '[LORE: INFERRED] Kontrola dostępu do stref logistycznych.'),
+
+('ISD-I – Punkt kontroli dostępu do zbrojowni',
+ 'ISD-I – Kompleks uzbrojenia','budynek','biuro',
+ '[LORE: INFERRED] Kontrola dostępu do magazynów uzbrojenia.'),
+
+('ISD-I – Punkt kontroli dostępu do centrum danych',
+ 'ISD-I – Pokład 03 – sensory i łączność','budynek','biuro',
+ '[LORE: INFERRED] Ochrona systemów informatycznych okrętu.'),
+
+('ISD-I – Pomieszczenie zatrzymań',
+ 'ISD-I – Kompleks więzienny','budynek','inne',
+ '[LORE: INFERRED] Krótkotrwałe przetrzymywanie zatrzymanych przed umieszczeniem w celach.'),
+
+/* ============================================================
+   20 – POMIESZCZENIA ADMINISTRACYJNE I SZKOLENIOWE
+   ============================================================ */
+
+('ISD-I – Biuro administracji okrętu',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Administracja personalna i dokumentacja jednostki.'),
+
+('ISD-I – Archiwum administracyjne',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','magazyn',
+ '[LORE: INFERRED] Dokumenty personalne i administracyjne.'),
+
+('ISD-I – Sala szkoleniowa załogi',
+ 'ISD-I – Pokład 06 – załoga','budynek','inne',
+ '[LORE: INFERRED] Szkolenia i instruktaże załogi.'),
+
+('ISD-I – Sala symulacji taktycznych',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','inne',
+ '[LORE: INFERRED] Ćwiczenia dowódcze i symulacje działań taktycznych.'),
+
+('ISD-I – Sala konferencyjna',
+ 'ISD-I – Pokład 02 – sztab i oficerowie','budynek','biuro',
+ '[LORE: INFERRED] Spotkania i narady personelu dowódczego.'),
+
+('ISD-I – Biuro spraw wewnętrznych',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','biuro',
+ '[LORE: LEGENDS / INFERRED] Kontrola lojalności i postępowania personelu. Dostęp ściśle ograniczony.'),
+
+('ISD-I – Pomieszczenie inspekcji personelu',
+ 'ISD-I – Pokład 10 – więzienie i bezpieczeństwo','budynek','biuro',
+ '[LORE: INFERRED] Kontrole bezpieczeństwa i inspekcje personelu.')
+;

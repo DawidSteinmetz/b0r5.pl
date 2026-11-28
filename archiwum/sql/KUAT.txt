@@ -1,0 +1,913 @@
+
+-- ============================================================
+-- HOLOLINK | KUAT | GEOGRAFIA 3 BBY
+-- MySQL 8.4 / MariaDB kompatybilne składnie podstawowe
+--
+-- Baza źródłowa: hololink (3).sql
+-- Planeta: Kuat
+-- mapa_planety.id: 1262
+--
+-- Nie tworzy tabel trwałych ani nie zmienia schematu.
+-- ID lokalizacji nadaje AUTO_INCREMENT.
+-- uklad_id = NULL (brak potwierdzonego ID układu).
+-- Współrzędne NULL (brak wiarygodnej siatki powierzchniowej).
+-- Status lore zapisany w opisach.
+-- ============================================================
+
+SET NAMES utf8mb4;
+
+DROP PROCEDURE IF EXISTS hololink_import_kuat;
+
+DROP TEMPORARY TABLE IF EXISTS tmp_kuat_lokacje;
+
+CREATE TEMPORARY TABLE tmp_kuat_lokacje (
+    poziom TINYINT UNSIGNED NOT NULL,
+    nazwa VARCHAR(200) NOT NULL,
+    rodzic_nazwa VARCHAR(200) DEFAULT NULL,
+    typ ENUM(
+        'uklad','orbita','powierzchnia',
+        'lokacja','budynek','ladowisko'
+    ) NOT NULL,
+    rodzaj ENUM(
+        'hangar','port','hotel','bankomat','sklep',
+        'kantyna','biuro','garaz','baza','magazyn',
+        'platforma','inne'
+    ) DEFAULT NULL,
+    publiczna TINYINT(1) NOT NULL DEFAULT 0,
+    status ENUM(
+        'aktywna','zamknieta','zniszczona'
+    ) NOT NULL DEFAULT 'aktywna',
+    opis TEXT,
+    PRIMARY KEY (nazwa),
+    KEY ix_tmp_kuat_poziom (poziom)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
+
+-- ============================================================
+-- POZIOM 0: KORZENIE GEOGRAFICZNE
+-- ============================================================
+
+INSERT INTO tmp_kuat_lokacje
+(poziom,nazwa,rodzic_nazwa,typ,rodzaj,publiczna,status,opis)
+VALUES
+
+(0,'Kuat — Powierzchnia Planety',NULL,
+'powierzchnia','inne',1,'aktywna',
+'[LORE: CANON/INFERRED] Główny korzeń kartograficzny powierzchni Kuat. Kuat jest zamieszkanym, zielonym światem w Regionie Światów Jądra. Powierzchnia obejmuje Kuat City, obszary rezydencjonalne, tereny naturalne oraz infrastrukturę korporacyjną i administracyjną. Podział na regiony jest modelem kartograficznym HOLOLINK.'),
+
+(0,'Kuat — Orbita',NULL,
+'orbita','inne',0,'aktywna',
+'[LORE: CANON/LEGENDS] Korzeń infrastruktury orbitalnej planety Kuat. Obejmuje orbitalne instalacje Kuat Drive Yards, pierścień stoczniowy Orbital Array, doki konstrukcyjne, terminale, obiekty logistyczne i wojskowe. Nie jest częścią powierzchni planety. Szczegółowa geometria orbitalna nie została odwzorowana współrzędnymi.');
+
+
+-- ============================================================
+-- POZIOM 1: REGIONY POWIERZCHNIOWE I GŁÓWNY KOMPLEKS ORBITALNY
+-- ============================================================
+
+INSERT INTO tmp_kuat_lokacje
+(poziom,nazwa,rodzic_nazwa,typ,rodzaj,publiczna,status,opis)
+VALUES
+
+(1,'Region Kuat City',
+'Kuat — Powierzchnia Planety',
+'lokacja','inne',1,'aktywna',
+'[LORE: CANON/LEGENDS] Obszar stołecznej aglomeracji Kuat. Obejmuje centrum miejskie, administrację, handel, usługi oraz korporacyjną infrastrukturę powierzchniową. Granice regionu są umownym podziałem kartograficznym.'),
+
+(1,'Region Rezydencjonalny Kuat',
+'Kuat — Powierzchnia Planety',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Region reprezentacyjnych posiadłości i rezydencji kuatiańskiej arystokracji. Kuat jest tradycyjnie związane z wpływowymi rodami i elitą kontrolującą przemysł stoczniowy. Szczegółowy podział terytorialny jest modelem HOLOLINK.'),
+
+(1,'Region Naturalny Kuat',
+'Kuat — Powierzchnia Planety',
+'lokacja','inne',1,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszary zielone, ogrody, krajobrazowe tereny wypoczynkowe i środowisko naturalne planety. Kuat nie jest wyłącznie światem przemysłowym; jego powierzchnia obejmuje również rozległe tereny zielone.'),
+
+(1,'Region Infrastruktury Powierzchniowej',
+'Kuat — Powierzchnia Planety',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Umowny obszar infrastruktury technicznej, transportowej i przemysłowej obsługującej działalność Kuat Drive Yards oraz połączenia powierzchni z orbitalnymi stoczniami.'),
+
+(1,'Kuat Drive Yards Orbital Array',
+'Kuat — Orbita',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Ogromny pierścień orbitalnych stoczni i połączonych modułów przemysłowych otaczających Kuat. W źródłach opisany jako infrastruktura obejmująca stocznie, fabryki, warsztaty, doki, magazyny i przestrzenie mieszkalne. W okresie 3 BBY funkcjonuje jako strategiczny kompleks przemysłowy Imperium.');
+
+
+-- ============================================================
+-- POZIOM 2: MIASTO, OBSZARY I STACJE ORBITALNE
+-- ============================================================
+
+INSERT INTO tmp_kuat_lokacje
+(poziom,nazwa,rodzic_nazwa,typ,rodzaj,publiczna,status,opis)
+VALUES
+
+(2,'Kuat City',
+'Region Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: LEGENDS] Stolica i główny ośrodek miejski planety Kuat. Miasto posiada elegancką architekturę, wysokie wieże i iglice nawiązujące wyglądem do orbitalnych stoczni. Występują tu sklepy, restauracje, hotele i placówki handlowe. Miasto jest ważnym centrum administracyjnym i społecznym planety. Według źródeł Kuat City nie posiada klasycznego naziemnego portu kosmicznego; dostęp odbywa się między innymi promami.'),
+
+(2,'Posiadłości Arystokratyczne Kuat',
+'Region Rezydencjonalny Kuat',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszar prywatnych posiadłości wpływowych rodzin kuatiańskich. Tradycja arystokratyczna ma istotne znaczenie dla struktury społecznej i gospodarczej Kuat. Dokładne granice i nazwy posiadłości nie są ustalone.'),
+
+(2,'Gardens of Tralala',
+'Region Naturalny Kuat',
+'lokacja','inne',1,'aktywna',
+'[LORE: LEGENDS] Znane ogrody znajdujące się na planecie Kuat. Reprezentują zielone i rekreacyjne oblicze planety. Szczegółowy układ ogrodów nie został odwzorowany.'),
+
+(2,'Kompleks Transportu Powierzchniowego',
+'Region Infrastruktury Powierzchniowej',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED] Projektowy kompleks infrastruktury transportowej obsługującej przemysł, administrację, miasto i połączenia promowe z orbitalnymi stoczniami.'),
+
+(2,'Kompleks Przemysłowy Powierzchni Kuat',
+'Region Infrastruktury Powierzchniowej',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Umowny obszar powierzchniowych zakładów produkcyjnych, zaplecza technicznego i magazynów obsługujących gospodarkę stoczniową Kuat. Nie jest to orbitalna część Kuat Drive Yards.'),
+
+(2,'Kompleks Administracyjny Kuat Drive Yards',
+'Region Infrastruktury Powierzchniowej',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Projektowy kompleks administracyjny Kuat Drive Yards na powierzchni planety. Siedziba obsługi korporacyjnej, administracji, zarządu i przedstawicielstw firmy. Istnienie korporacji i jej związku z planetą jest potwierdzone, natomiast dokładna lokalizacja oraz nazwa budynku nie zostały potwierdzone w źródłach.'),
+
+(2,'Dzielnica Administracyjna Kuat City',
+'Kuat City',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Projektowy obszar instytucji administracyjnych i urzędów obsługujących planetę. Funkcjonalne centrum administracyjne aglomeracji.'),
+
+(2,'Dzielnica Handlowa Kuat City',
+'Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszar handlu, usług i działalności komercyjnej. Kuat City posiada sklepy i lokale gastronomiczne, co potwierdza jego funkcję miejskiego centrum usługowego.'),
+
+(2,'Dzielnica Reprezentacyjna Kuat City',
+'Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: INFERRED/CUSTOM] Projektowa część miasta z elegancką zabudową, wieżami i reprezentacyjnymi przestrzeniami publicznymi. Architektura nawiązuje do przemysłowej i orbitalnej tożsamości Kuat.'),
+
+(2,'Dzielnica Mieszkalna Kuat City',
+'Kuat City',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Obszar zabudowy mieszkaniowej mieszkańców miasta, pracowników administracji, usług i lokalnego przemysłu.'),
+
+(2,'Dzielnica Korporacyjna Kuat City',
+'Kuat City',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Obszar biurowy i korporacyjny miasta. Projektowa strefa obecności przedsiębiorstw współpracujących z Kuat Drive Yards.'),
+
+(2,'Dzielnica Gastronomiczna Kuat City',
+'Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszar gastronomiczny i hotelowy. Kuat City posiada restauracje, hotele i lokale dla mieszkańców oraz odwiedzających.'),
+
+(2,'Dzielnica Transportowa Kuat City',
+'Kuat City',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Obszar obsługi transportu miejskiego, transferów pasażerskich i ruchu promowego. Nie jest przedstawiany jako naziemny port kosmiczny.'),
+
+(2,'Kuat — Powierzchniowe Zaplecze Techniczne',
+'Kompleks Przemysłowy Powierzchni Kuat',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Obszar technicznego zaplecza produkcji i obsługi urządzeń przemysłowych. Projektowa infrastruktura wspierająca gospodarkę stoczniową.'),
+
+(2,'Kuat — Orbitalna Stacja Zaopatrzeniowa Kuati',
+'Kuat Drive Yards Orbital Array',
+'lokacja','magazyn',0,'aktywna',
+'[LORE: LEGENDS] Kuati supply space station. Stacja po zachodniej stronie Orbital Array, odpowiedzialna za przyjmowanie i dystrybucję materiałów oraz komponentów potrzebnych do budowy i obsługi jednostek kosmicznych oraz utrzymania całego pierścienia.'),
+
+(2,'Kuat — Orbitalna Stacja Mieszkalna Kuati',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Kuati residential space station. Stacja mieszkalna przeznaczona dla pracowników orbitalnego kompleksu stoczniowego. Potwierdza, że znaczna część ludności związanej z przemysłem stoczniowym mieszka w przestrzeni orbitalnej.'),
+
+(2,'Kuat — Orbitalna Stacja Wojskowa',
+'Kuat Drive Yards Orbital Array',
+'lokacja','baza',0,'aktywna',
+'[LORE: LEGENDS] Military space station. Wojskowy moduł orbitalnego pierścienia, związany z ochroną strategicznej infrastruktury stoczniowej. W 3 BBY infrastruktura stoczniowa służy Imperium.'),
+
+(2,'Kuat — Orbitalny Port Główny',
+'Kuat Drive Yards Orbital Array',
+'lokacja','port',0,'aktywna',
+'[LORE: LEGENDS] Kuat Main Spaceport. Główny port kosmiczny orbitalnego kompleksu. Obsługuje ruch statków, transport personelu i dostawy do stoczni.'),
+
+(2,'Kuat — Orbitalna Komenda Sił Bezpieczeństwa Kuati',
+'Kuat Drive Yards Orbital Array',
+'lokacja','baza',0,'aktywna',
+'[LORE: LEGENDS] Kuati Security Forces Headquarters. Placówka dowodzenia sił ochrony związanych z bezpieczeństwem infrastruktury orbitalnej. Nie należy utożsamiać jej automatycznie z dowództwem Imperialnej Marynarki Wojennej.'),
+
+(2,'Kuat — Orbitalna Strefa Transferowa',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Inner Kuat Transfer Zone. Obszar transferu i organizacji ruchu w przestrzeni związanej z Kuat. Dokładne granice operacyjne nie są ustalone.');
+
+
+
+-- ============================================================
+-- POZIOM 3: KOMPLEKSY, STREFY I STACJE STOCZNIOWE
+-- ============================================================
+
+INSERT INTO tmp_kuat_lokacje
+(poziom,nazwa,rodzic_nazwa,typ,rodzaj,publiczna,status,opis)
+VALUES
+
+(3,'Kuat Drive Yards — Biura Zarządu',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Powierzchniowe biura zarządu Kuat Drive Yards. Projektowa siedziba kierownictwa odpowiedzialnego za strategię korporacji, kontrakty, relacje z Imperium i nadzór nad działalnością stoczniową. Nie jest potwierdzoną nazwą kanonicznego budynku.'),
+
+(3,'Kuat Drive Yards — Główna Administracja Korporacyjna',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Główna powierzchniowa administracja korporacji. Obsługuje sprawy organizacyjne, kadrowe, finansowe i administracyjne przedsiębiorstwa.'),
+
+(3,'Kuat Drive Yards — Biuro Obsługi Kontraktów',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Biuro zajmujące się obsługą zamówień i kontraktów korporacyjnych, w tym zamówień związanych z produkcją jednostek dla Imperialnej Marynarki Wojennej.'),
+
+(3,'Kuat Drive Yards — Biuro Przedstawicielstw',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Powierzchniowa placówka obsługi przedstawicieli korporacyjnych, partnerów handlowych i delegacji przemysłowych.'),
+
+(3,'Kuat Drive Yards — Biuro Projektowe',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Powierzchniowe biuro projektowe odpowiedzialne za dokumentację koncepcyjną, koordynację projektów okrętów i komunikację z orbitalnymi zespołami konstrukcyjnymi.'),
+
+(3,'Kuat Drive Yards — Centrum Inżynieryjne',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Ośrodek inżynieryjny koordynujący rozwiązania konstrukcyjne, technologie napędowe, systemy okrętowe i wdrażanie zmian technicznych.'),
+
+(3,'Kuat Drive Yards — Centrum Badawczo-Rozwojowe',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Powierzchniowy ośrodek badawczo-rozwojowy wspierający rozwój technologii i procesów produkcji statków kosmicznych.'),
+
+(3,'Kuat Drive Yards — Dział Dokumentacji Technicznej',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Biuro dokumentacji technicznej. Odpowiada za przechowywanie i udostępnianie dokumentacji projektowej, planów konstrukcyjnych i specyfikacji technicznych.'),
+
+(3,'Kuat Drive Yards — Archiwum Projektowe',
+'Kompleks Administracyjny Kuat Drive Yards',
+'budynek','magazyn',0,'aktywna',
+'[LORE: CUSTOM] Chronione archiwum projektowe korporacji. Przechowuje dokumentację konstrukcyjną, plany techniczne, historię modyfikacji oraz materiały związane z produkcją okrętów.'),
+
+(3,'Kuat Drive Yards — Laboratorium Technologiczne',
+'Kompleks Administracyjny Kuat Drive Yards',
+'budynek','inne',0,'aktywna',
+'[LORE: CUSTOM] Laboratorium badające materiały, podzespoły i rozwiązania technologiczne wykorzystywane w produkcji statków.'),
+
+(3,'Kuat Drive Yards — Centrum Kontroli Jakości',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Jednostka kontroli jakości odpowiedzialna za weryfikację standardów produkcyjnych i zgodności komponentów z dokumentacją techniczną.'),
+
+(3,'Kuat Drive Yards — Centrum Logistyczne',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','magazyn',0,'aktywna',
+'[LORE: CUSTOM] Powierzchniowe centrum logistyki korporacyjnej. Koordynuje przepływ materiałów i części pomiędzy zakładami powierzchniowymi, dostawcami i orbitalnymi stoczniami.'),
+
+(3,'Kuat Drive Yards — Placówka Ochrony Korporacyjnej',
+'Kompleks Administracyjny Kuat Drive Yards',
+'budynek','baza',0,'aktywna',
+'[LORE: CUSTOM] Placówka ochrony korporacyjnej. Kontroluje dostęp do kompleksu administracyjnego, chroni personel i zabezpiecza informacje korporacyjne.'),
+
+(3,'Kuat Drive Yards — Biuro Obsługi Pracowników',
+'Kompleks Administracyjny Kuat Drive Yards',
+'lokacja','biuro',0,'aktywna',
+'[LORE: CUSTOM] Placówka obsługi personelu korporacji. Zajmuje się sprawami pracowniczymi, delegacjami, zakwaterowaniem i obsługą administracyjną załóg.'),
+
+(3,'Kuat Drive Yards — Zakłady Produkcji Komponentów',
+'Kompleks Przemysłowy Powierzchni Kuat',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Powierzchniowe zakłady produkcji komponentów i elementów konstrukcyjnych. Funkcjonalne uzupełnienie przemysłowej infrastruktury Kuat. Nie należy utożsamiać ich z głównymi orbitalnymi stoczniami.'),
+
+(3,'Kuat Drive Yards — Magazyn Komponentów',
+'Kompleks Przemysłowy Powierzchni Kuat',
+'budynek','magazyn',0,'aktywna',
+'[LORE: CUSTOM] Magazyn części, materiałów i podzespołów przeznaczonych do dalszego transportu i wykorzystania w produkcji stoczniowej.'),
+
+(3,'Kuat Drive Yards — Zakład Obróbki Materiałowej',
+'Kompleks Przemysłowy Powierzchni Kuat',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Zakład obróbki materiałów i elementów konstrukcyjnych wykorzystywanych w produkcji przemysłowej.'),
+
+(3,'Kuat Drive Yards — Terminal Transportu Personelu',
+'Kompleks Transportu Powierzchniowego',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Terminal obsługi transferów pracowników i personelu korporacyjnego pomiędzy powierzchnią planety a infrastrukturą orbitalną.'),
+
+(3,'Kuat Drive Yards — Terminal Transportu Komponentów',
+'Kompleks Transportu Powierzchniowego',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Terminal logistyczny przeznaczony do obsługi transportu materiałów i komponentów na orbitę. Szczegółowa konstrukcja jest projektowa.'),
+
+(3,'Kuat — Miejski Terminal Promowy',
+'Dzielnica Transportowa Kuat City',
+'lokacja','port',1,'aktywna',
+'[LORE: INFERRED/CUSTOM] Miejski punkt transferu pasażerów korzystających z transportu promowego na orbitę. Nie jest klasycznym naziemnym portem kosmicznym; jego funkcja wynika z opisanej w źródłach obsługi Kuat City przez promy.'),
+
+(3,'Kuat — Urząd Administracji Planetarnej',
+'Dzielnica Administracyjna Kuat City',
+'budynek','biuro',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Projektowa siedziba administracji planetarnej. Odpowiada za zarządzanie sprawami cywilnymi, infrastrukturą i relacjami z administracją imperialną.'),
+
+(3,'Kuat — Przedstawicielstwo Administracji Imperialnej',
+'Dzielnica Administracyjna Kuat City',
+'budynek','biuro',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Placówka władz Imperium nadzorująca sprawy administracyjne i relacje z miejscową elitą. Dokładna nazwa i adres nie są potwierdzone.'),
+
+(3,'Kuat — Biuro Nadzoru Kontraktów Imperialnych',
+'Dzielnica Administracyjna Kuat City',
+'budynek','biuro',0,'aktywna',
+'[LORE: CUSTOM] Projektowa placówka obsługująca i monitorująca realizację zamówień wojskowych. W 3 BBY produkcja okrętów Kuat ma strategiczne znaczenie dla Imperium.'),
+
+(3,'Kuat — Posterunek Ochrony Przemysłu',
+'Dzielnica Administracyjna Kuat City',
+'budynek','baza',0,'aktywna',
+'[LORE: CUSTOM] Punkt ochrony infrastruktury przemysłowej i strategicznych obiektów gospodarczych planety.'),
+
+(3,'Kuat — Nebula Orchid',
+'Dzielnica Gastronomiczna Kuat City',
+'budynek','kantyna',1,'aktywna',
+'[LORE: LEGENDS] Lokal gastronomiczny Nebula Orchid znajdujący się w Kuat City. Znany punkt miejski wymieniany w materiałach dotyczących planety. Szczegółowa historia działalności w 3 BBY nie została niezależnie potwierdzona; aktywność przyjęta na potrzeby ciągłości mapy HOLOLINK.'),
+
+(3,'Kuat — Centrum Handlowe',
+'Dzielnica Handlowa Kuat City',
+'lokacja','sklep',1,'aktywna',
+'[LORE: INFERRED/CUSTOM] Projektowy kompleks handlowy reprezentujący sklepy i działalność komercyjną Kuat City.'),
+
+(3,'Kuat — Hotel Miejski',
+'Dzielnica Gastronomiczna Kuat City',
+'budynek','hotel',1,'aktywna',
+'[LORE: INFERRED/CUSTOM] Obiekt hotelowy dla gości miasta, przedstawicieli korporacji, kontrahentów i podróżnych.'),
+
+(3,'Kuat — Rynek Miejski',
+'Dzielnica Handlowa Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: INFERRED/CUSTOM] Publiczna przestrzeń handlowa i spotkań mieszkańców Kuat City.'),
+
+(3,'Kuat — Wieże Reprezentacyjne',
+'Dzielnica Reprezentacyjna Kuat City',
+'lokacja','inne',1,'aktywna',
+'[LORE: INFERRED] Reprezentacyjna zabudowa wysokościowa nawiązująca do charakterystycznych wież i iglic Kuat City opisanych w źródłach.'),
+
+(3,'Kuat — Kompleks Mieszkalny',
+'Dzielnica Mieszkalna Kuat City',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Projektowy kompleks mieszkaniowy dla mieszkańców aglomeracji, pracowników korporacji i administracji.'),
+
+(3,'Kuat — Rezydencja Arystokratyczna',
+'Posiadłości Arystokratyczne Kuat',
+'budynek','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Przykładowa rezydencja wpływowej rodziny kuatiańskiej. Reprezentuje tradycyjny system arystokratyczny planety. Nie jest konkretną potwierdzoną siedzibą rodu.'),
+
+(3,'Kuat — Centrum Obsługi Technicznej',
+'Kuat — Powierzchniowe Zaplecze Techniczne',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Placówka serwisowa obsługująca urządzenia przemysłowe, transportowe i energetyczne.'),
+
+(3,'Kuat — Stacja Dystrybucji Energii',
+'Kuat — Powierzchniowe Zaplecze Techniczne',
+'budynek','inne',0,'aktywna',
+'[LORE: CUSTOM] Projektowy obiekt infrastruktury energetycznej zapewniający zasilanie powierzchniowych zakładów i kompleksów technicznych.'),
+
+(3,'Kuat — Kontrola Transportu Orbitalnego',
+'Kuat — Orbitalna Strefa Transferowa',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED] Punkt kontroli i koordynacji ruchu transportowego w obrębie infrastruktury orbitalnej.'),
+
+(3,'Kuat — Andrim Shipyards',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Jedna z trzech głównych stoczni Orbital Array. Kompleks konstrukcyjny przeznaczony do budowy jednostek kosmicznych.'),
+
+(3,'Kuat — Deponn Shipyards',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Jedna z trzech głównych stoczni orbitalnego pierścienia Kuat. Kompleks produkcyjny i konstrukcyjny obsługujący budowę jednostek kosmicznych.'),
+
+(3,'Kuat — Maw Shipyards',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS] Jedna z trzech głównych stoczni Orbital Array. Stanowi część strategicznej infrastruktury Kuat Drive Yards.'),
+
+(3,'Kuat — Orbitalne Zaplecze Magazynowe',
+'Kuat — Orbitalna Stacja Zaopatrzeniowa Kuati',
+'lokacja','magazyn',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Zespół magazynów i składów obsługujących dostawy komponentów, materiałów oraz części zamiennych dla orbitalnego pierścienia.'),
+
+(3,'Kuat — Orbitalne Centrum Mieszkalne',
+'Kuat — Orbitalna Stacja Mieszkalna Kuati',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszar zakwaterowania pracowników stoczniowych i personelu technicznego w obrębie stacji mieszkalnej.'),
+
+(3,'Kuat — Orbitalny Punkt Dowodzenia Wojskowego',
+'Kuat — Orbitalna Stacja Wojskowa',
+'lokacja','baza',0,'aktywna',
+'[LORE: INFERRED] Punkt dowodzenia i koordynacji ochrony wojskowej infrastruktury stoczniowej.'),
+
+(3,'Kuat — Orbitalny Terminal Kontrolny',
+'Kuat — Orbitalny Port Główny',
+'lokacja','inne',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Terminal obsługi odpraw, kontroli i ruchu jednostek korzystających z głównego portu orbitalnego.'),
+
+(3,'Kuat — Orbitalna Placówka Ochrony',
+'Kuat — Orbitalna Komenda Sił Bezpieczeństwa Kuati',
+'lokacja','baza',0,'aktywna',
+'[LORE: INFERRED] Placówka ochrony orbitalnego kompleksu. Obsługuje kontrolę dostępu i zabezpieczenie obiektów stoczniowych.'),
+
+(3,'Kuat — Orbitalna Fabryka Komponentów',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Moduł produkcyjny orbitalnego pierścienia. Orbital Array obejmuje fabryki, warsztaty i zakłady przemysłowe.'),
+
+(3,'Kuat — Orbitalny Kompleks Naprawczy',
+'Kuat Drive Yards Orbital Array',
+'lokacja','inne',0,'aktywna',
+'[LORE: LEGENDS/INFERRED] Obszar infrastruktury naprawczej przeznaczonej do obsługi jednostek i instalacji stoczniowych.');
+
+
+-- ============================================================
+-- POZIOM 4: KONKRETNE OBIEKTY ORBITALNE
+-- ============================================================
+
+INSERT INTO tmp_kuat_lokacje
+(poziom,nazwa,rodzic_nazwa,typ,rodzaj,publiczna,status,opis)
+VALUES
+
+(4,'Kuat — Andrim Dock A',
+'Kuat — Andrim Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowe stanowisko konstrukcyjne w stoczni Andrim. Litera A jest oznaczeniem HOLOLINK, nie potwierdzoną nazwą kanoniczną.'),
+
+(4,'Kuat — Andrim Dock B',
+'Kuat — Andrim Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowe stanowisko konstrukcyjne przeznaczone do montażu i obsługi jednostek kosmicznych.'),
+
+(4,'Kuat — Deponn Dock A',
+'Kuat — Deponn Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowy dok konstrukcyjny w obrębie stoczni Deponn.'),
+
+(4,'Kuat — Deponn Dock B',
+'Kuat — Deponn Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowy dok konstrukcyjny i montażowy w stoczni Deponn.'),
+
+(4,'Kuat — Maw Dock A',
+'Kuat — Maw Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowe stanowisko budowy jednostek kosmicznych w stoczni Maw.'),
+
+(4,'Kuat — Maw Dock B',
+'Kuat — Maw Shipyards',
+'lokacja','platforma',0,'aktywna',
+'[LORE: CUSTOM] Projektowe stanowisko montażowe w obrębie stoczni Maw.'),
+
+(4,'Kuat — Orbitalny Hangar Serwisowy',
+'Kuat — Orbitalny Kompleks Naprawczy',
+'lokacja','hangar',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Hangar obsługi technicznej i napraw jednostek kosmicznych. Stanowi projektowe uszczegółowienie zaplecza naprawczego orbitalnego pierścienia.'),
+
+(4,'Kuat — Orbitalny Magazyn Części',
+'Kuat — Orbitalne Zaplecze Magazynowe',
+'budynek','magazyn',0,'aktywna',
+'[LORE: INFERRED/CUSTOM] Magazyn komponentów, części zamiennych i materiałów konstrukcyjnych przeznaczonych dla stoczni.'),
+
+(4,'Kuat — Orbitalne Stanowisko Kontroli Jakości',
+'Kuat — Orbitalny Kompleks Naprawczy',
+'lokacja','inne',0,'aktywna',
+'[LORE: CUSTOM] Stanowisko kontroli jakości napraw i prac montażowych realizowanych w orbitalnym kompleksie stoczniowym.');
+
+
+
+-- ============================================================
+-- IMPORT WŁAŚCIWY
+-- ============================================================
+
+DELIMITER $$
+
+CREATE PROCEDURE hololink_import_kuat()
+BEGIN
+    DECLARE v_planeta_id INT UNSIGNED DEFAULT NULL;
+    DECLARE v_planeta_count INT DEFAULT 0;
+
+    DECLARE v_nazwa VARCHAR(200);
+    DECLARE v_rodzic_nazwa VARCHAR(200);
+    DECLARE v_typ VARCHAR(20);
+    DECLARE v_rodzaj VARCHAR(20);
+    DECLARE v_publiczna TINYINT;
+    DECLARE v_status VARCHAR(20);
+    DECLARE v_opis TEXT;
+
+    DECLARE v_parent_id BIGINT UNSIGNED DEFAULT NULL;
+    DECLARE v_id BIGINT UNSIGNED DEFAULT NULL;
+    DECLARE v_existing_parent BIGINT UNSIGNED DEFAULT NULL;
+
+    DECLARE v_done TINYINT DEFAULT 0;
+    DECLARE v_before INT DEFAULT 0;
+    DECLARE v_after INT DEFAULT 0;
+
+    DECLARE c_lokacje CURSOR FOR
+        SELECT
+            nazwa,
+            rodzic_nazwa,
+            typ,
+            rodzaj,
+            publiczna,
+            status,
+            opis
+        FROM tmp_kuat_lokacje
+        ORDER BY poziom ASC, nazwa ASC;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND
+        SET v_done = 1;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    SELECT COUNT(*), MIN(id)
+      INTO v_planeta_count, v_planeta_id
+      FROM mapa_planety
+     WHERE LOWER(TRIM(nazwa)) = LOWER('Kuat');
+
+    IF v_planeta_count <> 1 OR v_planeta_id <> 1262 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT =
+        'BŁĄD: Kuat nie istnieje dokładnie raz pod oczekiwanym ID 1262.';
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_before
+      FROM lokalizacje
+     WHERE planeta_id = v_planeta_id;
+
+    START TRANSACTION;
+
+    OPEN c_lokacje;
+
+    import_loop: LOOP
+
+        FETCH c_lokacje INTO
+            v_nazwa,
+            v_rodzic_nazwa,
+            v_typ,
+            v_rodzaj,
+            v_publiczna,
+            v_status,
+            v_opis;
+
+        IF v_done = 1 THEN
+            LEAVE import_loop;
+        END IF;
+
+        SET v_parent_id = NULL;
+
+        IF v_rodzic_nazwa IS NOT NULL THEN
+
+            SET v_parent_id = (
+                SELECT id
+                  FROM lokalizacje
+                 WHERE planeta_id = v_planeta_id
+                   AND nazwa = v_rodzic_nazwa
+                 LIMIT 1
+            );
+
+            IF v_parent_id IS NULL THEN
+                SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT =
+                'BŁĄD: Nie znaleziono wymaganego rodzica lokalizacji.';
+            END IF;
+
+        END IF;
+
+        INSERT INTO lokalizacje
+        (
+            typ,
+            rodzaj,
+            rodzic_id,
+            uklad_id,
+            planeta_id,
+            nazwa,
+            x_km,
+            y_km,
+            publiczna,
+            status,
+            opis
+        )
+        VALUES
+        (
+            v_typ,
+            v_rodzaj,
+            v_parent_id,
+            NULL,
+            v_planeta_id,
+            v_nazwa,
+            NULL,
+            NULL,
+            v_publiczna,
+            v_status,
+            v_opis
+        )
+        ON DUPLICATE KEY UPDATE
+            id = LAST_INSERT_ID(id);
+
+        SET v_id = LAST_INSERT_ID();
+
+        SET v_existing_parent = (
+            SELECT rodzic_id
+              FROM lokalizacje
+             WHERE id = v_id
+             LIMIT 1
+        );
+
+        IF NOT (v_existing_parent <=> v_parent_id) THEN
+            SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT =
+            'BŁĄD: Istniejąca lokalizacja ma inną hierarchię rodzic-dziecko.';
+        END IF;
+
+    END LOOP;
+
+    CLOSE c_lokacje;
+
+    SELECT COUNT(*)
+      INTO v_after
+      FROM lokalizacje
+     WHERE planeta_id = v_planeta_id;
+
+    COMMIT;
+
+    SELECT
+        'IMPORT ZAKOŃCZONY POPRAWNIE' AS wynik,
+        v_planeta_id AS planeta_id,
+        v_before AS rekordy_przed_importem,
+        v_after AS rekordy_po_imporcie,
+        v_after - v_before AS liczba_dodanych_rekordow;
+
+END$$
+
+DELIMITER ;
+
+CALL hololink_import_kuat();
+
+DROP PROCEDURE IF EXISTS hololink_import_kuat;
+
+
+-- ============================================================
+-- AUDYT PO IMPORCIE
+-- ============================================================
+
+SET @kuat_planeta_id := 1262;
+
+
+-- 1. ŁĄCZNA LICZBA LOKALIZACJI
+
+SELECT
+    COUNT(*) AS wszystkie_lokalizacje_kuat
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id;
+
+
+-- 2. LICZBA LOKALIZACJI WEDŁUG TYPU
+
+SELECT
+    typ,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id
+GROUP BY typ
+ORDER BY typ;
+
+
+-- 3. LICZBA LOKALIZACJI WEDŁUG RODZAJU
+
+SELECT
+    rodzaj,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id
+GROUP BY rodzaj
+ORDER BY rodzaj;
+
+
+-- 4. KONTROLA OSIEROCONYCH REKORDÓW
+
+SELECT
+    dziecko.id,
+    dziecko.nazwa,
+    dziecko.rodzic_id
+FROM lokalizacje dziecko
+LEFT JOIN lokalizacje rodzic
+    ON rodzic.id = dziecko.rodzic_id
+WHERE dziecko.planeta_id = @kuat_planeta_id
+  AND dziecko.rodzic_id IS NOT NULL
+  AND rodzic.id IS NULL;
+
+
+-- 5. KONTROLA DUPLIKATÓW NAZW
+
+SELECT
+    nazwa,
+    COUNT(*) AS liczba
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id
+GROUP BY nazwa
+HAVING COUNT(*) > 1;
+
+
+-- 6. KONTROLA BRAKU RODZICA DLA GŁÓWNYCH KORZENI
+
+SELECT
+    nazwa,
+    typ,
+    rodzic_id
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id
+  AND nazwa IN (
+      'Kuat — Powierzchnia Planety',
+      'Kuat — Orbita'
+  );
+
+
+-- 7. PEŁNA HIERARCHIA KUAT
+
+WITH RECURSIVE hierarchia AS
+(
+    SELECT
+        id,
+        rodzic_id,
+        nazwa,
+        typ,
+        0 AS poziom,
+        CAST(nazwa AS CHAR(4000)) AS sciezka
+    FROM lokalizacje
+    WHERE planeta_id = @kuat_planeta_id
+      AND rodzic_id IS NULL
+
+    UNION ALL
+
+    SELECT
+        dziecko.id,
+        dziecko.rodzic_id,
+        dziecko.nazwa,
+        dziecko.typ,
+        rodzic.poziom + 1,
+        CONCAT(rodzic.sciezka, ' > ', dziecko.nazwa)
+    FROM lokalizacje dziecko
+    INNER JOIN hierarchia rodzic
+        ON dziecko.rodzic_id = rodzic.id
+    WHERE dziecko.planeta_id = @kuat_planeta_id
+)
+
+SELECT
+    poziom,
+    typ,
+    nazwa,
+    sciezka
+FROM hierarchia
+ORDER BY sciezka;
+
+
+-- 8. KOMPLETNOŚĆ POWIERZCHNIOWYCH BIUR KDY
+
+SELECT
+    nazwa,
+    typ,
+    rodzaj,
+    publiczna,
+    status,
+    rodzic_id
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id
+  AND nazwa LIKE 'Kuat Drive Yards —%'
+ORDER BY nazwa;
+
+
+-- 9. KONTROLA OBECNOŚCI OBIEKTÓW KDY
+
+SELECT
+    nazwa,
+    CASE
+        WHEN COUNT(*) > 0 THEN 'OBECNY'
+        ELSE 'BRAK'
+    END AS wynik
+FROM
+(
+    SELECT 'Kompleks Administracyjny Kuat Drive Yards' AS nazwa
+    UNION ALL SELECT 'Kuat Drive Yards — Biura Zarządu'
+    UNION ALL SELECT 'Kuat Drive Yards — Główna Administracja Korporacyjna'
+    UNION ALL SELECT 'Kuat Drive Yards — Biuro Projektowe'
+    UNION ALL SELECT 'Kuat Drive Yards — Centrum Inżynieryjne'
+    UNION ALL SELECT 'Kuat Drive Yards — Dział Dokumentacji Technicznej'
+    UNION ALL SELECT 'Kuat Drive Yards — Archiwum Projektowe'
+    UNION ALL SELECT 'Kuat Drive Yards — Centrum Badawczo-Rozwojowe'
+    UNION ALL SELECT 'Kuat Drive Yards — Centrum Logistyczne'
+    UNION ALL SELECT 'Kuat Drive Yards — Placówka Ochrony Korporacyjnej'
+    UNION ALL SELECT 'Kuat — Andrim Shipyards'
+    UNION ALL SELECT 'Kuat — Deponn Shipyards'
+    UNION ALL SELECT 'Kuat — Maw Shipyards'
+    UNION ALL SELECT 'Kuat Drive Yards — Zakłady Produkcji Komponentów'
+) wymagane
+LEFT JOIN lokalizacje l
+    ON l.planeta_id = @kuat_planeta_id
+   AND l.nazwa = wymagane.nazwa
+GROUP BY wymagane.nazwa
+ORDER BY wymagane.nazwa;
+
+
+-- 10. KONTROLA ROZDZIELENIA POWIERZCHNI I ORBITY
+
+SELECT
+    CASE
+        WHEN rodzic.nazwa = 'Kuat — Orbita'
+          OR dziecko.nazwa = 'Kuat — Orbita'
+          OR rodzic.nazwa = 'Kuat Drive Yards Orbital Array'
+          OR dziecko.nazwa = 'Kuat Drive Yards Orbital Array'
+          OR dziecko.nazwa LIKE 'Kuat — Andrim%'
+          OR dziecko.nazwa LIKE 'Kuat — Deponn%'
+          OR dziecko.nazwa LIKE 'Kuat — Maw%'
+        THEN 'INFRASTRUKTURA ORBITALNA'
+        ELSE 'INFRASTRUKTURA POWIERZCHNIOWA'
+    END AS srodowisko,
+    COUNT(*) AS liczba
+FROM lokalizacje dziecko
+LEFT JOIN lokalizacje rodzic
+    ON rodzic.id = dziecko.rodzic_id
+WHERE dziecko.planeta_id = @kuat_planeta_id
+GROUP BY srodowisko;
+
+
+-- 11. KONTROLA WSPÓŁRZĘDNYCH
+
+SELECT
+    COUNT(*) AS liczba_lokalizacji,
+    SUM(x_km IS NULL) AS brak_x,
+    SUM(y_km IS NULL) AS brak_y
+FROM lokalizacje
+WHERE planeta_id = @kuat_planeta_id;
+
+
+-- 12. KOŃCOWY STATUS IMPORTU
+
+SELECT
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat — Powierzchnia Planety'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat — Orbita'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat Drive Yards — Biura Zarządu'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat — Andrim Shipyards'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat — Deponn Shipyards'
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM lokalizacje
+            WHERE planeta_id = @kuat_planeta_id
+              AND nazwa = 'Kuat — Maw Shipyards'
+        )
+        AND NOT EXISTS (
+            SELECT 1
+            FROM lokalizacje dziecko
+            LEFT JOIN lokalizacje rodzic
+                ON rodzic.id = dziecko.rodzic_id
+            WHERE dziecko.planeta_id = @kuat_planeta_id
+              AND dziecko.rodzic_id IS NOT NULL
+              AND rodzic.id IS NULL
+        )
+        THEN 'KUAT: IMPORT I HIERARCHIA POPRAWNE'
+        ELSE 'KUAT: WYKRYTO BRAKI — WYMAGANA KONTROLA'
+    END AS status_koncowy;

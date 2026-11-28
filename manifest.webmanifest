@@ -5,7 +5,7 @@
   "scope": "./",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#05080a",
   "theme_color": "#05080a",
   "icons": [

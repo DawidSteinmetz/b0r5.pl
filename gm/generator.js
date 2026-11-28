@@ -329,7 +329,7 @@ export async function panelGeneratora(kontener) {
         btn('Zapisz', () => zapisz(false), '.glowny'),
         btn('Zapisz jako nowy NPC', () => zapisz(true)),
         btn('Wyczyść', () => { e = E.nowaKarta(cel.startsWith('u:') ? 'gracz' : 'rywal'); przebuduj(); })),
-      h('p.slaby', 'Gracz widzi swoje CV w Karcie postaci (bez notatek MG). Karty NPC wymagają migracji 040.'),
+      h('p.slaby', 'Gracz widzi swoje CV w Karcie postaci (bez notatek MG). CV graczy i NPC zapisują się w SQL; przed pierwszym zapisem zaimportuj api/migracje/042_karty_eote_sql.sql.'),
       importEksport(),
       panelPD(),
       rachunek, info),

@@ -24,6 +24,7 @@ const ASTRO_GWIAZDY = [
     'M'  => ['czerwony karzeł',  40, [255, 170, 120], 0.6, 0.45, 0.15],
     'WD' => ['biały karzeł',      2, [235, 240, 255], 0.35, 0.6, 0.1],
     'RG' => ['czerwony olbrzym',  1, [255, 140, 90], 3.0, 1.4, 6.0],
+    'BH' => ['supermasywna czarna dziura', 0, [0, 0, 0], 0.1, 0.0, 0.0],
 ];
 
 // Fizyka gwiazd: temperatura powierzchni (K) i promień (promienie Słońca) dla typu. Konkretna gwiazda
@@ -51,6 +52,7 @@ function astro_typ_gwiazdy(string $nazwa, int $sol = 7): string
 function astro_gwiazda(string $typ, int $i = 0, string $uklad = ''): array
 {
     $g = ASTRO_GWIAZDY[$typ] ?? ASTRO_GWIAZDY['G'];
+    if ($typ === 'BH') return ['typ' => 'BH', 'nazwa' => $g[0], 'rgb' => $g[2], 'rozmiar' => $g[3], 'jasnosc' => 0, 'L' => 0, 'temperatura' => 0, 'promien_km' => 0, 'moc' => 0, 'przesuniecie' => 0, 'wysokosc' => 0];
     [$t, $r] = ASTRO_FIZYKA[$typ] ?? ASTRO_FIZYKA['G'];
     if ($uklad !== '') {
         $r *= 0.85 + (astro_hash($uklad, 50 + $i) % 301) / 1000;
@@ -125,7 +127,7 @@ function astro_cykl(string $nazwa): array
     $nadpisy = [];
     $ksiezyce = [];
     if (tabela_sql_dostepna('mapa_planety')) {
-        $q = polaczenie_bazy()->prepare("SELECT id, doba, rok, ksiezyce, srednica, slonca FROM mapa_planety WHERE REPLACE(nazwa, ' ', '') = ? LIMIT 1");
+        $q = polaczenie_bazy()->prepare("SELECT id, doba, rok, ksiezyce, srednica, slonca, typ_ciala FROM mapa_planety WHERE REPLACE(nazwa, ' ', '') = ? LIMIT 1");
         $q->execute([str_replace(' ', '', trim($nazwa))]);
         $mapa = $q->fetch(PDO::FETCH_ASSOC) ?: null;
     }
@@ -140,6 +142,12 @@ function astro_cykl(string $nazwa): array
             'srednica_km' => $k['srednica_km'] === null ? null : (float) $k['srednica_km']], $q->fetchAll(PDO::FETCH_ASSOC));
     }
 
+    if (($mapa['typ_ciala'] ?? '') === 'czarna_dziura') {
+        $cykl = ['nazwa' => $nazwa, 'doba_h' => 0, 'rok_dni' => 0, 'nachylenie' => 0, 'faza_obrotu' => 0, 'faza_roku' => 0, 'faza_orbity' => 0,
+            'promien_orbity_au' => 0, 'krawedz_au' => 50, 'srednica_km' => 0, 'epoka' => ASTRO_EPOKA, 'ksiezyce' => [],
+            'gwiazdy' => [astro_gwiazda('BH')], 'mapa_id' => (int) $mapa['id'], 'typ_ciala' => 'czarna_dziura'];
+        return $cache[$klucz] = $cykl;
+    }
     $h = fn(int $sol, int $zakres) => astro_hash($nazwa, $sol) % $zakres;
     $dobaMapy = (float) ($mapa['doba'] ?? 0);
     $rokMapy = (float) ($mapa['rok'] ?? 0);
@@ -221,7 +229,8 @@ function astro_swiatlo(string $planeta, array $lok): array
 function obsluz_astro(string $akcja, bool $post): void
 {
     if ($akcja !== 'uklad') return;
-    $u = wymagaj_logowania();
+    if ($post) blad('Zła metoda.', 405);
+    $u = ja();
     $nazwa = trim((string) ($_GET['planeta'] ?? ''));
     if ($nazwa === '') blad('Brak planety.');
     if (tabela_sql_dostepna('mapa_planety')) {

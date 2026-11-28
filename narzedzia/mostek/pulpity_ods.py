@@ -1,4 +1,4 @@
-"""Arkusz ODS pulpitów klasy z układów (`uklady/`), siatka 13×9 (telefon 5×9) kwadratowych komórek 2,8 cm.
+"""Arkusz ODS pulpitów klasy z układów (`uklady/`), siatka 13×9 (telefon 5×10) kwadratowych komórek 2,8 cm.
 
     python pulpity_ods.py KLASA WYJSCIE.ods [--zrodlo ZRODLO.ods]
 

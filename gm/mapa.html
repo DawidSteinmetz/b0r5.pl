@@ -7,17 +7,39 @@
   <meta name="theme-color" content="#05080a">
   <title>Mapa GM — HOLOLINK</title>
   <link rel="stylesheet" href="../css/system.css">
+  <style>#dok-aplikacja { right: 10px; }</style>
 </head>
 <body>
   <div id="ekran">
     <header id="pasek" hidden></header>
     <main id="pulpit"><section class="widok"></section></main>
-    <nav id="dok" hidden></nav>
+    <nav id="dok" hidden><div id="dok-aplikacja" hidden></div></nav>
   </div>
   <script type="module">
     import mapa from '../js/aplikacje/mapa.js';
+    import { api } from '../js/rdzen/api.js';
     const widok = document.querySelector('.widok');
-    const sprzataj = mapa.uruchom(widok, { ustawWstecz() {} });
+    let sprzataj;
+    try {
+      const { uzytkownik } = await api('stan');
+      if (!uzytkownik || uzytkownik.rola !== 'mg') throw new Error('Dostęp do mapy GM wymaga konta Mistrza Gry.');
+      const dok = document.querySelector('#dok'), panelDoku = document.querySelector('#dok-aplikacja');
+      const ustawDok = (przyciski = []) => {
+        panelDoku.replaceChildren();
+        for (const przycisk of przyciski.filter((x) => x.tytul !== 'Moja pozycja')) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'dok-ikonka'; b.title = przycisk.tytul; b.setAttribute('aria-label', przycisk.tytul); b.addEventListener('click', przycisk.akcja);
+          const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+          svg.setAttribute('viewBox', '0 0 48 48'); svg.innerHTML = przycisk.ikona;
+          b.append(svg); panelDoku.append(b);
+        }
+        panelDoku.hidden = !panelDoku.childElementCount; dok.hidden = panelDoku.hidden;
+      };
+      sprzataj = mapa.uruchom(widok, { uzytkownik, ustawWstecz() {}, dok: ustawDok });
+    } catch (e) {
+      widok.textContent = e.message || 'Nie udało się uruchomić mapy GM.';
+      widok.classList.add('blad');
+    }
     window.addEventListener('pagehide', () => sprzataj?.(), { once: true });
   </script>
 </body>

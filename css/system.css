@@ -7,6 +7,11 @@
   src: url("../assets/czcionki/aurebesh.otf") format("opentype");
   font-display: block;
 }
+@font-face {
+  font-family: "Aurebesh Original";
+  src: url("../assets/czcionki/aurebesh-original.otf") format("opentype");
+  font-display: block;
+}
 
 :root {
   --tlo: #05080a;
@@ -26,6 +31,7 @@
   --promien: 6px;
   --lat: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", "Menlo", "Consolas", monospace;
   --aur: "Aurebesh Datapad", var(--lat);
+  --aur-original: "Aurebesh Original", var(--aur);
   --czcionka: var(--lat);
   color-scheme: dark;
 }
@@ -119,61 +125,80 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: rgba(255, 63, 164, 0.08);
   color: var(--zph);
   border-radius: 4px;
-  padding: 2px 8px;
-  min-width: 44px;
-  min-height: 28px;
+  padding: 3px 10px;
+  min-width: 60px;
+  min-height: 32px;
   cursor: pointer;
 }
-/* Przełącznik zawsze pokazuje oba alfabety: ten, na który się przełączy, jest jaśniejszy. */
+/* Przełącznik pokazuje wybrany krój: łaciński, datapadowy Aurebesh lub oryginalny Aurebesh. */
 .przelacznik .lat { font-family: var(--lat); }
 .przelacznik .aur { font-family: var(--aur); margin-left: 4px; }
+.przelacznik .aur-klasyczny { display: none; font-family: var(--aur-original); margin-left: 4px; }
 html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity: 0.35; }
+html.aurebesh-klasyczny .przelacznik .aur { display: none; }
+html.aurebesh-klasyczny .przelacznik .aur-klasyczny { display: inline; }
+html.aurebesh-klasyczny { --czcionka: var(--aur-original); }
 
 /* ---------- dok ---------- */
 
+/* Dok w jednej linii: lewa część | ◁ ◯ ▢ | prawa część. Boczne kolumny mają równą szerokość (1fr), więc kółko
+   jest zawsze dokładnie na środku ekranu. Wszystkie przyciski doku (◁ ◯ ▢ i ikonki po bokach) mają jeden rozmiar
+   (--w × --h) i jeden odstęp (--odstep) — także między częściami. Skala maleje z szerokością ekranu. */
 #dok {
-  display: flex;
-  justify-content: center;
-  gap: 48px;
-  padding: 8px 0 10px;
+  --w: 64px;
+  --h: 40px;
+  --odstep: 24px;
+  --rysunek: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--odstep);
+  padding: 8px 12px 10px;
   border-top: 1px solid var(--linia);
   background: rgba(5, 8, 10, 0.6);
   z-index: 5;
 }
+#dok-lewo, #dok-prawo, #dok-srodek, #dok-aplikacja { display: flex; align-items: center; gap: var(--odstep); }
+#dok-lewo { justify-content: flex-start; }
+#dok-prawo { justify-content: flex-end; flex-wrap: wrap; row-gap: 6px; }
+#dok-srodek { justify-content: center; }
 #dok button {
-  width: 64px;
-  height: 40px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--w);
+  height: var(--h);
+  padding: 0;
+  margin: 0;
   border: 1px solid transparent;
-  border-radius: 20px;
+  border-radius: calc(var(--h) / 2);
   background: none;
   color: var(--tekst-slaby);
   font-family: var(--lat);
   font-size: 20px;
+  line-height: 1;
+  opacity: 1;
   cursor: pointer;
 }
+#dok button:hover { color: var(--tekst); }
 #dok button:active { border-color: var(--linia-mocna); color: var(--akcent); }
-/* Wyciszenie dźwięku: mała ikonka w prawym dolnym rogu. */
-#dok #dok-dzwiek { position: absolute; right: 10px; bottom: 10px; width: 30px; height: 30px; padding: 5px; border-radius: 50%; }
-#dok-dzwiek svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+#dok button svg { width: var(--rysunek); height: var(--rysunek); fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #dok-dzwiek.wyciszony { opacity: 0.55; }
-/* Małe ikonki w narożnikach doku, tej samej wielkości co głośnik: po prawej „Dostosuj pulpit” obok głośnika,
-   po lewej Ustawienia i Przewodnik. */
-#dok .dok-ikonka { position: absolute; bottom: 10px; width: 30px; height: 30px; padding: 5px; border-radius: 50%; }
-#dok #dok-dostosuj { right: 46px; }
-#dok #dok-ustawienia { left: 10px; }
-#dok #dok-przewodnik { left: 46px; }
-/* Ikonki otwartej aplikacji (mapa: zbliżenie) — w prawym rogu, na lewo od „Dostosuj”. Na wąskim ekranie
-   osobny rząd nad przyciskami doku (dok rośnie o ten rząd). */
-#dok-aplikacja { position: absolute; right: 82px; bottom: 10px; display: flex; gap: 6px; }
-#dok-aplikacja .dok-ikonka { position: static; }
-@media (max-width: 900px) {
-  #dok.z-aplikacja { flex-wrap: wrap; row-gap: 6px; }
-  #dok-aplikacja { position: static; order: -1; flex-basis: 100%; justify-content: center; }
-}
-.dok-ikonka svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 #dok .dok-ikonka.aktywny { color: var(--akcent); border-color: var(--linia-mocna); }
-/* Wąski ekran: środkowe przyciski doku ciaśniej, żeby nie wchodziły na ikonki w narożnikach. */
-@media (max-width: 480px) { #dok { gap: 18px; } #dok > button:not(.dok-ikonka):not(#dok-dzwiek) { width: 52px; } }
+/* Ikonki otwartej aplikacji (np. 7 przybliżeń mapy) są kwadratowe, żeby zmieściły się obok pozostałych. */
+#dok #dok-aplikacja > button { width: var(--h); }
+#dok-aplikacja { gap: calc(var(--odstep) / 2); }
+@media (max-width: 1200px) { #dok { --w: 52px; --odstep: 14px; } }
+@media (max-width: 1000px) {
+  #dok { --w: 44px; --h: 36px; --odstep: 8px; --rysunek: 18px; }
+  #dok.z-aplikacja #dok-aplikacja { flex-basis: 100%; justify-content: flex-end; }
+}
+/* Telefon: wszystko 30 × 30 z odstępem 3 px (Dostosuj przechodzi na lewą stronę), mieści się w jednej linii. */
+@media (max-width: 480px) {
+  #dok { --w: 30px; --h: 30px; --odstep: 3px; --rysunek: 17px; padding: 6px 6px 8px; }
+  #dok button { font-size: 16px; }
+}
 
 /* ---------- pulpit / aplikacje ---------- */
 
@@ -243,11 +268,49 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
   gap: 18px;
 }
+/* Ukrywanie dużego zegara i daty (portal, pulpit, blokada) — przycisk .przycisk-zegara zostaje widoczny. */
+.przycisk-zegara { display: inline-flex; width: 26px; height: 26px; padding: 4px; margin: 6px 0 2px; border: 1px solid var(--linia);
+  border-radius: 50%; background: transparent; color: var(--akcent); cursor: pointer; opacity: 0.55; }
+.przycisk-zegara:hover, .przycisk-zegara:focus-visible { opacity: 1; }
+.przycisk-zegara svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.blokada-karta > .przycisk-zegara { display: flex; margin: -18px auto 14px; }
+html.bez-zegara .pulpit-zegar, html.bez-zegara .pulpit-data, html.bez-zegara .blokada-zegar, html.bez-zegara .blokada-data { display: none; }
+html.bez-zegara .blokada-karta > .przycisk-zegara { margin-top: 0; }
+/* Ukrycie danych zalogowanego (postać, frakcja, ranga, pozycja) na pulpicie — przycisk w doku. */
+html.bez-danych .pulpit-gracza :is(.pulpit-ktos, .pulpit-miejsce) { visibility: hidden; }
+/* Portal publiczny na komputerze: kilka ikon wyśrodkowanych zamiast przyklejonych do lewej (telefon bez zmian, 2 × 2). */
+@media (min-width: 700px) {
+  .siatka-aplikacji.pulpit-gosc { grid-template-columns: repeat(auto-fit, minmax(120px, 170px)); justify-content: center; }
+}
+.ikony-dolne {
+  position: absolute;
+  right: clamp(16px, 4vw, 40px);
+  bottom: 14px;
+  left: clamp(16px, 4vw, 40px);
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--linia);
+  border-radius: 12px;
+  background: rgba(5, 8, 10, 0.78);
+  backdrop-filter: blur(6px);
+}
+.ikony-dolne .ikona-app { width: min(120px, calc(25% - 10px)); height: 116px; min-height: 116px; padding: 10px 6px; gap: 5px; font-size: 11px; }
+.ikony-dolne .ikona-app svg { width: 30px; height: 30px; }
+.ikony-dolne > .ikona-aplikacji[data-pulpit-kafel] { flex: 0 1 220px; min-width: 130px; height: 116px; min-height: 116px; padding: 10px; gap: 6px; }
+.ikony-dolne > .kafel-liczniki { flex-basis: 260px; }
 .ikona-aplikacji {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 10px;
+  height: 144px;
+  min-height: 144px;
   padding: 18px 8px 14px;
   border: 1px solid var(--linia);
   border-radius: 12px;
@@ -261,11 +324,21 @@ html.aurebesh .przelacznik .aur, html:not(.aurebesh) .przelacznik .lat { opacity
 .ikona-aplikacji svg { width: 44px; height: 44px; stroke: var(--akcent); fill: none; stroke-width: 1.6; }
 /* Dostosowanie pulpitu: zdejmowanie (×) i dodawanie ikon */
 .ikona-aplikacji { position: relative; }
+.ikona-app { font-size: clamp(10px, 0.9vw, 13px); line-height: 1.15; }
+.ikona-app > span:not(.ikona-usun):not(.przypnij-dol):not(.ukryj-kafel) { max-height: 2.3em; overflow: hidden; overflow-wrap: anywhere; }
 .siatka-aplikacji.edycja .ikona-app { animation: drganie 0.9s ease-in-out infinite; border-style: dashed; }
+.siatka-aplikacji.edycja [data-pulpit-kafel] { animation: drganie 0.9s ease-in-out infinite; border-style: dashed; }
+html.ukryte-ikony-pulpitu .siatka-aplikacji .ikona-app,
+html.ukryte-ikony-pulpitu .siatka-aplikacji .kafel-dodaj,
+html.ukryte-ikony-pulpitu .siatka-aplikacji [data-pulpit-kafel] { display: none; }
 @keyframes drganie { 25% { transform: rotate(-1.2deg); } 75% { transform: rotate(1.2deg); } }
 .ikona-usun { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
   background: #2a0f0f; border: 1px solid var(--zly, #ff5a4f); color: var(--zly, #ff5a4f); font-size: 17px; line-height: 1; }
-.kafel-dodaj { border-style: dashed; padding: 10px 8px; justify-content: center; }
+.przypnij-dol { position: absolute; right: -8px; bottom: -8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: #10231f; border: 1px solid var(--akcent); color: var(--akcent); font-size: 16px; line-height: 1; cursor: pointer; }
+.ukryj-kafel { position: absolute; top: -8px; right: -8px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: #2a0f0f; border: 1px solid var(--zly, #ff5a4f); color: var(--zly, #ff5a4f); font-size: 17px; line-height: 1; cursor: pointer; }
+.kafel-dodaj { border-style: dashed; padding: 10px 8px; justify-content: center; height: auto; min-height: 144px; }
 .dodaj-plus { display: flex; flex-direction: column; align-items: center; gap: 6px; background: none; border: 0; color: var(--akcent); cursor: pointer; font: inherit; letter-spacing: 0.06em; }
 .dodaj-plus b { font-size: 34px; font-weight: normal; line-height: 1; }
 .dodaj-lista { display: grid; gap: 6px; width: 100%; }
@@ -403,6 +476,19 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
   padding: 20px;
 }
 .blokada-karta { width: min(420px, 100%); }
+/* Niski widok (telefon z otwartą klawiaturą, poziom): formularz od góry i przewijany, mniejszy zegar,
+   „Wróć do portalu” pod formularzem zamiast na dole ekranu (tam zasłaniał pola). */
+.blokada { overflow-y: auto; }
+@media (max-height: 620px) {
+  .blokada { place-items: start center; padding-top: 12px; }
+  .blokada-zegar { font-size: 44px; }
+  .blokada-data { margin: 4px 0 12px; }
+  .blokada .blokada-wroc { position: static !important; transform: none !important; display: block; margin: 14px auto 0; }
+}
+/* Przycisk pełnego ekranu w pasku (na telefonie: pełny ekran i poziom). */
+#pasek-pelny { width: 26px; height: 26px; padding: 4px; border: 1px solid var(--linia); border-radius: 50%; background: transparent; color: var(--akcent); cursor: pointer; }
+#pasek-pelny[hidden] { display: none; }
+#pasek-pelny svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .blokada-zegar { font-size: clamp(56px, 12vw, 104px); text-align: center; color: var(--akcent); line-height: 1; }
 .blokada-data { text-align: center; color: var(--tekst-slaby); letter-spacing: 0.14em; margin: 8px 0 28px; }
 
@@ -855,6 +941,7 @@ html.z-tlem #ekran::before {
 .kal .ok { color: var(--ok); } .kal .warn { color: var(--niepewny); } .kal .bad { color: var(--zly); }
 .kal-uklad { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
 @media (max-width: 860px) { .kal-uklad { grid-template-columns: 1fr; } }
+.kal-uklad.kal-gosc { grid-template-columns: minmax(0, 1fr); }
 .kal-lewa { display: grid; gap: 14px; }
 .kal-lewa .panel + .panel { margin-top: 0; }
 .kal-tel { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; letter-spacing: 0.1em; color: var(--tekst-slaby); }
@@ -977,8 +1064,198 @@ button.potwierdz { color: var(--akcent-2); border-color: var(--akcent-2); box-sh
 /* Ukryte ikony pulpitu: znika też dolny dok ikon (inaczej zostaje pusty ciemny pasek). */
 html.ukryte-ikony-pulpitu .siatka-aplikacji .ikony-dolne { display: none; }
 /* Tryb stanowiska (gracz przydzielony do pulpitu symulacji): tylko konsola, bez paska i doku. */
-html.tryb-stanowiska #pasek, html.tryb-stanowiska #dok, html.tryb-stanowiska #dok-aplikacja { display: none !important; }
+html.tryb-stanowiska:not(.stanowisko-paski) #pasek, html.tryb-stanowiska:not(.stanowisko-paski) #dok, html.tryb-stanowiska:not(.stanowisko-paski) #dok-aplikacja { display: none !important; }
+/* Znaczek w rogu (tylko w trybie stanowiska): pokazuje / chowa pasek i dok — z doku jest Wstecz, Pulpit i Blokada. */
+#stanowisko-paski { display: none; position: fixed; top: max(4px, env(safe-area-inset-top)); left: max(4px, env(safe-area-inset-left)); z-index: 60;
+  width: 28px; height: 28px; padding: 5px; border: 1px solid rgba(77,226,201,.45); border-radius: 50%; background: rgba(5,8,10,.72);
+  color: #4de2c9; cursor: pointer; opacity: .6; }
+#stanowisko-paski:hover, #stanowisko-paski:active { opacity: 1; }
+#stanowisko-paski svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+html.tryb-stanowiska #stanowisko-paski { display: block; }
+html.tryb-stanowiska.stanowisko-paski #stanowisko-paski { top: auto; bottom: max(64px, calc(env(safe-area-inset-bottom) + 60px)); }
 html.tryb-stanowiska .widok.widok-mostka-stanowisko { display: grid; place-items: center; overflow: hidden; padding: 0; }
 html.tryb-stanowiska .widok-mostka-stanowisko > .panel-stanowiska { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; }
 html.tryb-stanowiska .panel-stanowiska > div:not([hidden]):not(:empty) { display: grid; place-items: center; width: 100%; height: 100%; margin: 0 !important; }
 .mostek-pulpit, .panel-stanowiska-tresc { display: grid; place-items: center; width: 100%; height: 100%; }
+
+/* ---------- publiczny portal HOLOLINK ---------- */
+.portal-publiczny { max-width: 1480px; margin: 0 auto; padding-top: clamp(18px,4vh,48px); }
+.portal-hero { position: relative; overflow: hidden; padding: clamp(24px,5vw,64px); border: 1px solid var(--linia-mocna); border-radius: 10px; background: radial-gradient(ellipse at 78% 20%,rgba(77,226,201,.14),transparent 42%),linear-gradient(135deg,rgba(9,25,29,.94),rgba(4,9,12,.88)); }
+.portal-hero::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.15; background:repeating-linear-gradient(0deg,transparent 0 3px,rgba(77,226,201,.22) 4px); }
+.portal-oznaczenie,.portal-etykieta { color:var(--akcent-2); font-size:11px; letter-spacing:.18em; }
+.portal-hero h1 { margin:10px 0; color:var(--akcent); font-size:clamp(34px,6vw,64px); font-weight:400; letter-spacing:.18em; }
+.portal-hero p { max-width:700px; color:var(--tekst-slaby); line-height:1.7; }
+.portal-akcje { display:flex; flex-wrap:wrap; gap:10px; margin-top:24px; }
+.portal-siatka { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:16px; }
+.portal-sekcja { min-width:0; padding:18px; border:1px solid var(--linia); border-radius:8px; background:rgba(7,15,18,.8); }
+.portal-sekcja h2 { margin:7px 0 14px; color:var(--akcent); font-size:17px; font-weight:400; letter-spacing:.08em; }
+.portal-lista { display:grid; gap:7px; max-height:300px; overflow:auto; }
+.portal-wpis,.portal-kontrakt { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 10px; border:1px solid rgba(120,220,210,.12); border-radius:5px; background:rgba(18,34,38,.42); font-size:13px; }
+.portal-wpis b,.portal-kontrakt b { color:var(--tekst); font-weight:500; }
+.portal-wpis span,.portal-kontrakt span,.portal-kontrakt small { color:var(--tekst-slaby); font-size:11px; text-align:right; }
+.portal-kurs strong { white-space:nowrap; color:var(--tekst); }
+.portal-zmiana.dodatnia { color:var(--ok); }.portal-zmiana.ujemna { color:var(--zly); }
+.portal-kontrakt { align-items:flex-start; }.portal-kontrakt>div { display:grid; gap:5px; }.portal-kontrakt>span { white-space:nowrap; }
+.portal-pusto { padding:10px; color:var(--tekst-slaby); font-size:12px; }
+.portal-stopka { margin:14px 2px 8px; color:var(--tekst-slaby); font-size:11px; line-height:1.6; }
+@media(max-width:760px) { .portal-siatka { grid-template-columns:1fr; }.portal-wpis,.portal-kontrakt { align-items:flex-start; }.portal-kurs { flex-wrap:wrap; } }
+
+/* Przycisk × w okienkach informacji (karta i panel floty na mapie, okno skoku, okno kalendarza): przyklejony do górnej
+   krawędzi okienka — przy przewijaniu treści w dół zostaje na wierzchu, nie trzeba wracać na górę, żeby zamknąć. */
+.mapa-zamknij, .okno-skoku-zamknij, .kal-modal-x {
+  position: sticky; top: 0; z-index: 6; display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; margin: -8px -10px -28px auto; padding: 0; justify-self: end; line-height: 1;
+  border: 1px solid var(--linia); border-radius: 50%; background: rgba(10, 17, 20, 0.92);
+}
+.mapa-zamknij:hover, .okno-skoku-zamknij:hover, .kal-modal-x:hover { color: var(--akcent); border-color: var(--linia-mocna); }
+/* Okno kalendarza na niskim ekranie też się przewija (z × na wierzchu). */
+.kal-modal { max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+/* Pełny ekran aplikacji (kalendarz, mapa, giełda — ikonka w doku): bez górnego paska i doku; powrót — znaczek
+   w prawym górnym rogu (albo Escape). */
+html.app-pelny-ekran #pasek, html.app-pelny-ekran #dok { display: none !important; }
+#app-zwykly { display: none; position: fixed; top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); z-index: 70;
+  width: 32px; height: 32px; padding: 6px; border: 1px solid rgba(77,226,201,.45); border-radius: 50%; background: rgba(5,8,10,.78);
+  color: #4de2c9; cursor: pointer; opacity: .75; }
+#app-zwykly:hover, #app-zwykly:focus-visible { opacity: 1; }
+#app-zwykly svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+html.app-pelny-ekran #app-zwykly { display: block; }
+
+
+/* ---------- Dok na mapie (tabela GUI, 28.11.2026) ----------
+   Na mapie dok ma tylko przybliżenia: po lewej „gdzie lecę” (w locie), na środku ◁ ◯ ▢, po prawej „moja pozycja”.
+   Pozostałe ikonki doku (ustawienia, pomoc, zegar, ikony, dźwięk, pełny ekran) są schowane — pełny ekran jest w pasku. */
+html.mapa-otwarta :is(#dok-lewo, #dok-prawo) > button { display: none !important; }
+html.mapa-otwarta #dok #dok-aplikacja-lewo > button, html.mapa-otwarta #dok #dok-aplikacja > button { width: var(--w); }
+#dok-aplikacja-lewo { display: flex; align-items: center; gap: var(--odstep); }
+/* Komputer: obie grupy przy ◁ ◯ ▢ (kółko zawsze na środku), ten sam rozmiar i odstęp co ◁ ◯ ▢. */
+html.mapa-otwarta:not(.mapa-telefon) #dok-lewo { justify-content: flex-end; }
+html.mapa-otwarta:not(.mapa-telefon) #dok-prawo { justify-content: flex-start; }
+html.mapa-otwarta:not(.mapa-telefon) #dok-aplikacja { gap: var(--odstep); }
+/* Komputer, pełny ekran mapy: bez paska i ◁ ◯ ▢; przybliżenia zostają na dole, powrót — znaczek w rogu (albo Esc). */
+html.app-pelny-ekran.mapa-otwarta:not(.mapa-telefon) #dok {
+  display: grid !important; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; border-top: 0; background: transparent;
+}
+html.app-pelny-ekran.mapa-otwarta #dok-srodek { visibility: hidden; }
+
+/* Telefon: jeden rząd 9 stałych miejsc — 3 „gdzie lecę” | ◁ ◯ ▢ | 3 „moja pozycja” (puste miejsca zostają, kółko na
+   środku). Domyślnie bez górnego paska i ramki doku, a zalogowany także bez wyszukiwarki; znaczek nad rzędem po prawej
+   pokazuje paski. Współrzędne nad rzędem. */
+html.mapa-telefon #dok { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); justify-items: center; column-gap: 0; }
+html.mapa-telefon :is(#dok-lewo, #dok-prawo, #dok-srodek, #dok-aplikacja, #dok-aplikacja-lewo) { display: contents; }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(1) { grid-column: 3; grid-row: 1; }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(2) { grid-column: 2; grid-row: 1; }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(3) { grid-column: 1; grid-row: 1; }
+html.mapa-telefon #dok-srodek > :nth-child(1) { grid-column: 4; grid-row: 1; }
+html.mapa-telefon #dok-srodek > :nth-child(2) { grid-column: 5; grid-row: 1; }
+html.mapa-telefon #dok-srodek > :nth-child(3) { grid-column: 6; grid-row: 1; }
+html.mapa-telefon #dok-aplikacja > :nth-child(1) { grid-column: 7; grid-row: 1; }
+html.mapa-telefon #dok-aplikacja > :nth-child(2) { grid-column: 8; grid-row: 1; }
+html.mapa-telefon #dok-aplikacja > :nth-child(3) { grid-column: 9; grid-row: 1; }
+html.mapa-telefon #dok :is(#dok-srodek > button, #dok-aplikacja > button, #dok-aplikacja-lewo > button) {
+  width: 30px; height: 30px; padding: 6px; border: 1px solid var(--linia); border-radius: 50%;
+  background: rgba(5, 8, 10, 0.72); font-size: 16px; line-height: 1;
+}
+html.mapa-telefon:not(.stanowisko-paski) #pasek { display: none !important; }
+html.mapa-telefon:not(.stanowisko-paski) #dok {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  padding: 4px 4px max(8px, env(safe-area-inset-bottom)); border-top: 0; background: transparent;
+}
+html.mapa-telefon:not(.mapa-gosc):not(.stanowisko-paski) .mapa-szukajka { display: none; }
+html.mapa-telefon #stanowisko-paski { display: block; top: auto; left: auto; width: 30px; height: 30px; z-index: 21;
+  right: 8px; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 44px); }
+html.mapa-telefon.stanowisko-paski #stanowisko-paski { bottom: 64px; }
+html.mapa-telefon:not(.stanowisko-paski) .mapa-wsp { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 44px); }
+
+/* Telefon: ikonki doku przy krawędziach (tabela GUI); tylko portal publiczny gościa ma je przy ◁ ◯ ▢, co 10 px. */
+@media (max-width: 480px) {
+  html.portal #dok-lewo { justify-content: flex-end; }
+  html.portal #dok-prawo { justify-content: flex-start; }
+  html.portal #dok { --odstep: 10px; }
+}
+/* Telefon, pełny ekran mapy (ta sama droga co kalendarz i giełda): pasek adresu i górny pasek znikają, rząd
+   przybliżeń z ◁ ◯ ▢ zostaje; powrót — znaczek w prawym górnym rogu. */
+html.app-pelny-ekran.mapa-telefon #dok { display: grid !important; }
+html.app-pelny-ekran.mapa-telefon #dok-srodek { visibility: visible; }
+html.app-pelny-ekran.mapa-telefon #stanowisko-paski { display: none; }
+
+/* Dane publiczne na mapie (096): planeta jako odnośnik (przelot i karta), panel nad rzędem przycisków w telefonie. */
+.mapa-link { padding: 0; border: 0; background: none; color: var(--akcent); font: inherit; text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-color: rgba(77, 226, 201, 0.4); text-underline-offset: 2px; }
+.mapa-link:hover, .mapa-link:focus-visible { text-decoration-color: currentColor; }
+.mapa-publ { z-index: 5; }
+.mapa-publ h2 { margin: 0 40px 10px 0; color: var(--akcent); font-size: 18px; }
+.mapa-publ select { width: 100%; margin: 4px 0 10px; }
+.mapa-publiczne .tabela td, .mapa-publ .tabela td { vertical-align: top; }
+html.mapa-telefon:not(.stanowisko-paski) .mapa-publ { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px); max-height: calc(100% - 140px); }
+
+/* Mapa w telefonie: przycisk pełnego ekranu jak w kalendarzu i giełdzie (ten sam przycisk doku) — nad rzędem po lewej,
+   naprzeciw znaczka pasków; przełącza pełny ekran przeglądarki (znika pasek adresu). Współrzędne obok niego. */
+html.mapa-otwarta.mapa-telefon #dok-prawo > #dok-pelny {
+  display: inline-flex !important; position: fixed; left: 8px; bottom: calc(max(8px, env(safe-area-inset-bottom)) + 44px); z-index: 21;
+  width: 30px; height: 30px; padding: 6px; border: 1px solid rgba(77, 226, 201, 0.45); border-radius: 50%; background: rgba(5, 8, 10, 0.78);
+  color: #4de2c9;
+}
+html.mapa-otwarta.mapa-telefon.stanowisko-paski #dok-prawo > #dok-pelny { bottom: 64px; }
+html.mapa-telefon:not(.stanowisko-paski) .mapa-wsp { left: 46px; }
+
+/* Panel danych publicznych: nagłówek przyklejony u góry (tytuł, zwiń, zamknij). Zwinięty — sam nagłówek z nazwą
+   wybranej linii; trasa i podświetlenia zostają na mapie, tytuł albo ▴ rozwija panel. */
+.mapa-publ-glowa { position: sticky; top: -14px; z-index: 2; display: flex; align-items: center; gap: 6px;
+  margin: -14px -16px 10px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--linia); background: rgba(10, 17, 20, 0.97); }
+.mapa-publ .mapa-publ-glowa h2 { flex: 1; min-width: 0; margin: 0; font-size: 16px; }
+.mapa-publ-podpis { display: block; overflow: hidden; color: var(--tekst-slaby); font-size: 11px; letter-spacing: 0.04em; white-space: nowrap; text-overflow: ellipsis; }
+.mapa-publ-podpis:empty { display: none; }
+.mapa-publ-przycisk { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0;
+  border: 1px solid var(--linia); border-radius: 50%; background: transparent; color: var(--tekst-slaby); font: 16px/1 var(--lat); cursor: pointer; }
+.mapa-publ-przycisk:hover, .mapa-publ-przycisk:focus-visible { color: var(--akcent); border-color: var(--linia-mocna); }
+.mapa-publ.zwiniety { overflow: hidden; padding-bottom: 0; }
+.mapa-publ.zwiniety > :not(.mapa-publ-glowa) { display: none; }
+.mapa-publ.zwiniety .mapa-publ-glowa { margin-bottom: 0; border-bottom: 0; }
+.mapa-publ.zwiniety .mapa-publ-glowa h2 { cursor: pointer; }
+/* Mapa w telefonie: bez znaczka pasków w prawym rogu (zostaje przycisk pełnego ekranu po lewej). */
+html.mapa-telefon #stanowisko-paski { display: none !important; }
+
+/* Mapa w telefonie: pełny ekran w tym samym rzędzie co przyciski dolne. Rząd ma 11 równych miejsc:
+   pełny ekran | 3 „gdzie lecę” | ◁ ◯ ▢ | 3 prawej grupy | puste — kółko (6. z 11) zostaje na środku. */
+html.mapa-telefon #dok { grid-template-columns: repeat(11, minmax(0, 1fr)); }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(1) { grid-column: 4; }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(2) { grid-column: 3; }
+html.mapa-telefon #dok-aplikacja-lewo > :nth-last-child(3) { grid-column: 2; }
+html.mapa-telefon #dok-srodek > :nth-child(1) { grid-column: 5; }
+html.mapa-telefon #dok-srodek > :nth-child(2) { grid-column: 6; }
+html.mapa-telefon #dok-srodek > :nth-child(3) { grid-column: 7; }
+html.mapa-telefon #dok-aplikacja > :nth-child(1) { grid-column: 8; }
+html.mapa-telefon #dok-aplikacja > :nth-child(2) { grid-column: 9; }
+html.mapa-telefon #dok-aplikacja > :nth-child(3) { grid-column: 10; }
+html.mapa-otwarta.mapa-telefon #dok-prawo > #dok-pelny,
+html.mapa-otwarta.mapa-telefon.stanowisko-paski #dok-prawo > #dok-pelny { position: static; grid-column: 1; grid-row: 1; background: rgba(5, 8, 10, 0.72); }
+html.mapa-telefon:not(.stanowisko-paski) .mapa-wsp { left: 12px; }
+
+/* Tabele składane (dane publiczne na mapie): na wąskim ekranie pierwsza kolumna (towar, planeta) na całą szerokość,
+   pod nią pozostałe w równych kolumnach (--kolumny) z małą etykietą nad wartością; na komputerze zwykła tabela. */
+.tabela-dopisek { margin-left: 6px; }
+@media (max-width: 760px) {
+  .tabela-skladana, .tabela-skladana tbody { display: block; width: 100%; }
+  .tabela-skladana tr.naglowek { display: none; }
+  .tabela-skladana tr { display: grid; grid-template-columns: repeat(var(--kolumny, 3), minmax(0, 1fr)); column-gap: 10px; row-gap: 4px;
+    padding: 9px 0; border-bottom: 1px solid var(--linia); }
+  .tabela-skladana td { display: block; min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .tabela-skladana td:first-child { grid-column: 1 / -1; color: var(--tekst); }
+  .tabela-skladana td[data-etykieta]::before { content: attr(data-etykieta); display: block; margin-bottom: 2px;
+    color: var(--tekst-slaby); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+}
+
+/* Tabele składane według szerokości karty / panelu, a nie ekranu: wąska karta planety na komputerze też układa
+   wiersz w dwa rzędy (towar na całą szerokość, pod nim wartości z etykietami). */
+.mapa-karta, .mapa-publ { container-type: inline-size; }
+@container (max-width: 560px) {
+  .tabela-skladana, .tabela-skladana tbody { display: block; width: 100%; }
+  .tabela-skladana tr.naglowek { display: none; }
+  .tabela-skladana tr { display: grid; grid-template-columns: repeat(var(--kolumny, 3), minmax(0, 1fr)); column-gap: 10px; row-gap: 4px;
+    padding: 9px 0; border-bottom: 1px solid var(--linia); }
+  .tabela-skladana td { display: block; min-width: 0; padding: 0; border: 0; overflow-wrap: anywhere; }
+  .tabela-skladana td:first-child { grid-column: 1 / -1; color: var(--tekst); }
+  .tabela-skladana td[data-etykieta]::before { content: attr(data-etykieta); display: block; margin-bottom: 2px;
+    color: var(--tekst-slaby); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+}

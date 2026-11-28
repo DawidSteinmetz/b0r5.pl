@@ -1,0 +1,15 @@
+RAPORT ZMIANY INTERFEJSU — POŁOŻENIE PRZYCISKU „DOSTOSUJ PULPIT”
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+JAK JEST TERAZ
+Przycisk „Dostosuj pulpit” znajduje się wyżej, niż powinien, i nie jest umieszczony w pobliżu ikony głośnika.
+
+JAK MA BYĆ
+Przenieść przycisk „Dostosuj pulpit” niżej, tak aby znajdował się tuż nad ikoną głośnika.
+
+KRYTERIUM
+Na pulpicie przycisk dostosowania jest bezpośrednio nad ikoną głośnika, pozostaje widoczny i wygodny do kliknięcia. Zmiana nie może zasłaniać ikon aplikacji ani innych elementów interfejsu.
+
+UWAGI
+To zmiana położenia w interfejsie. Kod nie był modyfikowany.

@@ -20,8 +20,9 @@ import gielda from './aplikacje/gielda.js';
 import symulacje from './aplikacje/symulacje.js';
 import mostek from './aplikacje/mostek.js';
 import starcia from './aplikacje/starcia.js';
+import sledztwa from './aplikacje/sledztwa.js';
 
-const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, starcia, symulacje, ustawienia];
+const APLIKACJE = [karta, nawigacja, mapa, holonet, bank, gielda, firma, dekoder, kalendarz, frakcja, mostek, starcia, sledztwa, symulacje, ustawienia];
 
 const html = document.documentElement;
 const pulpit = document.getElementById('pulpit');
@@ -31,6 +32,7 @@ const tytulPaska = document.getElementById('pasek-tytul');
 
 const stan = {
   uzytkownik: null,
+  gosc: false,
   aplikacja: null,      // { def, sprzataj, wstecz }
   mostki: [],
   starcia: [],
@@ -46,16 +48,25 @@ const alfabet = {
   get lacinski() {
     return !html.classList.contains('aurebesh');
   },
+  get tryb() {
+    return html.classList.contains('aurebesh-klasyczny') ? 'klasyczny' : this.lacinski ? 'latinski' : 'datapad';
+  },
   ustaw(lacinski, efekt = true) {
-    const zmien = () => html.classList.toggle('aurebesh', !lacinski);
-    pamiec.zapisz('lacinski', lacinski);
+    const tryb = typeof lacinski === 'string' ? lacinski : lacinski ? 'latinski' : 'datapad';
+    const zmien = () => {
+      html.classList.toggle('aurebesh', tryb !== 'latinski');
+      html.classList.toggle('aurebesh-klasyczny', tryb === 'klasyczny');
+    };
+    pamiec.zapisz('tryb_czcionki', tryb);
+    pamiec.zapisz('lacinski', tryb === 'latinski');
     if (!efekt) return zmien();
     zaklocenia();
     setTimeout(zmien, 180);
-    window.dispatchEvent(new CustomEvent('datapad:alfabet', { detail: { lacinski } }));
+    window.dispatchEvent(new CustomEvent('datapad:alfabet', { detail: { lacinski: tryb === 'latinski', tryb } }));
   },
   przelacz() {
-    this.ustaw(!this.lacinski);
+    const tryby = ['datapad', 'klasyczny', 'latinski'];
+    this.ustaw(tryby[(tryby.indexOf(this.tryb) + 1) % tryby.length]);
   },
 };
 
@@ -85,6 +96,42 @@ async function pelnyEkran() {
   } catch { /* nie każde urządzenie pozwala */ }
   utrzymajEkran();
 }
+
+// Telefon (dotyk, krótszy bok ekranu < 600 px): wybudzenie nie włącza pełnego ekranu ani poziomu — logowanie jest
+// w pionie, żeby klawiatura nie zasłaniała pól. Pełny ekran i poziom gracz włącza sam przyciskiem w pasku.
+const TELEFON = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+async function wyjdzZPelnegoEkranu() {
+  try { if (document.fullscreenElement) await document.exitFullscreen(); } catch { /* już poza pełnym ekranem */ }
+  try { screen.orientation?.unlock?.(); } catch { /* nie każde urządzenie pozwala */ }
+}
+// Ekran logowania na telefonie: poza pełnym ekranem, w pionie (blokada pionu działa w zainstalowanej aplikacji).
+async function logowanieWPionie() {
+  if (!TELEFON) return;
+  await wyjdzZPelnegoEkranu();
+  try { await screen.orientation?.lock?.('portrait'); } catch { /* w przeglądarce bez pełnego ekranu nie wolno */ }
+}
+// Po zalogowaniu telefon obraca się swobodnie (dopiero gracz wybiera poziom lub pełny ekran).
+function zwolnijObrot() {
+  if (!TELEFON) return;
+  try { screen.orientation?.unlock?.(); } catch { /* nie każde urządzenie pozwala */ }
+}
+const przyciskPelnego = document.getElementById('pasek-pelny');
+const IKONA_PELNY_EKRAN = '<path d="M8 18V8h10M30 8h10v10M40 30v10H30M18 40H8V30"/>';
+const IKONA_ZWYKLY_EKRAN = '<path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/>';
+function rysujPrzyciskPelnego() {
+  const pelny = !!document.fullscreenElement;
+  przyciskPelnego.hidden = !document.fullscreenEnabled;
+  przyciskPelnego.querySelector('svg').innerHTML = pelny ? IKONA_ZWYKLY_EKRAN : IKONA_PELNY_EKRAN;
+  przyciskPelnego.title = pelny ? 'Zamknij pełny ekran' : 'Pełny ekran (na telefonie — w poziomie)';
+  przyciskPelnego.setAttribute('aria-label', przyciskPelnego.title);
+}
+// W kalendarzu, giełdzie i na mapie (komputer) przycisk w pasku to pełny ekran aplikacji (bez pasków, bez paska adresu).
+przyciskPelnego.addEventListener('click', () => {
+  if (APLIKACJE_PELNOEKRANOWE.includes(stan.aplikacja?.def?.id)) return ustawPelnyApp(true);
+  return document.fullscreenElement ? wyjdzZPelnegoEkranu() : pelnyEkran();
+});
+document.addEventListener('fullscreenchange', rysujPrzyciskPelnego);
+rysujPrzyciskPelnego();
 
 let blokadaUspienia = null;
 async function utrzymajEkran() {
@@ -161,7 +208,7 @@ document.addEventListener('visibilitychange', () => {
 // wyglądają tak samo jak tysiące gwiazd tła, więc gracz nie wie, na którą warto patrzeć.
 // ================================================================
 
-const KLASY_GWIAZD = { O: 'błękitny olbrzym', B: 'błękitna', A: 'biała', F: 'żółtobiała', G: 'żółta', K: 'pomarańczowa', M: 'czerwony karzeł', WD: 'biały karzeł', RG: 'czerwony olbrzym' };
+const KLASY_GWIAZD = { O: 'błękitny olbrzym', B: 'błękitna', A: 'biała', F: 'żółtobiała', G: 'żółta', K: 'pomarańczowa', M: 'czerwony karzeł', WD: 'biały karzeł', RG: 'czerwony olbrzym', BH: 'czarna dziura' };
 const WAGI_KLAS = [['O', 1], ['B', 3], ['A', 5], ['F', 8], ['G', 15], ['K', 25], ['M', 40], ['WD', 2], ['RG', 1]];
 const skrot = (t) => { let x = 2166136261; for (const c of t) x = Math.imul(x ^ c.charCodeAt(0), 16777619); return x >>> 0; };
 const losZ = (ziarno) => { let s = ziarno || 1; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
@@ -406,25 +453,26 @@ function rysujLiczniki() {
   document.querySelectorAll('[data-odliczanie]').forEach((el) => {
     wyczysc(el);
     const o = liczniki?.odliczanie;
-    el.hidden = !o;
+    el.hidden = !o || ukryteKafelki.includes('odliczanie');
     if (!o) return;
     el.append(h('span.kafel-etykieta', o.etykieta), h('b.kafel-czas', { 'data-koniec': String(o.koniec) }, pozostalo(o.koniec)),
       o.od ? h('i.kafel-postep', h('i', { 'data-od': String(o.od), 'data-do': String(o.koniec) })) : null);
   });
   // Naprawy w stoczni: kafelek na każdą pracę w toku (nazwa podzespołu, prognoza do końca) i kafelek całości.
   document.querySelectorAll('[data-naprawy]').forEach((el) => {
+    document.querySelectorAll('[data-pulpit-kafel^="naprawa-"]').forEach((kafel) => kafel.remove());
     wyczysc(el);
     const n = liczniki?.naprawa;
     if (!n?.naprawy?.length) return;
     const KLUCZ = '<path d="M30 8a9 9 0 0 0-8 12L9 33a3 3 0 0 0 4 4l13-13a9 9 0 0 0 12-8l-5 5-5-1-1-5z"/>';
     for (const x of n.naprawy.filter((r) => r.stan === 'w_toku')) {
-      el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: `Naprawa: ${x.nazwa} (od ${x.od_wartosci}%)` },
+    el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: `Naprawa: ${x.nazwa} (od ${x.od_wartosci}%)`, 'data-pulpit-kafel': `naprawa-${x.id}` },
         ikona(KLUCZ), h('span.kafel-etykieta', `Naprawa: ${x.nazwa}`),
         h('b.kafel-czas', { 'data-koniec': String(x.koniec), 'data-opoznienie': '1' }, x.opoznienie ? 'opóźnienie' : pozostalo(x.koniec)),
         h('i.kafel-postep', h('i', { 'data-od': String(x.od), 'data-do': String(x.koniec) }))));
     }
     const czeka = n.naprawy.filter((r) => r.stan === 'kolejka').length;
-    el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: n.stocznia },
+    el.append(h('div.ikona-aplikacji.kafel-odliczanie.kafel-naprawa', { title: n.stocznia, 'data-pulpit-kafel': 'naprawa-okret' },
       h('span.kafel-etykieta', `Okręt w doku${czeka ? ` · w kolejce: ${czeka}` : ''}`),
       h('b.kafel-czas', { 'data-koniec': String(n.koniec), 'data-opoznienie': '1' }, pozostalo(n.koniec)),
       h('span.kafel-etykieta', 'prognoza całości')));
@@ -432,7 +480,7 @@ function rysujLiczniki() {
   // Kafelek stanu: zawsze cztery paski (statek firmy: paliwo).
   document.querySelectorAll('[data-liczniki]').forEach((el) => {
     wyczysc(el);
-    el.hidden = !liczniki;
+    el.hidden = !liczniki || ukryteKafelki.includes('status');
     if (!liczniki) return;
     for (const [k, nazwa] of NAZWY_LICZNIKOW) {
       if (liczniki[k] == null) continue;
@@ -441,6 +489,7 @@ function rysujLiczniki() {
         h('span', nazwa), h('i', h('i', { style: `width:${v}%` })), h('b', `${v}%`)));
     }
   });
+  rozmiescKafelkiPulpitu();
 }
 setInterval(() => {
   const teraz = (Date.now() + przesuniecieZegara) / 1000;
@@ -481,7 +530,7 @@ async function zrobZdjecie(e) {
 }
 setInterval(() => {
   const widac = !!stan.uzytkownik && scena.slonceWidoczne();
-  document.querySelectorAll('[data-aparat]').forEach((el) => { el.hidden = !widac; });
+  document.querySelectorAll('[data-aparat]').forEach((el) => { el.hidden = !widac || ukryteKafelki.includes('aparat'); });
 }, 1000);
 
 async function sprawdzScene() {
@@ -495,13 +544,35 @@ async function sprawdzScene() {
     pamiec.zapisz('scena', s);
     scena.ustaw({ ...s, przesuniecie: przesuniecieZegara });
     // Dźwięk: skok w nadprzestrzeń albo tło mostka (także bez sceny — poza skokiem gra zawsze tło).
-    ustawDzwiek(s?.scena || 'kosmos', Date.now() + przesuniecieZegara - (s?.zmieniono || 0), Number(s?.zmieniono) || 0);
+    ustawDzwiek(s?.scena || 'kosmos', Date.now() + przesuniecieZegara - (s?.zmieniono || 0), Number(s?.zmieniono) || 0, s?.hiper === true);
     document.querySelectorAll('[data-miejsce]').forEach((el) => { el.textContent = opisMiejsca(); });
   } catch { /* brak zasięgu — zostaje ostatni znany stan */ }
 }
 setInterval(sprawdzScene, 6000);
 // Podpis na pulpicie dogania tło (skok → nadprzestrzeń) bez czekania na serwer.
 setInterval(() => document.querySelectorAll('[data-miejsce]').forEach((el) => { el.textContent = opisMiejsca(); }), 2000);
+
+// Duży zegar i data (portal, pulpit, blokada): przycisk w doku (i na blokadzie) chowa je i pokazuje; wybór zapamiętany na urządzeniu.
+const IKONA_ZEGARA = '<circle cx="24" cy="24" r="15"/><path d="M24 15v9l6 4"/>';
+const IKONA_ZEGARA_UKRYTEGO = '<circle cx="24" cy="24" r="15"/><path d="M24 15v9l6 4M9 9l30 30"/>';
+html.classList.toggle('bez-zegara', !!pamiec.czytaj('ukryj_zegar', false));
+function przyciskZegara() {
+  const b = h('button.przycisk-zegara', { type: 'button' });
+  const rysuj = () => {
+    const ukryty = html.classList.contains('bez-zegara');
+    b.replaceChildren(ikona(ukryty ? IKONA_ZEGARA_UKRYTEGO : IKONA_ZEGARA));
+    b.title = ukryty ? 'Pokaż godzinę i datę' : 'Ukryj godzinę i datę';
+    b.setAttribute('aria-label', b.title);
+  };
+  b.addEventListener('click', () => {
+    pamiec.zapisz('ukryj_zegar', !html.classList.contains('bez-zegara'));
+    html.classList.toggle('bez-zegara');
+    document.querySelectorAll('.przycisk-zegara').forEach((x) => x.dispatchEvent(new Event('odswiez')));
+  });
+  b.addEventListener('odswiez', rysuj);
+  rysuj();
+  return b;
+}
 
 // Wyciszenie: mała ikonka w prawym dolnym rogu (na doku).
 const GLOSNIK = '<path d="M8 19h7l9-8v26l-9-8H8z"/>';
@@ -517,12 +588,33 @@ przyciskDzwieku.addEventListener('click', () => { przelaczWyciszenie(); rysujPrz
 rysujPrzyciskDzwieku();
 dok.append(przyciskDzwieku);
 
+// Jednym kliknięciem można oczyścić pulpit z ikon aplikacji; ustawienie pozostaje na tym urządzeniu.
+const IKONA_UKRYJ_IKONY = '<rect x="7" y="9" width="34" height="26" rx="3"/><path d="M12 16h24M12 22h14M12 28h9"/><path d="M31 29l9 9M40 29l-9 9"/>';
+const IKONA_POKAZ_IKONY = '<rect x="7" y="9" width="34" height="26" rx="3"/><path d="M12 16h24M12 22h14M12 28h9"/><path d="M30 33l4 4 8-9"/>';
+let ikonyPulpituUkryte = !!pamiec.czytaj('ikony-pulpitu-ukryte', false);
+const przyciskIkonPulpitu = h('button#dok-ikony.dok-ikonka', { type: 'button', onclick: () => {
+  ikonyPulpituUkryte = !ikonyPulpituUkryte;
+  pamiec.zapisz('ikony-pulpitu-ukryte', ikonyPulpituUkryte);
+  rysujPrzyciskIkonPulpitu();
+} });
+function rysujPrzyciskIkonPulpitu() {
+  const t = ikonyPulpituUkryte ? 'Pokaż ikony pulpitu' : 'Ukryj ikony pulpitu';
+  wyczysc(przyciskIkonPulpitu).append(ikona(ikonyPulpituUkryte ? IKONA_POKAZ_IKONY : IKONA_UKRYJ_IKONY));
+  przyciskIkonPulpitu.title = t;
+  przyciskIkonPulpitu.setAttribute('aria-label', t);
+  przyciskIkonPulpitu.classList.toggle('aktywny', ikonyPulpituUkryte);
+  html.classList.toggle('ukryte-ikony-pulpitu', ikonyPulpituUkryte);
+}
+rysujPrzyciskIkonPulpitu();
+dok.append(przyciskIkonPulpitu);
+
 // Małe ikonki w narożnikach doku (ta sama wielkość co głośnik): po prawej „Dostosuj pulpit” tuż obok
 // głośnika, po lewej Ustawienia i Przewodnik. Ustawienia nie są kafelkiem na pulpicie.
 const IKONA_DOSTOSUJ = '<rect x="8" y="8" width="13" height="13" rx="2"/><rect x="27" y="8" width="13" height="13" rx="2"/><rect x="8" y="27" width="13" height="13" rx="2"/><path d="M33.5 27v13M27 33.5h13"/>';
 const IKONA_GOTOWE = '<path d="M10 25l9 9 19-20"/>';
 const IKONA_USTAWIEN = '<circle cx="24" cy="24" r="6"/><path d="M24 6v6M24 36v6M6 24h6M36 24h6M11 11l4 4M33 33l4 4M11 37l4-4M33 15l4-4"/>';
 const IKONA_PRZEWODNIKA = '<circle cx="24" cy="24" r="17"/><path d="M19 19c0-3 2.5-5 5-5s5 2 5 5c0 4-5 4-5 8"/><path d="M24 33v1"/>';
+const IKONA_LOGOWANIA = '<path d="M22 9h15v30H22"/><path d="M8 24h21M23 18l6 6-6 6"/>';
 const ikonkaDoku = (id, rysunek, tytul, fn) => {
   const b = h(`button#${id}.dok-ikonka`, { type: 'button', title: tytul, 'aria-label': tytul, onclick: fn });
   b.append(ikona(rysunek));
@@ -552,18 +644,98 @@ const przyciskPrzewodnika = ikonkaDoku('dok-przewodnik', IKONA_PRZEWODNIKA, 'Prz
 });
 dok.append(przyciskDostosuj, przyciskUstawien, przyciskPrzewodnika);
 
+function pokazPrzyciskiPulpitu(widoczne) {
+  przyciskIkonPulpitu.hidden = !widoczne;
+  przyciskDostosuj.hidden = !widoczne;
+  przyciskZegaraDoku.hidden = !widoczne;
+  przyciskDanych.hidden = !widoczne || !stan.uzytkownik;
+}
+
+// Ukrycie danych zalogowanego na pulpicie (postać, frakcja, oddział, ranga, pozycja) — np. przy pokazywaniu ekranu
+// innym; wybór zapamiętany na urządzeniu.
+const IKONA_DANE = '<circle cx="24" cy="17" r="7"/><path d="M10 40c1-8 7-12 14-12s13 4 14 12"/>';
+const IKONA_DANE_UKRYTE = '<circle cx="24" cy="17" r="7"/><path d="M10 40c1-8 7-12 14-12s13 4 14 12M8 8l32 32"/>';
+html.classList.toggle('bez-danych', !!pamiec.czytaj('ukryj_dane', false));
+const przyciskDanych = h('button#dok-dane.dok-ikonka', { type: 'button', onclick: () => {
+  pamiec.zapisz('ukryj_dane', !html.classList.contains('bez-danych'));
+  html.classList.toggle('bez-danych');
+  rysujPrzyciskDanych();
+} });
+function rysujPrzyciskDanych() {
+  const ukryte = html.classList.contains('bez-danych');
+  const t = ukryte ? 'Pokaż informacje o postaci' : 'Ukryj informacje o postaci';
+  wyczysc(przyciskDanych).append(ikona(ukryte ? IKONA_DANE_UKRYTE : IKONA_DANE));
+  przyciskDanych.title = t;
+  przyciskDanych.setAttribute('aria-label', t);
+  przyciskDanych.classList.toggle('aktywny', ukryte);
+}
+rysujPrzyciskDanych();
+
 // Ikonki otwartej aplikacji w doku (np. zbliżenie mapy): obok ikonek w prawym rogu; znikają z aplikacją.
 const dokAplikacji = h('div#dok-aplikacja', { hidden: true });
-dok.append(dokAplikacji);
+const dokAplikacjiLewo = h('div#dok-aplikacja-lewo', { hidden: true });
+// Dok w trzech częściach, wszystko w jednej linii i w jednej skali: po lewej Ustawienia i Pomoc, na środku ◁ ◯ ▢
+// (kółko zawsze dokładnie na środku — boczne części mają równą szerokość), po prawej ikonki aplikacji, Dostosuj pulpit,
+// zegar, ikony pulpitu, dźwięk i dane postaci. Telefon: Dostosuj po lewej, żeby obie strony się zmieściły.
+// Pełny ekran aplikacji (kalendarz, mapa, giełda): ikonka w doku chowa górny pasek i dok (i prosi przeglądarkę o pełny
+// ekran); powrót do zwykłego widoku — znaczek w prawym górnym rogu, Escape albo zamknięcie aplikacji.
+const APLIKACJE_PELNOEKRANOWE = ['kalendarz', 'mapa', 'gielda'];
+// Mapa na telefonie ma już swój pełny ekran (bez pasków) — tam przycisk przełącza tylko pełny ekran przeglądarki
+// (znika pasek adresu), a ikona pokazuje, czy jest włączony.
+const przyciskPelnegoApp = ikonkaDoku('dok-pelny', IKONA_PELNY_EKRAN, 'Pełny ekran', () => {
+  if (!html.classList.contains('mapa-telefon')) return ustawPelnyApp(true);
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  else if (document.fullscreenEnabled) document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+});
+function rysujPrzyciskPelnegoApp() {
+  const pelny = html.classList.contains('mapa-telefon') && !!document.fullscreenElement;
+  wyczysc(przyciskPelnegoApp).append(ikona(pelny ? IKONA_ZWYKLY_EKRAN : IKONA_PELNY_EKRAN));
+  przyciskPelnegoApp.title = pelny ? 'Zamknij pełny ekran' : 'Pełny ekran';
+  przyciskPelnegoApp.setAttribute('aria-label', przyciskPelnegoApp.title);
+}
+document.addEventListener('fullscreenchange', rysujPrzyciskPelnegoApp);
+przyciskPelnegoApp.hidden = true;
+let pelnyAppPrzegladarka = false;
+function ustawPelnyApp(v) {
+  html.classList.toggle('app-pelny-ekran', v);
+  if (v) html.classList.remove('stanowisko-paski');
+  if (v && !document.fullscreenElement && document.fullscreenEnabled) {
+    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => { pelnyAppPrzegladarka = true; }).catch(() => {});
+  }
+  if (!v && pelnyAppPrzegladarka) {
+    pelnyAppPrzegladarka = false;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+}
+document.getElementById('app-zwykly').addEventListener('click', () => ustawPelnyApp(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && html.classList.contains('app-pelny-ekran')) ustawPelnyApp(false); });
+// Esc w przeglądarce kończy jej pełny ekran — wtedy wraca też zwykły widok aplikacji.
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && pelnyAppPrzegladarka) { pelnyAppPrzegladarka = false; html.classList.remove('app-pelny-ekran'); }
+});
+
+const przyciskZegaraDoku = przyciskZegara();
+przyciskZegaraDoku.id = 'dok-zegar';
+przyciskZegaraDoku.classList.add('dok-ikonka');
+dok.replaceChildren(
+  h('div#dok-lewo', przyciskUstawien, przyciskPrzewodnika, ...(TELEFON ? [przyciskDostosuj] : []), dokAplikacjiLewo),
+  h('div#dok-srodek', document.getElementById('dok-wstecz'), document.getElementById('dok-dom'), document.getElementById('dok-blokada')),
+  h('div#dok-prawo', dokAplikacji, przyciskPelnegoApp, ...(TELEFON ? [] : [przyciskDostosuj]), przyciskZegaraDoku, przyciskIkonPulpitu, przyciskDzwieku, przyciskDanych),
+);
+// Ikonki aplikacji: domyślnie po prawej stronie doku; { strona: 'lewo' } — po lewej (np. „gdzie lecę” na mapie).
 function ustawDokAplikacji(przyciski) {
   wyczysc(dokAplikacji);
-  const lista = (przyciski || []).map(({ ikona: rysunek, tytul, akcja }) => {
+  wyczysc(dokAplikacjiLewo);
+  const zrob = ({ ikona: rysunek, tytul, akcja }) => {
     const b = h('button.dok-ikonka', { type: 'button', title: tytul, 'aria-label': tytul, onclick: akcja });
     b.append(ikona(rysunek));
     return b;
-  });
-  dokAplikacji.append(...lista);
-  dokAplikacji.hidden = !lista.length;
+  };
+  const lista = przyciski || [];
+  dokAplikacjiLewo.append(...lista.filter((p) => p.strona === 'lewo').map(zrob));
+  dokAplikacji.append(...lista.filter((p) => p.strona !== 'lewo').map(zrob));
+  dokAplikacji.hidden = !dokAplikacji.childElementCount;
+  dokAplikacjiLewo.hidden = !dokAplikacjiLewo.childElementCount;
   dok.classList.toggle('z-aplikacja', !!lista.length);
 }
 
@@ -587,13 +759,14 @@ function widok(...zawartosc) {
 function ekranStartowy() {
   pokazPowloke(false);
   tlo(true);
-  html.classList.add('aurebesh');
+  html.classList.add('aurebesh', 'aurebesh-klasyczny');
   wyczysc(pulpit);
   const s = h('div.start', { role: 'button', tabindex: 0 },
     h('div', h('div.start-logo', URZADZENIE.system), h('div.start-pod', 'Dotknij, aby wybudzić')));
   const dalej = async () => {
     s.removeEventListener('click', dalej);
-    await pelnyEkran();
+    if (TELEFON) utrzymajEkran();
+    else await pelnyEkran();
     rozruch();
   };
   s.addEventListener('click', dalej);
@@ -613,7 +786,7 @@ async function rozruch() {
     return l;
   };
 
-  html.classList.add('aurebesh');
+  html.classList.add('aurebesh', 'aurebesh-klasyczny');
   await linia(`${URZADZENIE.producent} · ${URZADZENIE.model}`, '', 300);
   await linia(`${URZADZENIE.system} ${URZADZENIE.wersja}`, '', 300);
   await linia('Test pamięci', 'ok', 180);
@@ -628,25 +801,58 @@ async function rozruch() {
   await linia('>> ZPH // wstrzykiwanie modułu transliteracji', 'zph', 400);
   zaklocenia();
   await czekaj(200);
-  alfabet.ustaw(pamiec.czytaj('lacinski', true), false);
   await linia('>> ZPH // podpis sfałszowany. Witaj w sieci, przyjacielu.', 'zph', 700);
   await linia('Uruchamianie powłoki...', '', 400);
+  // Powitanie i pełny rozruch są w oryginalnym Aurebeshu; później wraca zapisany krój.
+  alfabet.ustaw(pamiec.czytaj('tryb_czcionki', pamiec.czytaj('lacinski', true)), false);
 
   const s = await sesja;
-  if (s?.uzytkownik) {
-    stan.uzytkownik = s.uzytkownik;
-    ekranPulpitu();
-  } else {
-    ekranBlokady(s === null ? 'Brak połączenia z holonetem. Tryb ograniczony.' : '');
-  }
+  stan.uzytkownik = s?.uzytkownik || null;
+  stan.gosc = !stan.uzytkownik;
+  if (stan.uzytkownik) ekranPulpitu();
+  else ekranPubliczny();
+}
+
+// Gość bez konta dostaje pulpit z czterema aplikacjami publicznymi (kalendarz tylko do oglądania).
+function ekranPubliczny() {
+  zamknijAplikacje();
+  html.classList.add('portal');
+  pokazPowloke(true);
+  pokazPrzyciskiPulpitu(true);
+  dok.hidden = false;
+  przyciskDostosuj.hidden = true;
+  przyciskUstawien.hidden = true;
+  przyciskPrzewodnika.hidden = true;
+  tlo(true);
+  stan.gosc = true;
+  ukryte = [];
+  dolne = [];
+  ukryteKafelki = [];
+  html.classList.remove('ukryte-ikony-pulpitu');
+  tytulPaska.textContent = '';
+  document.getElementById('pasek-siec').textContent = 'HOLONET';
+  edycjaPulpitu = false;
+  let siatka;
+  widok(
+    h('div.pulpit-glowa',
+      h('div', h('div.pulpit-zegar', { 'data-zegar': '' }, godzina()),
+        h('div.pulpit-data', { 'data-data': '' }, dataGST()),
+        h('div.pulpit-miejsce', 'Dostęp publiczny · HOLOLINK')),
+      h('div.pulpit-ktos')),
+    siatka = h('div.siatka-aplikacji.pulpit-gosc', h('div.ikony-dolne')),
+  );
+  rysujIkony(siatka);
+  odswiezZegar();
 }
 
 // 3. Blokada: jedno konto do wszystkiego (identyfikator + klucz).
 function ekranBlokady(komunikat = '') {
+  logowanieWPionie();
   tlo(true);
   zamknijAplikacje();
   pokazPowloke(false);
   stan.uzytkownik = null;
+  stan.gosc = false;
   ukryte = null;
   przewodnik = null;
   // Pamięć sesji (np. zoom mapy) kończy się z logowaniem.
@@ -667,6 +873,9 @@ function ekranBlokady(komunikat = '') {
         try {
           const odp = await api('zaloguj', { login: login.value, klucz: klucz.value });
           stan.uzytkownik = odp.uzytkownik;
+          stan.gosc = false;
+          zwolnijObrot();
+          rysujPrzyciskIkonPulpitu();
           ukryte = null;
           zaklocenia();
           ekranPulpitu();
@@ -679,6 +888,7 @@ function ekranBlokady(komunikat = '') {
     },
     h('div.blokada-zegar', { 'data-zegar': '' }, godzina()),
     h('div.blokada-data', { 'data-data': '' }, dataGST()),
+    przyciskZegara(),
     h('div.panel',
       h('div.pole', h('label', 'Identyfikator'), login),
       h('div.pole', h('label', 'Klucz dostępu'), klucz),
@@ -696,7 +906,11 @@ function ekranBlokady(komunikat = '') {
   aktywacja.hidden = true;
   formularz.querySelector('.panel').append(h('button.przycisk.drugi', { type: 'button', style: 'width:100%;margin-top:10px',
     onclick: () => { formularz.hidden = true; aktywacja.hidden = false; } }, 'Mam kod zaproszenia'));
-  pulpit.querySelector('.blokada').append(aktywacja);
+  pulpit.querySelector('.blokada').append(aktywacja, h('button.przycisk.drugi.blokada-wroc', { type:'button', style:'position:absolute;bottom:18px;left:50%;transform:translateX(-50%)', onclick: ekranPubliczny }, 'Wróć do portalu publicznego'));
+  // Klawiatura telefonu zmniejsza widok — pole, w które się pisze, przewija się na środek.
+  pulpit.querySelector('.blokada').addEventListener('focusin', (e) => {
+    if (e.target.matches('input')) setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+  });
 }
 
 function formularzZaproszenia(wroc) {
@@ -713,6 +927,8 @@ function formularzZaproszenia(wroc) {
       try {
         const odp = await api('zaproszenie_aktywuj', { login: login.value, kod: kod.value, klucz: klucz.value, klucz2: klucz2.value });
         stan.uzytkownik = odp.uzytkownik;
+        stan.gosc = false;
+        rysujPrzyciskIkonPulpitu();
         ukryte = null;
         zaklocenia();
         ekranPulpitu();
@@ -818,55 +1034,126 @@ async function rysujSzybkieAkcje() {
 // Ikony pulpitu: gracz zdejmuje i dodaje aplikacje (zapis w ustawieniach konta, kopia na urządzeniu).
 const POZA_PULPITEM = ['ustawienia']; // ikonka w narożniku doku, nie kafelek na pulpicie
 let ukryte = null;           // id zdjętych aplikacji
+let dolne = [];              // aplikacje przypięte przy dolnej krawędzi pulpitu
+let ukryteKafelki = [];       // liczniki pulpitu zdjęte przez użytkownika
 let edycjaPulpitu = false;
 function kluczPulpitu() { return 'pulpit.' + (stan.uzytkownik?.login || stan.uzytkownik?.postac || ''); }
+const NAZWY_KAFELKOW_PULPITU = {
+  odliczanie: 'Odliczanie do wyjścia',
+  status: 'Paliwo · reaktor · osłony · kadłub',
+  aparat: 'Zdjęcie słońca',
+  'naprawa-okret': 'Prognoza naprawy okrętu',
+};
 async function wczytajPulpit() {
   ukryte = pamiec.czytaj(kluczPulpitu(), []);
+  dolne = pamiec.czytaj(kluczPulpitu() + '.dolne', []);
+  ukryteKafelki = pamiec.czytaj(kluczPulpitu() + '.ukryte-kafelki', []);
   try {
     const d = await api('ustawienie', undefined, { klucz: 'pulpit' });
     if (Array.isArray(d.wartosc?.ukryte)) { ukryte = d.wartosc.ukryte; pamiec.zapisz(kluczPulpitu(), ukryte); }
+    if (Array.isArray(d.wartosc?.dolne)) dolne = d.wartosc.dolne;
+    if (Array.isArray(d.wartosc?.ukryte_kafelki)) ukryteKafelki = d.wartosc.ukryte_kafelki;
   } catch { /* zostaje kopia z urządzenia */ }
 }
 function zapiszPulpit() {
   pamiec.zapisz(kluczPulpitu(), ukryte);
-  api('ustawienie_zapisz', { klucz: 'pulpit', wartosc: { ukryte } }).catch(() => {});
+  pamiec.zapisz(kluczPulpitu() + '.dolne', dolne);
+  pamiec.zapisz(kluczPulpitu() + '.ukryte-kafelki', ukryteKafelki);
+  api('ustawienie_zapisz', { klucz: 'pulpit', wartosc: { ukryte, dolne, ukryte_kafelki: ukryteKafelki } }).catch(() => {});
 }
 // Aplikacja z warunkiem dostępu (np. Symulacje — tylko upoważnieni) pokazuje się dopiero, gdy dostep(stan) zwróci true.
 function dostepna(a) { return !a.dostep || a.dostep(stan); }
 function rysujIkony(siatka) {
-  const widoczne = APLIKACJE.filter((a) => !ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id) && dostepna(a));
+  const dozwoloneGosci = ['mapa', 'holonet', 'gielda', 'kalendarz'];
+  const aplikacjePulpitu = stan.gosc ? APLIKACJE.filter((a) => dozwoloneGosci.includes(a.id)) : APLIKACJE;
+  const widoczne = aplikacjePulpitu.filter((a) => (stan.gosc || !ukryte?.includes(a.id)) && !POZA_PULPITEM.includes(a.id) && dostepna(a));
   const zdjete = APLIKACJE.filter((a) => ukryte?.includes(a.id) && !POZA_PULPITEM.includes(a.id) && dostepna(a));
+  const dolneWidoczne = widoczne.filter((a) => dolne.includes(a.id));
+  const zwykleWidoczne = widoczne.filter((a) => !dolne.includes(a.id));
   siatka.classList.toggle('edycja', edycjaPulpitu);
   siatka.querySelectorAll('.ikona-app, .kafel-dodaj').forEach((e) => e.remove());
-  const ikony = widoczne.map((a) => h('button.ikona-aplikacji.ikona-app', { onclick: () => (edycjaPulpitu ? null : otworz(a.id)) },
+  if (!siatka.querySelector('.ikony-dolne')) siatka.append(h('div.ikony-dolne'));
+  const dockDolny = siatka.querySelector('.ikony-dolne');
+  const utworzIkone = (a) => h(`button.ikona-aplikacji.ikona-app${dolne.includes(a.id) ? '.na-dole' : ''}`, { onclick: () => (edycjaPulpitu ? null : otworz(a.id)) },
     ikona(a.ikona), h('span', a.nazwa),
     edycjaPulpitu ? h('span.ikona-usun', { title: 'Zdejmij z pulpitu', onclick: (e) => {
       e.stopPropagation(); ukryte = [...(ukryte || []), a.id]; zapiszPulpit(); rysujIkony(siatka);
-    } }, '×') : null));
-  siatka.prepend(...ikony);
-  if (edycjaPulpitu && zdjete.length) {
-    const lista = h('div.dodaj-lista', { hidden: true }, zdjete.map((a) => h('button.przycisk.maly.drugi', { onclick: () => {
-      ukryte = ukryte.filter((x) => x !== a.id); zapiszPulpit(); rysujIkony(siatka);
-    } }, ikona(a.ikona), a.nazwa)));
+    } }, '×') : null,
+    edycjaPulpitu ? h('span.przypnij-dol', { title: dolne.includes(a.id) ? 'Przenieś wyżej' : 'Przenieś na dół', onclick: (e) => {
+      e.stopPropagation();
+      dolne = dolne.includes(a.id) ? dolne.filter((id) => id !== a.id) : [...dolne, a.id];
+      zapiszPulpit(); rysujIkony(siatka);
+    } }, dolne.includes(a.id) ? '↑' : '↓') : null);
+  siatka.prepend(...zwykleWidoczne.map(utworzIkone));
+  // Portal publiczny: „Zaloguj się” jako jedna z ikon (ostatnia).
+  if (stan.gosc) dockDolny.before(h('button.ikona-aplikacji.ikona-app.ikona-logowania', { onclick: () => ekranBlokady() }, ikona(IKONA_LOGOWANIA), h('span', 'Zaloguj się')));
+  if (dolneWidoczne.length) dockDolny.append(...dolneWidoczne.map(utworzIkone));
+  const zdjeteKafelki = ukryteKafelki.map((id) => [id, NAZWY_KAFELKOW_PULPITU[id] || (id.startsWith('naprawa-') ? `Naprawa · ${id.slice(8)}` : id)]);
+  if (edycjaPulpitu && (zdjete.length || zdjeteKafelki.length)) {
+    const lista = h('div.dodaj-lista', { hidden: true },
+      zdjete.map((a) => h('button.przycisk.maly.drugi', { onclick: () => {
+        ukryte = ukryte.filter((x) => x !== a.id); zapiszPulpit(); rysujIkony(siatka);
+      } }, ikona(a.ikona), a.nazwa)),
+      zdjeteKafelki.map(([id, nazwa]) => h('button.przycisk.maly.drugi', { onclick: () => {
+        ukryteKafelki = ukryteKafelki.filter((x) => x !== id); zapiszPulpit(); rysujIkony(siatka); rysujLiczniki();
+      } }, '＋', nazwa)));
     siatka.append(h('div.ikona-aplikacji.kafel-dodaj',
       h('button.dodaj-plus', { onclick: () => { lista.hidden = !lista.hidden; } }, h('b', '+'), h('span', 'Dodaj')), lista));
   }
+  rozmiescKafelkiPulpitu(siatka);
+}
+
+function rozmiescKafelkiPulpitu(siatka = document.querySelector('.siatka-aplikacji')) {
+  if (!siatka) return;
+  const dockDolny = siatka.querySelector('.ikony-dolne');
+  if (!dockDolny) return;
+  for (const kafel of siatka.querySelectorAll('[data-pulpit-kafel]')) {
+    const id = kafel.dataset.pulpitKafel;
+    (dolne.includes(id) ? dockDolny : siatka).append(kafel);
+    kafel.querySelector(':scope > .przypnij-dol')?.remove();
+    kafel.querySelector(':scope > .ukryj-kafel')?.remove();
+    if (ukryteKafelki.includes(id)) { kafel.hidden = true; continue; }
+    if (!edycjaPulpitu || kafel.hidden) continue;
+    kafel.append(h('span.ukryj-kafel', {
+      title: 'Usuń kafelek z pulpitu',
+      onclick: (e) => {
+        e.stopPropagation();
+        ukryteKafelki = [...ukryteKafelki, id];
+        zapiszPulpit();
+        rozmiescKafelkiPulpitu(siatka);
+      },
+    }, '×'), h('span.przypnij-dol', {
+      title: dolne.includes(id) ? 'Przenieś wyżej' : 'Przenieś na dół',
+      onclick: (e) => {
+        e.stopPropagation();
+        dolne = dolne.includes(id) ? dolne.filter((x) => x !== id) : [...dolne, id];
+        zapiszPulpit();
+        rozmiescKafelkiPulpitu(siatka);
+      },
+    }, dolne.includes(id) ? '↑' : '↓'));
+  }
+  dockDolny.hidden = ![...dockDolny.children].some((e) => !e.hidden);
 }
 
 // 4. Pulpit z ikonami aplikacji.
 function ekranPulpitu() {
   zamknijAplikacje();
   pokazPowloke(true);
+  pokazPrzyciskiPulpitu(true);
+  przyciskDostosuj.hidden = false;
+  przyciskUstawien.hidden = false;
+  przyciskPrzewodnika.hidden = false;
   tlo(true);
   sprawdzScene();
   tytulPaska.textContent = '';
   const u = stan.uzytkownik;
+  stan.gosc = false;
   edycjaPulpitu = false;
   rysujPrzyciskDostosuj();
   przyciskPrzewodnika.hidden = u.rola === 'mg';
   let siatka;
   widok(
-    h('div.pulpit-glowa',
+    h('div.pulpit-glowa.pulpit-gracza',
       h('div',
         h('div.pulpit-zegar', { 'data-zegar': '' }, godzina()),
         h('div.pulpit-data', { 'data-data': '' }, dataGST()),
@@ -878,16 +1165,21 @@ function ekranPulpitu() {
     szybkieAkcje,
     // Liczniki pokładowe i aparat to kafelki w tej samej siatce co aplikacje (nie nachodzą na ikony).
     siatka = h('div.siatka-aplikacji',
-      h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', hidden: !liczniki?.odliczanie }),
+      h('div.ikona-aplikacji.kafel-odliczanie', { 'data-odliczanie': '', 'data-pulpit-kafel': 'odliczanie', hidden: !liczniki?.odliczanie }),
       h('div.kafle-napraw', { 'data-naprawy': '' }),
-      h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', hidden: !liczniki }),
-      h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
+      h('div.ikona-aplikacji.kafel-liczniki', { 'data-liczniki': '', 'data-pulpit-kafel': 'status', hidden: !liczniki }),
+      h('button.ikona-aplikacji.kafel-aparat', { 'data-aparat': '', 'data-pulpit-kafel': 'aparat', hidden: true, onclick: zrobZdjecie, title: 'Zdjęcie słońca' }, ikona(IKONA_APARATU), h('span', 'Zdjęcie'))),
   );
   if (przewodnik) pokazPrzewodnik();
   else wczytajPrzewodnik().then(() => { if (document.querySelector('.siatka-aplikacji')) pokazPrzewodnik(); });
   const pierwszy = ukryte === null;
   rysujIkony(siatka);
   if (pierwszy) wczytajPulpit().then(() => siatka.isConnected && rysujIkony(siatka));
+  // Detektyw (sledztwo_detektywi): ikona „Droid śledczy”. Brak modułu albo błąd = brak ikony.
+  api('sledztwo_moje').then((d) => {
+    const jest = !!d?.detektyw;
+    if (jest !== !!stan.detektyw) { stan.detektyw = jest; if (siatka.isConnected) rysujIkony(siatka); }
+  }).catch(() => {});
   api('bitwa_dostep').then((d) => {
     const jest = !!d?.upowazniony;
     const poprzednioSymulacje = stan.symulacje;
@@ -926,6 +1218,7 @@ function ekranPulpitu() {
 // ================================================================
 
 function zamknijAplikacje() {
+  html.classList.remove('portal');
   clearInterval(licznikAkcji);
   pokazGwiazde(null);
   if (stan.aplikacja) {
@@ -933,24 +1226,30 @@ function zamknijAplikacje() {
     stan.aplikacja = null;
   }
   ustawDokAplikacji(null);
+  przyciskPelnegoApp.hidden = true;
+  ustawPelnyApp(false);
 }
 
 function otworz(id, parametr = null) {
   const def = APLIKACJE.find((a) => a.id === id);
   const kioskSimulacji = id === 'symulacje' && !!parametr?.stanowisko;
-  if (!def || !stan.uzytkownik || (!dostepna(def) && !kioskSimulacji)) return;
+  const dozwoloneGosci = ['mapa', 'holonet', 'gielda', 'kalendarz'];
+  if (!def || (!stan.uzytkownik && !(stan.gosc && dozwoloneGosci.includes(id))) || (!dostepna(def) && !kioskSimulacji)) return;
   zamknijAplikacje();
+  pokazPrzyciskiPulpitu(false);
   tlo(false);
   tytulPaska.textContent = def.nazwa;
   const w = widok();
   const kontekst = {
     uzytkownik: stan.uzytkownik,
+    gosc: stan.gosc,
     parametr,
     alfabet,
     get mostki() { return stan.mostki; },
     otworzApp: (app, param) => otworz(app, param),
     zablokuj: () => wyloguj(),
-    pulpit: () => ekranPulpitu(),
+    zaloguj: () => ekranBlokady(),
+    pulpit: () => stan.gosc ? ekranPubliczny() : ekranPulpitu(),
     jasnosc: (v) => (v === undefined ? pamiec.czytaj('jasnosc', 100) : ustawJasnosc(v)),
     ustawWstecz: (fn) => { if (stan.aplikacja) stan.aplikacja.wstecz = fn; },
     // Małe ikonki aplikacji w doku: [{ ikona (ścieżki SVG 48×48), tytul, akcja }]; null — usuwa.
@@ -958,7 +1257,7 @@ function otworz(id, parametr = null) {
   };
   stan.aplikacja = { def, sprzataj: null, wstecz: null };
   // Ekran ładowania: hologram znaku stronnictwa, dopóki aplikacja pobiera dane (zapytania z pierwszej chwili).
-  const zaslona = ladowaniePelne(stan.uzytkownik.frakcja);
+  const zaslona = ladowaniePelne(stan.uzytkownik?.frakcja || null);
   pulpit.append(zaslona);
   let ruszylo = false, koniec = false;
   const zdejmij = () => {
@@ -971,24 +1270,41 @@ function otworz(id, parametr = null) {
   const bezZapytan = setTimeout(() => { if (!ruszylo) zdejmij(); }, 400);
   const najdluzej = setTimeout(zdejmij, 15000);
   const wynik = def.uruchom(w, kontekst);
+  przyciskPelnegoApp.hidden = !APLIKACJE_PELNOEKRANOWE.includes(id);
   const sprzataj = typeof wynik === 'function' ? wynik : null;
   stan.aplikacja.sprzataj = () => { zdejmij(); sprzataj?.(); };
 }
 
 async function wyloguj() {
-  try { await api('wyloguj', {}); } catch { /* i tak blokujemy */ }
+  try { await api('wyloguj', {}); } catch { /* i tak wracamy do portalu */ }
+  stan.uzytkownik = null;
+  stan.gosc = true;
   zaklocenia();
-  ekranBlokady();
+  ekranPubliczny();
 }
 
-document.getElementById('dok-dom').addEventListener('click', () => stan.uzytkownik && ekranPulpitu());
+document.getElementById('dok-dom').addEventListener('click', () => stan.uzytkownik ? ekranPulpitu() : stan.gosc && ekranPubliczny());
 document.getElementById('dok-blokada').addEventListener('click', () => wyloguj());
 document.getElementById('dok-wstecz').addEventListener('click', () => {
-  if (!stan.uzytkownik) return;
+  if (!stan.uzytkownik) { if (stan.gosc) ekranPubliczny(); return; }
   if (['mostek', 'symulacje'].includes(stan.aplikacja?.def?.id)) stan.pominAutoStanowisko = true;
   if (stan.aplikacja?.wstecz && stan.aplikacja.wstecz()) return;
   ekranPulpitu();
 });
+
+// Tryb stanowiska i mapa na telefonie chowają pasek i dok; znaczek w rogu pokazuje je (Wstecz, Pulpit, Blokada) i chowa
+// ponownie. Ikona i opis znaczka idą za klasą html.stanowisko-paski (zdejmuje ją też zamknięcie mapy).
+const IKONA_POKAZ_PASKI = '<path d="M18 8v10H8M40 18H30V8M30 40V30h10M8 30h10v10"/>';
+const IKONA_UKRYJ_PASKI = '<path d="M8 18V8h10M30 8h10v10M40 30v10H30M18 40H8V30"/>';
+const znaczekPaskow = document.getElementById('stanowisko-paski');
+function rysujZnaczekPaskow() {
+  const pokazane = html.classList.contains('stanowisko-paski');
+  znaczekPaskow.querySelector('svg').innerHTML = pokazane ? IKONA_UKRYJ_PASKI : IKONA_POKAZ_PASKI;
+  znaczekPaskow.title = pokazane ? 'Schowaj pasek i dok' : 'Pokaż pasek i dok';
+  znaczekPaskow.setAttribute('aria-label', znaczekPaskow.title);
+}
+znaczekPaskow.addEventListener('click', () => { html.classList.toggle('stanowisko-paski'); rysujZnaczekPaskow(); });
+new MutationObserver(rysujZnaczekPaskow).observe(html, { attributes: true, attributeFilter: ['class'] });
 
 window.addEventListener('datapad:sesja-wygasla', () => {
   if (stan.uzytkownik) ekranBlokady('Sesja wygasła. Odblokuj urządzenie ponownie.');
@@ -1002,10 +1318,19 @@ function ustawJasnosc(v) {
 ustawJasnosc(pamiec.czytaj('jasnosc', 100));
 
 // Tryb offline dla tabletów (pliki systemu w pamięci urządzenia).
+// Nowa wersja (podbite WERSJA w sw.js) przejmuje stronę od razu; strona przeładowuje się wtedy raz, żeby wczytać
+// nowe pliki — bez tego telefon zostawał na starym systemie aż do ręcznego czyszczenia danych witryny.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  const bylKontroler = !!navigator.serviceWorker.controller;
+  let przeladowano = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!bylKontroler || przeladowano) return;
+    przeladowano = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update?.()).catch(() => {});
 }
 
 bateria();
 odswiezZegar();
-ekranStartowy();
+rozruch();

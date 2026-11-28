@@ -2,7 +2,7 @@
 
     python pulpity_podglad.py KLASA WYJSCIE.html [PULPIT ...]
 
-Wydruk (Ctrl+P): jeden pulpit na stronę — pulpit 13×9 na A4 poziomo (komórka 20 mm), ekran telefonu 5×9 na A4
+Wydruk (Ctrl+P): jeden pulpit na stronę — pulpit 13×9 na A4 poziomo (komórka 20 mm), ekran telefonu 5×10 na A4
 pionowo (komórka 28 mm, jak w arkuszu).
 """
 import html, sys

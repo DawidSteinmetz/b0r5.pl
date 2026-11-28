@@ -25,6 +25,7 @@ export default {
     // Ostatnio wybrane źródło pamięta tablet.
     let wtyczki = [];
     let aktywne = pamiec.czytaj('holonet_zrodlo', 'komunikaty');
+    if (ctx.gosc && aktywne.startsWith('k:')) aktywne = 'komunikaty';
     const pasekZrodel = h('div.zakladki.holonet-zrodla');
     const tresc = h('div');
     w.append(h('div.app-glowa', h('h1', 'Holonet'), h('span.podtytul', 'Węzeł publiczny')), pasekZrodel, tresc);
@@ -45,7 +46,7 @@ export default {
       rysujPasek();
       setTimeout(() => { przerwij = false; z.fn(); }, 0);
     };
-    api('wtyczki').then((d) => { wtyczki = d.wtyczki || []; rysujPasek(); if (aktywne.startsWith('k:')) otworz(aktywne); }).catch(() => {});
+    if (!ctx.gosc) api('wtyczki').then((d) => { wtyczki = d.wtyczki || []; rysujPasek(); if (aktywne.startsWith('k:')) otworz(aktywne); }).catch(() => {});
 
     const podstrona = (tytul, ...zawartosc) => {
       przerwij = false;
@@ -56,7 +57,7 @@ export default {
       const lista = h('div', h('div.pusto', 'Pobieranie...'));
       podstrona('Komunikaty sieci', lista);
       try {
-        const { komunikaty } = await api('holonet');
+        const { komunikaty } = await api('holonet', undefined, ctx.gosc ? { publiczny: '1' } : {});
         wyczysc(lista);
         if (!komunikaty.length) return lista.append(h('div.pusto', 'Brak nowych komunikatów.'));
         for (const k of komunikaty) {

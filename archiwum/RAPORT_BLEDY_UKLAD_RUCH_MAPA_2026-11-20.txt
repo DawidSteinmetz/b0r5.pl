@@ -1,0 +1,68 @@
+RAPORT BŁĘDÓW I ZMIAN — WIDOK UKŁADU, RUCH I MAPA
+Data: 2026-11-20
+Projekt: HOLOLINK
+
+CEL
+Opis zgłoszonych rozbieżności w widoku układów planetarnych, wskazaniu celu na mapie oraz ruchu podświetlnym. Raport nie wprowadza zmian w kodzie.
+
+1. PLANETY I SŁOŃCA ZA OKNEM NIE ODPOWIADAJĄ UKŁADOWI Z MAPY
+Obecnie:
+Planety i słońca widoczne w oknie statku nie układają się analogicznie do układu planetarnego przedstawionego na mapie. Położenie lub układ ciał w widoku z okna może więc nie zgadzać się z mapą.
+
+Oczekiwane:
+Widok za oknem powinien korzystać z tego samego układu planetarnego i tego samego stanu orbitalnego, który pokazuje mapa. Wzajemne położenia słońc, planet i księżyców powinny być spójne między widokami.
+
+Warunek poprawki:
+Dla tego samego układu i chwili widok mapy oraz widok z okna nie pokazują sprzecznych konfiguracji ciał niebieskich.
+
+2. ODLEGŁOŚĆ NIE ZMIENIA SIĘ W TRAKCIE RUCHU PODŚWIETLNEGO
+Odtworzenie:
+Uruchom lot statku z napędem podświetlnym i obserwuj wskazywaną odległość podczas przemieszczania się.
+
+Obecnie:
+Wskazywana odległość nie rośnie wraz z ruchem statku.
+
+Oczekiwane:
+Odległość do punktu odniesienia lub celu aktualizuje się podczas lotu i odzwierciedla zmianę położenia statku. Wartość powinna zmieniać się płynnie albo w regularnych aktualizacjach, zgodnie z postępem ruchu.
+
+Warunek poprawki:
+W trakcie lotu widoczna odległość zmienia się zgodnie z pozycją statku, a po zakończeniu ruchu odpowiada jego końcowemu położeniu.
+
+Do doprecyzowania przy implementacji:
+Raport nie określa, czy chodzi o odległość od planety, punktu skoku, celu czy innego punktu odniesienia. Należy zachować punkt odniesienia używany obecnie w tym widoku i naprawić aktualizację jego wartości podczas ruchu.
+
+3. ODDZIELNY WYBÓR SŁOŃCA, PLANETY I KSIĘŻYCA PRZY DUŻYM ZOOMIE
+Obecnie:
+Przy dużym przybliżeniu mapy nie ma osobnych, czytelnych opcji wskazania gwiazdy (słońca), planety albo księżyca.
+
+Oczekiwane:
+Przy dużym zoomie gracz może osobno zaznaczyć:
+- gwiazdę / słońce,
+- planetę,
+- księżyc.
+
+Zaznaczenie powinno dotyczyć konkretnego ciała, bez przypadkowego przechwycenia kliknięcia przez inne ciało lub cały układ.
+
+Warunek poprawki:
+Na dużym zoomie da się wskazać każdą z tych kategorii jako odrębny cel, a interfejs jednoznacznie pokazuje, który obiekt został wybrany.
+
+4. TRAJEKTORIE I KĄT PRZYLOTU NA MINI-MAPIE UKŁADU
+Obecnie:
+Układ planetarny w ramce obok na dużym zoomie nadal nieprawidłowo pokazuje trajektorie. Kąt strzałki jednostki na mini-mapie nie odpowiada kątowi, z którego jednostka przyleciała. Przykładowo, przy przylocie z kąta 0° strzałka może wskazywać około 45°.
+
+Oczekiwane:
+Mini-mapa pokazuje trajektorię i orientację zgodnie z rzeczywistym kierunkiem przylotu. Jeżeli jednostka przylatuje z kąta 0°, jej strzałka na mini-mapie również wskazuje 0°. Nie może pojawiać się dodatkowy obrót wynikający z transformacji lub rysowania mini-mapy.
+
+Warunek poprawki:
+Kąt prezentowany na mini-mapie odpowiada kątowi zapisanym dla przylotu/kursu. Przykład kontrolny: wejście z 0° daje strzałkę 0°; pozostałe kąty również zachowują właściwy kierunek i skalę.
+
+PRIORYTETY PRAKTYCZNE
+1. Naprawić aktualizowanie odległości podczas lotu podświetlnego.
+2. Ujednolicić dane układu między mapą a widokiem przez okno.
+3. Skorygować transformację kątów i trajektorii na mini-mapie układu.
+4. Dodać osobne wskazywanie gwiazdy, planety i księżyca przy dużym zoomie.
+
+UWAGI
+- Wymaganie zgodności mapy z oknem dotyczy wspólnego położenia obiektów w układzie; widok z okna może mieć inną perspektywę, ale nie powinien przedstawiać innego układu.
+- Dla odległości w locie trzeba zachować aktualny punkt odniesienia interfejsu; zgłoszenie opisuje brak aktualizacji, ale nie wskazuje nazwy mierzonej odległości.
+- Raport opisuje zachowanie zgłoszone przez użytkownika. Potwierdzenie źródła problemu wymaga późniejszej analizy odpowiednich modułów mapy, sceny i ruchu.

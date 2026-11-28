@@ -1,0 +1,37 @@
+RAPORT PRZEGLĄDU PROJEKTU — 2026-11-20
+Projekt: HOLOLINK (folder D:\b0rs.pl)
+
+CEL PRZEGLĄDU
+Wstępny przegląd struktury i plików projektu pod kątem oczywistych problemów możliwych do wskazania bez uruchamiania aplikacji. Kod nie był zmieniany.
+
+STRUKTURA
+- index.html, manifest.webmanifest, sw.js — powłoka aplikacji, instalacja i cache offline.
+- js/ — system datapada oraz aplikacje frontendu w modułach JavaScript.
+- css/ i assets/ — style, ikony i czcionka Aurebesh.
+- api/ — API w PHP, schemat bazy SQL, migracje i dane pomocnicze.
+- gm/ — panel MG.
+- narzedzia/ — skrypty do budowania schematu SQL i czcionki.
+- stats/ — statystyki Webalizera.
+- README.md — opis architektury i zasad projektu.
+
+USTALENIA
+1. Importy lokalnych modułów JavaScript, które sprawdziłem, wskazują na istniejące pliki.
+2. Pliki JavaScript wskazane na liście cache w sw.js istnieją w projekcie. Podejrzenie brakującego pliku modułu nie potwierdziło się.
+3. Projekt zawiera 39 numerowanych migracji SQL (001–039) oraz wynikowy api/schema.sql. README opisuje migracje jako źródło zmian schematu, a schema.sql jako plik wynikowy.
+4. Bieżąca konfiguracja bazy api/konfiguracja-bazy.php i log błędów api/dane/bledy.log nie były odczytywane ani oceniane.
+5. Folder nie udostępnił metadanych repozytorium Git w katalogu projektu, więc nie można było porównać plików ze stanem wersji ani wykryć niezapisanych zmian.
+
+ZGŁOSZONE / POTWIERDZONE BŁĘDY
+W tym wstępnym, statycznym przeglądzie nie potwierdziłem konkretnego błędu działania.
+
+JAK JEST
+Projekt ma rozbudowaną aplikację frontendową, API PHP zależne od bazy SQL, panel MG i 39 migracji. Sprawdzenie objęło strukturę, opis w README, powłokę HTML, service workera, manifest oraz spójność lokalnych importów JS z plikami.
+
+JAK MA BYĆ
+Aplikacja powinna uruchamiać moduły, obsługiwać API i bazę zgodnie z opisem README oraz pozwalać na działanie offline dla zasobów wymienionych w service workerze. Żaden konkretny problem użytkowy ani oczekiwany wynik naprawy nie został wskazany, więc nie da się rzetelnie opisać zachowania „przed” i „po” dla konkretnej usterki.
+
+ZAKRES I OGRANICZENIA
+To nie jest pełny audyt logiki aplikacji ani test działania. Nie uruchamiałem strony, PHP, bazy danych, migracji ani testów. Nie weryfikowałem przepływów użytkownika w przeglądarce. Wnioski dotyczą wyłącznie statycznej inspekcji wykonanej na kopii plików dostępnych w folderze.
+
+NASTĘPNY KROK PRZY KONKRETNYM BŁĘDZIE
+Do raportu konkretnej usterki potrzebne będą: czynności prowadzące do problemu, rzeczywisty wynik, oczekiwany wynik oraz — jeśli dostępne — tekst błędu lub zrzut ekranu. Wtedy można prześledzić odpowiedni fragment bez modyfikowania kodu i opisać dokładnie stan obecny oraz wymagany.

@@ -245,6 +245,23 @@ Do zmiany, gdy przyjdzie pora (dziś model to jedna sprawa = jeden detektyw = je
   („24|11|16 około 21:00 (lokalnie 03:10, noc)”); tropy (lokalny czas ustalenia i zdarzenia); ruch ludzi w lokalach
   (noc — połowa, świt / zmierzch — trzy czwarte, `sl_ruch_pory`).
 
+### Życie, praca i służba NPC (28.11)
+
+- **Rozkład dnia** postaci fabuły w godzinach lokalnych (`sl_harmonogram`, stały dla postaci): pracujący (barman, krupier,
+  ochroniarz, mechanik, handlarz, strażnik) — zmiana 9 h w swoim miejscu, 2 h przerwy w kantynie / kasynie rejonu,
+  reszta w domu (poza mapą); bywalcy — 6 h w swoim miejscu, 4 h przerwy, 3 h na targu, reszta w domu. Osoba ze sprawy
+  siedzi w kryjówce, raz na dobę (lokalna noc) robi 2-godzinny wypad do miejsca z fazy 1 albo kantyny — można ją
+  tam złapać. Zgłaszający czeka w miejscu zgłoszenia, dopóki droid z nim nie porozmawia.
+- Postacie pojawiają się na planie tam, gdzie są teraz (`sl_gdzie_postac`, `sl_postacie_na_pietrze`), także w lokalach
+  szumu (kantyna, targ). Gdy czas rozmówcy tutaj minie, wychodzi w trakcie rozmowy („zmiana mi się skończyła”).
+- **Służba**: trzy zmiany warty po 8 godzin lokalnych (`sl_zmiana`). Na każdej zmianie przy drzwiach stoi inny strażnik;
+  przepustka i odmowy liczą się tylko w bieżącej zmianie; nocna zmiana — strażnik senny (Intelekt −1).
+- **Pamięć**: rozmówca pamięta wcześniejsze rozmowy z droidem (`sl_pamiec_droida`: ile, kiedy, nastrój, podejścia) —
+  „Znowu ty?”, mniej cierpliwości, po groźbie wrogość; droid nie przedstawia się drugi raz („Wracam z kilkoma pytaniami”).
+- **Plotki**: w budynku rozchodzi się, że droid wypytuje ludzi, grozi, blefuje (`sl_plotki_o_droidzie`, ostatnia doba).
+- **Grafiki**: pracownicy i bywalcy znają grafiki postaci z budynku (`sl_grafiki_budynku`) — mówią, kiedy ktoś tu jest
+  i dokąd chodzi na przerwę („teraz pewnie jest tu: …”); takie zeznania trafiają do notatnika jako tropy.
+
 ## 6. Do ustalenia
 
 - Pełne listy 12 zdarzeń i 12 relacji (w migracji robocze).

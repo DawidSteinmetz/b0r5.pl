@@ -908,7 +908,7 @@ function sl_czas_lokalny(PDO $db, array $s, ?int $t = null): array
     if (!$c || !function_exists('astro_kat_godzinny')) {
         $h = (int) date('G', $t);
         $pora = $h >= 22 || $h < 5 ? 'noc' : ($h < 8 ? 'świt' : ($h < 19 ? 'dzień' : 'wieczór'));
-        return ['godz' => date('H:i', $t), 'pora' => $pora, 'doba_h' => 24.0, 'tekst' => 'lokalnie ' . date('H:i', $t) . ", {$pora}"];
+        return ['godz' => date('H:i', $t), 'h' => $h + (int) date('i', $t) / 60, 'pora' => $pora, 'doba_h' => 24.0, 'tekst' => 'lokalnie ' . date('H:i', $t) . ", {$pora}"];
     }
     $H = astro_kat_godzinny($c, (float) $g['dl'], $t);                // 0 = południe, ±180 = północ
     $u = fmod(($H + 180) / 360 + 1, 1);                                // 0 = północ
@@ -916,7 +916,7 @@ function sl_czas_lokalny(PDO $db, array $s, ?int $t = null): array
     $godz = sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
     $wys = astro_wysokosc_slonca($c, (float) $g['szer'], (float) $g['dl'], $t);
     $pora = $wys > -0.833 ? ($u < 0.42 ? 'przedpołudnie' : ($u < 0.58 ? 'południe' : 'popołudnie')) : ($wys > -6 ? ($u < 0.5 ? 'świt' : 'zmierzch') : 'noc');
-    return ['godz' => $godz, 'pora' => $pora, 'doba_h' => (float) $c['doba_h'],
+    return ['godz' => $godz, 'h' => $u * 24, 'pora' => $pora, 'doba_h' => (float) $c['doba_h'],
         'tekst' => "lokalnie {$godz}, {$pora}"];
 }
 
@@ -930,6 +930,206 @@ function sl_ruch_pory(PDO $db, array $s): float
         $cache[$k] = $p === 'noc' ? 0.5 : (in_array($p, ['świt', 'zmierzch', 'wieczór'], true) ? 0.75 : 1.0);
     }
     return $cache[$k];
+}
+
+// ---------- życie, praca i służba NPC (czas lokalny) ----------
+// Postacie fabuły żyją według rozkładu dnia liczonego w godzinach lokalnych (0–24 = jedna doba planety):
+// praca / bywanie w swoim miejscu, przerwa w kantynie rejonu, targ, dom (poza mapą). Osoba ze sprawy siedzi
+// w kryjówce i raz na dobę robi krótki wypad. Strażnicy pełnią służbę na trzy zmiany (po 8 godzin lokalnych).
+
+const SLEDZTWO_PRACA = ['barman', 'krupier', 'ochroniarz', 'mechanik', 'handlarz', 'straznik'];
+const SLEDZTWO_PORA_SLOWNIE = ['zmiana' => 'w pracy', 'bywa' => 'na miejscu', 'przerwa' => 'na przerwie', 'targ' => 'na zakupach',
+    'dom' => 'w domu', 'kryjowka' => 'w ukryciu', 'wypad' => 'poza kryjówką', 'czeka' => 'czeka na droida'];
+
+// Bieżąca zmiana służby (0, 1, 2) i chwila jej początku (timestamp).
+function sl_zmiana(PDO $db, array $s, ?int $t = null): array
+{
+    $t ??= sl_teraz();
+    $cz = sl_czas_lokalny($db, $s, $t);
+    $z = min(2, (int) floor($cz['h'] / 8));
+    $minelo = ($cz['h'] - $z * 8) / 24 * $cz['doba_h'] * 3600;
+    return ['nr' => $z, 'od' => (int) round($t - $minelo), 'noc' => $z === 0, 'nazwa' => ['nocna', 'dzienna', 'wieczorna'][$z],
+        'od_lok' => sprintf('%02d:00', $z * 8), 'do_lok' => sprintf('%02d:00', ($z + 1) * 8 % 24)];
+}
+
+// Rozkład dnia postaci fabuły: bloki [od, do, co] w godzinach lokalnych (do może przekroczyć 24 — zawija się).
+function sl_harmonogram(array $s, array $p): array
+{
+    $seed = (int) $s['seed'];
+    $id = (string) $p['id'];
+    $start = sl_hash_int($seed, 0, 23, 'grafik', $id);
+    if (($p['kod'] ?? null) === 'A') {
+        $wypad = (20 + sl_hash_int($seed, 0, 7, 'wypad', $id)) % 24;
+        return [[$wypad, $wypad + 2, 'wypad'], [$wypad + 2, $wypad + 24, 'kryjowka']];
+    }
+    if (in_array((string) $p['archetyp_kod'], SLEDZTWO_PRACA, true)) {
+        return [[$start, $start + 9, 'zmiana'], [$start + 9, $start + 11, 'przerwa'], [$start + 11, $start + 24, 'dom']];
+    }
+    return [[$start, $start + 6, 'bywa'], [$start + 6, $start + 10, 'przerwa'], [$start + 10, $start + 13, 'targ'], [$start + 13, $start + 24, 'dom']];
+}
+
+// Blok harmonogramu w godzinie lokalnej $h.
+function sl_blok(array $harm, float $h): array
+{
+    foreach ($harm as $b) {
+        if (($h >= $b[0] && $h < $b[1]) || ($h + 24 >= $b[0] && $h + 24 < $b[1])) return $b;
+    }
+    return $harm[count($harm) - 1];
+}
+
+// Budynek rejonu o danym presecie (wybór stały dla postaci) i jego „główna sala” na parterze: [budynek_id, poziom, lokal, nazwa].
+function sl_sala_rejonu(PDO $db, array $s, array $pule, array $presety, string $sol): ?array
+{
+    static $cache = [];
+    $k = (int) $s['id'] . '|' . implode(',', $presety) . '|' . $sol;
+    if (array_key_exists($k, $cache)) return $cache[$k];
+    $kandydaci = array_values(array_filter(sl_okolica($db, $s, $pule), fn($b) => in_array($b['kod'], $presety, true)));
+    if (!$kandydaci) return $cache[$k] = null;
+    $b = $kandydaci[sl_hash_int((int) $s['seed'], 0, count($kandydaci) - 1, 'sala', $sol)];
+    $budynki = sl_budynki($db, $s);
+    $plan = sl_plan($db, $s, $pule, $budynki[$b['id']] ?? null, (int) $b['parter']);
+    $fab = $pule['presety'][$b['kod']]['lokal_fabularny'] ?? '';
+    $sala = null;
+    foreach ($plan['pokoje'] as $p) if ($p['lokal'] === $fab || ($p['ludzie_max'] > 0 && $p['dostep'] === 'wolny' && !$p['zamkniete'])) { $sala = $p; if ($p['lokal'] === $fab) break; }
+    if (!$sala) return $cache[$k] = null;
+    return $cache[$k] = [$b['id'], (int) $b['parter'], (string) $sala['nr'], "{$b['nazwa']}, lokal {$sala['nr']} ({$sala['rodzaj']})"];
+}
+
+// Gdzie postać fabuły jest teraz: [budynek_id, poziom, lokal, co, opis] albo null (w domu — poza mapą).
+// Zgłaszający czeka na droida w miejscu zgłoszenia, dopóki droid z nim nie porozmawia.
+function sl_gdzie_postac(PDO $db, array $s, array $pule, array $p, ?int $t = null): ?array
+{
+    static $miejsca = [];
+    $sid = (int) $s['id'];
+    if (!isset($miejsca[$sid])) {
+        $q = $db->prepare('SELECT id, faza_nr, lokalizacja_id, poziom, pokoj, nazwa FROM sledztwo_miejsca WHERE sledztwo_id = ?');
+        $q->execute([$sid]);
+        foreach ($q->fetchAll() as $m) $miejsca[$sid][(int) $m['id']] = $m;
+    }
+    $swoje = $p['miejsce_id'] ? ($miejsca[$sid][(int) $p['miejsce_id']] ?? null) : null;
+    $tu = fn(?array $m, string $co) => $m ? [$m['lokalizacja_id'] !== null ? (int) $m['lokalizacja_id'] : null, (int) $m['poziom'], (string) $m['pokoj'], $co, (string) $m['nazwa']] : null;
+    if (($p['kod'] ?? null) === 'V') {
+        try {
+            $q = $db->prepare('SELECT 1 FROM sledztwo_metryki WHERE postac_id = ? LIMIT 1');
+            $q->execute([(int) $p['id']]);
+            if (!$q->fetchColumn()) return $tu($swoje, 'czeka');
+        } catch (PDOException $e) { return $tu($swoje, 'czeka'); }
+    }
+    $blok = sl_blok(sl_harmonogram($s, $p), sl_czas_lokalny($db, $s, $t)['h']);
+    switch ($blok[2]) {
+        case 'zmiana': case 'bywa': case 'kryjowka':
+            return $tu($swoje, $blok[2]);
+        case 'przerwa':
+            $sala = sl_sala_rejonu($db, $s, $pule, ['kantyna', 'kasyno'], 'przerwa' . $p['id']);
+            return $sala ? [...array_slice($sala, 0, 3), 'przerwa', $sala[3]] : $tu($swoje, 'bywa');
+        case 'targ':
+            $sala = sl_sala_rejonu($db, $s, $pule, ['targ', 'sklep'], 'targ' . $p['id']);
+            return $sala ? [...array_slice($sala, 0, 3), 'targ', $sala[3]] : null;
+        case 'wypad':
+            foreach ($miejsca[$sid] as $m) if ((int) $m['faza_nr'] === 1) return $tu($m, 'wypad');
+            $sala = sl_sala_rejonu($db, $s, $pule, ['kantyna'], 'wypad' . $p['id']);
+            return $sala ? [...array_slice($sala, 0, 3), 'wypad', $sala[3]] : $tu($swoje, 'kryjowka');
+    }
+    return null; // dom
+}
+
+// Postacie fabuły, które są teraz na tym piętrze: [lokal => [wiersze postaci]].
+function sl_postacie_na_pietrze(PDO $db, array $s, array $pule, array $plan): array
+{
+    $q = $db->prepare('SELECT p.id, p.kod, p.miejsce_id, p.gatunek_kod, p.plec, p.archetyp_kod, a.nazwa AS archetyp FROM sledztwo_postacie p
+        LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? ORDER BY p.id');
+    $q->execute([(int) $s['id']]);
+    $wynik = [];
+    foreach ($q->fetchAll() as $o) {
+        $g = sl_gdzie_postac($db, $s, $pule, $o);
+        if (!$g || $g[0] !== ($plan['budynek_id'] !== null ? (int) $plan['budynek_id'] : null) || $g[1] !== (int) $plan['poziom']) continue;
+        $wynik[$g[2]][] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
+    }
+    return $wynik;
+}
+
+// Pamięć rozmówcy o droidzie: wcześniejsze rozmowy z tą samą osobą (ile, kiedy, w jakim nastroju się skończyły, jakie podejścia).
+function sl_pamiec_droida(PDO $db, array $s, array $r): array
+{
+    $q = $db->prepare("SELECT id, rozpoczeto_utc, nastroj FROM sledztwo_rozmowy WHERE sledztwo_id = ? AND kontakt = ? AND id <> ? ORDER BY id");
+    $q->execute([(int) $s['id'], (string) $r['kontakt'], (int) $r['id']]);
+    $rozmowy = $q->fetchAll();
+    if (!$rozmowy) return ['ile' => 0, 'tekst' => ''];
+    $q = $db->prepare("SELECT w.tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id
+        WHERE r.sledztwo_id = ? AND r.kontakt = ? AND r.id <> ? AND w.kto = 'system' AND w.tresc LIKE 'Test:%' ORDER BY w.id");
+    $q->execute([(int) $s['id'], (string) $r['kontakt'], (int) $r['id']]);
+    $testy = array_map(fn($x) => preg_replace('/^Test: ([^—]+) — (\S+).*$/u', '$1: $2', (string) $x), $q->fetchAll(PDO::FETCH_COLUMN));
+    $ost = end($rozmowy);
+    $ile = count($rozmowy);
+    return ['ile' => $ile, 'nastroj' => (string) $ost['nastroj'], 'groził' => (bool) array_filter($testy, fn($x) => str_contains($x, 'Groźba')),
+        'tekst' => "- PAMIĘĆ: rozmawiałeś już z tym droidem {$ile} " . ($ile === 1 ? 'raz' : 'razy') . ', ostatnio '
+            . sl_data_gry((int) sl_z_utc($ost['rozpoczeto_utc'])) . " (skończyłeś w nastroju: {$ost['nastroj']})."
+            . ($testy ? ' Wtedy droid próbował: ' . implode('; ', $testy) . '.' : '')
+            . ' Pamiętasz go. Z każdą kolejną wizytą masz mniej cierpliwości; możesz nawiązać do poprzedniej rozmowy.'];
+}
+
+// Plotki o droidzie w budynku (ostatnia doba standardowa): ile osób wypytał, czy groził, blefował, czy ktoś wzywał ochronę.
+function sl_plotki_o_droidzie(PDO $db, array $s, array $r): array
+{
+    $q = $db->prepare("SELECT COUNT(DISTINCT kontakt) FROM sledztwo_rozmowy WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND kontakt <> ? AND rozpoczeto_utc > ?");
+    $q->execute([(int) $s['id'], $r['lokalizacja_id'], (string) $r['kontakt'], sl_utc(sl_teraz() - 86400)]);
+    $ile = (int) $q->fetchColumn();
+    if ($ile === 0) return ['ile' => 0, 'zle' => false, 'tekst' => ''];
+    $q = $db->prepare("SELECT w.tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id
+        WHERE r.sledztwo_id = ? AND r.lokalizacja_id <=> ? AND r.kontakt <> ? AND w.kto = 'system' AND w.tresc LIKE 'Test:%' AND w.kiedy_utc > ?");
+    $q->execute([(int) $s['id'], $r['lokalizacja_id'], (string) $r['kontakt'], sl_utc(sl_teraz() - 86400)]);
+    $testy = $q->fetchAll(PDO::FETCH_COLUMN);
+    $grozby = count(array_filter($testy, fn($x) => str_contains($x, 'Groźba')));
+    $blefy = count(array_filter($testy, fn($x) => str_contains($x, 'Blef')));
+    $rozpacz = count(array_filter($testy, fn($x) => str_contains($x, 'ROZPACZ')));
+    $o = [];
+    $o[] = "po budynku chodzi tani droid śledczy z biura i wypytuje ludzi (rozmawiał już z {$ile} " . ($ile === 1 ? 'osobą' : 'osobami') . ')';
+    if ($grozby) $o[] = 'podobno grozi ludziom nakazem i ochroną';
+    if ($blefy) $o[] = 'próbuje blefować, że biuro już wszystko wie';
+    if ($rozpacz) $o[] = 'ktoś przez niego wzywał ochronę';
+    return ['ile' => $ile, 'zle' => $grozby + $rozpacz > 0, 'tekst' => '- PLOTKI W BUDYNKU (słyszałeś je, zanim droid podszedł): ' . implode('; ', $o) . '.'];
+}
+
+// Kto z postaci fabuły pracuje / bywa w tym budynku i kiedy (godziny lokalne) — wiedza pracowników i bywalców.
+function sl_grafiki_budynku(PDO $db, array $s, array $pule, ?int $bid): array
+{
+    if ($bid === null) return [];
+    $q = $db->prepare("SELECT p.id, p.kod, p.imie, p.nazwisko, p.archetyp_kod, p.miejsce_id, a.nazwa AS archetyp FROM sledztwo_postacie p
+        JOIN sledztwo_miejsca m ON m.id = p.miejsce_id LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod
+        WHERE p.sledztwo_id = ? AND m.lokalizacja_id = ? AND (p.kod IS NULL OR p.kod NOT IN ('A','V'))");
+    $q->execute([(int) $s['id'], $bid]);
+    $l = [];
+    foreach ($q->fetchAll() as $p) {
+        $harm = sl_harmonogram($s, $p);
+        $praca = $harm[0];
+        $przerwa = sl_sala_rejonu($db, $s, $pule, ['kantyna', 'kasyno'], 'przerwa' . $p['id']);
+        $imie = trim($p['imie'] . ' ' . ($p['nazwisko'] ?? ''));
+        $od = sprintf('%02d:00', $praca[0] % 24);
+        $do = sprintf('%02d:00', $praca[1] % 24);
+        $ja = "{$imie} jest tu zwykle od {$od} do {$do} czasu lokalnego" . ($przerwa ? ", a potem chodzi do: {$przerwa[3]}." : '.');
+        $l[] = ['postac' => $p, 'imie' => $imie, 'od' => $od, 'do' => $do, 'ja' => $ja, 'temat' => 'grafik', 'ty' => $ja,
+            'znaczniki' => array_values(array_filter([mb_substr(mb_strtolower((string) $p['imie']), 0, 5), $p['nazwisko'] ? mb_substr(mb_strtolower((string) $p['nazwisko']), 0, 5) : null])),
+            'lok' => [$bid, null, null]];
+    }
+    return $l;
+}
+
+// Bez AI: pytanie o kogoś z imienia (nie o osobę ze sprawy) → grafik, jeśli rozmówca tu pracuje / bywa; „teraz pewnie jest w…”.
+function sl_odpowiedz_o_kims(PDO $db, array $s, array $pule, array $r, ?array $m, string $pytanie): ?string
+{
+    $p = mb_strtolower($pytanie);
+    $bid = $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null;
+    $zna = $m && in_array($m['rola_w_miejscu'], ['pracownik', 'bywalec'], true);
+    foreach (sl_grafiki_budynku($db, $s, $pule, $bid) as $g) {
+        $imie = mb_strtolower((string) $g['postac']['imie']);
+        if (mb_strlen($imie) < 3 || !str_contains($p, mb_substr($imie, 0, max(3, mb_strlen($imie) - 2)))) continue;
+        if (!$zna) return sl_jeden(['Nie znam wszystkich, którzy tu się kręcą.', 'Nie wiem, kto to. Nie pracuję tu.', 'Pierwsze słyszę.']);
+        if ($m['chce_mowic'] === 'nie' && random_int(1, 100) <= 50) return 'Pilnuj swoich spraw, puszko.';
+        $teraz = sl_gdzie_postac($db, $s, $pule, $g['postac']);
+        $gdzie = !$teraz ? ' Teraz pewnie siedzi w domu.' : ($teraz[0] === $bid && $teraz[1] === (int) $r['poziom'] ? ' Jest gdzieś tutaj.' : " Teraz pewnie jest tu: {$teraz[4]}.");
+        return $g['ja'] . $gdzie;
+    }
+    return null;
 }
 
 // Opis miejsca sprawy do nagłówka: planeta i współrzędne na mapie galaktyki, położenie kompleksu, lokalny czas.
@@ -1144,16 +1344,20 @@ function sl_prosba_o_przejscie(PDO $db, array $s, array $plan, array $k, int $ki
 // Strażnik strzeżonego lokalu: deterministyczny, z kartą EotE (archetyp z presetu budynku). Intelekt często niski.
 function sl_straznik(array $pule, array $s, array $plan, array $p): array
 {
-    sl_ziarno(SLEDZTWO_SWIAT, 'straz', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']);
+    $zmiana = sl_zmiana(polaczenie_bazy(), $s);
+    sl_ziarno(SLEDZTWO_SWIAT, 'straz', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], (string) $zmiana['nr']);
     $archKod = $pule['presety'][$plan['preset']]['straz_archetyp'] ?? 'ochroniarz';
     $arch = $pule['archetypy'][$archKod] ?? $pule['archetypy']['ochroniarz'] ?? reset($pule['archetypy']);
     $g = sl_wazony(array_values(array_filter($pule['populacja'], fn($x) => $x['kod'] !== 'droid')) ?: $pule['populacja'])['kod'];
     $plec = $g === 'droid' ? 'n' : (sl_procent(70) ? 'm' : 'k');
     $karta = sl_karta_eote($pule['gatunki'][$g], $arch, 'slugus', 'Strażnik', $plec, null, '', 0, '');
     $karta['cechy']['intelekt'] = [1, 1, 2, 2, 3][sl_los(0, 4)];
+    if ($zmiana['noc']) $karta['cechy']['intelekt'] = max(1, $karta['cechy']['intelekt'] - 1); // nocna zmiana: senny
     $int = $karta['cechy']['intelekt'];
     return ['gatunek_kod' => $g, 'plec' => $plec, 'archetyp' => $arch['nazwa'], 'karta' => $karta,
-        'wyglad' => 'strażnik przy drzwiach ' . $p['nr'] . ($int <= 1 ? ', wygląda na mało rozgarniętego' : ($int >= 3 ? ', bystre spojrzenie' : ''))];
+        'wyglad' => 'strażnik przy drzwiach ' . $p['nr'] . ($zmiana['noc'] ? ', nocna zmiana, ziewa' : '')
+            . ($int <= 1 ? ', wygląda na mało rozgarniętego' : ($int >= 3 ? ', bystre spojrzenie' : '')),
+        'zmiana' => $zmiana];
 }
 
 // Kontakty w zasięgu: postacie fabuły (z bazy), przechodnie szumu (wg presetu lokalu, zmieniają się co godzinę)
@@ -1164,17 +1368,15 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
 {
     $kontakty = [];
     $godzina = gmdate('YmdH');
-    $q = $db->prepare('SELECT p.id, p.gatunek_kod, p.plec, p.archetyp_kod, a.nazwa AS archetyp FROM sledztwo_postacie p
-        LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? AND p.miejsce_id = ? ORDER BY p.id');
+    $fabula = sl_postacie_na_pietrze($db, $s, $pule, $plan);
+    $zmiana = sl_zmiana($db, $s);
     foreach ($plan['pokoje'] as $p) {
         $srodek = sl_srodek($p);
         if ($xDroida !== null && abs($srodek - $xDroida) > SLEDZTWO_ZASIEG) continue;
         $wDrzwiach = false;
-        $osoby = [];
-        if ($p['miejsce_id']) {
-            $q->execute([(int) $s['id'], $p['miejsce_id']]);
-            foreach ($q->fetchAll() as $o) $osoby[] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
-        } elseif ($p['ludzie_max'] > 0) {
+        $osoby = $fabula[(string) $p['nr']] ?? [];
+        $pierwszySzum = count($osoby);
+        if (!$p['miejsce_id'] && $p['ludzie_max'] > 0) {
             sl_ziarno(SLEDZTWO_SWIAT, 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
             $ile = (int) round(sl_los(0, $p['ludzie_max']) * sl_ruch_pory($db, $s));
             $bywalcy = array_values(array_filter($pule['archetypy'], fn($a) => in_array($p['rodzaj_kod'], sl_tagi((string) $a['rodzaje_miejsc']), true)));
@@ -1194,7 +1396,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
             $x = $p['x'] + 12 + ($j % $miejsc) * 15;
             $y = $yLok;
             $drzwi = null;
-            if ($wDrzwiach && $j === 0) {
+            if ($wDrzwiach && $j === $pierwszySzum) {
                 [$dx, $dy] = sl_drzwi_xy($p);
                 if (sl_przejscie($db, (int) $s['id'], sl_klucz_przejscia($plan, $p['nr'])) === 'odsunal') {
                     [$x, $y] = [$dx + 16, $p['strona'] === 'gora' ? $dy - 10 : $dy + 10];
@@ -1212,7 +1414,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
             $kontakty[] = ['pokoj' => $p['nr'], 'x' => $srodek + 16, 'y' => $p['strona'] === 'gora' ? SLEDZTWO_GLEB + 9 : SLEDZTWO_GLEB + SLEDZTWO_KOR - 9,
                 'strona' => 'korytarz', 'przy' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$st['gatunek_kod']]['nazwa'] ?? $st['gatunek_kod'], 'plec' => $st['plec'],
-                'wyglad' => $st['wyglad'], 'token' => sl_token((int) $s['seed'], 'g', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']),
+                'wyglad' => $st['wyglad'], 'token' => sl_token((int) $s['seed'], 'g', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], (string) $zmiana['od']),
                 'postac_id' => null, 'straznik' => true];
         }
     }
@@ -1235,7 +1437,7 @@ function sl_przepustka(PDO $db, int $sledztwoId, ?int $bid, int $poziom, string 
 {
     $q = $db->prepare('SELECT 1 FROM sledztwo_straz WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND udana = 1
         AND kiedy_utc > ? LIMIT 1');
-    $q->execute([$sledztwoId, $bid, $poziom, $pokoj, sl_utc(sl_teraz() - 86400)]);
+    $q->execute([$sledztwoId, $bid, $poziom, $pokoj, sl_utc(sl_zmiana(polaczenie_bazy(), ['id' => $sledztwoId])['od'])]);
     return (bool) $q->fetchColumn();
 }
 
@@ -1327,10 +1529,13 @@ function sl_straz_proba(PDO $db, array $s, string $pokoj, string $podejscie): ar
         AND pokoj = ? AND kiedy_utc > ? ORDER BY id DESC');
     $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], $pokoj, sl_utc($teraz - 86400)]);
     $proby = $q->fetchAll();
-    $godzina = array_filter($proby, fn($x) => !$x['udana'] && (sl_z_utc($x['kiedy_utc']) ?? 0) > $teraz - 3600);
+    // Odmowy liczą się w bieżącej zmianie — na następnej stoi już ktoś inny.
+    $odZmiany = sl_zmiana($db, $s)['od'];
+    $godzina = array_filter($proby, fn($x) => !$x['udana'] && (sl_z_utc($x['kiedy_utc']) ?? 0) > $odZmiany);
     if (array_filter($proby, fn($x) => (int) $x['rozpacz'] > 0)) throw new SledztwoBlad('Strażnik wezwał przełożonego — droid ma tu zakaz wstępu do jutra.');
-    if (count($godzina) >= 2) throw new SledztwoBlad('Strażnik nie chce już rozmawiać. Wróć za godzinę.');
-    if (array_filter($godzina, fn($x) => $x['podejscie'] === $podejscie)) throw new SledztwoBlad('Strażnik już to słyszał. Spróbuj inaczej albo wróć za godzinę.');
+    $zm = sl_zmiana($db, $s);
+    if (count($godzina) >= 2) throw new SledztwoBlad("Strażnik nie chce już rozmawiać. Zmiana warty o {$zm['do_lok']} czasu lokalnego — wtedy stanie tu ktoś inny.");
+    if (array_filter($godzina, fn($x) => $x['podejscie'] === $podejscie)) throw new SledztwoBlad("Strażnik już to słyszał. Spróbuj inaczej albo poczekaj na zmianę warty ({$zm['do_lok']} lokalnie).");
 
     [$cD, $uD, $cS, $uS, $nazwa] = SLEDZTWO_PODEJSCIA[$podejscie];
     $droid = sl_karta_droida($db, (string) $s['konto_login']);
@@ -2691,6 +2896,11 @@ function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?strin
     $cz = sl_czas_lokalny($db, $s);
     $t[] = '- Teraz jest ' . sl_data_gry(sl_teraz()) . " (czas standardowy gry, dzień|miesiąc|rok); tutaj {$cz['tekst']}."
         . " Doba na tej planecie trwa {$cz['doba_h']} h standardowych — ludzie żyją w rytmie zmian, a pora dnia wpływa na ruch i nastroje.";
+    if ($m && in_array($m['rola_w_miejscu'], ['pracownik', 'bywalec'], true)) {
+        $gr = array_filter(sl_grafiki_budynku($db, $s, $pule, $plan['budynek_id'] !== null ? (int) $plan['budynek_id'] : null),
+            fn($g) => (int) $g['postac']['id'] !== (int) ($m['postac_id'] ?? 0));
+        if ($gr) $t[] = '- Ludzie z tego budynku, których grafik znasz (godziny lokalne): ' . implode(' ', array_map(fn($g) => $g['ja'], $gr));
+    }
     if ($m && $m['rola_w_miejscu'] === 'pracownik') {
         $lok = $pokoj ? sl_lokal($plan, $pokoj) : null;
         $t[] = "- Twoje miejsce pracy znasz na wylot: {$m['miejsce']}." . ($lok && $lok['opis_szumu'] ? " Na co dzień: {$lok['opis_szumu']}" : '')
@@ -3290,10 +3500,14 @@ function sl_karta_rozmowcy(array $pule, array $s, array $r, ?array $postac, ?arr
 function sl_fakty_rozmowcy(PDO $db, array $s, array $pule, array $r, ?array $m): array
 {
     if (!$m) return [];
+    // Pracownicy i bywalcy znają grafiki ludzi z budynku.
+    $grafiki = in_array($m['rola_w_miejscu'], ['pracownik', 'bywalec'], true)
+        ? array_values(array_filter(sl_grafiki_budynku($db, $s, $pule, $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null),
+            fn($g) => (int) $g['postac']['id'] !== (int) ($m['postac_id'] ?? 0))) : [];
     [$a, , $fakty] = sl_fakty_o_osobie($db, $s, $pule);
-    if (!$a || (int) ($m['postac_id'] ?? 0) === (int) $a['id']) return [];
+    if (!$a || (int) ($m['postac_id'] ?? 0) === (int) $a['id']) return $grafiki;
     $plec = $m['plec'] === 'k' ? 'k' : 'm';
-    $l = [];
+    $l = $grafiki;
     foreach (sl_widzial($db, $s, $m, $r) as $w) $l[] = ['ja' => sl_rodzaj($w['ja'], $plec)] + $w;
     for ($i = 1; $i <= min(3, (int) $m['znajomosc_poziom']); $i++) foreach ($fakty[$i] as $f) $l[] = ['ja' => sl_rodzaj($f['ja'], $plec)] + $f;
     return $l;
@@ -3650,6 +3864,24 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         sl_rozmowa_zakoncz($db, $r, 'Droid odszedł od rozmówcy.');
         throw new SledztwoBlad('Droid nie stoi już przy rozmówcy — rozmowa zakończona.');
     }
+    // Postać fabuły żyje swoim rozkładem: gdy jej czas tutaj minął, wychodzi w trakcie rozmowy.
+    if ($r['postac_id']) {
+        $q = $db->prepare('SELECT * FROM sledztwo_postacie WHERE id = ?');
+        $q->execute([(int) $r['postac_id']]);
+        $kto = $q->fetch() ?: null;
+        $g = $kto ? sl_gdzie_postac($db, $s, $pule, $kto) : null;
+        $tuBud = $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null;
+        if ($kto && (!$g || $g[0] !== $tuBud || $g[1] !== (int) $r['poziom'])) {
+            $blok = sl_blok(sl_harmonogram($s, $kto), sl_czas_lokalny($db, $s)['h'])[2];
+            sl_wpis($db, (int) $r['id'], 'npc', ['dom' => 'Muszę lecieć, zmiana mi się skończyła. Jutro, puszko.', 'przerwa' => 'Przerwa. Idę coś zjeść — nie idź za mną.',
+                'targ' => 'Muszę coś załatwić na targu. Bywaj.', 'zmiana' => 'Wołają mnie do roboty. Koniec gadania.', 'kryjowka' => 'Muszę już iść. Nie szukaj mnie.',
+                'wypad' => 'Muszę gdzieś być. Zejdź mi z drogi.', 'bywa' => 'Mam swoje sprawy. Na razie.'][$blok] ?? 'Muszę iść.');
+            sl_rozmowa_zakoncz($db, $r, 'Rozmówca wyszedł — jego czas tutaj minął (' . (SLEDZTWO_PORA_SLOWNIE[$blok] ?? $blok) . ').');
+            $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
+            $q->execute([(int) $r['id']]);
+            return sl_rozmowa_widok($db, $q->fetch());
+        }
+    }
     $teraz = sl_teraz();
     // To samo pytanie do tej samej osoby drugi raz — nie (także z wcześniejszych rozmów z nią).
     $nowe = trim(mb_substr($polecenie, 0, 300));
@@ -3734,6 +3966,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         }
 
         $slyszal = $pytan === 0 ? sl_slyszal_wczesniej($db, $r) : null;
+        $pamiec = sl_pamiec_droida($db, $s, $r);
+        $plotki = sl_plotki_o_droidzie($db, $s, $r);
         $juzDroid = sl_juz_padlo($db, (int) $s['id'], (string) $r['kontakt'], 'droid');
         $koniecPytan = false;
 
@@ -3750,9 +3984,11 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     'miejsce' => ['rejon' => 'Nar Shaddaa', 'nazwa' => 'lokal ' . $r['pokoj'] . ', poziom ' . $r['poziom']],
                     'rozmowca' => ['opis' => sl_opis_rozmowcy($r), 'forma' => $f['opis']],
                     'rozmowa' => ['etap' => ($pytan ? 'Rozmowa trwa — nie przedstawiaj się ponownie.'
+                        : ($pamiec['ile'] ? "Już rozmawiałeś z tą osobą ({$pamiec['ile']} " . ($pamiec['ile'] === 1 ? 'raz' : 'razy') . '). Nie przedstawiaj się od nowa:'
+                            . ' krótko nawiąż do poprzedniej rozmowy (np. „Wracam z kilkoma pytaniami”) i zadaj pytanie.'
                         : ($slyszal ? "To Twoja pierwsza wypowiedź do tej osoby, ale stała obok i słyszała, jak przed chwilą przedstawiałeś się i wypytywałeś {$slyszal}."
                             . ' Nie powtarzaj pełnej formuły z zasady 2: krótko nawiąż (np. „Słyszał Pan zapewne, o co pytałem…”), podaj tylko swoje oznaczenie i zadaj pytanie.'
-                            : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.'))
+                            : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.')))
                         . ($juzDroid ? ' Tych pytań już tej osobie zadałeś (także we wcześniejszych rozmowach) — nie powtarzaj ich ani ich sensu: '
                             . implode(' | ', array_slice($juzDroid, -8)) : ''),
                         'polecenie' => $polecenie !== '' ? $polecenie : 'Brak — zadaj kolejne pytanie zgodnie z zasadą 4.',
@@ -3761,6 +3997,11 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 ], (int) $s['id'])['wypowiedz'];
                 $pytanieAi = true;
             } catch (AiBlad $e) { $awaria = true; $powodAwarii = $e->getMessage(); }
+        }
+        if ($pytanie === null && $pytan === 0 && $pamiec['ile'] && !$pd) {
+            $dalej = $polecenie !== '' ? sl_pytanie_operatora($polecenie, $procedura === 'jawna', $f)
+                : sl_droid_zastepczo(false, $f, $oznaczenie, $operator, '', 1, false, null, $juzDroid);
+            $pytanie = "Wracam z kilkoma pytaniami, {$f['wolacz']}. " . ($dalej !== '' ? $dalej : 'Czy coś się zmieniło od naszej rozmowy?');
         }
         if ($pytanie === null) {
             $bezPodejscia = $pd ? trim((string) preg_replace('/\s*\[Podejście:.*\]$/us', '', $polecenie)) : $polecenie;
@@ -3785,6 +4026,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
                     : '(to początek rozmowy)',
                     'unikaj' => $unikaj];
+                if ($pamiec['ile']) $dane['faza']['zachowanie'] .= "\n" . $pamiec['tekst'];
+                if ($plotki['ile']) $dane['faza']['zachowanie'] .= "\n" . $plotki['tekst'];
                 if ($slyszal) $dane['faza']['zachowanie'] .= "\n- " . sl_rodzaj('Przed chwilą stał{eś|aś} obok i słyszał{eś|aś}', (string) ($o['plec'] ?? 'm')) . ", jak ten droid przedstawiał się i wypytywał kogoś ({$slyszal}) o sprawę: {$zgloszenie}. Wiesz już, czego chce.";
                 if ($test) {
                     $dane['faza']['zachowanie'] .= "\n- TERAZ droid zastosował wobec ciebie: {$pd[4]}. Wynik testu: "
@@ -3817,6 +4060,9 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 if ($pytan === 0) {
                     $r100 = random_int(1, 100);
                     $nastroj = $r100 <= 78 ? 'obojetny' : ($r100 <= 88 ? 'uprzejmy' : ($r100 <= 95 ? 'przestraszony' : 'wrogi'));
+                    // Pamięć i plotki: kolejna wizyta — mniej cierpliwości; groźby w budynku — strach albo wrogość.
+                    if ($pamiec['ile'] >= 2 || ($pamiec['groził'] ?? false)) $nastroj = random_int(1, 100) <= 60 ? 'wrogi' : $nastroj;
+                    elseif ($plotki['zle']) $nastroj = ['przestraszony', 'wrogi', $nastroj][random_int(0, 2)];
                 } elseif ($pytan >= 3 && $nastroj !== 'przestraszony' && random_int(1, 100) <= 25) {
                     $nastroj = 'wrogi';
                 }
@@ -3831,11 +4077,17 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 } else {
                     $pyt = $polecenie !== '' ? $polecenie : $pytanie;
                     $odp = sl_odpowiedz_zastepcza($db, $s, $pule, $r, $metryka, $pyt, $nastroj)
+                        ?? sl_odpowiedz_o_kims($db, $s, $pule, $r, $metryka, $pyt)
                         ?? sl_odpowiedz_o_osobie($db, $s, $pule, $r, $metryka, $pyt)
                         ?? sl_wskazowka_okolicy($db, $s, $pule, $r, sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id'],
                             fn($k) => !sl_wskazuje_miejsce($k) || sl_budynek_z_tekstu(sl_okolica($db, $s, $pule), $k, $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null)));
                 }
-                $konczy = $konczy || (!$test && $pytan >= 2 && random_int(1, 100) <= 50);
+                $konczy = $konczy || (!$test && $pytan >= 2 && random_int(1, 100) <= ($pamiec['ile'] ? 75 : 50));
+                if ($pytan === 0 && !$test) {
+                    if ($pamiec['ile']) $odp = sl_jeden(['Znowu ty? ', 'Ty znowu? ', 'Wróciłeś, puszko? ', 'Mówił' . (($metryka['plec'] ?? 'm') === 'k' ? 'am' : 'em') . ' ci już. ']) . $odp;
+                    elseif ($plotki['ile'] && random_int(1, 100) <= 50) $odp = sl_jeden(['Słyszał' . (($metryka['plec'] ?? 'm') === 'k' ? 'am' : 'em') . ' o tobie, puszko. ',
+                        'A, to ty jesteś tym droidem z biura. ', 'Cały budynek o tobie gada. ']) . $odp;
+                }
                 sl_wpis($db, $rid, 'npc', $odp);
             }
         }

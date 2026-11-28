@@ -519,9 +519,10 @@ export default {
       } catch (e) { wyczysc(notatnikBox).append(blad(e)); return null; }
     }
 
+    // Notatnik rysuje się tylko przy wczytaniu i po akcjach — odświeżenie skanu go nie przerysowuje (wpisywany tekst zostaje).
     function zakladkaNotatnik() {
       if (!notatnik) { wyczysc(notatnikBox).append(panel('NOTATNIK DETEKTYWA', h('p.maly-tekst', 'Wczytywanie…'))); notatnikWolaj(); }
-      else rysujNotatnik();
+      else if (!notatnikBox.firstChild) rysujNotatnik();
       return notatnikBox;
     }
 
@@ -626,6 +627,7 @@ export default {
     function rysujSzuflade() {
       szuflada.hidden = zakladka === 'skan' || !d;
       if (szuflada.hidden) return;
+      if (zakladka === 'notatnik' && notatnik && szuflada.contains(notatnikBox)) return; // nie przerywaj pisania w notatniku
       const zamknij = przycisk('×', () => { zakladka = 'skan'; rysujSzuflade(); rysujGore(); }, '.drugi.maly', { style: 'float:right', title: 'Zamknij panel' });
       // Panel windy tylko, gdy droid jest w windzie (albo do niej idzie).
       if (zakladka === 'winda' && !wWindzie() && !zamiar?.winda) { zakladka = 'skan'; szuflada.hidden = true; return; }

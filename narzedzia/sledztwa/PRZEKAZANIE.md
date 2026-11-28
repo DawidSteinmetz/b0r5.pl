@@ -102,6 +102,13 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    **Etap 5 (nieprzetestowany): swobodny ruch po planie** — migracja `088_sledztwa_pozycje.sql`; klik w dowolny
    punkt, trasa przez drzwi (5 km/h, animacja), klikalna winda, podchodzenie do terminali i rozmówców, blokowanie
    drzwi w obie strony, raport przeszukania pod przyciskiem. Opis w PROJEKT.md „Ruch i skan”.
+   **Etap 6 (nieprzetestowany): metryki NPC** — migracja `089_sledztwa_metryki.sql`: każdy rozmówca (też przechodzień,
+   strażnik) dostaje przy pierwszej rozmowie metrykę w `sledztwo_metryki` (pochodzenie wg gatunku, losowe lata na
+   planecie i staż, praca, mieszkanie, rodzina, opinie, sekret, plotka, znajomość z osobą ze sprawy 0–3 z faktami
+   z bazy, chęć mówienia). Status osoby ze sprawy wg zgłoszonego zdarzenia (`SLEDZTWO_STATUS_A`); poziom znajomości
+   losowany z wag zależnych od miejsca (lokal fabuły / budynek fabuły / szum). Prompt `npc_wypowiedz` zaczyna się od
+   „Udajesz <gatunek> o imieniu … ze świata Gwiezdnych Wojen”; NPC mówią swobodnie i naturalnie. Z metryką przez AI
+   mówi każdy (`SLEDZTWO_AI_DLA_WSZYSTKICH`), więc wywołań AI jest więcej — pilnuje ich limit dzienny.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

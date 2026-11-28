@@ -487,6 +487,9 @@ export default {
     let rozmowa = null, pisze = false, zaplanowany = null, kolejka = Promise.resolve();
     const wypisane = new Set();
     const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
+    // Procedura śledcza: 'wlasna' — droid zadaje pytania operatora jako swoje; 'jawna' — może mówić, że pyta operator.
+    let procedura = 'wlasna';
+    try { if (localStorage.getItem('dt4-procedura') === 'jawna') procedura = 'jawna'; } catch (e) { /* bez pamięci przeglądarki */ }
 
     function wypisz(wp, odRazu) {
       const kto = wp.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[wp.kto];
@@ -535,10 +538,18 @@ export default {
       const status = pisze ? 'DT-4 nadaje… czekam na odpowiedź rozmówcy.'
         : rozmowa.stan === 'podejscie' ? `DT-4 podchodzi do rozmówcy (2–3 m)${rozmowa.gotowa_za_s ? ` · ok. ${czas(rozmowa.gotowa_za_s)}` : ''}…`
           : zakonczona ? 'Rozmowa zakończona.' : 'Rozmowa trwa. Wpisz polecenie albo pozwól droidowi pytać samemu.';
+      const wyborProcedury = h('select', { title: 'Procedura śledcza dla pytań operatora', disabled: zakonczona },
+        h('option', { value: 'wlasna', selected: procedura === 'wlasna' }, 'Pytania operatora: jako własne droida'),
+        h('option', { value: 'jawna', selected: procedura === 'jawna' }, 'Pytania operatora: jawnie („mój operator pyta”)'));
+      wyborProcedury.onchange = () => {
+        procedura = wyborProcedury.value;
+        try { localStorage.setItem('dt4-procedura', procedura); } catch (e) { /* bez pamięci przeglądarki */ }
+      };
       wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · ${lokalTxt(rozmowa.pokoj)}`,
         h('p.maly-tekst', 'Zapis tekstowy — droidy śledcze nie mają modułu głosu.'),
         listaR,
         h('p.maly-tekst', status),
+        zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
         zakonczona ? przycisk('Zamknij zapis', () => pokazRozmowe(null))
           : h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, pole, zadaj,
             przycisk('Dalej (droid pyta sam)', () => tura(''), '.drugi.maly', { disabled: pisze }),
@@ -554,7 +565,7 @@ export default {
       pisze = true;
       rysujSterowanieRozmowy();
       try {
-        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie });
+        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura });
         pisze = false;
         pokazRozmowe(r.rozmowa);
         if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); }

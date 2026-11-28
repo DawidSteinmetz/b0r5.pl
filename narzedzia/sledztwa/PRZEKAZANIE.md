@@ -109,6 +109,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    losowany z wag zależnych od miejsca (lokal fabuły / budynek fabuły / szum). Prompt `npc_wypowiedz` zaczyna się od
    „Udajesz <gatunek> o imieniu … ze świata Gwiezdnych Wojen”; NPC mówią swobodnie i naturalnie. Z metryką przez AI
    mówi każdy (`SLEDZTWO_AI_DLA_WSZYSTKICH`), więc wywołań AI jest więcej — pilnuje ich limit dzienny.
+   Migracja `090_sledztwa_scena.sql`: NPC znają otoczenie (`sl_scena`: budynek, lokale piętra i parteru, ochrona,
+   terminale, pora; pracownik — swoje miejsce pracy). Procedura śledcza (przełącznik w rozmowie, pamięć przeglądarki):
+   pytania operatora droid zadaje jako własne albo jawnie. Bez AI: `sl_odpowiedz_zastepcza` (imię, pochodzenie,
+   gdzie co jest — z planu) zamiast przypadkowej kwestii; w zapisie rozmowy widać, gdy rozmówca mówi bez AI i dlaczego.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

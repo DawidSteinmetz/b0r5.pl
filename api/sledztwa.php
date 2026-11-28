@@ -2164,18 +2164,73 @@ function sl_formy(string $plec): array
 }
 
 // Wypowiedź droida bez AI (przechodnie, poboczni, awaria łącza).
-function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr): string
+const SLEDZTWO_PROCEDURY = [
+    'wlasna' => 'Procedura: pytania operatora zadajesz we własnym imieniu, jak swoje. Nie wspominasz rozmówcy o operatorze ani o tym, że ktoś ci podpowiada.',
+    'jawna' => 'Procedura jawna: możesz zaznaczyć, że pytanie zadaje twój operator („Mój operator pyta…”), jeśli to brzmi naturalnie; nie musisz robić tego za każdym razem.',
+];
+
+// Pytanie operatora jako wypowiedź droida: uprzejmie, z pytajnikiem; przy procedurze jawnej — „mój operator pyta”.
+function sl_pytanie_operatora(string $polecenie, bool $jawna): string
+{
+    $p = rtrim(trim($polecenie), " .!");
+    if (!str_ends_with($p, '?')) $p .= '?';
+    $p = mb_strtoupper(mb_substr($p, 0, 1)) . mb_substr($p, 1);
+    return $jawna ? 'Mój operator pyta: ' . $p : 'Proszę mi powiedzieć: ' . mb_strtolower(mb_substr($p, 0, 1)) . mb_substr($p, 1);
+}
+
+function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr, bool $jawna = false): string
 {
     if ($pierwsza) {
         $t = "Dzień dobry, {$f['wolacz']}. Jestem droid detektywistyczny {$oznaczenie}, operowany przez: {$operator}. "
             . "Mam prawo zadać {$f['panu']} kilka pytań, ponieważ trwa śledztwo, w które jest {$f['pan']} ewidentnie zaangażowan" . ($f['a'] ?: 'y') . '.';
-        return $t . ($polecenie !== '' ? " Operator pyta: {$polecenie}" : ' Co stało się tutaj ubiegłej nocy?');
+        return $t . ($polecenie !== '' ? ' ' . sl_pytanie_operatora($polecenie, $jawna) : ' Co stało się tutaj ubiegłej nocy?');
     }
-    if ($polecenie !== '') return "Operator pyta: {$polecenie}";
+    if ($polecenie !== '') return sl_pytanie_operatora($polecenie, $jawna);
     $pytania = ["Kogo {$f['pan']} tu widział{$f['a']} w ciągu ostatniej doby?", "Czy ktoś pytał już {$f['pana']} o tę sprawę?",
         'Kto jeszcze bywa w tym miejscu regularnie?', 'Czy coś zginęło albo zmieniło się tutaj w ostatnich dniach?',
         "Gdzie {$f['pan']} był{$f['a']} ubiegłej nocy?"];
     return $pytania[$nr % count($pytania)];
+}
+
+// Odpowiedź bez AI na proste pytania: imię, pochodzenie, gdzie co jest w budynku (z planu). Null — nie pasuje.
+function sl_odpowiedz_zastepcza(PDO $db, array $s, array $pule, array $r, ?array $m, string $pytanie, string $nastroj): ?string
+{
+    $p = mb_strtolower($pytanie);
+    if ($nastroj === 'wrogi') return null;
+    if ($m && preg_match('/nazywa|imi[eę]|kim (pan|pani|jeste)|przedstaw/u', $p)) {
+        return $m['chce_mowic'] === 'nie' && random_int(1, 100) <= 40 ? 'A co cię to obchodzi, puszko?'
+            : 'Jestem ' . trim($m['imie'] . ' ' . ($m['nazwisko'] ?? '')) . '.' . ($m['rola_w_miejscu'] === 'pracownik' ? " Pracuję tu jako {$m['zajecie']}." : '');
+    }
+    if ($m && preg_match('/skąd|pochodz|urodzi/u', $p)) {
+        return (int) $m['urodzony_tutaj'] ? 'Stąd, z Nar Shaddaa. Całe życie na tych poziomach.'
+            : "Pochodzę z planety {$m['planeta_urodzenia']}. Tutaj jestem od " . (int) $m['lat_na_planecie'] . ' lat.';
+    }
+    if (!preg_match('/gdzie|znajd|szuka|jak trafi|jak dojś/u', $p)) return null;
+    if (preg_match('/wind/u', $p)) return 'Winda? Na końcu korytarza, nie da się przeoczyć.';
+    $plan = sl_plan_rozmowy($db, $s, $pule, $r);
+    $plany = [$plan];
+    if ($plan['poziom'] !== $plan['parter']) {
+        $budynki = sl_budynki($db, $s);
+        $plany[] = sl_plan($db, $s, $pule, $plan['budynek_id'] !== null ? ($budynki[$plan['budynek_id']] ?? null) : null, (int) $plan['parter']);
+    }
+    $ochrona = (bool) preg_match('/ochron|straż|strażnik|bezpiecze/u', $p);
+    foreach ($plany as $pl) {
+        foreach ($pl['pokoje'] as $lok) {
+            $nazwa = mb_strtolower($lok['rodzaj']);
+            $trafia = $ochrona ? (str_contains($nazwa, 'ochron') || $lok['dostep'] === 'straz') : false;
+            if (!$ochrona) {
+                foreach (preg_split('/\s+/u', $nazwa) as $slowo) {
+                    if (mb_strlen($slowo) >= 4 && str_contains($p, mb_substr($slowo, 0, 5))) { $trafia = true; break; }
+                }
+            }
+            if (!$trafia) continue;
+            $gdzie = $pl['poziom'] === $plan['poziom'] ? 'tu, na tym poziomie' : "na parterze, poziom {$pl['poziom']}";
+            return $ochrona && $lok['dostep'] === 'straz' && !str_contains($nazwa, 'ochron')
+                ? "Strażnik stoi przy drzwiach lokalu {$lok['nr']}, {$gdzie}. Do niego idź."
+                : "{$lok['rodzaj']}? Lokal {$lok['nr']}, {$gdzie}.";
+        }
+    }
+    return $ochrona ? "Ochrona siedzi zwykle przy wejściu, na parterze — poziom {$plan['parter']}." : null;
 }
 
 // Zdawkowa kwestia bez powtórzeń: pomija to, co ten rozmówca już powiedział, i to, co w tej sprawie padło
@@ -2200,8 +2255,54 @@ function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sle
     return (string) $l[0];
 }
 
-// Dane kluczowego NPC do szablonu npc_wypowiedz. Dopóki model Autor nie napisze historii i wiedzy (krok 2),
-// wiedza powstaje ze szkieletu: fazy, w których szkicu występuje kod postaci, z zachowaniem wg jawności fazy.
+// ---------- wiedza NPC o otoczeniu: budynek, piętro, parter, ochrona, pora ----------
+
+// Plan piętra, na którym toczy się rozmowa (z rozmowy: budynek, poziom).
+function sl_plan_rozmowy(PDO $db, array $s, array $pule, array $r): array
+{
+    $budynki = sl_budynki($db, $s);
+    $bid = $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null;
+    return sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $r['poziom']);
+}
+
+// Lokale piętra w skrócie: „4101 Recepcja, 4102 Hol (strzeżony), …”.
+function sl_lokale_tekst(array $plan, int $limit = 16): string
+{
+    $l = [];
+    foreach (array_slice($plan['pokoje'], 0, $limit) as $p) {
+        $l[] = "{$p['nr']} {$p['rodzaj']}" . ($p['dostep'] === 'straz' ? ' (strażnik przy drzwiach)' : ($p['dostep'] === 'nakaz' ? ' (wstęp służbowy)' : ''));
+    }
+    if (count($plan['pokoje']) > $limit) $l[] = 'i ' . (count($plan['pokoje']) - $limit) . ' innych';
+    return implode(', ', $l);
+}
+
+// Tekst „CO WIESZ O OTOCZENIU” dla NPC: każdy, kto tu jest, zna budynek, swoje piętro, parter i ochronę.
+function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?string $pokoj): string
+{
+    $t = [];
+    $t[] = "- Budynek: {$plan['budynek']} ({$plan['preset_nazwa']}); parter na poziomie {$plan['parter']}, najwyższy poziom {$plan['gora']}."
+        . " Rozmowa toczy się na poziomie {$plan['poziom']}" . ($pokoj && $pokoj !== 'korytarz' ? ", w lokalu {$pokoj}." : ', na korytarzu przy windzie.');
+    $t[] = "- Na tym poziomie są lokale: " . sl_lokale_tekst($plan) . '. Między lokalami biegnie korytarz z windą.';
+    $term = array_keys(sl_terminale($plan));
+    if ($term) $t[] = '- Terminale na tym poziomie: ' . implode(', ', $term) . ($plan['terminal_korytarz'] ? " (publiczny {$plan['terminal_korytarz']} na korytarzu)" : '') . '.';
+    if ($plan['poziom'] !== $plan['parter']) {
+        $budynki = sl_budynki($db, $s);
+        $parter = sl_plan($db, $s, $pule, $plan['budynek_id'] !== null ? ($budynki[$plan['budynek_id']] ?? null) : null, (int) $plan['parter']);
+        $t[] = "- Na parterze (poziom {$plan['parter']}): " . sl_lokale_tekst($parter, 10) . '.';
+    }
+    $strzez = array_values(array_filter($plan['pokoje'], fn($p) => $p['dostep'] === 'straz'));
+    $t[] = $strzez ? '- Ochrona: strażnicy stoją przy drzwiach lokali ' . implode(', ', array_column($strzez, 'nr')) . '; szefostwo ochrony siedzi zwykle w biurze ochrony albo przy wejściu na parterze.'
+        : '- Ochrona budynku: zwykle przy wejściu na parterze albo w biurze ochrony, jeśli budynek je ma.';
+    $t[] = '- Teraz jest ' . sl_data_gry(sl_teraz()) . ' (czas gry, dzień|miesiąc|rok).';
+    if ($m && $m['rola_w_miejscu'] === 'pracownik') {
+        $lok = $pokoj ? sl_lokal($plan, $pokoj) : null;
+        $t[] = "- Twoje miejsce pracy znasz na wylot: {$m['miejsce']}." . ($lok && $lok['opis_szumu'] ? " Na co dzień: {$lok['opis_szumu']}" : '')
+            . ' Wiesz, kto tu zwykle bywa, kiedy są zmiany i do kogo iść z problemem (przełożony, ochrona) — ogólnikami; nazwisk nie wymyślasz.';
+    }
+    $t[] = '- O okolicy (budynek, piętro, ochrona, gdzie co jest) mówisz swobodnie, jak każdy, kto tu bywa — to nie są tajemnice.';
+    return implode("\n", $t);
+}
+
 // ---------- metryki NPC (migracja 089): kim jest rozmówca i co wie o osobie ze sprawy ----------
 
 // {m|k} → forma męska (też dla 'n') albo żeńska.
@@ -2457,6 +2558,8 @@ function sl_metryka_pola(PDO $db, array $s, array $pule, array $m): array
         'pelne_imie' => trim($m['imie'] . ' ' . ($m['nazwisko'] ?? '') . ($m['przydomek'] ? " „{$m['przydomek']}”" : ''))];
 }
 
+// Dane kluczowego NPC do szablonu npc_wypowiedz. Dopóki model Autor nie napisze historii i wiedzy (krok 2),
+// wiedza powstaje ze szkieletu: fazy, w których szkicu występuje kod postaci, z zachowaniem wg jawności fazy.
 // $m — metryka rozmówcy (migracja 089); bez niej pola metryki dostają ogólniki.
 function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r, ?array $m = null): array
 {
@@ -2540,6 +2643,7 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r, ?array 
     if (!$kod && $m) $miejsce['nazwa'] = $m['miejsce'];
     return [
         'swiat' => ['planeta' => 'Nar Shaddaa'],
+        'scena' => ['opis' => sl_scena($db, $s, $pule, sl_plan_rozmowy($db, $s, $pule, $r), $m, (string) $r['pokoj'])],
         'npc' => ['kim' => $mp['kim'], 'zyciorys' => $mp['zyciorys'], 'metryka' => $mp['metryka'], 'znajomosc' => $mp['znajomosc'],
             'pelne_imie' => $pelne, 'gatunek' => $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'],
             'plec' => ['m' => 'mężczyzna', 'k' => 'kobieta', 'n' => 'nieokreślona'][$p['plec']] ?? 'nieokreślona',
@@ -2576,7 +2680,8 @@ function sl_vip_odprawa(PDO $db, array $s, array $postac, int $pytan): ?string
 }
 
 // Jedna tura: (polecenie operatora) → pytanie droida → odpowiedź rozmówcy. Kluczowi NPC — AI; reszta — bez AI.
-function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie): array
+// $procedura: 'wlasna' — pytania operatora droid zadaje jako swoje; 'jawna' — może mówić, że pyta operator.
+function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna'): array
 {
     $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ?');
     $q->execute([$rid, (int) $s['id']]);
@@ -2655,12 +2760,13 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     'rozmowca' => ['opis' => sl_opis_rozmowcy($r), 'forma' => $f['opis']],
                     'rozmowa' => ['etap' => $pytan ? 'Rozmowa trwa — nie przedstawiaj się ponownie.' : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.',
                         'polecenie' => $polecenie !== '' ? $polecenie : 'Brak — zadaj kolejne pytanie zgodnie z zasadą 4.',
+                        'procedura' => SLEDZTWO_PROCEDURY[$procedura] ?? SLEDZTWO_PROCEDURY['wlasna'],
                         'przebieg' => $przebiegDroida],
                 ], (int) $s['id'])['wypowiedz'];
                 $pytanieAi = true;
             } catch (AiBlad $e) { $awaria = true; }
         }
-        $pytanie = $pytanie ?? sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $polecenie, $pytan);
+        $pytanie = $pytanie ?? sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $polecenie, $pytan, $procedura === 'jawna');
         sl_wpis($db, $rid, 'droid', $pytanie, $pytanieAi);
 
         // 2. Rozmówca odpowiada.
@@ -2698,12 +2804,17 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 } elseif ($pytan >= 3 && $nastroj !== 'przestraszony' && random_int(1, 100) <= 25) {
                     $nastroj = 'wrogi';
                 }
-                $odp = sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
+                $odp = sl_odpowiedz_zastepcza($db, $s, $pule, $r, $metryka, $polecenie !== '' ? $polecenie : $pytanie, $nastroj)
+                    ?? sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
                 $konczy = $pytan >= 2 && random_int(1, 100) <= 50;
                 sl_wpis($db, $rid, 'npc', $odp);
             }
         }
         if ($awaria) sl_wpis($db, $rid, 'system', 'Łącze z modułem językowym niedostępne — wypowiedź zastępcza.');
+        elseif (!$ai && $pytan === 0) {
+            sl_wpis($db, $rid, 'system', $metryka || !SLEDZTWO_AI_DLA_WSZYSTKICH ? 'Ten rozmówca mówi bez modułu językowego — odpowiedzi zastępcze.'
+                : 'Rozmówca nie ma metryki (brak migracji 089?) — odpowiedzi zastępcze, bez modułu językowego.');
+        }
         $db->prepare('UPDATE sledztwo_rozmowy SET nastroj = ? WHERE id = ?')->execute([$nastroj, $rid]);
         if ($konczy) {
             $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
@@ -2843,7 +2954,8 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 $s = sl_biezace($db, (string) $u['login']);
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
-                odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''))]);
+                odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''),
+                    ($w['procedura'] ?? '') === 'jawna' ? 'jawna' : 'wlasna')]);
 
             // Porzucenie: sprawa trafia do MG (stan porzucone), typ zostaje zajęty; detektyw może przyjąć nową.
             // Powrót — po uzasadnieniu i decyzji MG (PROJEKT.md, rozdz. 1).

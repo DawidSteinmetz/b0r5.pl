@@ -94,8 +94,8 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
   (dystanse między sektorami to setki km; potrzebna taksówka powietrzna).
 - Czas podróży (1:1), chód 5 km/h. Na piętrze droid idzie do dowolnego klikniętego punktu planu (10 j. = 1 m),
   zawsze przez drzwi i korytarz, nie przez ściany (`sl_trasa`); czas = długość trasy / 5 km/h. Inny poziom albo
-  budynek: marsz do windy + 20 s wyjścia + odległość między budynkami (`x_km`, `y_km`) + 30 s czekania na windę
-  i 20 s / poziom + marsz od windy do celu. Klik w windę na planie — wybór poziomu. Rysunek animuje marsz po trasie.
+  budynek: marsz do windy + (inny budynek: 20 s wyjścia + odległość `x_km`, `y_km`) + 10 s czekania na windę
+  i 1,5 s / poziom (szybkie windy turbo) + marsz od windy do celu. Klik w windę — droid do niej wchodzi, w środku panel z piętrami. Rysunek animuje marsz po trasie.
 - Pozycja (x, y) droida: `sledztwo_pozycje` (migracja 088); bez wiersza — środek lokalu.
 - Do terminala droid musi podejść (ok. 1,5 m); klik w terminal z daleka = podejście i podłączenie po dotarciu.
   Do rozmowy podchodzi na 2–3 m (klik w kontakt).

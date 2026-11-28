@@ -47,7 +47,15 @@ function s(tag, atr = {}, ...dzieci) {
 
 // Geometria planu (jednostki skanu; pokój = 60 j.).
 const P = 60, GLEB = 70, KOR = 36, WINDA = 44;
-const ZASIEG_TERMINALA = 18; // jak SLEDZTWO_ZASIEG_TERMINALA w api/sledztwa.php
+const ZASIEG_TERMINALA = 18;
+// Podejścia w rozmowie (jak SLEDZTWO_PODEJSCIA_ROZMOWY w api/sledztwa.php): [klucz, napis, opis testu].
+const PODEJSCIA_R = [
+  ['grozba', 'Groźba', 'Zastraszanie: Wola droida przeciw Woli i Dyscyplinie rozmówcy'],
+  ['negocjacje', 'Negocjacje', 'Wymiana: Prezencja i Negocjacje przeciw Prezencji i Negocjacjom'],
+  ['urok', 'Urok', 'Zjednanie: Prezencja i Urok przeciw Prezencji i Opanowaniu'],
+  ['blef', 'Blef', 'Oszustwo: Spryt przeciw Intelektowi i Czujności (mało rozgarniętych łatwo nabrać)'],
+  ['autorytet', 'Autorytet', 'Przywództwo: powołanie się na biuro; Prezencja przeciw Woli i Dyscyplinie'],
+]; // jak SLEDZTWO_ZASIEG_TERMINALA w api/sledztwa.php
 const yPokoju = (strona) => (strona === 'gora' ? 0 : GLEB + KOR);
 
 const przycisk = (napis, akcja, klasa = '.drugi.maly', atr = {}) => {
@@ -488,13 +496,13 @@ export default {
     const wypisane = new Set();
     const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
     // Procedura śledcza: 'wlasna' — droid zadaje pytania operatora jako swoje; 'jawna' — może mówić, że pyta operator.
-    let procedura = 'wlasna';
+    let procedura = 'wlasna', szkic = '';
     try { if (localStorage.getItem('dt4-procedura') === 'jawna') procedura = 'jawna'; } catch (e) { /* bez pamięci przeglądarki */ }
 
     function wypisz(wp, odRazu) {
       const kto = wp.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[wp.kto];
       const tekst = h('span', { style: 'white-space:pre-wrap' });
-      const el = h('div', { style: `margin:6px 0;${wp.kto === 'system' ? 'opacity:.6;font-style:italic' : ''}${wp.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
+      const el = h('div', { style: `margin:6px 0;${wp.kto === 'system' ? (wp.tresc.startsWith('Test:') ? `font-weight:bold;color:var(${wp.tresc.includes(' UDANY') && !wp.tresc.includes('NIEUDANY') ? '--ok' : '--zly'})` : 'opacity:.6;font-style:italic') : ''}${wp.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
         kto ? h('b', `${kto} › `) : null, tekst);
       listaR.append(el);
       if (odRazu) { tekst.textContent = wp.tresc; return Promise.resolve(); }
@@ -531,14 +539,22 @@ export default {
     function rysujSterowanieRozmowy() {
       if (!rozmowa) return;
       const zakonczona = rozmowa.stan === 'zakonczona';
-      const pole = h('input', { placeholder: 'Polecenie dla droida, np. „spytaj, komu jest winien pieniądze”', style: 'flex:1;min-width:180px',
-        disabled: zakonczona || pisze, maxlength: 300 });
-      const zadaj = przycisk('Zadaj pytanie', () => { if (pole.value.trim()) tura(pole.value.trim()); }, '.maly', { disabled: zakonczona || pisze });
-      pole.onkeydown = (e) => { if (e.key === 'Enter' && pole.value.trim()) tura(pole.value.trim()); };
+      // Duże pole polecenia (Enter — wyślij, Shift+Enter — nowa linia); szkic przetrwa przerysowanie.
+      const pole = h('textarea', { placeholder: 'Polecenie dla droida, np. „spytaj, komu jest winien pieniądze” albo „powiedz, że wrócimy z nakazem”',
+        rows: 3, maxlength: 300, disabled: zakonczona || pisze,
+        style: 'width:100%;box-sizing:border-box;resize:vertical;min-height:64px;font:inherit' });
+      pole.value = szkic;
+      pole.oninput = () => { szkic = pole.value; };
+      const wyslij = (podejscie = '') => { const v = pole.value.trim(); if (v || podejscie) { szkic = ''; tura(v, podejscie); } };
+      const zadaj = przycisk('Wyślij polecenie', () => wyslij(), '.maly', { disabled: zakonczona || pisze });
+      pole.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); wyslij(); } };
+      // Podejścia: test EotE droida przeciw rozmówcy; wynik wpływa na odpowiedź i jego dalszą chęć do rozmowy.
+      const podejscia = h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;margin:6px 0' },
+        PODEJSCIA_R.map(([k, n, opis]) => przycisk(n, () => wyslij(k), '.drugi.maly', { disabled: zakonczona || pisze, title: opis })));
       const status = pisze ? 'DT-4 nadaje… czekam na odpowiedź rozmówcy.'
         : rozmowa.stan === 'podejscie' ? `DT-4 podchodzi do rozmówcy (2–3 m)${rozmowa.gotowa_za_s ? ` · ok. ${czas(rozmowa.gotowa_za_s)}` : ''}…`
           : zakonczona ? 'Rozmowa zakończona.' : 'Rozmowa trwa. Wpisz polecenie albo pozwól droidowi pytać samemu.';
-      const wyborProcedury = h('select', { title: 'Procedura śledcza dla pytań operatora', disabled: zakonczona },
+      const wyborProcedury = h('select', { title: 'Procedura śledcza dla pytań operatora', disabled: zakonczona, style: 'width:100%;max-width:100%' },
         h('option', { value: 'wlasna', selected: procedura === 'wlasna' }, 'Pytania operatora: jako własne droida'),
         h('option', { value: 'jawna', selected: procedura === 'jawna' }, 'Pytania operatora: jawnie („mój operator pyta”)'));
       wyborProcedury.onchange = () => {
@@ -551,21 +567,22 @@ export default {
         h('p.maly-tekst', status),
         zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
         zakonczona ? przycisk('Zamknij zapis', () => pokazRozmowe(null))
-          : h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, pole, zadaj,
+          : h('div', pole, h('div.maly-tekst', { style: 'margin-top:6px' }, 'Podejście (test; dołącza się do polecenia z pola, jeśli jest):'), podejscia,
+            h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, zadaj,
             przycisk('Dalej (droid pyta sam)', () => tura(''), '.drugi.maly', { disabled: pisze }),
             przycisk('Zakończ', async () => {
               try { await api('sledztwo_rozmowa_koniec', { rozmowa_id: rozmowa.id }); await odswiezRozmowe(); skanuj(); }
               catch (e) { pokaz(blad(e)); }
-            }, '.drugi.maly', { disabled: pisze }))));
+            }, '.drugi.maly', { disabled: pisze })))));
       if (!zakonczona && !pisze && zakladka === 'rozmowa') setTimeout(() => pole.focus(), 0);
     }
 
-    async function tura(polecenie) {
+    async function tura(polecenie, podejscie = '') {
       if (!rozmowa || pisze || rozmowa.stan === 'zakonczona') return;
       pisze = true;
       rysujSterowanieRozmowy();
       try {
-        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura });
+        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura, podejscie });
         pisze = false;
         pokazRozmowe(r.rozmowa);
         if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); }

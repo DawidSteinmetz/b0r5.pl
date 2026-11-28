@@ -1176,11 +1176,12 @@ const SLEDZTWO_KOSCI = [
 ];
 
 // Test przeciwstawny EotE: pula = wyższa z (cecha, ranga), z czego niższa to kości ulepszone.
-function sl_test_eote(int $cecha, int $ranga, int $cechaObr, int $rangaObr): array
+function sl_test_eote(int $cecha, int $ranga, int $cechaObr, int $rangaObr, int $plus = 0): array
 {
     $b = min($cecha, $ranga); $z = max($cecha, $ranga) - $b;
     $w = min($cechaObr, $rangaObr); $t = max($cechaObr, $rangaObr) - $w;
     if ($w + $t === 0) $t = 1;
+    $t += max(0, $plus);
     $wynik = [0, 0, 0, 0];
     foreach (['z' => $z, 'b' => $b, 't' => $t, 'w' => $w] as $rodzaj => $ile) {
         for ($i = 0; $i < $ile; $i++) {
@@ -1201,7 +1202,8 @@ function sl_karta_droida(PDO $db, string $login): array
     if (is_array($k) && isset($k['cechy'])) return $k;
     return ['cechy' => ['krzepa' => 1, 'zwinnosc' => 1, 'intelekt' => 3, 'spryt' => 2, 'wola' => 2, 'prezencja' => 1],
         'umiejetnosci' => ['oszustwo' => ['ranga' => 1], 'urok' => ['ranga' => 1], 'zastraszanie' => ['ranga' => 1],
-            'percepcja' => ['ranga' => 2], 'czujnosc' => ['ranga' => 2], 'komputery' => ['ranga' => 2]]];
+            'percepcja' => ['ranga' => 2], 'czujnosc' => ['ranga' => 2], 'komputery' => ['ranga' => 2],
+            'negocjacje' => ['ranga' => 1], 'przywodztwo' => ['ranga' => 1]]];
 }
 
 // Podejścia do strażnika: [cecha i umiejętność droida, cecha i umiejętność strażnika, nazwa].
@@ -2170,12 +2172,24 @@ const SLEDZTWO_PROCEDURY = [
 ];
 
 // Pytanie operatora jako wypowiedź droida: uprzejmie, z pytajnikiem; przy procedurze jawnej — „mój operator pyta”.
-function sl_pytanie_operatora(string $polecenie, bool $jawna): string
+// Bez AI: polecenie operatora jako wypowiedź droida. Pytanie („gdzie…?”, „zapytaj o…”) — pytanie; reszta
+// („grzeczniej proszę…”, „powiedz mu, że…”) — droid mówi to jako swoje zdanie.
+function sl_pytanie_operatora(string $polecenie, bool $jawna, array $f = []): string
 {
-    $p = rtrim(trim($polecenie), " .!");
-    if (!str_ends_with($p, '?')) $p .= '?';
-    $p = mb_strtoupper(mb_substr($p, 0, 1)) . mb_substr($p, 1);
-    return $jawna ? 'Mój operator pyta: ' . $p : 'Proszę mi powiedzieć: ' . mb_strtolower(mb_substr($p, 0, 1)) . mb_substr($p, 1);
+    $p = trim($polecenie);
+    $duza = fn(string $x) => mb_strtoupper(mb_substr($x, 0, 1)) . mb_substr($x, 1);
+    $pan = $f['pan'] ?? 'Pan';
+    if (preg_match('/^(za|s)?pytaj( (go|ją|jego|jej|ich|rozmówcę))?,?\s*/iu', $p, $m)) {
+        $reszta = trim(mb_substr($p, mb_strlen($m[0])));
+        if (preg_match('/^o\s+(.+)$/iu', $reszta, $o)) $p = "Co może mi {$pan} powiedzieć o " . rtrim($o[1], ' .?!') . '?';
+        else $p = $duza(rtrim($reszta, ' .?!')) . '?';
+        return $jawna ? 'Mój operator pyta: ' . $p : $p;
+    }
+    if (preg_match('/^(powiedz|przekaż|oznajmij)( (mu|jej|im|rozmówcy))?,?\s*(że\s+)?/iu', $p, $m)) $p = trim(mb_substr($p, mb_strlen($m[0])));
+    $pytanie = str_ends_with($p, '?') || preg_match('/^(kto|co|gdzie|kiedy|jak|dlaczego|czemu|ile|czy|któr|komu|kogo|czym|skąd|dokąd|po co|z kim)\b/iu', $p);
+    $p = $duza(rtrim($p, ' .!?')) . ($pytanie ? '?' : '.');
+    if ($jawna) return ($pytanie ? 'Mój operator pyta: ' : 'Mój operator prosi przekazać: ') . $p;
+    return $p;
 }
 
 function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr, bool $jawna = false): string
@@ -2183,9 +2197,9 @@ function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string
     if ($pierwsza) {
         $t = "Dzień dobry, {$f['wolacz']}. Jestem droid detektywistyczny {$oznaczenie}, operowany przez: {$operator}. "
             . "Mam prawo zadać {$f['panu']} kilka pytań, ponieważ trwa śledztwo, w które jest {$f['pan']} ewidentnie zaangażowan" . ($f['a'] ?: 'y') . '.';
-        return $t . ($polecenie !== '' ? ' ' . sl_pytanie_operatora($polecenie, $jawna) : ' Co stało się tutaj ubiegłej nocy?');
+        return $t . ($polecenie !== '' ? ' ' . sl_pytanie_operatora($polecenie, $jawna, $f) : ' Co stało się tutaj ubiegłej nocy?');
     }
-    if ($polecenie !== '') return sl_pytanie_operatora($polecenie, $jawna);
+    if ($polecenie !== '') return sl_pytanie_operatora($polecenie, $jawna, $f);
     $pytania = ["Kogo {$f['pan']} tu widział{$f['a']} w ciągu ostatniej doby?", "Czy ktoś pytał już {$f['pana']} o tę sprawę?",
         'Kto jeszcze bywa w tym miejscu regularnie?', 'Czy coś zginęło albo zmieniło się tutaj w ostatnich dniach?',
         "Gdzie {$f['pan']} był{$f['a']} ubiegłej nocy?"];
@@ -2680,8 +2694,86 @@ function sl_vip_odprawa(PDO $db, array $s, array $postac, int $pytan): ?string
 }
 
 // Jedna tura: (polecenie operatora) → pytanie droida → odpowiedź rozmówcy. Kluczowi NPC — AI; reszta — bez AI.
+// ---------- podejścia w rozmowie: groźba, negocjacje, urok, blef, autorytet (test EotE ze skutkami) ----------
+
+// [cecha droida, umiejętność droida, cecha rozmówcy, umiejętność rozmówcy, nazwa,
+//  co droid wplata w wypowiedź, kwestia droida bez AI, nastrój po udanym, nastrój po nieudanym,
+//  zachowanie NPC po udanym, po nieudanym, kwestie NPC bez AI po nieudanym]
+const SLEDZTWO_PODEJSCIA_ROZMOWY = [
+    'grozba' => ['wola', 'zastraszanie', 'wola', 'dyscyplina', 'Groźba (Zastraszanie)',
+        'wpleć uprzejmą, ale stanowczą groźbę konsekwencji (wniosek o nakaz, zatrzymanie, wezwanie ochrony) — bez wulgaryzmów',
+        'Uprzedzam uprzejmie: odmowa współpracy z droidem śledczym skończy się wnioskiem o nakaz i wizytą ochrony.',
+        'przestraszony', 'wrogi',
+        'groźba podziałała: boisz się konsekwencji, mówisz więcej niż zwykle — zdradzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'groźba cię nie rusza albo rozzłościła: odpyskowujesz, nie ustępujesz',
+        ['Grozisz mi, puszko? Spróbuj.', 'Nakaz? Przynieś, to pogadamy. Do tego czasu spadaj.', 'Straszyć to możesz dzieci na dolnych poziomach.']],
+    'negocjacje' => ['prezencja', 'negocjacje', 'prezencja', 'negocjacje', 'Negocjacje',
+        'zaproponuj uczciwą wymianę: przysługę biura, dyskrecję albo pominięcie rozmówcy w raporcie — w zamian za informację',
+        'Proponuję wymianę: informacja w zamian za dyskrecję biura i pominięcie Pana nazwiska w raporcie.',
+        'uprzejmy', 'obojetny',
+        'propozycja ci odpowiada: dobijacie targu — zdradzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'propozycja cię nie przekonuje: chcesz więcej albo nie ufasz biuru',
+        ['Za mało. Wróć z czymś lepszym.', 'Dyskrecja biura? Dobre sobie.', 'Nie robię interesów z droidami.']],
+    'urok' => ['prezencja', 'urok', 'prezencja', 'opanowanie', 'Urok',
+        'bądź wyjątkowo życzliwy i ciepły: okaż zrozumienie, pochwal rozmówcę, zjednaj go sobie',
+        'Rozumiem, że to dla Pana trudne. Bardzo doceniam każdą pomoc — nawet drobiazg może uratować komuś życie.',
+        'uprzejmy', 'obojetny',
+        'droid cię zjednał: rozluźniasz się i chętniej mówisz — zdradzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'uprzejmości droida cię nie ruszają, a nawet trochę irytują',
+        ['Daruj sobie te uprzejmości.', 'Miły droid. Dalej nic nie wiem.', 'Słodzisz jak sprzedawca przyprawy.']],
+    'blef' => ['spryt', 'oszustwo', 'intelekt', 'czujnosc', 'Blef (Oszustwo)',
+        'zablefuj: daj do zrozumienia, że biuro już sporo wie i rozmówca tylko potwierdza (nie podawaj konkretów, których nie znasz)',
+        'Biuro i tak już to wie. Proszę tylko potwierdzić — oszczędzi to nam obu czasu.',
+        'przestraszony', 'wrogi',
+        'uwierzyłeś, że droid już wie: potwierdzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'przejrzałeś blef: wiesz, że droid nic nie ma, i dajesz mu to odczuć',
+        ['Nic nie wiesz. Gdybyś wiedział, nie pytałbyś.', 'Blefujesz. Słabo.', 'To czemu pytasz, skoro wiesz?']],
+    'autorytet' => ['prezencja', 'przywodztwo', 'wola', 'dyscyplina', 'Autorytet (Przywództwo)',
+        'powołaj się na autorytet biura i procedurę śledczą: urzędowo, stanowczo, ale grzecznie wezwij do współpracy',
+        'W imieniu biura detektywistycznego wzywam do współpracy. To standardowa procedura — proszę odpowiedzieć na pytanie.',
+        'obojetny', 'wrogi',
+        'urzędowy ton działa: uznajesz, że lepiej współpracować — zdradzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'biuro detektywistyczne nie ma tu żadnej władzy i dobrze o tym wiesz',
+        ['Biuro? Tu rządzą Huttowie, nie twoje biuro.', 'Procedura… Na Nar Shaddaa? Zabawne.', 'Wezwij sobie kogo chcesz.']],
+];
+const SLEDZTWO_CHEC = ['nie' => 0, 'niechetnie' => 1, 'chetnie' => 2];
+
+// Karta rozmówcy do testów: postać fabuły — jej karta EotE; przechodzień — cechy gatunku ± 1 i losowe rangi (stałe dla tokenu).
+function sl_karta_rozmowcy(array $pule, array $s, array $r, ?array $postac, ?array $m): array
+{
+    if ($postac && ($k = json_decode((string) $postac['karta_eote'], true)) && isset($k['cechy'])) return $k;
+    $gat = $m['gatunek_kod'] ?? 'czlowiek';
+    $g = $pule['gatunki'][$gat] ?? ['krzepa' => 2, 'zwinnosc' => 2, 'intelekt' => 2, 'spryt' => 2, 'wola' => 2, 'prezencja' => 2];
+    $tok = (string) $r['kontakt'];
+    $cechy = [];
+    foreach (['krzepa', 'zwinnosc', 'intelekt', 'spryt', 'wola', 'prezencja'] as $c) {
+        $cechy[$c] = max(1, min(5, (int) ($g[$c] ?? 2) + sl_hash_int((int) $s['seed'], -1, 1, 'cecha', $tok, $c)));
+    }
+    $um = [];
+    foreach (['dyscyplina', 'negocjacje', 'opanowanie', 'czujnosc'] as $u) $um[$u] = ['ranga' => sl_hash_int((int) $s['seed'], 0, 2, 'um', $tok, $u)];
+    return ['cechy' => $cechy, 'umiejetnosci' => $um];
+}
+
+// Fakt z wiedzy rozmówcy w 1. osobie (dla odpowiedzi bez AI), pomijając to, co już padło w rozmowie.
+function sl_fakt_do_ujawnienia(PDO $db, int $rid, ?array $m): ?string
+{
+    if (!$m || !(int) $m['znajomosc_poziom'] || trim((string) $m['wiedza_o_osobie']) === '') return null;
+    $q = $db->prepare("SELECT tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'npc'");
+    $q->execute([$rid]);
+    $padlo = implode("\n", $q->fetchAll(PDO::FETCH_COLUMN));
+    $zamiana = ['Wiesz, że ' => '', 'widziałeś' => 'widziałem', 'widziałaś' => 'widziałam', 'widywałeś' => 'widywałem',
+        'widywałaś' => 'widywałam', 'Pamiętasz ' => 'Pamiętam ', 'kojarzysz' => 'kojarzę'];
+    foreach (explode("\n", (string) $m['wiedza_o_osobie']) as $f) {
+        $f = strtr(trim(ltrim(trim($f), '-')), $zamiana);
+        if ($f === '' || str_contains($padlo, $f)) continue;
+        return mb_strtoupper(mb_substr($f, 0, 1)) . mb_substr($f, 1);
+    }
+    return null;
+}
+
 // $procedura: 'wlasna' — pytania operatora droid zadaje jako swoje; 'jawna' — może mówić, że pyta operator.
-function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna'): array
+// $podejscie: klucz SLEDZTWO_PODEJSCIA_ROZMOWY (groźba, negocjacje…) — test EotE przed wypowiedzią droida.
+function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna', string $podejscie = ''): array
 {
     $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ?');
     $q->execute([$rid, (int) $s['id']]);
@@ -2745,6 +2837,30 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         $q->execute([(int) $s['id']]);
         $zgloszenie = (string) $q->fetchColumn();
         $awaria = false;
+        $powodAwarii = '';
+
+        // 0. Podejście: test droida przeciw rozmówcy (każda kolejna próba w tej rozmowie +1 kość trudności, maks. +2).
+        $pd = SLEDZTWO_PODEJSCIA_ROZMOWY[$podejscie] ?? null;
+        $test = null;
+        if ($pd) {
+            $q = $db->prepare("SELECT COUNT(*) FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'system' AND tresc LIKE 'Test:%'");
+            $q->execute([$rid]);
+            $plus = min(2, (int) $q->fetchColumn());
+            $dk = sl_karta_droida($db, (string) $s['konto_login']);
+            $nk = sl_karta_rozmowcy($pule, $s, $r, $postac, $metryka);
+            $test = sl_test_eote((int) ($dk['cechy'][$pd[0]] ?? 1), (int) (((array) ($dk['umiejetnosci'] ?? []))[$pd[1]]['ranga'] ?? 0),
+                (int) ($nk['cechy'][$pd[2]] ?? 2), (int) (((array) ($nk['umiejetnosci'] ?? []))[$pd[3]]['ranga'] ?? 0), $plus);
+            sl_wpis($db, $rid, 'system', "Test: {$pd[4]} — " . ($test['udana'] ? 'UDANY' : 'NIEUDANY') . " ({$test['pula']}"
+                . ($plus ? ", +{$plus} za wcześniejsze próby" : '') . "; sukcesy netto {$test['sukcesy']}, przewagi {$test['przewagi']}"
+                . ($test['triumf'] ? ', TRIUMF' : '') . ($test['rozpacz'] ? ', ROZPACZ' : '') . ').');
+            // Skutek trwały: udany test podnosi chęć rozmówcy do mówienia (triumf — od razu „chętnie”).
+            if ($metryka && $test['udana']) {
+                $nowa = $test['triumf'] ? 'chetnie' : array_search(min(2, (SLEDZTWO_CHEC[$metryka['chce_mowic']] ?? 1) + 1), SLEDZTWO_CHEC, true);
+                $db->prepare('UPDATE sledztwo_metryki SET chce_mowic = ? WHERE id = ?')->execute([$nowa, (int) $metryka['id']]);
+                $metryka['chce_mowic'] = $nowa;
+            }
+            $polecenie = trim(($polecenie !== '' ? $polecenie . ' ' : '') . '[Podejście: ' . $pd[5] . '.]');
+        }
 
         // 1. Droid pyta.
         $przebiegDroida = $ostatnie ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "{$oznaczenie}: " : 'Rozmówca: ') . $w['tresc'], $ostatnie))
@@ -2764,9 +2880,13 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                         'przebieg' => $przebiegDroida],
                 ], (int) $s['id'])['wypowiedz'];
                 $pytanieAi = true;
-            } catch (AiBlad $e) { $awaria = true; }
+            } catch (AiBlad $e) { $awaria = true; $powodAwarii = $e->getMessage(); }
         }
-        $pytanie = $pytanie ?? sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $polecenie, $pytan, $procedura === 'jawna');
+        if ($pytanie === null) {
+            $bezPodejscia = $pd ? trim((string) preg_replace('/\s*\[Podejście:.*\]$/us', '', $polecenie)) : $polecenie;
+            $pytanie = $pd && $bezPodejscia === '' && $pytan > 0 ? $pd[6]
+                : trim(sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $bezPodejscia, $pytan, $procedura === 'jawna') . ($pd ? ' ' . $pd[6] : ''));
+        }
         sl_wpis($db, $rid, 'droid', $pytanie, $pytanieAi);
 
         // 2. Rozmówca odpowiada.
@@ -2781,12 +2901,23 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie
                     ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
                     : '(to początek rozmowy)'];
+                if ($test) {
+                    $dane['faza']['zachowanie'] .= "\n- TERAZ droid zastosował wobec ciebie: {$pd[4]}. Wynik testu: "
+                        . ($test['udana'] ? 'UDANY — ' . $pd[9] : 'NIEUDANY — ' . $pd[10]) . '.'
+                        . ($test['triumf'] ? ' TRIUMF: ustępujesz całkowicie i mówisz wszystko, co wiesz o osobie ze sprawy.' : '')
+                        . ($test['rozpacz'] ? ' ROZPACZ: obrażasz się i kończysz rozmowę (konczy_rozmowe = true), możesz zawołać ochronę.' : '')
+                        . ' Zastosuj to w tej odpowiedzi.';
+                }
                 $w = ai_wywolaj('npc_wypowiedz', $dane, (int) $s['id']);
                 $odp = $w['wypowiedz'];
                 $nastroj = $w['nastroj'];
                 $konczy = (bool) $w['konczy_rozmowe'];
+                if ($test) {
+                    $nastroj = $test['udana'] ? $pd[7] : $pd[8];
+                    if ($test['rozpacz']) $konczy = true;
+                }
                 sl_wpis($db, $rid, 'npc', $odp, true);
-            } catch (AiBlad $e) { $awaria = true; }
+            } catch (AiBlad $e) { $awaria = true; $powodAwarii = $e->getMessage(); }
         }
         if ($odp === null) {
             $odprawa = $postac && (!$ai || $awaria) ? sl_vip_odprawa($db, $s, $postac, $pytan) : null;
@@ -2804,13 +2935,24 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 } elseif ($pytan >= 3 && $nastroj !== 'przestraszony' && random_int(1, 100) <= 25) {
                     $nastroj = 'wrogi';
                 }
-                $odp = sl_odpowiedz_zastepcza($db, $s, $pule, $r, $metryka, $polecenie !== '' ? $polecenie : $pytanie, $nastroj)
-                    ?? sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
-                $konczy = $pytan >= 2 && random_int(1, 100) <= 50;
+                if ($test) {
+                    $nastroj = $test['udana'] ? $pd[7] : $pd[8];
+                    $fakt = $test['udana'] ? sl_fakt_do_ujawnienia($db, $rid, $metryka) : null;
+                    $odp = $test['udana']
+                        ? ($fakt ? ['No dobra, dobra. ', 'Niech ci będzie. ', 'Dobra, powiem jedno: ', 'Ciszej… '][random_int(0, 3)] . $fakt
+                            : 'Naprawdę nic nie wiem! Nie znam nikogo takiego, przysięgam.')
+                        : $pd[11][random_int(0, count($pd[11]) - 1)];
+                    if ($test['rozpacz']) { $odp .= ' Ochrona! Ten droid mnie nęka!'; $konczy = true; }
+                } else {
+                    $odp = sl_odpowiedz_zastepcza($db, $s, $pule, $r, $metryka, $polecenie !== '' ? $polecenie : $pytanie, $nastroj)
+                        ?? sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
+                }
+                $konczy = $konczy || (!$test && $pytan >= 2 && random_int(1, 100) <= 50);
                 sl_wpis($db, $rid, 'npc', $odp);
             }
         }
-        if ($awaria) sl_wpis($db, $rid, 'system', 'Łącze z modułem językowym niedostępne — wypowiedź zastępcza.');
+        if ($awaria) sl_wpis($db, $rid, 'system', 'Łącze z modułem językowym niedostępne — wypowiedź zastępcza.'
+            . ($powodAwarii !== '' ? " Powód: {$powodAwarii}" : ''));
         elseif (!$ai && $pytan === 0) {
             sl_wpis($db, $rid, 'system', $metryka || !SLEDZTWO_AI_DLA_WSZYSTKICH ? 'Ten rozmówca mówi bez modułu językowego — odpowiedzi zastępcze.'
                 : 'Rozmówca nie ma metryki (brak migracji 089?) — odpowiedzi zastępcze, bez modułu językowego.');
@@ -2955,7 +3097,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
                 odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''),
-                    ($w['procedura'] ?? '') === 'jawna' ? 'jawna' : 'wlasna')]);
+                    ($w['procedura'] ?? '') === 'jawna' ? 'jawna' : 'wlasna', (string) ($w['podejscie'] ?? ''))]);
 
             // Porzucenie: sprawa trafia do MG (stan porzucone), typ zostaje zajęty; detektyw może przyjąć nową.
             // Powrót — po uzasadnieniu i decyzji MG (PROJEKT.md, rozdz. 1).

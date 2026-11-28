@@ -113,6 +113,11 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    terminale, pora; pracownik — swoje miejsce pracy). Procedura śledcza (przełącznik w rozmowie, pamięć przeglądarki):
    pytania operatora droid zadaje jako własne albo jawnie. Bez AI: `sl_odpowiedz_zastepcza` (imię, pochodzenie,
    gdzie co jest — z planu) zamiast przypadkowej kwestii; w zapisie rozmowy widać, gdy rozmówca mówi bez AI i dlaczego.
+   Podejścia w rozmowie (`SLEDZTWO_PODEJSCIA_ROZMOWY`): Groźba, Negocjacje, Urok, Blef, Autorytet — test EotE droida
+   przeciw karcie rozmówcy (`sl_karta_rozmowcy`; kolejne próby +1 kość trudności, maks. +2). Udany: rozmówca zdradza
+   fakt z metryki, jego `chce_mowic` rośnie o stopień (triumf — „chętnie”); nieudany: wrogość; rozpacz: koniec rozmowy.
+   Wynik idzie do promptu NPC i do zapisu („Test: … UDANY/NIEUDANY”). Bez AI polecenie operatora, które nie jest
+   pytaniem, droid mówi jako zdanie (`sl_pytanie_operatora`). Powód awarii AI widać w zapisie rozmowy.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

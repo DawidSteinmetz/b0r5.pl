@@ -1815,6 +1815,35 @@ function sl_pozycja_w_drodze(PDO $db, array $s, array $d, array $pule, array $bu
     return [$b1, $p1, sl_punkt_na_trasie($plan1, $t2['punkty'], ($minelo - $wysiada) / max(1, $s2)), $plan1];
 }
 
+// Trasa w drodze dla animacji: na piętrze startu (do windy albo do celu) albo — po wyjściu z windy — na piętrze celu.
+// Ułamki czasu całej drogi: od / do (odcinek widoczny na tym piętrze), wysiada (chwila wyjścia z windy na piętrze celu).
+function sl_trasa_w_drodze(PDO $db, array $s, array $d, array $pule, array $budynki): ?array
+{
+    $od = sl_z_utc($d['wyruszyl_utc']);
+    $do = sl_z_utc($d['dotrze_utc']);
+    if (!$od || !$do || $do <= $od) return null;
+    $calosc = $do - $od;
+    $b0 = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $b1 = $d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null;
+    $plan0 = sl_plan($db, $s, $pule, $b0 !== null ? ($budynki[$b0] ?? null) : null, (int) $d['poziom']);
+    $start = sl_pozycja($db, $s, $d, $plan0);
+    if ($b0 === $b1 && (int) $d['poziom'] === (int) $d['cel_poziom']) {
+        $t = sl_trasa($plan0, $start, sl_pozycja($db, $s, $d, $plan0, true));
+        return ['punkty' => $t['punkty'], 'od' => 0, 'do' => 1, 'wysiada' => 1, 'pietro' => 'start', 'plan' => $plan0];
+    }
+    $w = sl_winda_xy();
+    $winda = [$w[0], $w[1], 'korytarz'];
+    $plan1 = sl_plan($db, $s, $pule, $b1 !== null ? ($budynki[$b1] ?? null) : null, (int) $d['cel_poziom']);
+    $t1 = sl_trasa($plan0, $start, $winda);
+    $t2 = sl_trasa($plan1, $winda, sl_pozycja($db, $s, $d, $plan1, true));
+    $s1 = sl_sekundy_marszu($t1['dl']);
+    $wysiada = max($s1, $calosc - sl_sekundy_marszu($t2['dl']));
+    if (sl_teraz() - $od >= $wysiada) {
+        return ['punkty' => $t2['punkty'], 'od' => $wysiada / $calosc, 'do' => 1, 'wysiada' => $wysiada / $calosc, 'pietro' => 'cel', 'plan' => $plan1];
+    }
+    return ['punkty' => $t1['punkty'], 'od' => 0, 'do' => min(1, $s1 / $calosc), 'wysiada' => $wysiada / $calosc, 'pietro' => 'start', 'plan' => $plan0];
+}
+
 // Trasa dla animacji na planie piętra, na którym droid jest (start): punkty i ułamek czasu, w którym droid je kończy
 // (na inne piętro — do windy). Null, gdy nie da się jej odtworzyć.
 function sl_trasa_animacji(PDO $db, array $s, array $d, array $plan, array $budynki): ?array
@@ -1883,6 +1912,14 @@ function sl_skan(PDO $db, array $s): array
     $wDrodze = $d['stan'] === 'w_drodze';
     if (!$wDrodze) sl_droid_ustepuje($db, $s, $d, $plan);
     $poz = sl_pozycja($db, $s, $d, $plan);
+    // Na inne piętro: po wyjściu z windy pokazujemy już piętro celu (droid idzie od windy do celu).
+    $trasa = $wDrodze ? sl_trasa_w_drodze($db, $s, $d, $pule, $budynki) : null;
+    if ($trasa && $trasa['pietro'] === 'cel') {
+        $plan = $trasa['plan'];
+        $bid = $plan['budynek_id'] !== null ? (int) $plan['budynek_id'] : null;
+        $poz = [...sl_winda_xy(), 'korytarz'];
+    }
+    unset($trasa['plan']);
     $xDroida = (int) $poz[0];
     // Kontakty liczone od miejsca, z którego droid wyszedł (w drodze — przybliżenie).
     $kontakty = sl_kontakty($db, $s, $pule, $plan, $xDroida);
@@ -1892,7 +1929,7 @@ function sl_skan(PDO $db, array $s): array
     // Graczowi nie pokazujemy, który lokal jest fabularny.
     $plan['pokoje'] = array_map(fn($p) => array_diff_key($p, ['miejsce_id' => 1, 'nazwa' => 1, 'opis' => 1, 'opis_szumu' => 1, 'ludzie_max' => 1, 'rodzaj_kod' => 1]), $plan['pokoje']);
 
-    $droid = ['budynek_id' => $bid, 'budynek' => $plan['budynek'], 'poziom' => (int) $d['poziom'], 'pokoj' => (string) $d['pokoj'],
+    $droid = ['budynek_id' => $bid, 'budynek' => $plan['budynek'], 'poziom' => (int) $plan['poziom'], 'pokoj' => $trasa && $trasa['pietro'] === 'cel' ? 'korytarz' : (string) $d['pokoj'],
         'stan' => $d['stan'], 'x' => $xDroida, 'y' => (int) $poz[1]];
     if ($wDrodze) {
         $od = sl_z_utc($d['wyruszyl_utc']) ?? $teraz;
@@ -1902,7 +1939,7 @@ function sl_skan(PDO $db, array $s): array
             'poziom' => (int) $d['cel_poziom'], 'pokoj' => (string) $d['cel_pokoj']];
         $droid['zostalo_s'] = max(0, $do - $teraz);
         $droid['postep'] = $do > $od ? min(1, max(0, ($teraz - $od) / ($do - $od))) : 1;
-        $droid['trasa'] = sl_trasa_animacji($db, $s, $d, $plan, $budynki);
+        $droid['trasa'] = $trasa;
     }
     // Wpisy z przyszłości (rozmowa w drzwiach po drodze) pokazują się dopiero, gdy droid tam dojdzie.
     $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik WHERE sledztwo_id = ? AND rodzaj <> 'system' AND kiedy_utc <= ?
@@ -2262,6 +2299,70 @@ function sl_przeszukaj(PDO $db, array $s): array
         : ($znalezione ? "Przeszukałem lokal {$d['pokoj']}. Znalazłem: " . implode(', ', array_column($znalezione, 'nazwa')) . ". ({$opis})"
             : "Przeszukałem lokal {$d['pokoj']} dokładnie. Nic tu nie ma. ({$opis})"));
     return ['udane' => $test['udana'], 'znalezione' => array_column($znalezione, 'nazwa'), 'opis' => $opis];
+}
+
+// Nasłuch (Spryt + Percepcja przeciw 2 kościom trudności; w tłumie łatwiej, nocą trudniej): droid stoi w lokalu i łowi
+// strzępy rozmów obecnych tu ludzi — także tych, którzy droidowi nic nie powiedzą. Udany: 1 fakt (+1 przy 2 przewagach,
+// +2 przy triumfie) od kogoś stąd, jako trop „podsłuchane”; bez wiedzy o sprawie — plotka. Rozpacz: ktoś zauważył droida.
+// Raz na 10 minut w lokalu (wspólna blokada z przeszukaniem: lokal z przedrostkiem N).
+function sl_nasluch(PDO $db, array $s): array
+{
+    $pule = sl_pule($db);
+    $d = sl_rozlicz_droida($db, $s, $pule);
+    if (!$d || $d['stan'] !== 'czeka') throw new SledztwoBlad('Droid musi stać w miejscu (nie w drodze i nie w rozmowie).');
+    $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $pokoj = (string) $d['pokoj'];
+    $teraz = sl_teraz();
+    $klucz = mb_substr('N' . $pokoj, 0, 12);
+    $q = $db->prepare('SELECT 1 FROM sledztwo_przeszukania WHERE sledztwo_id = ? AND lokalizacja_id <=> ? AND poziom = ? AND pokoj = ? AND kiedy_utc > ? LIMIT 1');
+    $q->execute([(int) $s['id'], $bid, (int) $d['poziom'], $klucz, sl_utc($teraz - 600)]);
+    if ($q->fetchColumn()) throw new SledztwoBlad('Droid nasłuchiwał tu przed chwilą. Spróbuj za kilka minut albo w innym miejscu.');
+    $budynki = sl_budynki($db, $s);
+    $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
+    $poz = sl_pozycja($db, $s, $d, $plan);
+    // Ludzie w zasięgu słuchu: w tym samym lokalu, a na korytarzu — do 8 m.
+    $obecni = array_values(array_filter(sl_kontakty($db, $s, $pule, $plan, (int) $poz[0]), fn($k) => $pokoj === 'korytarz'
+        ? (($k['strona'] ?? '') === 'korytarz' || !empty($k['w_drzwiach'])) && hypot($k['x'] - $poz[0], ($k['y'] ?? 0) - $poz[1]) <= 80
+        : $k['pokoj'] === $pokoj && empty($k['straznik'])));
+    if (!$obecni) throw new SledztwoBlad('Nikogo tu nie ma — nie ma czego słuchać.');
+    $k = sl_karta_droida($db, (string) $s['konto_login']);
+    $trud = 2 + (sl_czas_lokalny($db, $s)['pora'] === 'noc' ? 1 : 0) - (count($obecni) >= 4 ? 1 : 0);
+    $test = sl_test_eote((int) ($k['cechy']['spryt'] ?? 2), (int) ($k['umiejetnosci']['percepcja']['ranga'] ?? 0), max(1, $trud), 0);
+    $db->prepare('INSERT INTO sledztwo_przeszukania (sledztwo_id, lokalizacja_id, poziom, pokoj, udane, kiedy_utc) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([(int) $s['id'], $bid, (int) $d['poziom'], $klucz, $test['udana'] ? 1 : 0, sl_utc($teraz)]);
+    $opis = "Nasłuch (Percepcja): {$test['pula']} → sukcesy netto {$test['sukcesy']}, przewagi {$test['przewagi']}"
+        . ($test['triumf'] ? ', TRIUMF' : '') . ($test['rozpacz'] ? ', ROZPACZ' : '') . '.';
+    $uslyszane = [];
+    $plotka = null;
+    if ($test['udana']) {
+        $ile = 1 + ($test['przewagi'] >= 2 ? 1 : 0) + ($test['triumf'] ? 2 : 0);
+        $q = $db->prepare('SELECT tresc FROM sledztwo_tropy WHERE sledztwo_id = ?');
+        try { $q->execute([(int) $s['id']]); $znane = implode("\n", $q->fetchAll(PDO::FETCH_COLUMN)); } catch (PDOException $e) { $znane = ''; }
+        $kandydaci = [];
+        foreach ($obecni as $o) {
+            $m = sl_metryka_zapewnij($db, $s, $pule, $plan, $o);
+            if (!$m) continue;
+            if ($plotka === null) $plotka = "{$o['kod']} ({$o['gatunek']}, {$o['wyglad']}): „{$m['plotka']}”";
+            $r = ['id' => 0, 'sledztwo_id' => (int) $s['id'], 'kontakt' => $o['token'], 'lokalizacja_id' => $bid, 'poziom' => (int) $d['poziom'],
+                'pokoj' => $pokoj, 'opis_json' => json_encode(['kod' => $o['kod'], 'gatunek' => $o['gatunek'], 'wyglad' => $o['wyglad'], 'plec' => $o['plec']], JSON_UNESCAPED_UNICODE)];
+            foreach (sl_fakty_rozmowcy($db, $s, $pule, $r, $m) as $f) if (!str_contains($znane, $f['ja'])) $kandydaci[] = [$o, $f];
+        }
+        shuffle($kandydaci);
+        $gdzie = ($bid !== null ? ($budynki[$bid]['nazwa'] ?? 'budynek') : 'Kompleks') . ", poziom {$d['poziom']}" . ($pokoj === 'korytarz' ? ', korytarz' : ", lokal {$pokoj}");
+        foreach (array_slice($kandydaci, 0, $ile) as [$o, $f]) {
+            $kto = "{$o['kod']} ({$o['gatunek']}, {$o['wyglad']})";
+            if (sl_trop_zapisz($db, $s, ['klucz' => 'nasluch|' . $o['token'] . '|' . md5($f['ja']), 'rodzaj' => $f['temat'] === 'kiedy' ? 'obserwacja' : 'zeznanie',
+                'tresc' => "Podsłuchane — {$kto} do kogoś obok: „{$f['ja']}”", 'zrodlo' => "nasłuch: {$kto} — {$gdzie}", 'temat' => $f['temat'],
+                'kontakt' => $o['token'], 'czas' => isset($f['t']) ? (int) $f['t'] : null, 'lok' => $f['lok'] ?? [null, null, null], 'wiarygodnosc' => 55])) {
+                $uslyszane[] = "{$kto}: „{$f['ja']}”";
+            }
+        }
+    }
+    $wpis = !$test['udana'] ? 'Nasłuchiwałem. Gwar, nic wyraźnego.'
+        : ($uslyszane ? 'Nasłuchiwałem. Wyłapałem: ' . implode(' | ', $uslyszane) : 'Nasłuchiwałem. Nic o sprawie' . ($plotka ? " — tylko plotki: {$plotka}" : '') . '.');
+    if ($test['rozpacz']) $wpis .= ' Ktoś zauważył, że podsłuchuję — po budynku pójdzie plotka.';
+    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', "{$wpis} ({$opis})");
+    return ['udane' => $test['udana'], 'uslyszane' => $uslyszane, 'plotka' => $plotka, 'zauwazony' => (bool) $test['rozpacz'], 'opis' => $opis];
 }
 
 function sl_zabierz(PDO $db, array $s, int $id): array
@@ -2760,6 +2861,11 @@ const SLEDZTWO_SKLADANKI = [
         ['Nic nie wiesz. Gdybyś wiedział, nie pytałbyś.', 'Blefujesz. I to słabo.', 'To czemu pytasz, skoro wiesz?',
             'Tym blefem nie wygrałbyś nawet partyjki sabaka z dzieciakiem.', 'Twoje biuro wie tyle, co ja o waszych procedurach — nic.'],
         ['', 'Spróbuj z kimś głupszym.', 'Dobra próba, puszko.', 'Następnym razem lepiej się przygotuj.']],
+    'konfrontacja_nie' => [
+        ['', 'I co?', 'Hah.', 'Pokazujesz mi to?', 'No i?'],
+        ['To nic nie dowodzi.', 'Ktoś ci naopowiadał bzdur, puszko.', 'Papierek z biura? Wolne żarty.', 'Każdy coś widział — nikt nic nie wie.',
+            'Twoje „ustalenia” są warte tyle, co plotki z kantyny.'],
+        ['', 'Szukaj dalej.', 'Nic więcej nie powiem.', 'Spadaj z tym.']],
     'autorytet_nie' => [
         ['', 'Procedura?', 'W imieniu biura, tak?', 'Hah.', 'Ojej, urzędnik.'],
         ['Biuro? Tu rządzą Huttowie, nie twoje biuro.', 'Procedura… Na Nar Shaddaa? Zabawne.', 'Wezwij sobie, kogo chcesz.',
@@ -3534,6 +3640,13 @@ const SLEDZTWO_PODEJSCIA_ROZMOWY = [
         'uwierzyłeś, że droid już wie: potwierdzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
         'przejrzałeś blef: wiesz, że droid nic nie ma, i dajesz mu to odczuć',
         ['Nic nie wiesz. Gdybyś wiedział, nie pytałbyś.', 'Blefujesz. Słabo.', 'To czemu pytasz, skoro wiesz?']],
+    'konfrontacja' => ['intelekt', 'czujnosc', 'wola', 'opanowanie', 'Konfrontacja (dowód z notatnika)',
+        'przedstaw rozmówcy ustalenie z notatnika (podane niżej) i spokojnie zażądaj wyjaśnień — bez oskarżeń, rzeczowo',
+        'Mam ustalenia, które mówią co innego. Proszę to wyjaśnić.',
+        'przestraszony', 'wrogi',
+        'droid ma dowód i to cię przyparło do muru: tłumaczysz się i zdradzasz jeden konkretny fakt z tego, co wiesz o osobie ze sprawy',
+        'dowód cię nie rusza: wyśmiewasz go albo mówisz, że to bzdura',
+        ['To nic nie dowodzi.', 'Ktoś ci naopowiadał bzdur.', 'I co z tego?']],
     'autorytet' => ['prezencja', 'przywodztwo', 'wola', 'dyscyplina', 'Autorytet (Przywództwo)',
         'powołaj się na autorytet biura i procedurę śledczą: urzędowo, stanowczo, ale grzecznie wezwij do współpracy',
         'W imieniu biura detektywistycznego wzywam do współpracy. To standardowa procedura — proszę odpowiedzieć na pytanie.',
@@ -4002,7 +4115,8 @@ const SLEDZTWO_ZAKLOCENIA = [
 ];
 
 // $podejscie: klucz SLEDZTWO_PODEJSCIA_ROZMOWY (groźba, negocjacje…) — test EotE przed wypowiedzią droida.
-function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna', string $podejscie = ''): array
+// $tropId: przy konfrontacji — trop z notatnika, który droid przedstawia (wiarygodny trop ułatwia test).
+function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna', string $podejscie = '', int $tropId = 0): array
 {
     $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ? AND sledztwo_id = ?');
     $q->execute([$rid, (int) $s['id']]);
@@ -4102,10 +4216,22 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
             $q = $db->prepare("SELECT COUNT(*) FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'system' AND tresc LIKE 'Test:%'");
             $q->execute([$rid]);
             $plus = min(2, (int) $q->fetchColumn());
+            // Konfrontacja: treść tropu idzie do wypowiedzi droida; wiarygodny trop (≥ 70%) — jedna kość trudności mniej.
+            $dowod = null;
+            if ($podejscie === 'konfrontacja') {
+                try {
+                    $q = $db->prepare('SELECT tresc, wiarygodnosc FROM sledztwo_tropy WHERE id = ? AND sledztwo_id = ?');
+                    $q->execute([$tropId, (int) $s['id']]);
+                    $dowod = $q->fetch() ?: null;
+                } catch (PDOException $e) { $dowod = null; }
+                if (!$dowod) throw new SledztwoBlad('Do konfrontacji wybierz trop z notatnika.');
+                $polecenie = trim($polecenie . ' Mam ustalenie: „' . mb_substr((string) $dowod['tresc'], 0, 400) . '”. Proszę to wyjaśnić.');
+            }
             $dk = sl_karta_droida($db, (string) $s['konto_login']);
             $nk = sl_karta_rozmowcy($pule, $s, $r, $postac, $metryka);
             $test = sl_test_eote((int) ($dk['cechy'][$pd[0]] ?? 1), (int) (((array) ($dk['umiejetnosci'] ?? []))[$pd[1]]['ranga'] ?? 0),
-                (int) ($nk['cechy'][$pd[2]] ?? 2), (int) (((array) ($nk['umiejetnosci'] ?? []))[$pd[3]]['ranga'] ?? 0), $plus);
+                (int) ($nk['cechy'][$pd[2]] ?? 2), (int) (((array) ($nk['umiejetnosci'] ?? []))[$pd[3]]['ranga'] ?? 0),
+                max(0, $plus - ($dowod && (int) $dowod['wiarygodnosc'] >= 70 ? 1 : 0)));
             sl_wpis($db, $rid, 'system', "Test: {$pd[4]} — " . ($test['udana'] ? 'UDANY' : 'NIEUDANY') . " ({$test['pula']}"
                 . ($plus ? ", +{$plus} za wcześniejsze próby" : '') . "; sukcesy netto {$test['sukcesy']}, przewagi {$test['przewagi']}"
                 . ($test['triumf'] ? ', TRIUMF' : '') . ($test['rozpacz'] ? ', ROZPACZ' : '') . ').');
@@ -4407,7 +4533,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 if (!$s) blad('Brak otwartej sprawy.');
                 $w = wejscie();
                 odpowiedz(['rozmowa' => sl_rozmowa_tura($db, $s, $u, (int) ($w['rozmowa_id'] ?? 0), (string) ($w['polecenie'] ?? ''),
-                    ($w['procedura'] ?? '') === 'jawna' ? 'jawna' : 'wlasna', (string) ($w['podejscie'] ?? ''))]);
+                    ($w['procedura'] ?? '') === 'jawna' ? 'jawna' : 'wlasna', (string) ($w['podejscie'] ?? ''), (int) ($w['trop_id'] ?? 0))]);
 
             // Porzucenie: sprawa trafia do MG (stan porzucone), typ zostaje zajęty; detektyw może przyjąć nową.
             // Powrót — po uzasadnieniu i decyzji MG (PROJEKT.md, rozdz. 1).
@@ -4428,6 +4554,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
             // Przedmioty i komputery (migracja 087): przeszukanie lokalu (Percepcja), zabranie, łamanie (Komputery),
             // ekran komputera ({przedmiot_id} albo {terminal: 'T1'}), dekodowanie na terminalu publicznym (zostawia ślad).
             case 'sledztwo_przeszukaj':
+            case 'sledztwo_nasluch':
             case 'sledztwo_zabierz':
             case 'sledztwo_zlam':
             case 'sledztwo_komputer':
@@ -4444,6 +4571,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 $term = mb_substr((string) ($w['terminal'] ?? ''), 0, 6);
                 odpowiedz(match ($akcja) {
                     'sledztwo_przeszukaj' => sl_przeszukaj($db, $s),
+                    'sledztwo_nasluch' => sl_nasluch($db, $s),
                     'sledztwo_zabierz' => sl_zabierz($db, $s, $pid),
                     'sledztwo_zlam' => sl_zlam($db, $s, $pid),
                     'sledztwo_komputer' => ['komputer' => sl_komputer($db, $s, $pid ?: null, $term)],

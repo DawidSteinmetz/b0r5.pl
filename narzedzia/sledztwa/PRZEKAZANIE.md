@@ -156,6 +156,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    dalej niż 1 km — taksówka powietrzna (90 s + 180 km/h). Zakładka „Rejon” (`sledztwo_rejon`): kompleksy z budynkami,
    rodzajem, wejściem, odległością i czasem drogi, wyszukiwarka; NPC znają rejon + 10 najbliższych budynków spoza
    niego; terminal publiczny ma plik „Rejon i okolica”.
+   Gdy NPC milczą: Nasłuch w lokalu (`sl_nasluch`: Spryt + Percepcja, łapie fakty obecnych tu ludzi jako tropy
+   „podsłuchane”, raz na 10 min) i Konfrontacja w rozmowie (podejście z tropem z notatnika: Intelekt + Czujność
+   przeciw Woli i Opanowaniu, wiarygodny trop ułatwia). Winda: po wyjściu z windy skan pokazuje piętro celu
+   i marsz od windy (`sl_trasa_w_drodze`), bez „teleportu” do lokalu.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

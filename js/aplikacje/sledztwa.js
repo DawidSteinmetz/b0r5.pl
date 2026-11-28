@@ -184,14 +184,15 @@ export default {
       const tr = droid.trasa;
       if (!tr || !tr.punkty?.length) return null;
       const postep = 1 - Math.max(0, (koniecDrogi - Date.now()) / 1000) / Math.max(1, calaDroga);
-      // Na tym samym piętrze droid zostaje w punkcie docelowym (nie znika przed odświeżeniem skanu);
-      // na inne piętro — znika w windzie.
-      // Po dojściu: na tym samym piętrze — punkt docelowy; na inne piętro — droid stoi w windzie, dopóki jedzie.
+      // Odcinek widoczny na tym piętrze: od → do (ułamki całej drogi). Przed nim (piętro celu) — droid wysiada z windy;
+      // po nim: na tym samym piętrze — punkt docelowy, na inne piętro — droid w windzie, dopóki jedzie.
+      const od = tr.od ?? 0;
+      if (postep < od) return { ...WINDA_XY };
       if (postep >= tr.do) { if (tr.do < 1) return { ...WINDA_XY }; const o = tr.punkty[tr.punkty.length - 1]; return { x: o[0], y: o[1] }; }
       const pkt = tr.punkty;
       const dl = [0];
       for (let i = 1; i < pkt.length; i++) dl.push(dl[i - 1] + Math.hypot(pkt[i][0] - pkt[i - 1][0], pkt[i][1] - pkt[i - 1][1]));
-      const cel = (dl[dl.length - 1] * Math.max(0, postep)) / Math.max(0.0001, tr.do);
+      const cel = (dl[dl.length - 1] * (postep - od)) / Math.max(0.0001, tr.do - od);
       for (let i = 1; i < pkt.length; i++) {
         if (dl[i] >= cel) {
           const u = (cel - dl[i - 1]) / Math.max(0.0001, dl[i] - dl[i - 1]);
@@ -204,7 +205,7 @@ export default {
     // W czasie jazdy windą piętro znika: widać tylko szyb, kabinę z droidem i licznik poziomów.
     function widokSzybu() {
       const { plan, droid } = d;
-      const z = plan.poziom, na = droid.cel.poziom, start = droid.trasa?.do ?? 0;
+      const z = plan.poziom, na = droid.cel.poziom, start = droid.trasa?.do ?? 0, koniecJazdy = droid.trasa?.wysiada ?? 1;
       const W = 120, H = 260;
       const kabina = s('g', {},
         s('rect', { x: W / 2 - 22, y: -18, width: 44, height: 36, fill: 'currentColor', 'fill-opacity': 0.08, stroke: 'currentColor', 'stroke-width': 1.2 }),
@@ -220,7 +221,7 @@ export default {
           `WINDA · ${plan.budynek} · ${z} → ${na}${droid.cel.budynek_id !== plan.budynek_id ? ` · ${droid.cel.budynek}` : ''}`),
         kabina, licznik);
       const ustaw = () => {
-        const u = Math.min(1, Math.max(0, (postepDrogi() - start) / Math.max(0.0001, 1 - start)));
+        const u = Math.min(1, Math.max(0, (postepDrogi() - start) / Math.max(0.0001, koniecJazdy - start)));
         const poziomTeraz = Math.round(z + (na - z) * u);
         const gora = Math.max(z, na), dol = Math.min(z, na);
         const y = gora === dol ? H / 2 : ((gora - poziomTeraz) / (gora - dol)) * H;
@@ -470,8 +471,21 @@ export default {
             await skanuj();
             odswiez();
           }) : null,
-          wLokalu && raport && raport.pokoj === droid.pokoj ? h(`div.komunikat.${raport.ok ? 'ok' : 'blad'}`, { style: 'margin-top:6px' },
+          wLokalu && raport && raport.rodzaj !== 'nasluch' && raport.pokoj === droid.pokoj ? h(`div.komunikat.${raport.ok ? 'ok' : 'blad'}`, { style: 'margin-top:6px' },
             h('b', 'RAPORT Z PRZESZUKANIA › '), raport.tekst) : null,
+          // Nasłuch: strzępy rozmów ludzi między sobą — gdy nikt nie chce mówić do droida.
+          droid.stan === 'czeka' ? h('div', { style: 'margin-top:8px' }, przycisk('Nasłuch (Percepcja)', async () => {
+            try {
+              const r = await api('sledztwo_nasluch', {});
+              raport = { rodzaj: 'nasluch', pokoj: droid.pokoj, ok: r.udane, tekst: (r.uslyszane.length ? `Wyłapane: ${r.uslyszane.join(' | ')} (w notatniku).`
+                : r.udane ? `Nic o sprawie.${r.plotka ? ` Plotki: ${r.plotka}` : ''}` : 'Gwar — nic wyraźnego.')
+                + (r.zauwazony ? ' Ktoś zauważył, że droid podsłuchuje!' : '') + ` ${r.opis}` };
+            } catch (e) { raport = { rodzaj: 'nasluch', pokoj: droid.pokoj, ok: false, tekst: e.message || String(e) }; }
+            await skanuj();
+            odswiez();
+          }, '.drugi.maly', { title: 'Droid stoi i łowi strzępy rozmów obecnych tu ludzi. Raz na 10 minut w jednym miejscu.' })) : null,
+          raport && raport.rodzaj === 'nasluch' && raport.pokoj === droid.pokoj ? h(`div.komunikat.${raport.ok ? 'ok' : 'blad'}`, { style: 'margin-top:6px' },
+            h('b', 'RAPORT Z NASŁUCHU › '), raport.tekst) : null,
           term ? h('div', { style: 'margin-top:8px' }, przycisk(`Podejdź i podłącz się do terminala ${term}`, () => terminal(term), '.maly')) : null),
         kontakty.length ? panel('KONTAKTY W ZASIĘGU', kontakty.map((k) => h('div', { style: 'margin:4px 0' },
           h('a', { href: '#', onclick: (e) => { e.preventDefault(); zacznijRozmowe(k.token); } }, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),
@@ -699,7 +713,8 @@ export default {
               h('p', `Winda jedzie: poziom ${d.plan.poziom} → ${d.droid.cel.poziom}.`),
               h('p.maly-tekst', 'Drzwi zamknięte — droid wysiądzie dopiero na wybranym poziomie. Wybór piętra i wyjście są zablokowane do zatrzymania windy.'));
           }
-          return panel('WINDA', h('p.maly-tekst', etap === 'idzie' ? 'Droid idzie do windy…' : 'Droid idzie do windy…'));
+          return panel('WINDA', h('p.maly-tekst', d.droid.stan === 'w_drodze' && d.droid.cel && d.droid.cel.poziom === d.plan.poziom && d.droid.trasa?.pietro === 'cel'
+            ? 'Droid wysiadł z windy i idzie do celu…' : 'Droid idzie do windy…'));
         } }[zakladka];
       wyczysc(szuflada).append(zamknij, tresc ? tresc() : null);
     }
@@ -778,7 +793,7 @@ export default {
     const wypisane = new Set();
     const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
     // Procedura śledcza: 'wlasna' — droid zadaje pytania operatora jako swoje; 'jawna' — może mówić, że pyta operator.
-    let procedura = 'wlasna', szkic = '', bladR = '';
+    let procedura = 'wlasna', szkic = '', bladR = '', wybranyTrop = 0;
     try { if (localStorage.getItem('dt4-procedura') === 'jawna') procedura = 'jawna'; } catch (e) { /* bez pamięci przeglądarki */ }
 
     function wypisz(wp, odRazu) {
@@ -833,6 +848,17 @@ export default {
       // Podejścia: test EotE droida przeciw rozmówcy; wynik wpływa na odpowiedź i jego dalszą chęć do rozmowy.
       const podejscia = h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;margin:6px 0' },
         PODEJSCIA_R.map(([k, n, opis]) => przycisk(n, () => wyslij(k), '.drugi.maly', { disabled: zakonczona || pisze, title: opis })));
+      // Konfrontacja: droid przedstawia trop z notatnika (Intelekt + Czujność przeciw Woli i Opanowaniu; wiarygodny trop ułatwia).
+      if (!notatnik && !zakonczona) api('sledztwo_notatnik').then((r) => { if (r?.tropy) { notatnik = r; rysujSterowanieRozmowy(); } }).catch(() => {});
+      const tropyK = (notatnik?.tropy || []).filter((x) => x.oznaczenie !== 'odrzucony');
+      const wyborTropu = h('select', { style: 'flex:1;min-width:0', disabled: zakonczona || pisze || !tropyK.length },
+        h('option', { value: '' }, tropyK.length ? '— trop do konfrontacji —' : 'Brak tropów w notatniku'),
+        tropyK.map((x) => h('option', { value: x.id, selected: wybranyTrop === x.id }, `${x.oznaczenie === 'wazny' ? '★ ' : ''}${x.tresc.slice(0, 90)}`)));
+      wyborTropu.onchange = () => { wybranyTrop = Number(wyborTropu.value) || 0; };
+      const konfrontacja = h('div', { style: 'display:flex;gap:6px;align-items:center;margin:4px 0' }, wyborTropu,
+        przycisk('Konfrontacja', () => { if (!wybranyTrop) { bladR = 'Wybierz trop z notatnika do konfrontacji.'; rysujSterowanieRozmowy(); return; }
+          const v = pole.value.trim(); szkic = ''; tura(v, 'konfrontacja', wybranyTrop); }, '.drugi.maly',
+          { disabled: zakonczona || pisze || !tropyK.length, title: 'Droid przedstawia ustalenie z notatnika i żąda wyjaśnień (test Intelekt + Czujność).' }));
       const status = pisze ? 'DT-4 nadaje… czekam na odpowiedź rozmówcy.'
         : rozmowa.stan === 'podejscie' ? `DT-4 podchodzi do rozmówcy (2–3 m)${rozmowa.gotowa_za_s ? ` · ok. ${czas(rozmowa.gotowa_za_s)}` : ''}…`
           : zakonczona ? 'Rozmowa zakończona.' : 'Rozmowa trwa. Wpisz polecenie albo pozwól droidowi pytać samemu.';
@@ -850,7 +876,7 @@ export default {
         zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
         bladR && !zakonczona ? h('div.komunikat.blad', { style: 'margin:0 0 6px' }, bladR) : null,
         zakonczona ? przycisk('Zamknij zapis', () => pokazRozmowe(null))
-          : h('div', pole, h('div.maly-tekst', { style: 'margin-top:6px' }, 'Podejście (test; dołącza się do polecenia z pola, jeśli jest):'), podejscia,
+          : h('div', pole, h('div.maly-tekst', { style: 'margin-top:6px' }, 'Podejście (test; dołącza się do polecenia z pola, jeśli jest):'), podejscia, konfrontacja,
             h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, zadaj,
             przycisk('Dalej (droid pyta sam)', () => tura(''), '.drugi.maly', { disabled: pisze }),
             przycisk('Zakończ', async () => {
@@ -860,12 +886,12 @@ export default {
       if (!zakonczona && !pisze && zakladka === 'rozmowa') setTimeout(() => pole.focus(), 0);
     }
 
-    async function tura(polecenie, podejscie = '') {
+    async function tura(polecenie, podejscie = '', tropId = 0) {
       if (!rozmowa || pisze || rozmowa.stan === 'zakonczona') return;
       pisze = true;
       rysujSterowanieRozmowy();
       try {
-        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura, podejscie });
+        const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura, podejscie, trop_id: tropId });
         pisze = false;
         pokazRozmowe(r.rozmowa);
         // Nowe namiary od rozmówcy: odśwież skan, żeby pojawiły się w polu wyboru celu.
@@ -930,7 +956,12 @@ export default {
         }
         // W drodze co 15 s (rozmowy w drzwiach po drodze pojawiają się w meldunkach), na miejscu co minutę.
         // W drodze: co 15 s, a tuż przed dotarciem — zaraz po czasie dotarcia (serwer rozlicza je przy odczycie).
-        if (!koniec) zegarSkanu = setTimeout(skanuj, d.droid.stan === 'w_drodze' ? Math.min(15000, Math.max(1500, d.droid.zostalo_s * 1000 + 1500)) : 60000);
+        let za = d.droid.stan === 'w_drodze' ? Math.min(15000, Math.max(1500, d.droid.zostalo_s * 1000 + 1500)) : 60000;
+        const tr = d.droid.trasa;
+        if (d.droid.stan === 'w_drodze' && tr?.pietro === 'start' && tr.wysiada < 1) {
+          za = Math.min(za, Math.max(1000, (tr.wysiada - postepDrogi()) * calaDroga * 1000 + 500)); // wyjście z windy → piętro celu
+        }
+        if (!koniec) zegarSkanu = setTimeout(skanuj, za);
       } catch (e) { wyczysc(planBox).append(h('div', { style: 'padding:20px' }, blad(e))); }
     }
 

@@ -684,6 +684,8 @@ const SLEDZTWO_WINDA_CZEKANIE_S = 10;  // czekanie na windę
 const SLEDZTWO_ZASIEG = 230;           // zasięg skanu w jednostkach planu (pokój = 60 j.)
 const SLEDZTWO_POKOJ_J = 60;
 const SLEDZTWO_POZIOM_MAX = 120;
+const SLEDZTWO_TAKSOWKA_KMH = 180;       // taksówka powietrzna między kompleksami
+const SLEDZTWO_TAKSOWKA_CZEKANIE_S = 90; // podstawienie taksówki
 const SLEDZTWO_STANY_RUCHU = ['pisanie', 'trwa'];
 
 function sl_teraz(): int { return time(); }
@@ -709,20 +711,28 @@ function sl_biezace(PDO $db, string $login): ?array
     return $q->fetch() ?: null;
 }
 
-// Budynki i lądowiska skupiska śledztwa (cele ruchu), z kodem rodzaju miejsca.
+// Budynki i lądowiska całej planety sprawy (cele ruchu — droid może jechać wszędzie), z kodem rodzaju miejsca,
+// kompleksem i flagą w_rejonie (kompleks sprawy). Brak współrzędnych budynku — współrzędne jego kompleksu.
 function sl_budynki(PDO $db, array $s): array
 {
+    static $cache = [];
     if (empty($s['skupisko_id'])) return [];
-    $q = $db->prepare("SELECT id, nazwa, typ, rodzaj, x_km, y_km FROM lokalizacje
-        WHERE rodzic_id = ? AND status = 'aktywna' AND typ IN ('budynek','ladowisko') ORDER BY nazwa");
-    $q->execute([(int) $s['skupisko_id']]);
+    $sid = (int) $s['id'];
+    if (isset($cache[$sid])) return $cache[$sid];
+    $q = $db->prepare("SELECT b.id, b.nazwa, b.typ, b.rodzaj, COALESCE(b.x_km, r.x_km) AS x_km, COALESCE(b.y_km, r.y_km) AS y_km,
+            b.rodzic_id, r.nazwa AS kompleks
+        FROM lokalizacje b LEFT JOIN lokalizacje r ON r.id = b.rodzic_id
+        WHERE b.planeta_id = (SELECT k.planeta_id FROM lokalizacje k WHERE k.id = ?) AND b.status = 'aktywna' AND b.typ IN ('budynek','ladowisko')
+        ORDER BY (b.rodzic_id = ?) DESC, r.nazwa, b.nazwa");
+    $q->execute([(int) $s['skupisko_id'], (int) $s['skupisko_id']]);
     $wynik = [];
     foreach ($q->fetchAll() as $b) {
         $b['id'] = (int) $b['id'];
         $b['rodzaj_kod'] = SLEDZTWO_RODZAJ_BUDYNKU[(string) $b['rodzaj']] ?? ($b['typ'] === 'ladowisko' ? 'ladowisko' : null);
+        $b['w_rejonie'] = (int) $b['rodzic_id'] === (int) $s['skupisko_id'];
         $wynik[$b['id']] = $b;
     }
-    return $wynik;
+    return $cache[$sid] = $wynik;
 }
 
 // ---------- presety budynków (migracja 086) ----------
@@ -1570,7 +1580,8 @@ function sl_czas_drogi(array $budynki, array $z, array $do): int
     if ($bz !== $bd && isset($budynki[$bz], $budynki[$bd])) {
         $m = hypot(((float) $budynki[$bz]['x_km'] - (float) $budynki[$bd]['x_km']) * 1000,
             ((float) $budynki[$bz]['y_km'] - (float) $budynki[$bd]['y_km']) * 1000);
-        $t += $m / SLEDZTWO_PREDKOSC_MS;
+        // Dalej niż kilometr: taksówka powietrzna (czekanie + przelot), bliżej — pieszo.
+        $t += $m > 1000 ? SLEDZTWO_TAKSOWKA_CZEKANIE_S + $m / (SLEDZTWO_TAKSOWKA_KMH / 3.6) : $m / SLEDZTWO_PREDKOSC_MS;
     }
     if ($pz !== $pd) $t += SLEDZTWO_WINDA_CZEKANIE_S + SLEDZTWO_WINDA_S_POZIOM * abs($pz - $pd);
     if ($kd !== 'korytarz') $t += 20;
@@ -1904,7 +1915,9 @@ function sl_skan(PDO $db, array $s): array
     } catch (PDOException $e) { /* brak migracji 085 — bez rozmów */ }
     $kontakty = array_map(fn($k) => array_diff_key($k, ['postac_id' => 1]), $kontakty);
     return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
-        'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
+        'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'] . ($b['w_rejonie'] ? '' : " ({$b['kompleks']})"), 'rodzaj' => $b['rodzaj_kod']],
+            array_filter($budynki, fn($b) => $b['w_rejonie'] || $b['id'] === $bid
+                || in_array($b['id'], array_column(sl_namiary_lista($db, $s), 'lokalizacja_id'), true)))),
         'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki),
         'namiary' => (sl_namiary_startowe($db, $s) ?? sl_namiary_lista($db, $s)), 'miejsce_sprawy' => sl_miejsce_sprawy($db, $s), 'tropy_ile' => sl_tropy_ile($db, $s)]
         + sl_skan_przedmioty($db, $s, $d);
@@ -2353,7 +2366,10 @@ function sl_komputer(PDO $db, array $s, ?int $przedmiotId, string $terminal): ar
         for ($i = 0; $i < 3; $i++) $ogl[] = '• ' . SLEDZTWO_OGLOSZENIA[($h + $i * 2) % count(SLEDZTWO_OGLOSZENIA)];
         return ['nazwa' => "Terminal publiczny {$terminal} — {$plan['budynek']}, poziom {$plan['poziom']}", 'opis' => 'Terminal ogólnodostępny.',
             'publiczny' => true, 'terminal' => $terminal, 'zablokowany' => false,
-            'pliki' => [['nazwa' => 'Spis lokali', 'tresc' => implode("\n", $spis)], ['nazwa' => 'Holonet', 'tresc' => implode("\n", $news)],
+            'pliki' => [['nazwa' => 'Spis lokali', 'tresc' => implode("\n", $spis)],
+                ['nazwa' => 'Rejon i okolica', 'tresc' => implode("\n", array_map(fn($x) => "{$x['nazwa']} — {$x['rodzaj']}, wejście: poziom {$x['parter']}"
+                    . ($x['w_rejonie'] ? '' : " · kompleks {$x['kompleks']}, ok. {$x['km']} km (taksówka)"), sl_okolica($db, $s, $pule)))],
+                ['nazwa' => 'Holonet', 'tresc' => implode("\n", $news)],
                 ['nazwa' => 'Ogłoszenia', 'tresc' => implode("\n", $ogl)]],
             'do_dekodowania' => array_map(fn($x) => ['id' => (int) $x['id'], 'nazwa' => $x['nazwa']], $zablokowane)];
     }
@@ -2686,8 +2702,9 @@ function sl_odpowiedz_zastepcza(PDO $db, array $s, array $pule, array $r, ?array
         foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $było) if ($cel = sl_budynek_z_tekstu($okolica, (string) $było, $bid)) break;
     }
     if ($cel && $cel['id'] !== $bid) {
+        $daleko = $cel['w_rejonie'] ? '' : " To nie tutaj — kompleks {$cel['kompleks']}, jakieś {$cel['km']} km. Weź taksówkę.";
         return sl_jeden(["{$cel['nazwa']}. Wejście z poziomu {$cel['parter']}.", "Idź do {$cel['nazwa']} — wejście na poziomie {$cel['parter']}.",
-            "{$cel['nazwa']}, {$cel['rodzaj']}. Wchodzi się z poziomu {$cel['parter']}, trafisz."]);
+            "{$cel['nazwa']}, {$cel['rodzaj']}. Wchodzi się z poziomu {$cel['parter']}, trafisz."]) . $daleko;
     }
     if (preg_match('/wind/u', $p)) return 'Winda? Na końcu korytarza, nie da się przeoczyć.';
     $plan = sl_plan_rozmowy($db, $s, $pule, $r);
@@ -2855,12 +2872,23 @@ const SLEDZTWO_SLOWA_OKOLICY = ['kantyn' => 'kantyna', 'knajp' => 'kantyna', 'ba
 // Budynki rejonu (skupiska) z presetem i poziomem wejścia — każdy mieszkaniec zna je z widzenia.
 function sl_okolica(PDO $db, array $s, array $pule): array
 {
-    $l = [];
-    foreach (sl_budynki($db, $s) as $b) {
+    static $cache = [];
+    $sid = (int) $s['id'];
+    if (isset($cache[$sid])) return $cache[$sid];
+    $bud = sl_budynki($db, $s);
+    $rejon = array_filter($bud, fn($b) => $b['w_rejonie']);
+    $sx = $rejon ? array_sum(array_map(fn($b) => (float) $b['x_km'], $rejon)) / count($rejon) : 0.0;
+    $sy = $rejon ? array_sum(array_map(fn($b) => (float) $b['y_km'], $rejon)) / count($rejon) : 0.0;
+    $opis = function (array $b) use ($pule, $sx, $sy) {
         $p = sl_profil($pule, $b);
-        $l[] = ['id' => (int) $b['id'], 'nazwa' => (string) $b['nazwa'], 'kod' => $p['kod'], 'rodzaj' => $p['nazwa'], 'parter' => (int) $p['parter']];
-    }
-    return $l;
+        return ['id' => (int) $b['id'], 'nazwa' => (string) $b['nazwa'], 'kod' => $p['kod'], 'rodzaj' => $p['nazwa'], 'parter' => (int) $p['parter'],
+            'kompleks' => (string) ($b['kompleks'] ?? ''), 'w_rejonie' => $b['w_rejonie'],
+            'km' => round(hypot((float) $b['x_km'] - $sx, (float) $b['y_km'] - $sy), 1)];
+    };
+    $l = array_map($opis, array_values($rejon));
+    $dalej = array_map($opis, array_values(array_filter($bud, fn($b) => !$b['w_rejonie'])));
+    usort($dalej, fn($a, $b) => $a['km'] <=> $b['km']);
+    return $cache[$sid] = array_merge($l, array_slice($dalej, 0, 10));
 }
 
 // Budynek rejonu, o który chodzi w tekście: po nazwie albo po słowie rodzaju (kantyna, hangar…). Pomija $pomin (bieżący budynek),
@@ -2917,7 +2945,8 @@ function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?strin
     $okolica = sl_okolica($db, $s, $pule);
     if ($okolica) {
         $t[] = '- Okolica (budynki w tym rejonie — znasz je z widzenia; innych nie wymyślasz): '
-            . implode('; ', array_map(fn($b) => "{$b['nazwa']} ({$b['rodzaj']}, wejście na poziomie {$b['parter']})", $okolica)) . '.';
+            . implode('; ', array_map(fn($b) => "{$b['nazwa']} ({$b['rodzaj']}, wejście na poziomie {$b['parter']}"
+                . ($b['w_rejonie'] ? '' : ", kompleks {$b['kompleks']}, ok. {$b['km']} km — taksówką") . ')', $okolica)) . '.';
     }
     $t[] = '- O okolicy (budynek, piętro, ochrona, gdzie co jest, jakie lokale są w rejonie) mówisz swobodnie, jak każdy, kto tu bywa —'
         . ' to nie są tajemnice. Odsyłasz tylko do miejsc z tej listy.';
@@ -3692,6 +3721,32 @@ function sl_tropy_z_wypowiedzi(PDO $db, array $s, array $pule, array $r, ?array 
     return $nowe;
 }
 
+// Spis rejonu i planety (zakładka „Rejon”): kompleksy z budynkami, rodzaj, poziom wejścia, odległość i czas drogi
+// od miejsca, w którym stoi droid; namiary zaznaczone.
+function sl_rejon(PDO $db, array $s): array
+{
+    $pule = sl_pule($db);
+    $d = sl_rozlicz_droida($db, $s, $pule);
+    $budynki = sl_budynki($db, $s);
+    $bid = $d && $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
+    $tu = $bid !== null ? ($budynki[$bid] ?? null) : null;
+    $namiary = array_flip(array_filter(array_column(sl_namiary_lista($db, $s), 'lokalizacja_id'), fn($x) => $x !== null));
+    $kompleksy = [];
+    foreach ($budynki as $b) {
+        $k = (int) $b['rodzic_id'];
+        $p = sl_profil($pule, $b);
+        $km = $tu ? round(hypot((float) $b['x_km'] - (float) $tu['x_km'], (float) $b['y_km'] - (float) $tu['y_km']), 2) : null;
+        $czas = $tu ? sl_czas_drogi($budynki, [$bid, (int) $d['poziom'], 'korytarz'], [$b['id'], (int) $p['parter'], 'korytarz']) : null;
+        $kompleksy[$k] ??= ['id' => $k, 'nazwa' => (string) ($b['kompleks'] ?? 'Kompleks'), 'w_rejonie' => $b['w_rejonie'], 'km' => $km, 'budynki' => []];
+        if ($km !== null && ($kompleksy[$k]['km'] === null || $km < $kompleksy[$k]['km'])) $kompleksy[$k]['km'] = $km;
+        $kompleksy[$k]['budynki'][] = ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $p['nazwa'], 'parter' => (int) $p['parter'], 'gora' => (int) $p['gora'],
+            'km' => $km, 'czas_s' => $czas, 'czas' => $czas !== null ? sl_czas_tekst($czas) : null, 'namiar' => isset($namiary[$b['id']]), 'tutaj' => $b['id'] === $bid];
+    }
+    $kompleksy = array_values($kompleksy);
+    usort($kompleksy, fn($a, $b) => [(int) !$a['w_rejonie'], $a['km'] ?? 1e9] <=> [(int) !$b['w_rejonie'], $b['km'] ?? 1e9]);
+    return ['kompleksy' => $kompleksy, 'planeta' => sl_miejsce_galaktyki($db, $s)['planeta'], 'czas_lokalny' => sl_czas_lokalny($db, $s)['tekst']];
+}
+
 // Notatnik dla gracza: tropy (bez „prawdziwy”), powiązania, opcje formularza rozwiązania, miejsce sprawy i czas lokalny.
 function sl_notatnik(PDO $db, array $s): array
 {
@@ -4027,6 +4082,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
             $metryka = $q->fetch() ?: null;
         } catch (PDOException $e) { /* brak migracji 089 */ }
         $ai = ($postac && ($postac['waga'] === 'kluczowy' || SLEDZTWO_AI_DLA_POBOCZNYCH)) || ($metryka && SLEDZTWO_AI_DLA_WSZYSTKICH);
+        // Formy grzecznościowe z płci zapisanej w metryce (to samo źródło co imię rozmówcy).
+        if ($metryka && in_array($metryka['plec'], ['m', 'k', 'n'], true)) $f = sl_formy((string) $metryka['plec']);
         // Przechodzień bez wiersza w sledztwo_postacie: „postać” z metryki.
         $npc = $postac ?? ($metryka ? ['id' => 0, 'kod' => null, 'waga' => 'poboczny', 'imie' => $metryka['imie'], 'nazwisko' => $metryka['nazwisko'],
             'przydomek' => $metryka['przydomek'], 'gatunek_kod' => $metryka['gatunek_kod'], 'plec' => $metryka['plec'], 'wiek' => $metryka['wiek'],
@@ -4392,6 +4449,13 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                     'sledztwo_komputer' => ['komputer' => sl_komputer($db, $s, $pid ?: null, $term)],
                     'sledztwo_dekoduj' => sl_dekoduj_publicznie($db, $s, $pid, $term),
                 });
+
+            // Spis rejonu i planety (zakładka „Rejon”).
+            case 'sledztwo_rejon':
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                odpowiedz(sl_rejon($db, $s));
 
             // Notatnik (migracja 094): tropy, powiązania, formularz rozwiązania; oznaczenia i notatki; powiązania; rozwiązanie.
             case 'sledztwo_notatnik':

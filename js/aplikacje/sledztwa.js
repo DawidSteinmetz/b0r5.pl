@@ -358,7 +358,7 @@ export default {
       const liczba = (n) => (n ? ` (${n})` : '');
       const zakl = [['skan', 'Skan'], ['lokal', 'Lokal' + liczba((d.przedmioty || []).length + d.kontakty.length)],
         ['ekwipunek', 'Ekwipunek' + liczba((d.ekwipunek || []).length)], ...(rozmowa ? [['rozmowa', 'Rozmowa']] : []),
-        ['notatnik', 'Notatnik' + liczba(d.tropy_ile)], ['akta', 'Akta'], ['dziennik', 'Dziennik']];
+        ['notatnik', 'Notatnik' + liczba(d.tropy_ile)], ['rejon', 'Rejon'], ['akta', 'Akta'], ['dziennik', 'Dziennik']];
       // Cel: budynki rejonu i namiary od rozmówców (wybór namiaru wypełnia poziom i lokal).
       const namiary = d.namiary || [];
       const budynek = h('select', { style: 'max-width:260px' },
@@ -643,15 +643,54 @@ export default {
         przycisk('Wróć do biura', () => { zakladka = 'skan'; notatnik = null; odswiez(); }, '.maly'));
     }
 
+    // ---------- rejon: spis kompleksów i budynków planety, wyszukiwarka, jazda (pieszo albo taksówką) ----------
+
+    const rejonBox = h('div');
+    let rejon = null, szukajR = '';
+    async function wczytajRejon() {
+      try { rejon = await api('sledztwo_rejon'); rysujRejon(); } catch (e) { wyczysc(rejonBox).append(blad(e)); }
+    }
+    function zakladkaRejon() {
+      if (!rejon) { wyczysc(rejonBox).append(panel('REJON', h('p.maly-tekst', 'Wczytywanie spisu…'))); wczytajRejon(); }
+      else if (!rejonBox.firstChild) rysujRejon();
+      return rejonBox;
+    }
+    function rysujRejon() {
+      if (!rejon) return;
+      const pole = h('input', { placeholder: 'Szukaj: kantyna, hotel, nazwa…', value: szukajR, style: 'width:100%;box-sizing:border-box' });
+      const lista = h('div');
+      const pasuje = (b, k) => !szukajR || `${b.nazwa} ${b.rodzaj} ${k.nazwa}`.toLowerCase().includes(szukajR.toLowerCase());
+      const rysujListe = () => {
+        wyczysc(lista);
+        for (const k of rejon.kompleksy) {
+          const bud = k.budynki.filter((b) => pasuje(b, k));
+          if (!bud.length) continue;
+          lista.append(h('div', { style: 'margin:10px 0 4px' }, h('b', k.nazwa),
+            h('span.slaby', ` · ${k.w_rejonie ? 'rejon sprawy' : 'poza rejonem'}${k.km !== null ? ` · ${k.km} km` : ''}`)),
+            ...bud.map((b) => h('div', { style: `display:flex;gap:6px;align-items:center;padding:4px 6px;border:1px solid ${b.tutaj ? 'var(--ok)' : 'var(--linia)'};margin:3px 0` },
+              h('div', { style: 'flex:1;min-width:0' }, h('div', `${b.namiar ? '◆ ' : ''}${b.nazwa}`),
+                h('div.maly-tekst', `${b.rodzaj} · wejście: poziom ${b.parter} (góra ${b.gora})${b.czas ? ` · droga: ${b.czas}${b.km > 1 ? ' taksówką' : ''}` : ''}`)),
+              b.tutaj ? h('span.slaby', 'tutaj') : przycisk('Jedź', () => idz(b.id, b.parter, 'korytarz'), '.maly'))));
+        }
+        if (!lista.firstChild) lista.append(h('p.maly-tekst', 'Nic nie pasuje.'));
+      };
+      pole.oninput = () => { szukajR = pole.value; rysujListe(); };
+      rysujListe();
+      wyczysc(rejonBox).append(panel(`REJON · ${rejon.planeta} · ${rejon.czas_lokalny}`,
+        h('p.maly-tekst', 'Wszystkie budynki planety. W rejonie sprawy chodzi się pieszo; do innych kompleksów droid jedzie taksówką powietrzną. ◆ — masz namiary.'),
+        h('div', { style: 'display:flex;gap:6px' }, pole, przycisk('Odśwież', () => { rejon = null; zakladkaRejon(); })), lista));
+    }
+
     function rysujSzuflade() {
       szuflada.hidden = zakladka === 'skan' || !d;
       if (szuflada.hidden) return;
       if (zakladka === 'notatnik' && notatnik && szuflada.contains(notatnikBox)) return; // nie przerywaj pisania w notatniku
+      if (zakladka === 'rejon' && rejon && szuflada.contains(rejonBox)) return; // nie przerywaj wyszukiwania
       const zamknij = przycisk('×', () => { zakladka = 'skan'; rysujSzuflade(); rysujGore(); }, '.drugi.maly', { style: 'float:right', title: 'Zamknij panel' });
       // Panel windy tylko, gdy droid jest w windzie (albo do niej idzie).
       if (zakladka === 'winda' && !wWindzie() && !zamiar?.winda) { zakladka = 'skan'; szuflada.hidden = true; return; }
       const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik,
-        notatnik: zakladkaNotatnik,
+        notatnik: zakladkaNotatnik, rejon: zakladkaRejon,
         winda: () => {
           if (wWindzie()) return zakladkaWinda();
           const etap = jazdaWindy();

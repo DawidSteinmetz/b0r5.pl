@@ -152,6 +152,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    ostatnio widziany), droid bez AI pyta o osobę ze sprawy z imienia, kto nic nie wie — odsyła dalej (`sl_odeslanie`:
    ktoś z grafikiem w budynku, miejsce sprawy), zgłaszający bez AI podaje swoje fakty po kolei (tropy); kryjówka
    i zdarzenia ukryte („tajne”) — tylko po udanym teście. Górny pasek: stały układ, pola celu nie znikają przy odświeżeniu.
+   Rejon: droid może jechać do każdego budynku planety (`sl_budynki` — cała planeta, `w_rejonie` = kompleks sprawy);
+   dalej niż 1 km — taksówka powietrzna (90 s + 180 km/h). Zakładka „Rejon” (`sledztwo_rejon`): kompleksy z budynkami,
+   rodzajem, wejściem, odległością i czasem drogi, wyszukiwarka; NPC znają rejon + 10 najbliższych budynków spoza
+   niego; terminal publiczny ma plik „Rejon i okolica”.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

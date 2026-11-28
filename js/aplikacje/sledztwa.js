@@ -199,7 +199,41 @@ export default {
       return { x: pkt[pkt.length - 1][0], y: pkt[pkt.length - 1][1] };
     }
 
+    // W czasie jazdy windą piętro znika: widać tylko szyb, kabinę z droidem i licznik poziomów.
+    function widokSzybu() {
+      const { plan, droid } = d;
+      const z = plan.poziom, na = droid.cel.poziom, start = droid.trasa?.do ?? 0;
+      const W = 120, H = 260;
+      const kabina = s('g', {},
+        s('rect', { x: W / 2 - 22, y: -18, width: 44, height: 36, fill: 'currentColor', 'fill-opacity': 0.08, stroke: 'currentColor', 'stroke-width': 1.2 }),
+        s('circle', { cx: W / 2, cy: 0, r: 6, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }),
+        s('circle', { cx: W / 2, cy: 0, r: 2, fill: 'var(--ok)' }));
+      const licznik = s('text', { x: W / 2, y: -34, 'text-anchor': 'middle', 'font-size': 14, fill: 'var(--ok)' }, String(z));
+      const svg = s('svg', { viewBox: `-60 -40 ${W + 120} ${H + 80}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet',
+        style: 'display:block;color:var(--akcent);font-family:var(--czcionka)' },
+        s('rect', { x: W / 2 - 30, y: 0, width: 60, height: H, fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.5, 'stroke-dasharray': '3 3' }),
+        s('text', { x: W / 2 + 40, y: 8, 'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.7 }, `poziom ${Math.max(z, na)}`),
+        s('text', { x: W / 2 + 40, y: H, 'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.7 }, `poziom ${Math.min(z, na)}`),
+        s('text', { x: W / 2, y: H + 30, 'text-anchor': 'middle', 'font-size': 10, fill: 'currentColor' },
+          `WINDA · ${plan.budynek} · ${z} → ${na}${droid.cel.budynek_id !== plan.budynek_id ? ` · ${droid.cel.budynek}` : ''}`),
+        kabina, licznik);
+      const ustaw = () => {
+        const u = Math.min(1, Math.max(0, (postepDrogi() - start) / Math.max(0.0001, 1 - start)));
+        const poziomTeraz = Math.round(z + (na - z) * u);
+        const gora = Math.max(z, na), dol = Math.min(z, na);
+        const y = gora === dol ? H / 2 : ((gora - poziomTeraz) / (gora - dol)) * H;
+        kabina.setAttribute('transform', `translate(0 ${y.toFixed(1)})`);
+        licznik.setAttribute('y', (y - 26).toFixed(1));
+        licznik.textContent = String(poziomTeraz);
+      };
+      ustaw();
+      clearInterval(animacja);
+      animacja = setInterval(() => { if (!svg.isConnected) clearInterval(animacja); else ustaw(); }, 100);
+      return svg;
+    }
+
     function planPietra() {
+      if (jazdaWindy() === 'jedzie') return widokSzybu();
       const { plan, droid, kontakty, zasieg } = d;
       const szer = plan.dl || Math.max(plan.szerokosc, P * 4);
       const wys = GLEB * 2 + KOR;
@@ -285,7 +319,12 @@ export default {
       let etapWindy = jazdaWindy();
       const ustaw = () => {
         const etap = jazdaWindy();
-        if (etap !== etapWindy) { etapWindy = etap; if (zakladka === 'winda') rysujSzuflade(); }
+        if (etap !== etapWindy) {
+          etapWindy = etap;
+          if (zakladka === 'winda') rysujSzuflade();
+          // Droid wsiadł do windy: piętro znika, w jego miejscu szyb.
+          if (etap === 'jedzie') { wyczysc(planBox).append(planPietra()); return; }
+        }
         const p = wDrodze ? polozenieWDrodze() : { x: droid.x, y: droid.y ?? GLEB + KOR / 2 };
         znacznik.style.display = p ? '' : 'none';
         if (p) znacznik.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);

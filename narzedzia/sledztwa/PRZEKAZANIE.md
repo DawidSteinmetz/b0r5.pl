@@ -148,6 +148,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    `094_sledztwa_tropy.sql`; opis w PROJEKT.md rozdz. 5 („Tropy, notatnik i rozwiązanie”, „Czas lokalny i położenie”).
    **Etap 8 (nieprzetestowany): życie, praca i służba NPC** — bez nowej migracji; opis w PROJEKT.md rozdz. 5
    („Życie, praca i służba NPC”).
+   Punkty zaczepienia: namiary z teczki na start (`sl_namiary_startowe`: miejsce zgłoszenia, gdzie bywał, gdzie
+   ostatnio widziany), droid bez AI pyta o osobę ze sprawy z imienia, kto nic nie wie — odsyła dalej (`sl_odeslanie`:
+   ktoś z grafikiem w budynku, miejsce sprawy), zgłaszający bez AI podaje swoje fakty po kolei (tropy); kryjówka
+   i zdarzenia ukryte („tajne”) — tylko po udanym teście. Górny pasek: stały układ, pola celu nie znikają przy odświeżeniu.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

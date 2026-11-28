@@ -74,7 +74,9 @@ export default {
   uruchom(w) {
     w.classList.add('widok-mapa');
     const korzen = h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;background:var(--tlo);color:var(--tekst)' });
-    const gora = h('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--linia);background:var(--panel-mocny)' });
+    // Górny pasek: stały układ (siatka, teksty w jednej linii z wielokropkiem) — nie skacze przy odświeżaniu skanu.
+    const gora = h('div', { style: 'display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:12px;row-gap:6px;'
+      + 'align-items:center;padding:8px 12px;border-bottom:1px solid var(--linia);background:var(--panel-mocny);flex:none' });
     const obszar = h('div', { style: 'flex:1;position:relative;overflow:hidden;min-height:0' });
     const planBox = h('div', { style: 'position:absolute;inset:0;padding:10px' });
     const postepBox = h('div', { style: 'position:absolute;left:12px;right:12px;top:8px;pointer-events:none' });
@@ -337,9 +339,21 @@ export default {
 
     // ---------- górny pasek: tytuł, zakładki, sterowanie ----------
 
+    // Elementy paska tworzone raz; przy odświeżeniu zmieniają się tylko teksty, zakładki i (gdy trzeba) pola celu.
+    const jednaLinia = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+    const pasekTytul = h('b', { style: `display:block;${jednaLinia}` });
+    const pasekInfo = h('div.slaby', { style: `${jednaLinia};font-size:12px` });
+    const pasekMiejsce = h('div.slaby', { style: `${jednaLinia};font-size:12px` });
+    const pasekZakladki = h('div', { style: 'display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;justify-self:end;max-width:100%' });
+    const pasekCel = h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:nowrap;justify-self:end' });
+    let podpisCelu = '';
+    const ustawTekst = (el, txt) => { if (el.textContent !== txt) { el.textContent = txt; el.title = txt; } };
+
     function rysujGore() {
-      wyczysc(gora);
-      if (!d) return;
+      if (!d) { wyczysc(gora); podpisCelu = ''; return; }
+      if (!gora.firstChild) {
+        gora.append(h('div', { style: 'grid-row:1 / span 2;min-width:0' }, pasekTytul, pasekInfo, pasekMiejsce), pasekZakladki, pasekCel);
+      }
       const { plan, droid, budynki, poziom_max } = d;
       const liczba = (n) => (n ? ` (${n})` : '');
       const zakl = [['skan', 'Skan'], ['lokal', 'Lokal' + liczba((d.przedmioty || []).length + d.kontakty.length)],
@@ -350,8 +364,8 @@ export default {
       const budynek = h('select', { style: 'max-width:260px' },
         h('optgroup', { label: 'Budynki' }, budynki.length ? budynki.map((b) => h('option', { value: b.id, selected: b.id === plan.budynek_id }, b.nazwa))
           : [h('option', { value: '' }, 'Kompleks')]),
-        namiary.length ? h('optgroup', { label: 'Namiary od rozmówców' },
-          namiary.map((n) => h('option', { value: `n${n.id}`, title: `Podał(a): ${n.skad}` }, `◆ ${n.nazwa}`))) : null);
+        namiary.length ? h('optgroup', { label: 'Namiary (z akt i od rozmówców)' },
+          namiary.map((n) => h('option', { value: `n${n.id}`, title: `Źródło: ${n.skad}` }, `◆ ${n.nazwa}`))) : null);
       const poziom = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:70px' });
       const lokal = h('input', { placeholder: 'lokal / korytarz', style: 'width:120px' });
       const namiar = () => (budynek.value.startsWith('n') ? namiary.find((n) => `n${n.id}` === budynek.value) : null);
@@ -362,14 +376,19 @@ export default {
         idz(budynek.value === '' ? null : Number(budynek.value), Number(poziom.value), lokal.value.trim() || 'korytarz');
       }, '.maly');
       lokal.onkeydown = (e) => { if (e.key === 'Enter') jedz.click(); };
-      gora.append(
-        h('div', { style: 'flex:1 1 280px;min-width:0' },
-          h('b', `${d.oznaczenie || 'DT-4'} · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom}`),
-          h('span.slaby', ` (${STREFA[plan.strefa] || plan.strefa}) · ${plan.preset_nazwa}: parter ${plan.parter}, góra ${plan.gora} · ${STAN_DROIDA[droid.stan] || droid.stan}`),
-          d.miejsce_sprawy ? h('div.slaby', { style: 'font-size:12px' }, miejsceSprawy(d.miejsce_sprawy)) : null),
-        h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' }, zakl.map(([k, n]) =>
-          przycisk(n, () => { zakladka = zakladka === k && k !== 'skan' ? 'skan' : k; rysujSzuflade(); rysujGore(); }, zakladka === k ? '.maly' : '.drugi.maly'))),
-        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, budynek, h('span.slaby', 'poz.'), poziom, lokal, jedz));
+      ustawTekst(pasekTytul, `${d.oznaczenie || 'DT-4'} · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom}`);
+      ustawTekst(pasekInfo, `${STREFA[plan.strefa] || plan.strefa} · ${plan.preset_nazwa}: parter ${plan.parter}, góra ${plan.gora} · ${STAN_DROIDA[droid.stan] || droid.stan}`);
+      ustawTekst(pasekMiejsce, d.miejsce_sprawy ? miejsceSprawy(d.miejsce_sprawy) : '');
+      // Zakładki: stała szerokość przycisków, jedna linia.
+      wyczysc(pasekZakladki).append(...zakl.map(([k, n]) =>
+        przycisk(n, () => { zakladka = zakladka === k && k !== 'skan' ? 'skan' : k; rysujSzuflade(); rysujGore(); }, zakladka === k ? '.maly' : '.drugi.maly',
+          { style: 'min-width:92px;white-space:nowrap;flex:none' })));
+      // Pola celu: przebudowa tylko, gdy zmieniły się budynki / namiary / piętro — i nie w trakcie pisania.
+      const podpis = JSON.stringify([budynki.map((b) => b.id), namiary.map((n) => n.id), plan.budynek_id, plan.poziom]);
+      if (podpis !== podpisCelu && !pasekCel.contains(document.activeElement)) {
+        podpisCelu = podpis;
+        wyczysc(pasekCel).append(budynek, h('span.slaby', 'poz.'), poziom, lokal, jedz);
+      }
     }
 
     function rysujPostep() {
@@ -901,7 +920,7 @@ export default {
         } else {
           const bylaSprawa = maSprawe;
           maSprawe = !!moje.biezace;
-          if (!maSprawe) { d = null; wyczysc(gora); wyczysc(dol); szuflada.hidden = true; wyczysc(planBox).append(biuro()); }
+          if (!maSprawe) { d = null; wyczysc(gora); podpisCelu = ''; wyczysc(dol); szuflada.hidden = true; wyczysc(planBox).append(biuro()); }
           else if (!bylaSprawa) skanuj();
           else if (['akta', 'dziennik'].includes(zakladka)) rysujSzuflade();
         }

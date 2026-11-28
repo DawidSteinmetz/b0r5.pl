@@ -1004,13 +1004,15 @@ function sl_gdzie_postac(PDO $db, array $s, array $pule, array $p, ?int $t = nul
     if (!isset($miejsca[$sid])) {
         $q = $db->prepare('SELECT id, faza_nr, lokalizacja_id, poziom, pokoj, nazwa FROM sledztwo_miejsca WHERE sledztwo_id = ?');
         $q->execute([$sid]);
+        $miejsca[$sid] = [];
         foreach ($q->fetchAll() as $m) $miejsca[$sid][(int) $m['id']] = $m;
     }
     $swoje = $p['miejsce_id'] ? ($miejsca[$sid][(int) $p['miejsce_id']] ?? null) : null;
     $tu = fn(?array $m, string $co) => $m ? [$m['lokalizacja_id'] !== null ? (int) $m['lokalizacja_id'] : null, (int) $m['poziom'], (string) $m['pokoj'], $co, (string) $m['nazwa']] : null;
     if (($p['kod'] ?? null) === 'V') {
         try {
-            $q = $db->prepare('SELECT 1 FROM sledztwo_metryki WHERE postac_id = ? LIMIT 1');
+            // Zgłaszający czeka w miejscu zgłoszenia, dopóki nie skończy pierwszej rozmowy z droidem.
+            $q = $db->prepare("SELECT 1 FROM sledztwo_rozmowy WHERE postac_id = ? AND stan = 'zakonczona' LIMIT 1");
             $q->execute([(int) $p['id']]);
             if (!$q->fetchColumn()) return $tu($swoje, 'czeka');
         } catch (PDOException $e) { return $tu($swoje, 'czeka'); }

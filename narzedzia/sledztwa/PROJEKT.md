@@ -251,7 +251,7 @@ Do zmiany, gdy przyjdzie pora (dziś model to jedna sprawa = jeden detektyw = je
   ochroniarz, mechanik, handlarz, strażnik) — zmiana 9 h w swoim miejscu, 2 h przerwy w kantynie / kasynie rejonu,
   reszta w domu (poza mapą); bywalcy — 6 h w swoim miejscu, 4 h przerwy, 3 h na targu, reszta w domu. Osoba ze sprawy
   siedzi w kryjówce, raz na dobę (lokalna noc) robi 2-godzinny wypad do miejsca z fazy 1 albo kantyny — można ją
-  tam złapać. Zgłaszający czeka w miejscu zgłoszenia, dopóki droid z nim nie porozmawia.
+  tam złapać. Zgłaszający czeka w miejscu zgłoszenia, dopóki nie skończy pierwszej rozmowy z droidem.
 - Postacie pojawiają się na planie tam, gdzie są teraz (`sl_gdzie_postac`, `sl_postacie_na_pietrze`), także w lokalach
   szumu (kantyna, targ). Gdy czas rozmówcy tutaj minie, wychodzi w trakcie rozmowy („zmiana mi się skończyła”).
 - **Służba**: trzy zmiany warty po 8 godzin lokalnych (`sl_zmiana`). Na każdej zmianie przy drzwiach stoi inny strażnik;

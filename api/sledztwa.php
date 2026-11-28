@@ -1074,7 +1074,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
 {
     $kontakty = [];
     $godzina = gmdate('YmdH');
-    $q = $db->prepare('SELECT p.id, p.gatunek_kod, p.plec, a.nazwa AS archetyp FROM sledztwo_postacie p
+    $q = $db->prepare('SELECT p.id, p.gatunek_kod, p.plec, p.archetyp_kod, a.nazwa AS archetyp FROM sledztwo_postacie p
         LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? AND p.miejsce_id = ? ORDER BY p.id');
     foreach ($plan['pokoje'] as $p) {
         $srodek = sl_srodek($p);
@@ -1092,6 +1092,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
                 $g = sl_wazony($pule['populacja'])['kod'];
                 $a = $bywalcy ? sl_wazony($bywalcy) : null;
                 $osoby[] = ['gatunek_kod' => $g, 'plec' => $g === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k'), 'archetyp' => $a['nazwa'] ?? null,
+                    'archetyp_kod' => $a['kod'] ?? null,
                     'postac_id' => null, 'token' => sl_token((int) $s['seed'], 's', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina, (string) $k)];
             }
             // Co trzeci zaludniony lokal: ktoś stoi w samych drzwiach (nie przy strzeżonych — tam jest strażnik).
@@ -1114,7 +1115,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
             $kontakty[] = ['pokoj' => $p['nr'], 'x' => $x, 'y' => $y, 'strona' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$o['gatunek_kod']]['nazwa'] ?? $o['gatunek_kod'], 'plec' => $o['plec'],
                 'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień',
-                'token' => $o['token'], 'postac_id' => $o['postac_id']] + ($drzwi ? ['w_drzwiach' => $drzwi] : []);
+                'token' => $o['token'], 'postac_id' => $o['postac_id'], 'archetyp_kod' => $o['archetyp_kod'] ?? null] + ($drzwi ? ['w_drzwiach' => $drzwi] : []);
         }
         if ($p['dostep'] === 'straz') {
             $st = sl_straznik($pule, $s, $plan, $p);
@@ -2047,6 +2048,7 @@ function sl_dekoduj_publicznie(PDO $db, array $s, int $id, string $terminal): ar
 
 const SLEDZTWO_PODEJSCIE_S = 3;              // droid podchodzi na 2–3 m
 const SLEDZTWO_AI_DLA_POBOCZNYCH = false;    // true = poboczni z bazy też mówią przez AI (więcej wywołań)
+const SLEDZTWO_AI_DLA_WSZYSTKICH = true;     // true = każdy rozmówca z metryką (089) mówi przez AI; false = tylko kluczowi
 const SLEDZTWO_NASTAWIENIE = ['uprzejmy' => 'uprzejme, choć ostrożne', 'obojetny' => 'obojętne, lekko nieufne',
     'wrogi' => 'wrogie', 'przestraszony' => 'przestraszone'];
 
@@ -2130,6 +2132,8 @@ function sl_rozmowa_start(PDO $db, array $s, string $token): array
         }
     }
 
+    // Metryka rozmówcy (kim jest, co wie o osobie ze sprawy) — powstaje raz, przy pierwszej rozmowie.
+    sl_metryka_zapewnij($db, $s, $pule, $plan, $kontakt);
     $stara = sl_rozmowa_aktywna($db, (int) $s['id']);
     if ($stara) sl_rozmowa_zakoncz($db, $stara, 'Droid przerwał rozmowę i podszedł do kogoś innego.');
     $teraz = sl_teraz();
@@ -2198,7 +2202,263 @@ function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sle
 
 // Dane kluczowego NPC do szablonu npc_wypowiedz. Dopóki model Autor nie napisze historii i wiedzy (krok 2),
 // wiedza powstaje ze szkieletu: fazy, w których szkicu występuje kod postaci, z zachowaniem wg jawności fazy.
-function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
+// ---------- metryki NPC (migracja 089): kim jest rozmówca i co wie o osobie ze sprawy ----------
+
+// {m|k} → forma męska (też dla 'n') albo żeńska.
+function sl_rodzaj(string $t, string $plec): string
+{
+    return preg_replace_callback('/\{([^{}|]*)\|([^{}|]*)\}/u', fn($m) => $plec === 'k' ? $m[2] : $m[1], $t);
+}
+
+// „Udajesz <biernik>” — gatunek w bierniku wg płci.
+const SLEDZTWO_BIERNIK = [
+    'czlowiek' => ['człowieka', 'kobietę'], 'twilek' => ['Twi\'leka', 'Twi\'lekankę'], 'rodianin' => ['Rodianina', 'Rodiankę'],
+    'bothanin' => ['Bothanina', 'Bothankę'], 'trandoshanin' => ['Trandoshanina', 'Trandoshankę'], 'wookiee' => ['Wookieego', 'Wookieego (kobietę)'],
+    'gand' => ['Ganda', 'Gandkę'], 'droid' => ['droida', 'droida'],
+];
+
+// Status osoby ze sprawy (wg zgłoszenia — tak o niej mówi okolica), w bierniku: „Znał{eś|aś} <status> <imię>”.
+const SLEDZTWO_STATUS_A = [
+    1 => 'zaginion{ego|ą} po rozstaniu', 2 => 'zamordowan{ego|ą}', 3 => 'porwan{ego|ą}', 4 => 'poszkodowan{ego|ą}',
+    5 => 'okradzion{ego|ą}', 6 => 'szantażowan{ego|ą}', 7 => 'podejrzewan{ego|ą} o donos', 8 => 'oszukan{ego|ą}',
+    9 => 'zamieszan{ego|ą} w nieudany przemyt', 10 => 'zadłużon{ego|ą}', 11 => 'zamieszan{ego|ą} w porachunki', 12 => 'zaginion{ego|ą}',
+];
+const SLEDZTWO_POZIOM_ZNAJOMOSCI = [0 => 'wcale', 1 => 'słabo', 2 => 'dobrze', 3 => 'bardzo dobrze'];
+// Archetypy, które w miejscu spotkania pracują (reszta tylko bywa).
+const SLEDZTWO_ARCHETYPY_PRACUJA = ['barman', 'krupier', 'ochroniarz', 'mechanik', 'handlarz', 'straznik'];
+
+function sl_slownik(PDO $db, string $rodzaj): string
+{
+    static $cache = [];
+    if (!isset($cache[$rodzaj])) {
+        $q = $db->prepare('SELECT wartosc FROM gen_metryka WHERE rodzaj = ? ORDER BY id');
+        $q->execute([$rodzaj]);
+        $cache[$rodzaj] = $q->fetchAll(PDO::FETCH_COLUMN) ?: ['—'];
+    }
+    return (string) sl_jeden($cache[$rodzaj]);
+}
+
+// Osoba, której dotyczy sprawa (A), i fakty o niej z bazy: [postać A, status, lista faktów wg poziomu 1–3].
+function sl_fakty_o_osobie(PDO $db, array $s, array $pule): array
+{
+    $q = $db->prepare("SELECT * FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IN ('A','B') ORDER BY kod");
+    $q->execute([(int) $s['id']]);
+    $os = [];
+    foreach ($q->fetchAll() as $p) $os[$p['kod']] = $p;
+    $a = $os['A'] ?? null;
+    if (!$a) return [null, 'zaginion{ego|ą}', [1 => [], 2 => [], 3 => []]];
+    $q = $db->prepare('SELECT COALESCE(s.zdarzenie_zgloszone_id, s.zdarzenie_id) AS zg, s.utworzono_utc,
+        (SELECT f.tagi FROM sledztwo_fazy f WHERE f.sledztwo_id = s.id ORDER BY f.pozycja DESC LIMIT 1) AS tagi FROM sledztwa s WHERE s.id = ?');
+    $q->execute([(int) $s['id']]);
+    $sp = $q->fetch() ?: [];
+    $q = $db->prepare('SELECT faza_nr, nazwa FROM sledztwo_miejsca WHERE sledztwo_id = ? ORDER BY faza_nr');
+    $q->execute([(int) $s['id']]);
+    $miejsca = [];
+    foreach ($q->fetchAll() as $m) $miejsca[(int) $m['faza_nr']] = preg_replace('/\s*\(.*\)$/u', '', (string) $m['nazwa']);
+
+    $imie = trim($a['imie'] . ' ' . ($a['nazwisko'] ?? ''));
+    $on = $a['plec'] === 'k' ? ['ją', 'jej', 'była', 'miała', 'widywana'] : ['go', 'jego', 'był', 'miał', 'widywany'];
+    $gat = $pule['gatunki'][$a['gatunek_kod']]['nazwa'] ?? $a['gatunek_kod'];
+    $arch = mb_strtolower($pule['archetypy'][$a['archetyp_kod']]['nazwa'] ?? 'mieszkaniec dolnych poziomów');
+    $wiek = $a['wiek'] !== null ? 'ok. ' . (10 * (int) round((int) $a['wiek'] / 10)) . ' lat' : 'wiek trudno ocenić';
+    $baza = sl_z_utc($sp['utworzono_utc'] ?? null) ?? sl_teraz();
+    $nawyk = '';
+    foreach (explode(';', (string) $a['charakter']) as $c) if (str_starts_with(trim($c), 'nawyk:')) $nawyk = trim(substr(trim($c), 6));
+    $tagi = sl_tagi((string) ($sp['tagi'] ?? ''));
+    $klopoty = array_values(array_intersect_key(['dlug' => 'długi u niewłaściwych ludzi', 'lup' => 'coś cennego, czego nie powinien' . ($a['plec'] === 'k' ? 'a' : '') . ' mieć',
+        'nagroda' => 'list gończy albo nagrodę za głowę', 'przemyt' => 'nieudany kurs przemytniczy', 'szantaz' => 'kogoś, kto trzymał ' . $on[0] . ' w szachu'], array_flip($tagi)));
+
+    $f1 = ["{$imie} — {$gat}, {$wiek}, wygląda na: {$arch}.", "{$imie} bywał" . ($a['plec'] === 'k' ? 'a' : '') . ' w tej okolicy; kojarzysz ' . $on[0] . ' z widzenia.'];
+    $f2 = [];
+    if (!empty($miejsca[1])) $f2[] = "Często " . $on[4] . " w miejscu: {$miejsca[1]}.";
+    if (!empty($miejsca[3])) $f2[] = "Ostatnio kręcił" . ($a['plec'] === 'k' ? 'a' : '') . " się koło: {$miejsca[3]}.";
+    if (isset($os['B'])) $f2[] = 'Często widywał{eś|aś} ' . $on[0] . ' z: ' . trim($os['B']['imie'] . ' ' . ($os['B']['nazwisko'] ?? '')) . '.';
+    $f2[] = 'Ostatni raz widział{eś|aś} ' . $on[0] . ' ' . sl_data_gry($baza - 86400 * sl_hash_int((int) $s['seed'], 1, 4, 'ostatnio') - 3600 * sl_hash_int((int) $s['seed'], 2, 14, 'godz')) . '.';
+    if ($nawyk !== '') $f2[] = "Pamiętasz {$on[1]} nawyk: {$nawyk}.";
+    $f3 = [];
+    if ($klopoty) $f3[] = 'Wiesz, że ' . $on[3] . ' kłopoty: ' . implode('; ', $klopoty) . '.';
+    if (!empty($miejsca[7])) $f3[] = 'Wiesz, że ' . $on[3] . " swoje miejsce na „przeczekanie”: {$miejsca[7]}.";
+    $f3[] = $a['wiek'] !== null ? "Wiesz, że ma dokładnie {$a['wiek']} lat." : 'Wiesz, z jakiej serii jest ten droid.';
+    return [$a, SLEDZTWO_STATUS_A[(int) ($sp['zg'] ?? 12)] ?? 'zaginion{ego|ą}', [1 => $f1, 2 => $f2, 3 => $f3]];
+}
+
+// Metryka kontaktu: z bazy albo nowa (deterministyczna dla tokenu). Null bez migracji 089.
+// $kontakt — z sl_kontakty; $plan — piętro, na którym droid go spotkał.
+function sl_metryka_zapewnij(PDO $db, array $s, array $pule, array $plan, array $kontakt): ?array
+{
+    try {
+        $q = $db->prepare('SELECT * FROM sledztwo_metryki WHERE sledztwo_id = ? AND token = ?');
+        $q->execute([(int) $s['id'], $kontakt['token']]);
+        if ($m = $q->fetch()) return $m;
+    } catch (PDOException $e) { return null; }
+
+    $postac = null;
+    if ($kontakt['postac_id']) {
+        $q = $db->prepare('SELECT * FROM sledztwo_postacie WHERE id = ?');
+        $q->execute([(int) $kontakt['postac_id']]);
+        $postac = $q->fetch() ?: null;
+    }
+    [$a, , $fakty] = sl_fakty_o_osobie($db, $s, $pule);
+    sl_ziarno((int) $s['seed'], 'metryka', $kontakt['token']);
+
+    // Tożsamość: postać fabuły — z bazy; przechodzień — losowana z pul gatunku.
+    if ($postac) {
+        [$imie, $nazwisko, $przydomek, $gat, $plec, $wiek] = [$postac['imie'], $postac['nazwisko'], $postac['przydomek'], $postac['gatunek_kod'], $postac['plec'], $postac['wiek']];
+        $archKod = $postac['archetyp_kod'];
+    } else {
+        $gat = 'czlowiek';
+        foreach ($pule['gatunki'] as $k => $g) if ($g['nazwa'] === $kontakt['gatunek']) $gat = $k;
+        $plec = (string) $kontakt['plec'];
+        $wiek = $gat === 'droid' ? null : sl_los(18, 72);
+        $wybierz = function (string $rodzaj) use ($pule, $gat, $plec): ?string {
+            foreach ([$gat, 'czlowiek'] as $g) {
+                $l = array_values(array_filter($pule['imiona'], fn($i) => $i['rodzaj'] === $rodzaj && $i['gatunek_kod'] === $g
+                    && ($i['plec'] === $plec || $i['plec'] === 'n' || $plec === 'n')));
+                if ($l) return sl_jeden($l)['wartosc'];
+            }
+            return null;
+        };
+        $imie = $wybierz('imie') ?? 'Bezimienny';
+        $nazwisko = $gat === 'droid' ? null : $wybierz('nazwisko');
+        $przydomek = null;
+        $archKod = $kontakt['archetyp_kod'] ?? null;
+    }
+    $plecR = $plec === 'k' ? 'k' : 'm';
+    $planeta = 'Nar Shaddaa';
+    $lok = sl_lokal($plan, (string) $kontakt['pokoj']);
+
+    // Pochodzenie: część urodzona na miejscu, reszta przybyła X lat temu.
+    $q = $db->prepare('SELECT planeta, waga FROM gen_pochodzenie WHERE gatunek_kod = ? OR gatunek_kod IS NULL');
+    $q->execute([$gat]);
+    $pochodzenie = $q->fetchAll();
+    $tutaj = $gat !== 'droid' && sl_procent(35);
+    $planetaUr = $tutaj || !$pochodzenie ? $planeta : (string) sl_wazony($pochodzenie)['planeta'];
+    $lat = $tutaj ? null : max(1, sl_los(1, max(1, ($wiek ?? 20) - 14)));
+
+    // Rola w miejscu i zajęcie.
+    $archNazwa = $archKod ? ($pule['archetypy'][$archKod]['nazwa'] ?? null) : null;
+    if (!empty($kontakt['straznik'])) { $rola = 'pracownik'; $zajecie = 'strażnik przy drzwiach lokalu ' . $kontakt['pokoj']; }
+    elseif ($archKod && in_array($archKod, SLEDZTWO_ARCHETYPY_PRACUJA, true)) { $rola = 'pracownik'; $zajecie = mb_strtolower((string) $archNazwa); }
+    elseif ($archNazwa) { $rola = 'bywalec'; $zajecie = mb_strtolower((string) $archNazwa); }
+    else { $rola = sl_jeden(['przechodzien', 'gosc', 'mieszkaniec']); $zajecie = sl_slownik($db, 'zajecie'); }
+    $staz = sl_los(1, max(1, min(25, $lat ?? (($wiek ?? 30) - 16))));
+    $miejsce = trim(($plan['budynek'] ?? 'Kompleks') . ', poziom ' . $plan['poziom'] . ($lok ? ", lokal {$lok['nr']} ({$lok['rodzaj']})" : ', korytarz'));
+
+    // Znajomość z osobą ze sprawy: kluczowi wiedzą dużo, ludzie z miejsc fabuły — trochę, szum — zwykle nic.
+    $kod = $postac['kod'] ?? null;
+    $fabularny = $lok && !empty($lok['miejsce_id']);
+    $budynekFabuly = false;
+    if (!$fabularny && $plan['budynek_id'] !== null) {
+        $q = $db->prepare('SELECT 1 FROM sledztwo_miejsca WHERE sledztwo_id = ? AND lokalizacja_id = ? LIMIT 1');
+        $q->execute([(int) $s['id'], (int) $plan['budynek_id']]);
+        $budynekFabuly = (bool) $q->fetchColumn();
+    }
+    $poziom = match (true) {
+        $kod === 'A' => 3,
+        in_array($kod, ['B', 'V', 'Z'], true) => 3,
+        in_array($kod, ['W', 'S'], true) => 2,
+        $fabularny => (int) sl_wazony([['p' => 0, 'waga' => 30], ['p' => 1, 'waga' => 40], ['p' => 2, 'waga' => 25], ['p' => 3, 'waga' => 5]])['p'],
+        $budynekFabuly => (int) sl_wazony([['p' => 0, 'waga' => 60], ['p' => 1, 'waga' => 30], ['p' => 2, 'waga' => 10]])['p'],
+        default => sl_procent(12) ? 1 : 0,
+    };
+    if (!$a) $poziom = 0;
+    $jak = null;
+    if ($poziom > 0 && $kod !== 'A') {
+        $q = $db->prepare('SELECT opis FROM gen_znajomosci WHERE poziom_min <= ? AND poziom_max >= ? ORDER BY id');
+        $q->execute([$poziom, $poziom]);
+        $l = $q->fetchAll(PDO::FETCH_COLUMN);
+        $jak = $l ? sl_rodzaj((string) sl_jeden($l), $plecR) : null;
+        if ($kod === 'B' || $kod === 'V') $jak = 'to bliska ci osoba (wasza relacja jest w sprawie)';
+    }
+    $chce = $poziom === 0 ? 'nie' : (in_array($kod, ['V'], true) ? 'chetnie'
+        : (string) sl_wazony([['c' => 'chetnie', 'waga' => 30], ['c' => 'niechetnie', 'waga' => 50], ['c' => 'nie', 'waga' => 20]])['c']);
+    $wiedza = [];
+    for ($i = 1; $i <= min(3, $poziom); $i++) foreach ($fakty[$i] as $f) $wiedza[] = '- ' . sl_rodzaj($f, $plecR);
+    $charakter = $postac ? (string) $postac['charakter'] : 'cecha: ' . sl_slownik($db, 'cecha') . '; mowa: ' . sl_slownik($db, 'mowa');
+
+    $w = ['sledztwo_id' => (int) $s['id'], 'token' => $kontakt['token'], 'postac_id' => $postac ? (int) $postac['id'] : null,
+        'imie' => $imie, 'nazwisko' => $nazwisko, 'przydomek' => $przydomek, 'gatunek_kod' => $gat, 'plec' => $plec, 'wiek' => $wiek,
+        'planeta_urodzenia' => $planetaUr, 'urodzony_tutaj' => $tutaj ? 1 : 0, 'lat_na_planecie' => $lat, 'miejsce' => mb_substr($miejsce, 0, 200),
+        'rola_w_miejscu' => $rola, 'zajecie' => mb_substr($zajecie, 0, 120), 'staz_lat' => $staz,
+        'mieszka' => 'poziom ' . sl_los(5, 110) . ', ' . sl_slownik($db, 'mieszkanie'),
+        'rodzina' => sl_rodzaj(sl_slownik($db, 'rodzina'), $plecR), 'codziennosc' => sl_rodzaj(sl_slownik($db, 'codziennosc'), $plecR),
+        'charakter' => sl_rodzaj(mb_substr($charakter, 0, 255), $plecR), 'stosunek_droidy' => sl_slownik($db, 'droidy'),
+        'opinia_imperium' => sl_slownik($db, 'imperium'), 'opinia_huttowie' => sl_rodzaj(sl_slownik($db, 'huttowie'), $plecR),
+        'ulubione' => sl_rodzaj(sl_slownik($db, 'ulubione'), $plecR), 'zmartwienie' => sl_slownik($db, 'zmartwienie'),
+        'sekret' => sl_rodzaj(sl_slownik($db, 'sekret'), $plecR), 'plotka' => sl_rodzaj(sl_slownik($db, 'plotka'), $plecR),
+        'znajomosc_poziom' => $poziom, 'znajomosc_jak' => $jak, 'chce_mowic' => $chce,
+        'wiedza_o_osobie' => implode("\n", $wiedza), 'utworzono_utc' => sl_utc(sl_teraz())];
+    $kol = array_keys($w);
+    $db->prepare('INSERT IGNORE INTO sledztwo_metryki (' . implode(', ', $kol) . ') VALUES (' . implode(', ', array_fill(0, count($kol), '?')) . ')')
+        ->execute(array_values($w));
+    $q = $db->prepare('SELECT * FROM sledztwo_metryki WHERE sledztwo_id = ? AND token = ?');
+    $q->execute([(int) $s['id'], $kontakt['token']]);
+    return $q->fetch() ?: null;
+}
+
+// Pola promptu z metryki: kim (biernik), życiorys (opcje z pochodzeniem i pracą), metryka, znajomość z osobą ze sprawy.
+function sl_metryka_pola(PDO $db, array $s, array $pule, array $m): array
+{
+    $plec = $m['plec'] === 'k' ? 'k' : 'm';
+    $r = fn(string $t) => sl_rodzaj($t, $plec);
+    $planeta = 'Nar Shaddaa';
+    $kim = (SLEDZTWO_BIERNIK[$m['gatunek_kod']][$plec === 'k' ? 1 : 0] ?? ('postać: ' . ($pule['gatunki'][$m['gatunek_kod']]['nazwa'] ?? $m['gatunek_kod'])))
+        . ' o imieniu ' . trim($m['imie'] . ' ' . ($m['nazwisko'] ?? ''));
+    $lata = fn(int $n) => $n === 1 ? '1 rok' : ($n % 10 >= 2 && $n % 10 <= 4 && ($n % 100 < 10 || $n % 100 >= 20) ? "{$n} lata" : "{$n} lat");
+    $z = [];
+    if ($m['gatunek_kod'] === 'droid') {
+        $z[] = "Zbudowano cię: {$m['planeta_urodzenia']}." . ($m['lat_na_planecie'] ? " Na {$planeta} trafiłeś " . $lata((int) $m['lat_na_planecie']) . ' temu.' : '');
+    } elseif ((int) $m['urodzony_tutaj']) {
+        $z[] = $r('Urodził{eś|aś} się na ') . $planeta . ($m['wiek'] ? ' ' . $lata((int) $m['wiek']) . ' temu.' : '.');
+    } else {
+        $z[] = $r('Urodził{eś|aś} się na ') . $m['planeta_urodzenia'] . ", a na {$planeta} " . $r('przybył{eś|aś} ') . $lata((int) $m['lat_na_planecie']) . ' temu.';
+    }
+    $staz = $m['staz_lat'] ? $lata((int) $m['staz_lat']) : 'niedawno';
+    $z[] = match ($m['rola_w_miejscu']) {
+        'pracownik' => $r('Zatrudnił{eś|aś} się tutaj') . " ({$m['miejsce']}) {$staz} temu; pracujesz jako {$m['zajecie']}.",
+        'bywalec' => "Bywasz tutaj ({$m['miejsce']}) od {$staz}; zajmujesz się tym: {$m['zajecie']}.",
+        'mieszkaniec' => "Mieszkasz w tym budynku od {$staz}; zarabiasz jako {$m['zajecie']}.",
+        'gosc' => $r('Jesteś tu (') . $m['miejsce'] . ") tylko w swojej sprawie; na życie zarabiasz jako {$m['zajecie']}.",
+        default => "Przechodzisz tędy ({$m['miejsce']}); na życie zarabiasz jako {$m['zajecie']}.",
+    };
+    $z[] = $m['codziennosc'];
+
+    $met = [
+        'Imię i nazwisko' => trim($m['imie'] . ' ' . ($m['nazwisko'] ?? '')) . ($m['przydomek'] ? " (przydomek „{$m['przydomek']}”)" : ''),
+        'Gatunek' => $pule['gatunki'][$m['gatunek_kod']]['nazwa'] ?? $m['gatunek_kod'],
+        'Płeć' => ['m' => 'mężczyzna', 'k' => 'kobieta'][$m['plec']] ?? 'nieokreślona',
+        'Wiek' => $m['wiek'] !== null ? $lata((int) $m['wiek']) : 'nie dotyczy (droid)',
+        'Pochodzenie' => (int) $m['urodzony_tutaj'] ? 'urodzon' . $r('{y|a}') . " na {$planeta}" : "{$m['planeta_urodzenia']}; na {$planeta} od " . $lata((int) $m['lat_na_planecie']),
+        'Zajęcie' => $m['zajecie'] . ($m['staz_lat'] ? ' (od ' . $lata((int) $m['staz_lat']) . ')' : ''),
+        'Mieszkasz' => $m['mieszka'], 'Rodzina' => $m['rodzina'], 'Charakter i sposób mówienia' => $m['charakter'],
+        'Stosunek do droidów' => $m['stosunek_droidy'], 'O Imperium' => $m['opinia_imperium'], 'O Huttach' => $m['opinia_huttowie'],
+        'Lubisz' => $m['ulubione'], 'Martwi cię' => $m['zmartwienie'],
+        'Twój sekret (ukrywasz go)' => $m['sekret'], 'Plotka, którą chętnie powtarzasz' => $m['plotka'],
+    ];
+    $metryka = implode("\n", array_map(fn($k, $v) => "- {$k}: {$v}", array_keys($met), $met));
+
+    [$a, $status] = sl_fakty_o_osobie($db, $s, $pule);
+    $poz = (int) $m['znajomosc_poziom'];
+    $osoba = $a ? sl_rodzaj($status, $a['plec'] === 'k' ? 'k' : 'm') . ' ' . trim($a['imie'] . ' ' . ($a['nazwisko'] ?? '')) : 'osobę, o którą pyta droid';
+    $chce = ['chetnie' => 'Chcesz o tym mówić — ale tylko na pytania.', 'niechetnie' => 'Mówisz o tym niechętnie: trzeba cię przekonać, uspokoić albo zapłacić.',
+        'nie' => 'Nie chcesz o tym mówić: zbywasz, wykręcasz się, a przyciśnięt' . $r('{y|a}') . ' — kłamiesz albo kończysz rozmowę.'][$m['chce_mowic']] ?? '';
+    if ($a && (int) ($m['postac_id'] ?? 0) === (int) $a['id']) {
+        $znaj = "SPRAWA DOTYCZY CIEBIE\n- To ty jesteś osobą, o którą chodzi w sprawie. Trzymasz się tego, co wiesz o sprawie (niżej), i swojego zachowania.";
+    } elseif ($poz === 0) {
+        $znaj = "ZNAJOMOŚĆ Z OSOBĄ ZE SPRAWY: brak\n- Nie znasz " . $osoba . ' i nic o tej sprawie nie wiesz.'
+            . "\n- Nie chcesz gadać z droidem: zbywasz go krótko, kreatywnie i w swoim stylu (np. „nie mam z tym nic wspólnego”,"
+            . " „nakaz jest? jak nie, to spadaj”). Po 2–3 pytaniach kończysz rozmowę.";
+    } else {
+        $znaj = $r('ZNAJOMOŚĆ Z OSOBĄ ZE SPRAWY: znał{eś|aś} ') . $osoba . ' ' . SLEDZTWO_POZIOM_ZNAJOMOSCI[$poz]
+            . ($m['znajomosc_jak'] ? " ({$m['znajomosc_jak']})" : '') . ".\nCo wiesz o tej osobie:\n" . ($m['wiedza_o_osobie'] ?: '- niewiele ponad to, że istnieje')
+            . "\n- " . $chce . ($poz === 3 ? ' To, że wiesz dużo, nie znaczy, że chcesz się z tym ujawniać.' : '');
+    }
+    return ['kim' => $kim, 'zyciorys' => implode("\n", array_map(fn($x) => "- {$x}", $z)), 'metryka' => $metryka, 'znajomosc' => $znaj,
+        'pelne_imie' => trim($m['imie'] . ' ' . ($m['nazwisko'] ?? '') . ($m['przydomek'] ? " „{$m['przydomek']}”" : ''))];
+}
+
+// $m — metryka rozmówcy (migracja 089); bez niej pola metryki dostają ogólniki.
+function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r, ?array $m = null): array
 {
     $q = $db->prepare('SELECT id, kod, imie, nazwisko FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IS NOT NULL');
     $q->execute([(int) $s['id']]);
@@ -2273,8 +2533,15 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r): array
         if ($m = $q->fetch()) $miejsce = ['nazwa' => $m['nazwa'], 'poziom' => (string) $r['poziom'], 'opis' => $m['opis'] ?: ($m['opis_szumu'] ?: 'Zwykły lokal na Nar Shaddaa.')];
     }
     $pelne = trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '') . ($p['przydomek'] ? " „{$p['przydomek']}”" : ''));
+    $gatunek = $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'];
+    $mp = $m ? sl_metryka_pola($db, $s, $pule, $m) : ['kim' => "postać: {$gatunek} o imieniu {$pelne}", 'zyciorys' => "- Jesteś {$archetyp} na Nar Shaddaa.",
+        'metryka' => "- Imię i nazwisko: {$pelne}\n- Gatunek: {$gatunek}", 'znajomosc' => 'ZNAJOMOŚĆ Z OSOBĄ ZE SPRAWY: patrz „CO WIESZ O SPRAWIE”.', 'pelne_imie' => $pelne];
+    $pelne = $mp['pelne_imie'];
+    if (!$kod && $m) $miejsce['nazwa'] = $m['miejsce'];
     return [
-        'npc' => ['pelne_imie' => $pelne, 'gatunek' => $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'],
+        'swiat' => ['planeta' => 'Nar Shaddaa'],
+        'npc' => ['kim' => $mp['kim'], 'zyciorys' => $mp['zyciorys'], 'metryka' => $mp['metryka'], 'znajomosc' => $mp['znajomosc'],
+            'pelne_imie' => $pelne, 'gatunek' => $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'],
             'plec' => ['m' => 'mężczyzna', 'k' => 'kobieta', 'n' => 'nieokreślona'][$p['plec']] ?? 'nieokreślona',
             'wiek' => $p['wiek'] !== null ? (string) $p['wiek'] : 'nieznany', 'archetyp' => $archetyp,
             'charakter' => $ch['cecha'] ?: 'zwyczajny', 'nawyk' => $ch['nawyk'] ?: 'brak szczególnych nawyków', 'mowa' => $ch['mowa'] ?: 'zwyczajnie',
@@ -2356,7 +2623,18 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
             $q->execute([(int) $r['postac_id']]);
             $postac = $q->fetch() ?: null;
         }
-        $ai = $postac && ($postac['waga'] === 'kluczowy' || SLEDZTWO_AI_DLA_POBOCZNYCH);
+        // Metryka (089): z nią przez AI mówi każdy rozmówca — także przechodzień i strażnik.
+        $metryka = null;
+        try {
+            $q = $db->prepare('SELECT * FROM sledztwo_metryki WHERE sledztwo_id = ? AND token = ?');
+            $q->execute([(int) $s['id'], (string) $r['kontakt']]);
+            $metryka = $q->fetch() ?: null;
+        } catch (PDOException $e) { /* brak migracji 089 */ }
+        $ai = ($postac && ($postac['waga'] === 'kluczowy' || SLEDZTWO_AI_DLA_POBOCZNYCH)) || ($metryka && SLEDZTWO_AI_DLA_WSZYSTKICH);
+        // Przechodzień bez wiersza w sledztwo_postacie: „postać” z metryki.
+        $npc = $postac ?? ($metryka ? ['id' => 0, 'kod' => null, 'waga' => 'poboczny', 'imie' => $metryka['imie'], 'nazwisko' => $metryka['nazwisko'],
+            'przydomek' => $metryka['przydomek'], 'gatunek_kod' => $metryka['gatunek_kod'], 'plec' => $metryka['plec'], 'wiek' => $metryka['wiek'],
+            'archetyp_kod' => null, 'charakter' => $metryka['charakter'], 'miejsce_id' => null, 'historia' => null, 'wiedza' => null] : null);
         $q = $db->prepare('SELECT COALESCE(zg.nazwa, z.nazwa) FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id
             LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id WHERE s.id = ?');
         $q->execute([(int) $s['id']]);
@@ -2391,7 +2669,7 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         $konczy = false;
         if ($ai && !$awaria) {
             try {
-                $dane = sl_npc_dane($db, $s, $postac, $pule, $r);
+                $dane = sl_npc_dane($db, $s, $npc, $pule, $r, $metryka);
                 $imie = $dane['npc']['pelne_imie'];
                 $dane['droid'] = ['oznaczenie' => $oznaczenie];
                 $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie

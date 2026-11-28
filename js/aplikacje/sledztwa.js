@@ -796,7 +796,33 @@ export default {
     let procedura = 'wlasna', szkic = '', bladR = '', wybranyTrop = 0;
     try { if (localStorage.getItem('dt4-procedura') === 'jawna') procedura = 'jawna'; } catch (e) { /* bez pamięci przeglądarki */ }
 
+    // Analiza DT-4: co droid zrozumiał z wypowiedzi (postawa, sens, ustalenia, miejsca, szczerość, wniosek).
+    const POSTAWA = { 'współpracuje': 'var(--ok)', wrogi: 'var(--zly)', odmawia: 'var(--zly)', przestraszony: 'var(--akcent-2)', uprzejmy: 'var(--ok)', zbywa: 'currentColor' };
+    function analizaEl(a) {
+      const wiersz = (etykieta, tresc) => h('div', { style: 'margin:2px 0' }, h('span.slaby', `${etykieta}: `), tresc);
+      return h('div', { style: 'margin:6px 0 10px;padding:6px 8px;border-left:3px solid var(--akcent);background:rgba(125,255,176,.04)' },
+        h('div', h('b', `${rozmowa?.kod || 'Rozmówca'} — analiza ${d?.oznaczenie || 'DT-4'} › `),
+          h('span', { style: `color:${POSTAWA[a.postawa] || 'currentColor'}` }, a.postawa)),
+        wiersz('Sens', a.sens.join('; ') + '.'),
+        a.ustalenia?.length ? wiersz('Ustalenia (do notatnika)', h('ul', { style: 'margin:2px 0 2px 18px;padding:0' }, a.ustalenia.map((x) => h('li', x)))) : null,
+        a.miejsca?.length ? wiersz('Wskazane miejsca (namiary)', a.miejsca.join('; ')) : null,
+        wiersz('Szczerość', a.szczerosc), a.wiarygodnosc !== '—' ? wiersz('Wiarygodność', a.wiarygodnosc) : null,
+        wiersz('Wniosek', a.wniosek));
+    }
+
     function wypisz(wp, odRazu) {
+      // Analiza: blok zamiast surowego tekstu.
+      if (wp.kto === 'system' && wp.tresc.startsWith('Analiza:')) {
+        let a = null;
+        try { a = JSON.parse(wp.tresc.slice(8)); } catch { a = null; }
+        if (a) { listaR.append(analizaEl(a)); szuflada.scrollTop = szuflada.scrollHeight; return new Promise((ok) => setTimeout(ok, odRazu ? 0 : 250)); }
+      }
+      // Surowa wypowiedź rozmówcy: zwinięta (łącze przesyła interpretację, nie dźwięk).
+      if (wp.kto === 'npc') {
+        listaR.append(h('details', { style: 'margin:2px 0;opacity:.65;font-size:12px' },
+          h('summary', { style: 'cursor:pointer' }, `surowy zapis wypowiedzi ${rozmowa?.kod || 'rozmówcy'}`), h('div', { style: 'white-space:pre-wrap;margin:2px 0 0 12px' }, wp.tresc)));
+        return Promise.resolve();
+      }
       const kto = wp.kto === 'npc' ? (rozmowa?.kod || 'Rozmówca') : KTO_R[wp.kto];
       const tekst = h('span', { style: 'white-space:pre-wrap' });
       const el = h('div', { style: `margin:6px 0;${wp.kto === 'system' ? (wp.tresc.startsWith('Test:') ? `font-weight:bold;color:var(${wp.tresc.includes(' UDANY') && !wp.tresc.includes('NIEUDANY') ? '--ok' : '--zly'})` : 'opacity:.6;font-style:italic') : ''}${wp.kto === 'operator' ? 'color:var(--akcent-2)' : ''}` },
@@ -870,7 +896,7 @@ export default {
         try { localStorage.setItem('dt4-procedura', procedura); } catch (e) { /* bez pamięci przeglądarki */ }
       };
       wyczysc(rozmowaBox).append(panel(`ROZMOWA · ${rozmowa.rozmowca} · ${lokalTxt(rozmowa.pokoj)}`,
-        h('p.maly-tekst', 'Zapis tekstowy — droidy śledcze nie mają modułu głosu.'),
+        h('p.maly-tekst', 'Zapis analityczny DT-4 — łącze przesyła interpretację rozmowy, nie dźwięk (tanie droidy śledcze nie mają modułu głosu). Surowe wypowiedzi są zwinięte.'),
         listaR,
         h('p.maly-tekst', status),
         zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
@@ -895,7 +921,8 @@ export default {
         pisze = false;
         pokazRozmowe(r.rozmowa);
         // Nowe namiary od rozmówcy: odśwież skan, żeby pojawiły się w polu wyboru celu.
-        const namiaryTeraz = (r.rozmowa.wpisy || []).slice(-3).some((x) => x.kto === 'system' && x.tresc.startsWith('Namiary zapisane'));
+        const namiaryTeraz = (r.rozmowa.wpisy || []).slice(-4).some((x) => x.kto === 'system'
+          && (x.tresc.startsWith('Namiary zapisane') || (x.tresc.startsWith('Analiza:') && (x.tresc.includes('"miejsca":["') || x.tresc.includes('"ustalenia":["')))));
         if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); } else if (namiaryTeraz) skanuj();
       } catch (e) {
         // Błąd tury (np. to samo pytanie drugi raz) — w panelu rozmowy, a polecenie wraca do pola.

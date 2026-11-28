@@ -160,6 +160,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    „podsłuchane”, raz na 10 min) i Konfrontacja w rozmowie (podejście z tropem z notatnika: Intelekt + Czujność
    przeciw Woli i Opanowaniu, wiarygodny trop ułatwia). Winda: po wyjściu z windy skan pokazuje piętro celu
    i marsz od windy (`sl_trasa_w_drodze`), bez „teleportu” do lokalu.
+   Rozmowa jako zapis analityczny: po każdej wypowiedzi NPC wpis „Analiza:” (JSON, `sl_analiza_wypowiedzi`): postawa,
+   sens, ustalenia (tropy), wskazane miejsca (namiary), szczerość (bierny test Intelekt + Czujność przeciw Sprytowi
+   i Oszustwu), wiarygodność, wniosek. Aplikacja pokazuje analizę, surową wypowiedź zwija.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

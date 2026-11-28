@@ -4102,6 +4102,51 @@ function sl_namiary_lista(PDO $db, array $s): array
     } catch (PDOException $e) { return []; }
 }
 
+// Co droid zrozumiał z wypowiedzi rozmówcy (to widzi gracz zamiast surowego zapisu): postawa i jej sens, nowe ustalenia
+// (tropy), wskazane miejsca (namiary), ocena szczerości (bierny test Intelekt + Czujność droida przeciw Sprytowi i Oszustwu
+// rozmówcy — udany mówi, czy rozmówca coś zataja), wiarygodność i wniosek co dalej.
+function sl_analiza_wypowiedzi(PDO $db, array $s, array $pule, array $r, ?array $m, ?array $postac, string $odp, string $nastroj,
+    array $tropy, array $namiary, bool $konczy): array
+{
+    $p = mb_strtolower($odp);
+    $odmowa = (bool) preg_match('/nie (będę|powiem)|nic ci nie powiem|spadaj|spieprzaj|zjeżdżaj|won\b|nie twoja sprawa|pilnuj swoich|nakaz/u', $p);
+    $niewie = (bool) preg_match('/nie (wiem|znam|kojarzę|pamiętam)|pierwsze słyszę|nikogo takiego/u', $p);
+    $odsyla = (bool) preg_match('/spytaj|popytaj|idź do|tam pytaj|mówią, że|ludzie gadają|weź taksówkę|wejście z poziomu/u', $p);
+    $postawa = $tropy ? 'współpracuje' : ($nastroj === 'wrogi' ? 'wrogi' : ($nastroj === 'przestraszony' ? 'przestraszony'
+        : ($odmowa ? 'odmawia' : ($nastroj === 'uprzejmy' ? 'uprzejmy' : 'zbywa'))));
+    $sens = [];
+    if ($tropy) $sens[] = 'podał konkrety';
+    if ($niewie) $sens[] = 'twierdzi, że nie wie albo nie zna osoby';
+    if ($odmowa) $sens[] = 'odmawia odpowiedzi';
+    if ($odsyla) $sens[] = 'odsyła dalej';
+    if ($nastroj === 'wrogi' && !$odmowa) $sens[] = 'okazuje wrogość';
+    if ($nastroj === 'przestraszony') $sens[] = 'jest przestraszony';
+    if (!$sens) $sens[] = 'odpowiada zdawkowo, bez treści o sprawie';
+    if ($konczy) $sens[] = 'kończy rozmowę';
+    // Szczerość: czy rozmówca wie więcej, niż powiedział.
+    $szczerosc = 'nie da się ocenić';
+    if ($m) {
+        $k = sl_karta_droida($db, (string) $s['konto_login']);
+        $nk = sl_karta_rozmowcy($pule, $s, $r, $postac, $m);
+        $test = sl_test_eote((int) ($k['cechy']['intelekt'] ?? 2), (int) ($k['umiejetnosci']['czujnosc']['ranga'] ?? 0),
+            (int) ($nk['cechy']['spryt'] ?? 2), (int) (((array) ($nk['umiejetnosci'] ?? []))['oszustwo']['ranga'] ?? 0));
+        if ($test['udana']) {
+            $q = $db->prepare("SELECT tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id WHERE r.sledztwo_id = ? AND r.kontakt = ? AND w.kto = 'npc'");
+            $q->execute([(int) $s['id'], (string) $r['kontakt']]);
+            $padlo = implode("\n", $q->fetchAll(PDO::FETCH_COLUMN));
+            $zostalo = count(array_filter(sl_fakty_rozmowcy($db, $s, $pule, $r, $m, true), fn($f) => !str_contains($padlo, $f['ja'])));
+            $szczerosc = $zostalo === 0 ? 'mówi szczerze — raczej nie wie nic więcej'
+                : ($tropy ? 'mówi prawdę, ale nie wszystko — wie więcej' : 'unika odpowiedzi — prawdopodobnie wie więcej, niż mówi');
+        }
+    }
+    $wiar = $tropy ? (['chetnie' => 'wysoka', 'niechetnie' => 'średnia', 'nie' => 'niska'][$m['chce_mowic'] ?? 'niechetnie'] ?? 'średnia') : '—';
+    $wniosek = $tropy ? 'Ustalenia zapisane w notatniku.'
+        : (str_starts_with($szczerosc, 'unika') ? 'Warto spróbować podejścia (groźba, negocjacje, konfrontacja) albo nasłuchu.'
+            : ($namiary || $odsyla ? 'Sprawdzić wskazane miejsce lub osobę.' : ($konczy ? 'Rozmowa zamknięta — spróbować z kimś innym.' : 'Zadać pytanie o konkret: kiedy, gdzie, z kim.')));
+    return ['postawa' => $postawa, 'sens' => $sens, 'ustalenia' => $tropy, 'miejsca' => $namiary, 'szczerosc' => $szczerosc,
+        'wiarygodnosc' => $wiar, 'wniosek' => $wniosek];
+}
+
 // Komunikaty dla gracza, gdy rozmowa idzie bez modułu językowego (lag, zerwanie) — po fabularnemu.
 // Techniczny powód trafia do dziennika jako wpis systemowy (widzi go MG, nie gracz).
 const SLEDZTWO_ZAKLOCENIA = [
@@ -4377,14 +4422,14 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         if ($koniecPytan) $konczy = true;
         if ($odp !== null) {
             $tropy = sl_tropy_z_wypowiedzi($db, $s, $pule, $r, $metryka, $odp, $ai && !$awaria);
-            if ($tropy) sl_wpis($db, $rid, 'system', 'Do notatnika: ' . count($tropy) . (count($tropy) === 1 ? ' nowy trop.' : ' nowe tropy.'));
+            $nowe = [];
             try {
                 $nowe = sl_namiary($db, $s, $pule, $r, $odp);
-                if ($nowe) {
-                    sl_wpis($db, $rid, 'system', 'Namiary zapisane w nawigacji: ' . implode('; ', $nowe) . '.');
-                    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Nowe namiary od rozmówcy: ' . implode('; ', $nowe) . '.');
-                }
+                if ($nowe) sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Nowe namiary od rozmówcy: ' . implode('; ', $nowe) . '.');
             } catch (PDOException $e) { /* brak migracji 091 — bez namiarów */ }
+            // Gracz widzi nie surowy zapis, tylko to, co droid z wypowiedzi zrozumiał (analiza: postawa, ustalenia, miejsca, szczerość).
+            sl_wpis($db, $rid, 'system', 'Analiza:' . json_encode(sl_analiza_wypowiedzi($db, $s, $pule, $r, $metryka, $postac, $odp, $nastroj, $tropy, $nowe, $konczy),
+                JSON_UNESCAPED_UNICODE));
         }
         if ($awaria) {
             sl_wpis($db, $rid, 'system', sl_kwestia(SLEDZTWO_ZAKLOCENIA));

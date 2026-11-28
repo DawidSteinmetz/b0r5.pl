@@ -138,7 +138,17 @@ export default {
     // Winda: droid najpierw do niej wchodzi; dopiero w środku panel boczny pokazuje listę pięter.
     const WINDA_XY = { x: -WINDA / 2, y: GLEB + KOR / 2 };
     const wWindzie = () => d && d.droid.stan !== 'w_drodze' && d.droid.pokoj === 'korytarz' && d.droid.x < 0;
+    // Etap drogi na inne piętro: 'idzie' (do windy) albo 'jedzie' (winda w ruchu); null — droid nie jedzie windą.
+    const postepDrogi = () => 1 - Math.max(0, (koniecDrogi - Date.now()) / 1000) / Math.max(1, calaDroga);
+    function jazdaWindy() {
+      if (!d || d.droid.stan !== 'w_drodze' || !d.droid.cel) return null;
+      const inne = d.droid.cel.poziom !== d.plan.poziom || d.droid.cel.budynek_id !== d.plan.budynek_id;
+      if (!inne) return null;
+      return postepDrogi() >= (d.droid.trasa?.do ?? 0) ? 'jedzie' : 'idzie';
+    }
+
     function winda() {
+      if (jazdaWindy() === 'jedzie') { zakladka = 'winda'; rysujSzuflade(); return; }
       if (wWindzie()) { zakladka = 'winda'; rysujSzuflade(); rysujGore(); return; }
       zamiar = { winda: true };
       idz(d.plan.budynek_id, d.plan.poziom, 'korytarz', WINDA_XY);
@@ -174,7 +184,8 @@ export default {
       const postep = 1 - Math.max(0, (koniecDrogi - Date.now()) / 1000) / Math.max(1, calaDroga);
       // Na tym samym piętrze droid zostaje w punkcie docelowym (nie znika przed odświeżeniem skanu);
       // na inne piętro — znika w windzie.
-      if (postep >= tr.do) { if (tr.do < 1) return null; const o = tr.punkty[tr.punkty.length - 1]; return { x: o[0], y: o[1] }; }
+      // Po dojściu: na tym samym piętrze — punkt docelowy; na inne piętro — droid stoi w windzie, dopóki jedzie.
+      if (postep >= tr.do) { if (tr.do < 1) return { ...WINDA_XY }; const o = tr.punkty[tr.punkty.length - 1]; return { x: o[0], y: o[1] }; }
       const pkt = tr.punkty;
       const dl = [0];
       for (let i = 1; i < pkt.length; i++) dl.push(dl[i - 1] + Math.hypot(pkt[i][0] - pkt[i - 1][0], pkt[i][1] - pkt[i - 1][1]));
@@ -201,6 +212,8 @@ export default {
         s('rect', { x: vb[0], y: vb[1], width: vb[2], height: vb[3], fill: 'url(#dt4-siatka)' }));
       // Klik w dowolny punkt: droid idzie dokładnie tam (drzwiami i korytarzem, nie przez ściany).
       svg.addEventListener('click', (e) => {
+        // Z jadącej windy nie da się wyjść.
+        if (jazdaWindy() === 'jedzie') { zakladka = 'winda'; rysujSzuflade(); return; }
         const p = punktSvg(svg, e);
         if (p) { zamiar = null; idz(plan.budynek_id, plan.poziom, 'korytarz', p); }
       });
@@ -269,7 +282,10 @@ export default {
           'stroke-opacity': 0.45, 'stroke-dasharray': '2 3', 'pointer-events': 'none' }));
       }
       svg.append(znacznik);
+      let etapWindy = jazdaWindy();
       const ustaw = () => {
+        const etap = jazdaWindy();
+        if (etap !== etapWindy) { etapWindy = etap; if (zakladka === 'winda') rysujSzuflade(); }
         const p = wDrodze ? polozenieWDrodze() : { x: droid.x, y: droid.y ?? GLEB + KOR / 2 };
         znacznik.style.display = p ? '' : 'none';
         if (p) znacznik.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
@@ -449,7 +465,16 @@ export default {
       // Panel windy tylko, gdy droid jest w windzie (albo do niej idzie).
       if (zakladka === 'winda' && !wWindzie() && !zamiar?.winda) { zakladka = 'skan'; szuflada.hidden = true; return; }
       const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik,
-        winda: () => (wWindzie() ? zakladkaWinda() : panel('WINDA', h('p.maly-tekst', 'Droid idzie do windy…'))) }[zakladka];
+        winda: () => {
+          if (wWindzie()) return zakladkaWinda();
+          const etap = jazdaWindy();
+          if (etap === 'jedzie') {
+            return panel(`WINDA · ${d.droid.cel.budynek || d.plan.budynek}`,
+              h('p', `Winda jedzie: poziom ${d.plan.poziom} → ${d.droid.cel.poziom}.`),
+              h('p.maly-tekst', 'Drzwi zamknięte — droid wysiądzie dopiero na wybranym poziomie. Wybór piętra i wyjście są zablokowane do zatrzymania windy.'));
+          }
+          return panel('WINDA', h('p.maly-tekst', etap === 'idzie' ? 'Droid idzie do windy…' : 'Droid idzie do windy…'));
+        } }[zakladka];
       wyczysc(szuflada).append(zamknij, tresc ? tresc() : null);
     }
 

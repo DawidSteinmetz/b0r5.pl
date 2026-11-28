@@ -1381,7 +1381,8 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
         $teraz = sl_teraz();
         // Nowy rozkaz w drodze: droid rusza z miejsca, w którym właśnie jest (punkt na trasie, w windzie — przy windzie).
         if ($d['stan'] === 'w_drodze') {
-            [$sb, $sp, $start, $planStart] = sl_pozycja_w_drodze($db, $s, $d, $pule, $budynki);
+            [$sb, $sp, $start, $planStart, $wWindzie] = array_pad(sl_pozycja_w_drodze($db, $s, $d, $pule, $budynki), 5, false);
+            if ($wWindzie) throw new SledztwoBlad('Droid jedzie windą — drzwi otworzą się dopiero na wybranym poziomie.');
         } else {
             $sb = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
             $sp = (int) $d['poziom'];
@@ -1501,7 +1502,7 @@ function sl_pozycja_w_drodze(PDO $db, array $s, array $d, array $pule, array $bu
     if ($minelo < $s1) return [$b0, $p0, sl_punkt_na_trasie($plan0, $t1['punkty'], $minelo / max(1, $s1)), $plan0];
     $wysiada = max($s1, $calosc - $s2);
     if ($minelo < $wysiada) {
-        return ($minelo - $s1) * 2 < ($wysiada - $s1) ? [$b0, $p0, $winda, $plan0] : [$b1, $p1, $winda, $plan1];
+        return ($minelo - $s1) * 2 < ($wysiada - $s1) ? [$b0, $p0, $winda, $plan0, true] : [$b1, $p1, $winda, $plan1, true];
     }
     return [$b1, $p1, sl_punkt_na_trasie($plan1, $t2['punkty'], ($minelo - $wysiada) / max(1, $s2)), $plan1];
 }

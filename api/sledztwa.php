@@ -3438,9 +3438,16 @@ function sl_formularz_rozwiazania(PDO $db, array $s, array $tropy): array
     foreach (sl_namiary_lista($db, $s) as $n) $dodaj($n['lokalizacja_id'], $n['poziom'], $n['pokoj'], $n['nazwa']);
     foreach ($tropy as $x) $dodaj($x['lokalizacja_id'] !== null ? (int) $x['lokalizacja_id'] : null, $x['poziom'], $x['pokoj'], '');
     // Osoby: osoba ze sprawy i zgłaszający zawsze; reszta, gdy droid z nią rozmawiał albo pada w tropach / teczce.
-    $q = $db->prepare('SELECT p.id, p.kod, p.imie, p.nazwisko, (SELECT COUNT(*) FROM sledztwo_metryki m WHERE m.postac_id = p.id) AS rozmowy
-        FROM sledztwo_postacie p WHERE p.sledztwo_id = ? AND p.kod IS NOT NULL ORDER BY p.id');
-    try { $q->execute([(int) $s['id']]); $postacie = $q->fetchAll(); } catch (PDOException $e) { $postacie = []; }
+    try {
+        $q = $db->prepare('SELECT p.id, p.kod, p.imie, p.nazwisko, (SELECT COUNT(*) FROM sledztwo_metryki m WHERE m.postac_id = p.id) AS rozmowy
+            FROM sledztwo_postacie p WHERE p.sledztwo_id = ? AND p.kod IS NOT NULL ORDER BY p.id');
+        $q->execute([(int) $s['id']]);
+        $postacie = $q->fetchAll();
+    } catch (PDOException $e) {
+        $q = $db->prepare('SELECT id, kod, imie, nazwisko, 0 AS rozmowy FROM sledztwo_postacie WHERE sledztwo_id = ? AND kod IS NOT NULL ORDER BY id');
+        $q->execute([(int) $s['id']]);
+        $postacie = $q->fetchAll();
+    }
     $wszystkie = implode("\n", array_column($tropy, 'tresc'));
     $osoby = [];
     foreach ($postacie as $p) {

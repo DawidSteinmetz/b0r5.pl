@@ -781,6 +781,15 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
   wpis w katalogu MG z polami `mapa` i ewentualnie `widoczna_dla`.
 - Mapa nie zmienia zasad skoku: Nawigacja dalej porównuje współrzędne z polem `wspolrzedne`
   w katalogu.
+- **Siatka kwadratów** (28.11.2026) jak na mapie wzorcowej: kolumny literami z zachodu na wschód, wiersze numerami
+  z północy na południe, kwadrat 1490 pc (≈ 5000 lś), kolumna L od x = −20, wiersz 9 od y = −170 — Coruscant L-9,
+  Tatooine R-16, Kessel T-10, Hoth K-18 (`kwadrat()` w `js/aplikacje/mapa.js`). Kwadrat widać przy kursorze, w karcie
+  planety i pod skalą („jestem w kwadracie …”). Poza układem prawe przyciski doku: najbliższy układ, sektor, mój
+  kwadrat, kwadrat z sąsiednimi. Migracja 097 dodała brakujące planety z mapy wzorcowej i poprawiła położenie
+  źle wstawionych (raport: `archiwum/RAPORT_MAPA_WZORCOWA_KWADRATY_2026-11-28.md`).
+- **Planety zapieczętowane** — tabela `mapa_planety_ukryte` (kolumna `kategoria`, na razie `zapieczetowana`): nie
+  czyta jej żadne zapytanie gry ani panelu MG. Wiersze są w prywatnej paczce `archiwum/sql/` (poza gitem),
+  odsłonięcie to przeniesienie do `mapa_planety`. Kategorie mają w przyszłości obsłużyć m.in. wiedzę z kartridży.
 
 ## Widok z planety, start i skok
 
@@ -1035,10 +1044,10 @@ Aplikacja „Karta postaci” (pierwsza na pulpicie). Wszystko oprócz notatnika
 
 ## PD od MG; lądowanie promu
 
-- **Generator postaci → Doświadczenie**: MG dodaje (albo odejmuje) PD zdobyte w grze; przy wybranej karcie zapis od razu.
+- **Generator postaci → Doświadczenie**: MG dodaje (albo odejmuje) PD zdobyte w grze; przy wybranej karcie zapis od razu.
   Widać PD zdobyte, razem ze startowymi, do wydania i stopień. PD z inspekcji trafiają do karty EotE (także w SQL).
-- **Prom z hangaru**: rozkazuje mu dowódca floty okrętu macierzystego, kapitan tego okrętu albo konto z dostępem do promu
-  lub okrętu (wcześniej tylko dowódca floty, w której prom musiał być). Lista lądowisk obejmuje też lądowiska znane
+- **Prom z hangaru**: rozkazuje mu dowódca floty okrętu macierzystego, kapitan tego okrętu albo konto z dostępem do promu
+  lub okrętu (wcześniej tylko dowódca floty, w której prom musiał być). Lista lądowisk obejmuje też lądowiska znane
   z karty postaci (konta graczy mają tekstowe id, więc samo `znane_lokacje` ich nie obejmowało).
 - Panel MG → Floty: przy każdej jednostce **Może lądować: Tak/Nie** (zapis z profilem napędu; serwer pilnuje flagi).
 

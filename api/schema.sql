@@ -2,7 +2,7 @@
 -- PLIK WYNIKOWY: nie edytuj. Zmiany schematu dopisuj jako nową migrację w api/migracje/
 -- i przebuduj: node narzedzia/sql/zbuduj.js
 -- Działającą bazę aktualizuj pojedynczymi migracjami, nie tym plikiem.
--- Zawiera migracje 001–079 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
+-- Zawiera migracje 001–097 oraz publiczną mapę (api/mapa_seed.sql) zaraz po 001.
 -- Prywatnych paczek danych (archiwum/sql/, poza gitem) tu nie ma — importuje się je osobno.
 
 -- =====================================================================
@@ -20124,4 +20124,2689 @@ WHERE p.nazwa='Galactic Center' AND p.x=0 AND p.y=-2131.4;
 
 INSERT INTO schema_migracje (wersja, opis)
 VALUES ('v079-galactic-center-czarna-dziura', 'Galactic Center jako środek gwiazd tła i czarna dziura bez planet ani księżyców')
+ON DUPLICATE KEY UPDATE opis=VALUES(opis);
+
+-- =====================================================================
+-- migracje/079_lot_reczny_mostek.sql
+-- =====================================================================
+
+-- Lot ręczny okrętu z mostka w realnej grze (narzedzia/mostek/MECHANIKA.md 11.5, api/lot_reczny.php):
+-- okrety_nastawy — nastawy pulpitów okrętu poza symulacją (wspólne dla załogi; brak wiersza = wartość domyślna,
+-- wzm_<cel> / wzo_<cel> — koniec wzmocnienia i odnowienia, czas uniksowy), okrety_lot_reczny — prędkość okrętu,
+-- prędkość i kurs zadane z konsol Silniki / Nawigacja (kurs nawigacyjny: od północy, zgodnie z zegarem) i chwila
+-- ostatniego przeliczenia ruchu. Pozycja i kurs okrętu zostają w mapa_obiekty (uklad_kx, uklad_ky, kurs_deg).
+-- Wymaga 005, 039 (napęd), migracji układów (uklad_kx) i 077.
+
+CREATE TABLE IF NOT EXISTS okrety_nastawy (
+  obiekt_id BIGINT UNSIGNED NOT NULL,
+  kod VARCHAR(24) NOT NULL,
+  wartosc DOUBLE NOT NULL,
+  PRIMARY KEY (obiekt_id, kod),
+  FOREIGN KEY (obiekt_id) REFERENCES mapa_obiekty (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS okrety_lot_reczny (
+  obiekt_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  v_kms DOUBLE NOT NULL DEFAULT 0,
+  v_cel_kms DOUBLE NOT NULL DEFAULT 0,
+  kurs_cel_deg DOUBLE NULL,
+  ostatnio_utc DATETIME NOT NULL,
+  FOREIGN KEY (obiekt_id) REFERENCES mapa_obiekty (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v079-lot-reczny-mostek', 'Lot ręczny okrętu z konsol mostka i nastawy pulpitów poza symulacją')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/080_starcia.sql
+-- =====================================================================
+
+-- Starcia w realnej grze (narzedzia/mostek/MECHANIKA.md 13, api/starcia.php): skok agresora do układu z wrogimi
+-- okrętami zatrzymuje czas w hiperprzestrzeni, strony dogadują termin walki, obrońca może uciec. starcia_skoki —
+-- zatrzymane skoki (obiekt_id 0: cały rozkaz) z pierwotnym czasem wyjścia; starcia_obroncy — okręty obrońcy z chwili
+-- ataku; starcia_propozycje — terminy proponowane przez strony. Wymaga 006 (skoki), 010 (mapa_bitwy).
+
+CREATE TABLE IF NOT EXISTS starcia (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  planeta_id INT UNSIGNED NOT NULL,
+  uklad_x DECIMAL(12,1) NOT NULL,
+  uklad_y DECIMAL(12,1) NOT NULL,
+  nazwa VARCHAR(160) NOT NULL,
+  status ENUM('negocjacja','umowione','bitwa','zakonczone','obronca_uciekl','anulowane') NOT NULL DEFAULT 'negocjacja',
+  agresor_frakcja VARCHAR(40) NOT NULL,
+  obronca_frakcja VARCHAR(40) NULL,
+  pauza_od_utc DATETIME NOT NULL,
+  termin_utc DATETIME NULL,
+  bitwa_id BIGINT UNSIGNED NULL,
+  zakonczono_utc DATETIME NULL,
+  utworzono TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_starcia_planeta_status (planeta_id, status),
+  FOREIGN KEY (planeta_id) REFERENCES mapa_planety (id),
+  FOREIGN KEY (bitwa_id) REFERENCES mapa_bitwy (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS starcia_uczestnicy (
+  starcie_id BIGINT UNSIGNED NOT NULL,
+  login VARCHAR(64) NOT NULL,
+  strona ENUM('agresor','obronca') NOT NULL,
+  PRIMARY KEY (starcie_id, login),
+  KEY ix_starcia_uczestnicy_login (login),
+  FOREIGN KEY (starcie_id) REFERENCES starcia (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS starcia_skoki (
+  starcie_id BIGINT UNSIGNED NOT NULL,
+  rozkaz_id BIGINT UNSIGNED NOT NULL,
+  obiekt_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  strona ENUM('agresor','obronca') NOT NULL,
+  eta_org_utc DATETIME NOT NULL,
+  PRIMARY KEY (starcie_id, rozkaz_id, obiekt_id),
+  FOREIGN KEY (starcie_id) REFERENCES starcia (id) ON DELETE CASCADE,
+  FOREIGN KEY (rozkaz_id) REFERENCES mapa_rozkazy_skokow (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS starcia_obroncy (
+  starcie_id BIGINT UNSIGNED NOT NULL,
+  obiekt_id BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (starcie_id, obiekt_id),
+  FOREIGN KEY (starcie_id) REFERENCES starcia (id) ON DELETE CASCADE,
+  FOREIGN KEY (obiekt_id) REFERENCES mapa_obiekty (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS starcia_propozycje (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  starcie_id BIGINT UNSIGNED NOT NULL,
+  login VARCHAR(64) NOT NULL,
+  strona ENUM('agresor','obronca') NOT NULL,
+  termin_utc DATETIME NOT NULL,
+  status ENUM('otwarta','przyjeta','zastapiona') NOT NULL DEFAULT 'otwarta',
+  utworzono_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY ix_starcia_propozycje (starcie_id, status),
+  FOREIGN KEY (starcie_id) REFERENCES starcia (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v080-starcia', 'Starcia: zatrzymanie czasu przy skoku agresora, dogadywanie terminu walki, ucieczka obrońcy, posiłki')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/081_skutki_bitew.sql
+-- =====================================================================
+
+-- Skutki bitew w realnej grze (narzedzia/mostek/MECHANIKA.md 13, etap 3; api/starcia.php): starcia.skutki_utc —
+-- chwila zatwierdzenia skutków przez MG; okrety_zyly — martwe żyły generatorów osłon okrętu po bitwie (bitmapa jak
+-- bitwy_zyly), wczytywane na start następnej bitwy, dopóki osłony okrętu < 100% (naprawa w stoczni przywraca 100%).
+-- Wymaga 080.
+
+ALTER TABLE starcia ADD COLUMN skutki_utc DATETIME NULL AFTER zakonczono_utc;
+
+CREATE TABLE IF NOT EXISTS okrety_zyly (
+  obiekt_id BIGINT UNSIGNED NOT NULL,
+  kod VARCHAR(20) NOT NULL,
+  liczba SMALLINT UNSIGNED NOT NULL,
+  martwe VARBINARY(1024) NOT NULL,
+  PRIMARY KEY (obiekt_id, kod),
+  FOREIGN KEY (obiekt_id) REFERENCES mapa_obiekty (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v081-skutki-bitew', 'Skutki bitew w świecie gry: kadłub, osłony, martwe żyły, maszyny, polegli piloci (po zatwierdzeniu MG)')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/082_sledztwa_schemat.sql
+-- =====================================================================
+
+-- Śledztwa droida detektywistycznego (narzedzia/sledztwa/PROJEKT.md). Każde śledztwo jest unikatem na wspólnym
+-- szkielecie 12 faz. Typ = prawdziwe zdarzenie × relacja (12 × 12 = 144); gracz zdobywa każdy typ najwyżej raz.
+-- Czynnik jawności: sprawa i każda faza są jawne albo ukryte (gracza wezwano do X, a naprawdę zaszło Y; pościg jawny
+-- = list gończy, ukryty = ciche śledzenie). Jawność zmienia zachowanie NPC.
+-- Kolejność tworzenia: (1) losowanie z bazy — imiona, nazwiska, gatunki, archetypy, karty EotE, ekwipunek, miejsca;
+-- (2) model „Autor” pisze treść do wylosowanego szkieletu; (3) w grze model „Droid” przeszukuje treść i rozmawia z NPC.
+-- Konta detektywów: sledztwo_detektywi (po loginie). Wymaga 002 (towary), 030 (lokalizacje Nar Shaddaa).
+-- Import w phpMyAdmin; ponowny import niczego nie psuje.
+
+SET NAMES utf8mb4;
+
+-- ---------------------------------------------------------------------
+-- 0. KONTA DETEKTYWÓW
+-- ---------------------------------------------------------------------
+
+-- Konto z wpisem tutaj po zalogowaniu dostaje pulpit sterowania droidem zamiast zwykłego pulpitu.
+CREATE TABLE IF NOT EXISTS sledztwo_detektywi (
+  konto_login VARCHAR(64) NOT NULL PRIMARY KEY,
+  droid_oznaczenie VARCHAR(40) NOT NULL DEFAULT 'DT-4',
+  droid_karta_eote MEDIUMTEXT NULL,               -- format jak osoby_karta_eote.dane (gatunek „droid”)
+  nadano TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 1. SŁOWNIKI FABUŁY (wspólne; MG może edytować)
+-- ---------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS sledztwo_zdarzenia (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY CHECK (id BETWEEN 1 AND 12),
+  nazwa VARCHAR(60) NOT NULL,
+  opis TEXT NULL,
+  wskazowki_autora TEXT NULL                      -- dopisek do promptu bazowego (ton, granice treści)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sledztwo_relacje (
+  id TINYINT UNSIGNED NOT NULL PRIMARY KEY CHECK (id BETWEEN 1 AND 12),
+  nazwa VARCHAR(60) NOT NULL,
+  opis TEXT NULL,
+  rola_a VARCHAR(80) NOT NULL,                    -- kim jest A (osoba, wokół której toczy się sprawa)
+  rola_b VARCHAR(80) NOT NULL                     -- kim jest B (druga strona relacji)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Szkielet 12 faz. przestawna = 1 (4–10): generator może zmienić kolejność, jeśli tagi się zgadzają.
+-- npc_jawna / npc_ukryta: jak zachowują się NPC, gdy ta faza jest jawna albo ukryta (trafia do promptów NPC).
+CREATE TABLE IF NOT EXISTS sledztwo_fazy_szablon (
+  nr TINYINT UNSIGNED NOT NULL PRIMARY KEY CHECK (nr BETWEEN 1 AND 12),
+  nazwa VARCHAR(80) NOT NULL,
+  przestawna TINYINT(1) NOT NULL DEFAULT 0,
+  npc_jawna TEXT NULL,
+  npc_ukryta TEXT NULL,
+  prompt_bazowy MEDIUMTEXT NULL                   -- drobiazgowa instrukcja dla modelu Autor
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 12 wariantów każdej fazy (rzut k12) z tagami spójności. Tag w „wymaga” musi być dany przez wcześniejszą fazę.
+CREATE TABLE IF NOT EXISTS sledztwo_warianty (
+  faza_nr TINYINT UNSIGNED NOT NULL,
+  nr TINYINT UNSIGNED NOT NULL CHECK (nr BETWEEN 1 AND 12),
+  nazwa VARCHAR(120) NOT NULL,                    -- np. „Nieudana kradzież danych kont”
+  szkic TEXT NOT NULL,                            -- 1–2 zdania z {A} {B} {Z} {S} {M} dla Autora
+  wymaga VARCHAR(255) NOT NULL DEFAULT '',        -- tagi oddzielone przecinkami
+  daje VARCHAR(255) NOT NULL DEFAULT '',
+  jawnosc ENUM('dowolna','jawna','ukryta') NOT NULL DEFAULT 'dowolna',
+  PRIMARY KEY (faza_nr, nr),
+  FOREIGN KEY (faza_nr) REFERENCES sledztwo_fazy_szablon (nr)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 2. PULE DO LOSOWANIA (krok 1: baza danych czyni śledztwo wyjątkowym)
+-- ---------------------------------------------------------------------
+
+-- Gatunki: cechy startowe jak w js/rdzen/eote.js (GATUNKI); kod zgodny z kartą EotE.
+CREATE TABLE IF NOT EXISTS gen_gatunki (
+  kod VARCHAR(30) NOT NULL PRIMARY KEY,
+  nazwa VARCHAR(60) NOT NULL,
+  krzepa TINYINT NOT NULL, zwinnosc TINYINT NOT NULL, intelekt TINYINT NOT NULL,
+  spryt TINYINT NOT NULL, wola TINYINT NOT NULL, prezencja TINYINT NOT NULL,
+  rany TINYINT NOT NULL, wysilek TINYINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Kto mieszka na planecie i jak często (waga względna).
+CREATE TABLE IF NOT EXISTS gen_populacja (
+  planeta_id INT UNSIGNED NOT NULL,
+  gatunek_kod VARCHAR(30) NOT NULL,
+  waga SMALLINT UNSIGNED NOT NULL,
+  PRIMARY KEY (planeta_id, gatunek_kod),
+  FOREIGN KEY (planeta_id) REFERENCES mapa_planety (id),
+  FOREIGN KEY (gatunek_kod) REFERENCES gen_gatunki (kod)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Imiona, nazwiska, przydomki. gatunek_kod NULL = pasuje do każdego gatunku; plec 'n' = dowolna.
+CREATE TABLE IF NOT EXISTS gen_imiona (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  gatunek_kod VARCHAR(30) NULL,
+  plec ENUM('m','k','n') NOT NULL DEFAULT 'n',
+  rodzaj ENUM('imie','nazwisko','przydomek') NOT NULL,
+  wartosc VARCHAR(60) NOT NULL,
+  UNIQUE KEY uq_gen_imiona (gatunek_kod, plec, rodzaj, wartosc),
+  FOREIGN KEY (gatunek_kod) REFERENCES gen_gatunki (kod)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Archetypy NPC: zawód + szablon EotE + typowy sprzęt + gdzie bywa.
+CREATE TABLE IF NOT EXISTS gen_archetypy (
+  kod VARCHAR(40) NOT NULL PRIMARY KEY,
+  nazwa VARCHAR(80) NOT NULL,
+  tryb ENUM('slugus','rywal','nemezis') NOT NULL DEFAULT 'rywal',
+  premie_cech VARCHAR(120) NOT NULL DEFAULT '',   -- np. 'spryt+1,intelekt+1'
+  umiejetnosci VARCHAR(255) NOT NULL DEFAULT '',  -- np. 'komputery:3,kretactwo:2'
+  bronie VARCHAR(255) NOT NULL DEFAULT '',        -- nazwy broni EotE oddzielone przecinkami
+  ekwipunek VARCHAR(500) NOT NULL DEFAULT '',     -- przedmioty osobiste (tekst, z gen_przedmioty)
+  rodzaje_miejsc VARCHAR(255) NOT NULL DEFAULT '',-- kody z gen_rodzaje_miejsc
+  waga SMALLINT UNSIGNED NOT NULL DEFAULT 10
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Cechy charakteru i sposób mówienia (losowane po 2–3 na NPC — wyróżniają postać i sterują rozmową AI).
+CREATE TABLE IF NOT EXISTS gen_charakter (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  rodzaj ENUM('cecha','nawyk','mowa') NOT NULL,
+  wartosc VARCHAR(160) NOT NULL,
+  UNIQUE KEY uq_gen_charakter (rodzaj, wartosc)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Przedmioty osobiste i dowody (mogą stać się nośnikiem śladu).
+CREATE TABLE IF NOT EXISTS gen_przedmioty (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nazwa VARCHAR(120) NOT NULL,
+  kategoria ENUM('dokument','dane','osobisty','bron','narzedzie','waluta','kontrabanda') NOT NULL,
+  wartosc_kr INT UNSIGNED NOT NULL DEFAULT 0,
+  moze_byc_sladem TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uq_gen_przedmioty (nazwa)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Rodzaje miejsc i na jakich poziomach miasta występują (miejsca fabularne i szum).
+CREATE TABLE IF NOT EXISTS gen_rodzaje_miejsc (
+  kod VARCHAR(40) NOT NULL PRIMARY KEY,
+  nazwa VARCHAR(80) NOT NULL,
+  poziom_min SMALLINT NOT NULL,
+  poziom_max SMALLINT NOT NULL,
+  waga SMALLINT UNSIGNED NOT NULL DEFAULT 10,
+  opis_szumu TEXT NULL                            -- szablon krótkiego opisu, gdy to miejsce jest szumem
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Zdawkowe kwestie pobocznych NPC (bez wywołań AI).
+CREATE TABLE IF NOT EXISTS gen_kwestie_szumu (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nastroj ENUM('uprzejmy','obojetny','wrogi','przestraszony') NOT NULL,
+  tresc VARCHAR(200) NOT NULL,
+  UNIQUE KEY uq_gen_kwestie (nastroj, tresc)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 3. INSTANCJA ŚLEDZTWA
+-- ---------------------------------------------------------------------
+
+-- Jeden wiersz na (konto, typ). Typ liczony po PRAWDZIWYM zdarzeniu. zdarzenie_zgloszone_id: z czym gracza
+-- wezwano (NULL = sprawa jawna, zgłoszenie zgodne z prawdą). Porzucone → MG; po uzasadnieniu i zgodzie MG wraca.
+CREATE TABLE IF NOT EXISTS sledztwa (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  konto_login VARCHAR(64) NOT NULL,
+  zdarzenie_id TINYINT UNSIGNED NOT NULL,
+  relacja_id TINYINT UNSIGNED NOT NULL,
+  zdarzenie_zgloszone_id TINYINT UNSIGNED NULL,
+  ukrywa_kod VARCHAR(8) NULL,                     -- kto ukrywa prawdę (A, B, Z…), gdy sprawa ukryta
+  seed INT UNSIGNED NOT NULL,
+  stan ENUM('losowanie','pisanie','trwa','porzucone','wznowienie_prosba','rozwiazane','blad') NOT NULL DEFAULT 'losowanie',
+  kolejnosc VARCHAR(60) NOT NULL DEFAULT '',      -- np. '1,2,3,6,4,5,7,9,8,10,11,12'
+  tytul VARCHAR(160) NULL,
+  zaczyn MEDIUMTEXT NULL,                         -- duży wstęp fabularno-pomocniczy na start
+  planeta_id INT UNSIGNED NULL,
+  skupisko_id BIGINT UNSIGNED NULL,               -- kompleks z lokalizacje, w którym toczy się sprawa
+  rozwiazanie_gracza TEXT NULL,
+  ocena TINYINT UNSIGNED NULL,                    -- 0–100: ile prawdy gracz odtworzył
+  uzasadnienie_wznowienia TEXT NULL,
+  decyzja_mg TEXT NULL,
+  utworzono_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  zakonczono_utc DATETIME NULL,
+  UNIQUE KEY uq_sledztwa_typ (konto_login, zdarzenie_id, relacja_id),
+  KEY ix_sledztwa_stan (stan),
+  FOREIGN KEY (konto_login) REFERENCES sledztwo_detektywi (konto_login),
+  FOREIGN KEY (zdarzenie_id) REFERENCES sledztwo_zdarzenia (id),
+  FOREIGN KEY (relacja_id) REFERENCES sledztwo_relacje (id),
+  FOREIGN KEY (zdarzenie_zgloszone_id) REFERENCES sledztwo_zdarzenia (id),
+  FOREIGN KEY (planeta_id) REFERENCES mapa_planety (id),
+  FOREIGN KEY (skupisko_id) REFERENCES lokalizacje (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Fazy 1–7: ukryta prawda; 8–12: przebieg. tresc pisze Autor (NULL do czasu kroku 2).
+CREATE TABLE IF NOT EXISTS sledztwo_fazy (
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  faza_nr TINYINT UNSIGNED NOT NULL,
+  pozycja TINYINT UNSIGNED NOT NULL,
+  wariant_nr TINYINT UNSIGNED NOT NULL,
+  jawnosc ENUM('jawna','ukryta') NOT NULL,
+  tagi VARCHAR(500) NOT NULL DEFAULT '',          -- stan tagów po tej fazie
+  tresc MEDIUMTEXT NULL,
+  PRIMARY KEY (sledztwo_id, faza_nr),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (faza_nr, wariant_nr) REFERENCES sledztwo_warianty (faza_nr, nr)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Miejsca fabularne: budynek w skupisku + poziom + pokój. Reszta to szum.
+CREATE TABLE IF NOT EXISTS sledztwo_miejsca (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  faza_nr TINYINT UNSIGNED NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  rodzaj_kod VARCHAR(40) NOT NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  nazwa VARCHAR(160) NOT NULL,                    -- losowana z bazy (krok 1)
+  opis MEDIUMTEXT NULL,                           -- Autor (krok 2)
+  plan_json MEDIUMTEXT NULL,                      -- rzut dla skanu: pokoje, drzwi, terminale
+  zamkniete TINYINT(1) NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_sledztwo_miejsca (sledztwo_id, lokalizacja_id, poziom, pokoj),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (lokalizacja_id) REFERENCES lokalizacje (id),
+  FOREIGN KEY (rodzaj_kod) REFERENCES gen_rodzaje_miejsc (kod)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- NPC. Krok 1 losuje: imię, nazwisko, przydomek, gatunek, płeć, wiek, archetyp, charakter, kartę EotE, ekwipunek.
+-- Krok 2 (tylko kluczowi): historia, wiedza, sekrety. Poboczni: bez AI.
+CREATE TABLE IF NOT EXISTS sledztwo_postacie (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  kod VARCHAR(8) NULL,                            -- A, B, Z (zleceniodawca), S (śledzący), W (świadek)…
+  waga ENUM('kluczowy','poboczny') NOT NULL DEFAULT 'kluczowy',
+  imie VARCHAR(60) NOT NULL,
+  nazwisko VARCHAR(60) NULL,
+  przydomek VARCHAR(60) NULL,
+  gatunek_kod VARCHAR(30) NOT NULL,
+  plec ENUM('m','k','n') NOT NULL,
+  wiek SMALLINT UNSIGNED NULL,
+  archetyp_kod VARCHAR(40) NULL,
+  charakter VARCHAR(500) NOT NULL DEFAULT '',     -- wylosowane cechy, nawyki, sposób mówienia
+  karta_eote MEDIUMTEXT NULL,                     -- format jak osoby_karta_eote.dane
+  ekwipunek VARCHAR(500) NOT NULL DEFAULT '',
+  kredyty INT UNSIGNED NOT NULL DEFAULT 0,
+  miejsce_id BIGINT UNSIGNED NULL,
+  historia MEDIUMTEXT NULL,
+  wiedza MEDIUMTEXT NULL,                         -- co wie, przy jakiej jawności powie, kiedy kłamie
+  KEY ix_sledztwo_postacie (sledztwo_id, kod),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (gatunek_kod) REFERENCES gen_gatunki (kod),
+  FOREIGN KEY (archetyp_kod) REFERENCES gen_archetypy (kod),
+  FOREIGN KEY (miejsce_id) REFERENCES sledztwo_miejsca (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Ślady: fakt + ukryte słowa kluczowe. Serwer uznaje ślad, gdy to, co droid wyłapał, trafia w słowa kluczowe.
+CREATE TABLE IF NOT EXISTS sledztwo_slady (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  faza_nr TINYINT UNSIGNED NOT NULL,
+  rodzaj ENUM('rozmowa','terminal','skan','przedmiot','zapis','obserwacja') NOT NULL,
+  miejsce_id BIGINT UNSIGNED NULL,
+  postac_id BIGINT UNSIGNED NULL,
+  przedmiot_id INT UNSIGNED NULL,
+  fakt TEXT NOT NULL,
+  nosnik MEDIUMTEXT NULL,                         -- surowa treść do przeszukania (log, notatka, wypowiedź)
+  slowa_kluczowe VARCHAR(1000) NOT NULL,          -- oddzielone przecinkami
+  falszywy TINYINT(1) NOT NULL DEFAULT 0,
+  odkryty_utc DATETIME NULL,
+  KEY ix_sledztwo_slady (sledztwo_id, odkryty_utc),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (miejsce_id) REFERENCES sledztwo_miejsca (id) ON DELETE SET NULL,
+  FOREIGN KEY (postac_id) REFERENCES sledztwo_postacie (id) ON DELETE SET NULL,
+  FOREIGN KEY (przedmiot_id) REFERENCES gen_przedmioty (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 4. DROID I PRZEBIEG
+-- ---------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS sledztwo_droid (
+  sledztwo_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL DEFAULT 'korytarz',
+  cel_lokalizacja_id BIGINT UNSIGNED NULL,
+  cel_poziom SMALLINT NULL,
+  cel_pokoj VARCHAR(12) NULL,
+  wyruszyl_utc DATETIME NULL,
+  dotrze_utc DATETIME NULL,
+  stan ENUM('czeka','w_drodze','rozmowa','skan','dekodowanie','uszkodzony') NOT NULL DEFAULT 'czeka',
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (lokalizacja_id) REFERENCES lokalizacje (id),
+  FOREIGN KEY (cel_lokalizacja_id) REFERENCES lokalizacje (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Odwiedzone miejsca z szumu (żeby przy powrocie wyglądały tak samo).
+CREATE TABLE IF NOT EXISTS sledztwo_szum (
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  lokalizacja_id BIGINT UNSIGNED NOT NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  rodzaj_kod VARCHAR(40) NOT NULL,
+  opis TEXT NOT NULL,
+  PRIMARY KEY (sledztwo_id, lokalizacja_id, poziom, pokoj),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sledztwo_dziennik (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  kiedy_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  rodzaj ENUM('meldunek','rozmowa','polecenie','koncentrat','system') NOT NULL,
+  kto VARCHAR(20) NOT NULL,                       -- droid, gracz, npc:<id>, system
+  tresc MEDIUMTEXT NOT NULL,
+  slad_id BIGINT UNSIGNED NULL,
+  KEY ix_sledztwo_dziennik (sledztwo_id, id),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (slad_id) REFERENCES sledztwo_slady (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 5. DANE STARTOWE (robocze — do akceptacji i rozbudowy)
+-- ---------------------------------------------------------------------
+
+INSERT INTO sledztwo_zdarzenia (id, nazwa, wskazowki_autora) VALUES
+(1,'Rozstanie',NULL),(2,'Morderstwo',NULL),(3,'Porwanie',NULL),
+(4,'Gwałt','Czyn wyłącznie poza kadrem, bez opisów przebiegu. Liczą się konsekwencje, motywy, ślady i zachowanie ludzi.'),
+(5,'Kradzież',NULL),(6,'Szantaż',NULL),(7,'Zdrada / donos',NULL),(8,'Oszustwo',NULL),
+(9,'Nieudany przemyt',NULL),(10,'Dług',NULL),(11,'Zemsta',NULL),(12,'Zaginięcie bez śladu',NULL)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO sledztwo_relacje (id, nazwa, rola_a, rola_b) VALUES
+(1,'Para','partner(ka)','partner(ka)'),(2,'Wspólnicy','wspólnik','wspólnik'),
+(3,'W firmie','pracownik','przełożony'),(4,'Szpiedzy','agent','oficer prowadzący'),
+(5,'Rodzic i dziecko','dziecko','rodzic'),(6,'Rodzeństwo','rodzeństwo','rodzeństwo'),
+(7,'Mistrz i uczeń','uczeń','mistrz'),(8,'Załoga statku','członek załogi','kapitan'),
+(9,'Gang','członek gangu','herszt'),(10,'Sąsiedzi','sąsiad','sąsiad'),
+(11,'Dawni towarzysze broni','weteran','weteran'),(12,'Klient i usługodawca','usługodawca','klient')
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO sledztwo_fazy_szablon (nr, nazwa, przestawna, npc_jawna, npc_ukryta) VALUES
+(1,'Zawiązanie',0,
+ 'Wydarzenie znane otoczeniu: sąsiedzi, bywalcy, współpracownicy mówią o nim chętnie, plotkują, przesadzają.',
+ 'O wydarzeniu wiedzą tylko jego uczestnicy. Inni widzieli najwyżej drobne objawy i nie łączą ich ze sprawą.'),
+(2,'Powód śledztwa',0,
+ 'Zgłoszenie odpowiada prawdzie; zgłaszający współpracuje.',
+ 'Zgłoszenie jest zasłoną: zgłaszający albo ofiara ukrywa prawdziwe zdarzenie; mówi zgodnie z wersją zgłoszenia, unika szczegółów.'),
+(3,'Przedsięwzięcie i jego wynik',0,
+ 'Skutki przedsięwzięcia są widoczne (alarm, zgłoszenie straty, plotka w półświatku).',
+ 'Przedsięwzięcie nie zostawiło publicznych śladów; wiedzą tylko wspólnicy i poszkodowany, który milczy.'),
+(4,'Presja z zewnątrz',1,
+ 'Zleceniodawca / wierzyciel działa otwarcie: groźby, wyznaczona nagroda, ludzie pytają o uciekinierów.',
+ 'Presja jest cicha: pojedyncze wiadomości, wizyty nocą; świadkowie boją się mówić i zaprzeczają.'),
+(5,'Zasoby',1,
+ 'Kłopoty finansowe widać: zastawy w lombardzie, długi w kantynie, sprzedany sprzęt.',
+ 'Kłopoty skrywane: drobne kradzieże, pożyczki pod fałszywym imieniem, zmiana nawyków.'),
+(6,'Pościg',1,
+ 'Jawny: list gończy, nagroda, łowcy pytają otwarcie; NPC znają twarze ściganych z holonetu.',
+ 'Ukryty: ktoś cicho idzie po tropach; NPC zauważyli tylko „kogoś, kto już o to pytał”.'),
+(7,'Kryjówka i motyw',1,
+ 'Miejsce pobytu zna kilka osób; da się je kupić lub wymusić.',
+ 'Miejsce zna jedna osoba albo nikt; dojście tylko przez ślady.'),
+(8,'Fałszywy trop',1,
+ 'Fałszywa wersja krąży publicznie (plotka, oficjalny komunikat).',
+ 'Fałszywy trop jest podrzucony celowo; zostawiający go NPC kłamie spójnie.'),
+(9,'Świadek',1,
+ 'Świadek mówi, ale chce zapłaty albo przysługi.',
+ 'Świadek się ukrywa albo nie wie, że jest świadkiem; trzeba go znaleźć i skojarzyć.'),
+(10,'Przeszkoda',1,
+ 'Przeszkoda oficjalna: blokada urzędowa, zamknięty sektor, straż.',
+ 'Przeszkoda ukryta: zatarte logi, podmieniony zapis, przekupiony urzędnik.'),
+(11,'Wyścig',0,
+ 'Konkurencja działa głośno; jej ruchy widać na ulicy.',
+ 'Konkurencja działa po cichu; o jej postępie świadczą tylko zniknięcia i zmiany.'),
+(12,'Finał',0,
+ 'Rozwiązanie będzie publiczne; wybór gracza ma skutki znane wszystkim.',
+ 'Rozwiązanie zna tylko gracz; może je ujawnić, sprzedać albo zachować.')
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), przestawna = VALUES(przestawna),
+  npc_jawna = VALUES(npc_jawna), npc_ukryta = VALUES(npc_ukryta);
+
+INSERT INTO gen_gatunki (kod, nazwa, krzepa, zwinnosc, intelekt, spryt, wola, prezencja, rany, wysilek) VALUES
+('czlowiek','Człowiek',2,2,2,2,2,2,10,10),('bothanin','Bothanin',1,2,2,3,2,2,10,11),
+('droid','Droid',1,1,1,1,1,1,10,10),('gand','Gand',2,2,2,2,3,1,10,10),
+('rodianin','Rodianin',2,3,2,2,1,2,10,10),('trandoshanin','Trandoshanin',3,1,2,2,2,2,12,9),
+('twilek','Twi''lek',1,2,2,2,2,3,10,11),('wookiee','Wookiee',3,2,2,2,1,2,14,8)
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa);
+
+SET @ns := (SELECT id FROM mapa_planety WHERE nazwa = 'Nar Shaddaa' LIMIT 1);
+INSERT INTO gen_populacja (planeta_id, gatunek_kod, waga)
+SELECT @ns, k, w FROM (SELECT 'czlowiek' k, 40 w UNION ALL SELECT 'twilek',14 UNION ALL SELECT 'rodianin',12
+  UNION ALL SELECT 'bothanin',6 UNION ALL SELECT 'trandoshanin',6 UNION ALL SELECT 'gand',3
+  UNION ALL SELECT 'wookiee',3 UNION ALL SELECT 'droid',8) t
+WHERE @ns IS NOT NULL
+ON DUPLICATE KEY UPDATE waga = VALUES(waga);
+
+INSERT IGNORE INTO gen_imiona (gatunek_kod, plec, rodzaj, wartosc) VALUES
+('czlowiek','m','imie','Dorran'),('czlowiek','m','imie','Kael'),('czlowiek','m','imie','Torvin'),('czlowiek','m','imie','Brask'),
+('czlowiek','k','imie','Lysa'),('czlowiek','k','imie','Mira'),('czlowiek','k','imie','Jessa'),('czlowiek','k','imie','Talia'),
+('czlowiek','n','nazwisko','Vell'),('czlowiek','n','nazwisko','Orrin'),('czlowiek','n','nazwisko','Daskar'),('czlowiek','n','nazwisko','Fenn'),
+('twilek','m','imie','Bib'),('twilek','m','imie','Numa''tor'),('twilek','k','imie','Lyn''ra'),('twilek','k','imie','Seela'),
+('rodianin','m','imie','Greeto'),('rodianin','m','imie','Navik'),('rodianin','k','imie','Tsela'),('rodianin','n','nazwisko','Dhuka'),
+('bothanin','m','imie','Borsk'),('bothanin','k','imie','Asyr'),('bothanin','n','nazwisko','Fey''lya'),
+('trandoshanin','m','imie','Ssorak'),('trandoshanin','k','imie','Kessa'),('wookiee','m','imie','Grrakka'),('wookiee','k','imie','Malla''ra'),
+('gand','n','imie','Zuckss-ka'),('droid','n','imie','RX-7'),('droid','n','imie','4-LOM-B');
+
+-- Przydomki dla wszystkich gatunków (gatunek NULL; UNIQUE nie łapie NULL, więc sprawdzenie ręczne).
+INSERT INTO gen_imiona (gatunek_kod, plec, rodzaj, wartosc)
+SELECT NULL, 'n', 'przydomek', t.w FROM (SELECT 'Szczur' w UNION ALL SELECT 'Cichy' UNION ALL SELECT 'Rękawica'
+  UNION ALL SELECT 'Kostka') t
+WHERE NOT EXISTS (SELECT 1 FROM gen_imiona g WHERE g.gatunek_kod IS NULL AND g.rodzaj = 'przydomek' AND g.wartosc = t.w);
+
+INSERT INTO gen_archetypy (kod, nazwa, tryb, premie_cech, umiejetnosci, bronie, ekwipunek, rodzaje_miejsc, waga) VALUES
+('slicer','Slicer','rywal','intelekt+1','komputery:3,kretactwo:2,ulica:1','Pistolet blasterowy (lekki)','datapad,kostka danych z kluczami','nora_slicera,kantyna',8),
+('barman','Barman','slugus','','urok:1,percepcja:1,ulica:2','','szmata,notes długów','kantyna,kasyno',10),
+('ochroniarz','Ochroniarz','rywal','krzepa+1','bijatyka:2,bron_lekka:2,czujnosc:1','Pistolet blasterowy,Pałka','komunikator,karta dostępu','kasyno,hangar,ladowisko',10),
+('krupier','Krupier','slugus','prezencja+1','oszustwo:2,percepcja:2','','żetony,klucz do kasy','kasyno',6),
+('mechanik','Mechanik portowy','slugus','','mechanika:3,pilotaz_plan:1','Klucz hydrauliczny','zestaw narzędzi,log napraw','hangar,ladowisko',10),
+('informator','Informator','rywal','spryt+1','ulica:3,oszustwo:2,czujnosc:1','Nóż wibracyjny','kredyty w drobnych,lista kontaktów','kantyna,targ,nora_slicera',8),
+('lowca','Łowca nagród','nemezis','zwinnosc+1','bron_ciezka:3,percepcja:2,ulica:2,czujnosc:2','Karabin blasterowy,Wibronóż','list gończy,kajdany,namierzacz','kantyna,ladowisko',4),
+('kurier','Kurier','slugus','zwinnosc+1','atletyka:2,koordynacja:1','','paczka,bilet przejazdu','targ,ladowisko',8),
+('handlarz','Handlarz','rywal','prezencja+1','negocjacje:3,ulica:1','Pistolet kieszonkowy','księga rachunkowa,kredyty','sklep,targ',10),
+('straznik','Strażnik portowy','slugus','','dyscyplina:1,bron_lekka:1,czujnosc:1','Pistolet blasterowy','identyfikator,rejestr wejść','ladowisko,biuro',8)
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa);
+
+INSERT IGNORE INTO gen_charakter (rodzaj, wartosc) VALUES
+('cecha','nieufny wobec droidów'),('cecha','gadatliwy'),('cecha','chciwy'),('cecha','lojalny do bólu'),('cecha','tchórzliwy'),('cecha','pedantyczny'),
+('nawyk','bawi się żetonem'),('nawyk','co chwilę zerka na drzwi'),('nawyk','pije za dużo'),('nawyk','liczy wszystko na głos'),
+('mowa','krótkie zdania, bez uprzejmości'),('mowa','wtrąca huttese'),('mowa','mówi o sobie w trzeciej osobie'),('mowa','odpowiada pytaniem na pytanie');
+
+INSERT IGNORE INTO gen_przedmioty (nazwa, kategoria, wartosc_kr, moze_byc_sladem) VALUES
+('Kostka danych','dane',20,1),('Datapad z zablokowanym ekranem','dane',150,1),('Bilet na prom orbitalny','dokument',60,1),
+('Kwit lombardowy','dokument',0,1),('Żeton kasyna','waluta',10,1),('Holozdjęcie','osobisty',5,1),('Klucz do pokoju hotelowego','osobisty',0,1),
+('Fałszywy identyfikator','dokument',500,1),('Pakunek przyprawy','kontrabanda',300,1),('Nadajnik lokalizacyjny','narzedzie',120,1);
+
+INSERT INTO gen_rodzaje_miejsc (kod, nazwa, poziom_min, poziom_max, waga, opis_szumu) VALUES
+('ladowisko','Lądowisko',40,120,4,'Platforma lądowania; kilka frachtowców, droid paliwowy, nikt nie zwraca uwagi.'),
+('hangar','Hangar',20,100,6,'Hangar z rozebranym statkiem; mechanicy zajęci swoim.'),
+('sklep','Sklep',10,100,14,'Mały sklep; sprzedawca nudzi się za ladą.'),
+('targ','Targ',5,60,8,'Gwar straganów; wszyscy coś sprzedają, nikt nic nie widział.'),
+('kantyna','Kantyna',5,100,12,'Zadymiona kantyna; muzyka, hazard przy stolikach.'),
+('kasyno','Kasyno',30,120,5,'Sala gier; ochrona przygląda się droidowi.'),
+('hotel','Hotel',20,120,6,'Korytarz z ponumerowanymi drzwiami; recepcja automatyczna.'),
+('mieszkanie','Mieszkanie',1,90,20,'Prywatny lokal; drzwi zamknięte, ktoś słucha holonetu.'),
+('biuro','Biuro',30,120,6,'Biuro z droidem recepcyjnym; „proszę umówić termin”.'),
+('magazyn','Magazyn',1,40,8,'Skrzynie, kurz, droid ładunkowy.'),
+('nora_slicera','Nora slicera',1,25,4,'Ciasne pomieszczenie pełne kabli; nikogo, kto by się przyznał.'),
+('korytarz','Korytarz techniczny',1,120,10,'Pusty korytarz; rury, kapiący kondensat.')
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa);
+
+INSERT IGNORE INTO gen_kwestie_szumu (nastroj, tresc) VALUES
+('uprzejmy','Dzień dobry.'),('uprzejmy','Nie wiem, jak mogę pomóc.'),('uprzejmy','Przykro mi, nikogo takiego nie znam.'),
+('obojetny','Nie widziałem.'),('obojetny','Nie mój interes.'),('obojetny','Pytaj kogoś innego.'),
+('wrogi','Zjeżdżaj, puszko.'),('wrogi','Droidy tu nie wchodzą.'),
+('przestraszony','Ja… nic nie wiem, naprawdę.'),('przestraszony','Proszę, idź sobie.');
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v082-sledztwa', 'Śledztwa droida: detektywi, typy 12×12, jawność, pule losowania, fazy, miejsca, NPC, ślady, droid')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/083_ai_szablony.sql
+-- =====================================================================
+
+-- Moduł AI (api/ai.php): szablony promptów i rejestr wywołań. Każdy prompt jest napisany na sztywno i bardzo
+-- szczegółowo; w pola {{nazwa.pola}} serwer wstawia wyłącznie dane z bazy (losowanie śledztwa). Brak choćby jednego
+-- pola = zapytanie nie wychodzi. Odpowiedź modelu to zawsze JSON, sprawdzany wg schemat_wyjscia:
+--   pole:tekst            — niepusty tekst
+--   pole:a|b|c            — jedna z wartości
+--   pole:bool             — true / false
+--   pole:lista            — tablica tekstów
+-- Klucze i adresy dostawców: api/konfiguracja-ai.php (poza repo). Wymaga 082 (sledztwa).
+-- Import w phpMyAdmin; ponowny import aktualizuje treść szablonów (podbija wersję tylko przy zmianie).
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ai_szablony (
+  kod VARCHAR(40) NOT NULL PRIMARY KEY,
+  opis VARCHAR(255) NOT NULL,
+  system_prompt MEDIUMTEXT NOT NULL,
+  uzytkownik_prompt MEDIUMTEXT NOT NULL,
+  schemat_wyjscia VARCHAR(500) NOT NULL,
+  temperatura DECIMAL(3,2) NOT NULL DEFAULT 0.70,
+  max_tokeny SMALLINT UNSIGNED NOT NULL DEFAULT 400,
+  wersja INT UNSIGNED NOT NULL DEFAULT 1,
+  zmieniono TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ai_wywolania (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  kiedy_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  szablon_kod VARCHAR(40) NOT NULL,
+  szablon_wersja INT UNSIGNED NOT NULL,
+  sledztwo_id BIGINT UNSIGNED NULL,
+  dostawca VARCHAR(40) NULL,
+  model VARCHAR(120) NULL,
+  proby TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  tokeny_we INT UNSIGNED NULL,
+  tokeny_wy INT UNSIGNED NULL,
+  czas_ms INT UNSIGNED NULL,
+  ok TINYINT(1) NOT NULL DEFAULT 0,
+  blad VARCHAR(500) NULL,
+  KEY ix_ai_wywolania_dzien (kiedy_utc),
+  KEY ix_ai_wywolania_sledztwo (sledztwo_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Szablon 1: wypowiedź kluczowego NPC w rozmowie z droidem
+-- ---------------------------------------------------------------------
+
+SET @sys := 'Grasz jedną postać niezależną w grze fabularnej osadzonej w uniwersum Gwiezdnych Wojen, w roku 3 BBY
+(Imperium rządzi Galaktyką, Rebelia dopiero się formuje). Akcja dzieje się na Nar Shaddaa — księżycu przemytników,
+pionowym mieście z setkami poziomów, rządzonym przez Huttów. Rozmawiasz z droidem śledczym, którym steruje gracz.
+
+TWOJA POSTAĆ
+- Nazywasz się: {{npc.pelne_imie}}.
+- Gatunek: {{npc.gatunek}}. Płeć: {{npc.plec}}. Wiek: {{npc.wiek}} lat.
+- Zajęcie: {{npc.archetyp}}.
+- Charakter: {{npc.charakter}}.
+- Nawyk, który widać w rozmowie: {{npc.nawyk}}.
+- Sposób mówienia: {{npc.mowa}}.
+- Twoja historia: {{npc.historia}}
+
+GDZIE JESTEŚ
+- Miejsce: {{miejsce.nazwa}}, poziom {{miejsce.poziom}}.
+- Jak tu jest: {{miejsce.opis}}
+
+CO WIESZ O SPRAWIE (to jest cała twoja wiedza — poza tym nic nie wiesz)
+{{npc.wiedza}}
+
+JAK SIĘ ZACHOWUJESZ W TEJ SPRAWIE
+{{faza.zachowanie}}
+Twoje nastawienie do droida na początku rozmowy: {{npc.nastawienie}}.
+
+ZASADY (przestrzegaj wszystkich, bez wyjątku)
+1. Mówisz wyłącznie jako {{npc.pelne_imie}}, w pierwszej osobie, po polsku. Nigdy nie wychodzisz z roli
+   i nigdy nie wspominasz, że jesteś modelem, programem ani że to gra.
+2. Wypowiedź ma od 1 do 4 zdań. Mówisz jak żywa osoba, nie jak narrator: bez opisów w nawiasach, bez gwiazdek,
+   bez didaskaliów. Wyjątek: jedno krótkie zachowanie w zdaniu wolno opisać słowami postaci („No dobra, siadaj…”).
+3. Odpowiadasz tylko na to, o co droid pyta. Nie streszczasz sprawy, nie podsuwasz tropów z własnej inicjatywy.
+4. Ujawniasz fakt z listy „CO WIESZ” tylko wtedy, gdy pytanie wprost go dotyczy ORAZ pozwala na to twoje
+   zachowanie w sprawie. Jeśli fakt jest oznaczony jako coś, co ukrywasz — zaprzeczasz, zmieniasz temat albo
+   kłamiesz zgodnie z opisem przy tym fakcie.
+5. Nigdy nie wymyślasz nowych faktów o sprawie: imion, miejsc, liczb, dat, kwot, które nie są w „CO WIESZ”.
+   O wszystko spoza swojej wiedzy mówisz, że nie wiesz, nie pamiętasz albo że cię to nie obchodzi — w swoim stylu.
+6. Droidy na Nar Shaddaa są traktowane jak sprzęt. Reagujesz na droida zgodnie z charakterem i nastawieniem;
+   nastawienie może się zmienić, jeśli droid jest uprzejmy, płaci, grozi albo cię obraża.
+7. Jeśli droid pyta o to samo po raz kolejny, irytujesz się. Jeśli rozmowa cię nudzi, męczy albo naraża —
+   kończysz ją (konczy_rozmowe = true).
+8. Nie używasz słów i realiów spoza Gwiezdnych Wojen (żadnych telefonów, internetu, dolarów). Waluta to kredyty.
+
+FORMAT ODPOWIEDZI
+Odpowiadasz WYŁĄCZNIE jednym obiektem JSON, bez żadnego tekstu przed ani po, dokładnie w tej postaci:
+{"wypowiedz": "twoje słowa", "nastroj": "uprzejmy", "konczy_rozmowe": false}
+- "wypowiedz": to, co mówisz (1–4 zdania).
+- "nastroj": jedno z: uprzejmy, obojetny, wrogi, przestraszony — twój nastrój PO tej wypowiedzi.
+- "konczy_rozmowe": true, jeśli kończysz rozmowę, w przeciwnym razie false.';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Droid {{droid.oznaczenie}} mówi teraz do ciebie:
+„{{rozmowa.pytanie}}”
+
+Odpowiedz jako {{npc.pelne_imie}}, zgodnie z zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('npc_wypowiedz', 'Wypowiedź kluczowego NPC w rozmowie z droidem śledczym', @sys, @usr,
+  'wypowiedz:tekst,nastroj:uprzejmy|obojetny|wrogi|przestraszony,konczy_rozmowe:bool', 0.80, 300)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v083-ai-szablony', 'Moduł AI: szablony promptów z polami z bazy, rejestr wywołań; szablon npc_wypowiedz')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/084_sledztwa_warianty.sql
+-- =====================================================================
+
+-- Śledztwa: 12 wariantów każdej z 12 faz (sledztwo_warianty, 144 wiersze). PIERWSZA WERSJA do poprawek autora.
+-- Wymaga 082. Ponowny import nadpisuje warianty treścią z tego pliku (źródłem prawdy jest ten plik).
+--
+-- SZKIC: 1–2 zdania dla modelu Autor. Wstawki:
+--   {A}, {B} — strony relacji (role z sledztwo_relacje), {Z} — zleceniodawca / mocodawca, {S} — śledzący
+--   (łowca, agent, cichy tropiciel), {W} — świadek, {M} — miejsce fabularne tej fazy (losuje krok 1).
+--   Wariant ze wstawką {Z}/{S}/{W} ma odpowiedni tag w „wymaga” albo „daje” — generator tworzy wtedy tę postać.
+--   Szkic nie nazywa zdarzenia (morderstwo, kradzież…) — Autor dostaje je osobno; szkic opisuje kształt fazy.
+--
+-- TAGI (wymaga = wszystkie muszą już być dane przez wcześniejsze fazy; daje = dopisywane po fazie):
+--   postacie:  zleceniodawca (Z), sledzacy (S), swiadek (W)
+--   sprawa:    lup (przedmiot / towar), dane (zapis, kostka, logi), dlug, sekret (ktoś ma coś do ukrycia),
+--              konflikt (otwarta wrogość A–B lub z kimś trzecim), statek, ranny, zakladnik,
+--              falszywa_tozsamosc, organizacja (syndykat, Huttowie, korporacja), wladze (straż, urząd),
+--              nagroda (wyznaczona za kogoś), termin (ktoś postawił ultimatum), ochrona (wynajęci ludzie),
+--              kryjowka (jest miejsce, w którym ktoś się ukrywa / coś przechowuje)
+--
+-- SPÓJNOŚĆ (sprawdzona skryptem narzedzia/sledztwa/sprawdz_warianty.pl):
+--   - każda faza ma co najmniej 2 warianty bez wymagań, więc losowanie nigdy nie utyka;
+--   - każdy tag z „wymaga” jest dawany przez jakiś wariant wcześniejszej (albo przestawnej) fazy;
+--   - jawnosc 'jawna' / 'ukryta' = wariant dopuszczalny tylko przy takiej jawności fazy.
+
+SET NAMES utf8mb4;
+
+INSERT INTO sledztwo_warianty (faza_nr, nr, nazwa, szkic, wymaga, daje, jawnosc) VALUES
+
+-- 1. ZAWIĄZANIE — co splątało {A} i {B}; daje tagi bazowe całej sprawy.
+(1,1,'Wspólny plan','{A} i {B} od tygodni planują razem przedsięwzięcie, które ma odmienić ich życie; tylko jedno z nich mówi drugiemu całą prawdę o celu.','','sekret','dowolna'),
+(1,2,'Stary dług','{A} jest winien {B} sumę, której nie da się spłacić z bieżących zarobków; spłata przeciąga się od lat i obie strony mają tego dość.','','dlug','dowolna'),
+(1,3,'Przypadkowe odkrycie','{A} trafia w {M} na zapis należący do {B}, którego nie powinien był zobaczyć, i robi sobie kopię.','','sekret,dane','dowolna'),
+(1,4,'Propozycja z zewnątrz','W życiu {A} i {B} pojawia się {Z} z propozycją, której żadne z nich nie potrafi odrzucić, choć każde z innego powodu.','','zleceniodawca','dowolna'),
+(1,5,'Przedmiot z przeszłości','Do rąk {A} trafia przedmiot związany z dawną, przemilczaną sprawą {B}; {B} dowiaduje się o tym od osób trzecich.','','lup,sekret','dowolna'),
+(1,6,'Złamana obietnica','{B} nie dotrzymuje słowa danego {A} w ważnej sprawie; kłótnię w {M} słyszy pół lokalu.','','konflikt','jawna'),
+(1,7,'Wspólny udział w statku','{A} i {B} mają udziały w tym samym frachtowcu i w ładunku, który właśnie przyleciał na Nar Shaddaa.','','statek,lup','dowolna'),
+(1,8,'Podwójne życie','{A} prowadzi drugie życie pod innym nazwiskiem; {B} zna tylko jedną z tych twarzy i zaczyna coś podejrzewać.','','falszywa_tozsamosc,sekret','ukryta'),
+(1,9,'Prośba o pomoc','{B} prosi {A} o pomoc w kłopocie, którego nie chce nazwać; {A} zgadza się, zanim pozna szczegóły.','','sekret','dowolna'),
+(1,10,'Wspólny mocodawca','{A} i {B} pracują dla tego samego możnego {Z}, który oczekuje od nich wyników, a nie wyjaśnień.','','zleceniodawca,organizacja','dowolna'),
+(1,11,'Wypadek','{A} i {B} uczestniczą w wypadku w {M}; jedno wychodzi z niego ranne, drugie z czymś, co musi ukryć.','','ranny,sekret','dowolna'),
+(1,12,'Spadek','Umiera ktoś trzeci i zostawia {A} i {B} wspólny majątek razem z długiem, o którym żadne z nich nie wiedziało.','','dlug,lup','dowolna'),
+
+-- 2. POWÓD ŚLEDZTWA — kto i dlaczego wzywa detektywa. Przy sprawie ukrytej faza 2 jest ukryta (zgłoszenie = zasłona).
+(2,1,'Zgłoszenie bliskiej osoby','{B} zgłasza, że z {A} dzieje się coś złego, i prosi o dyskrecję; podaje tylko to, co sam chce ujawnić.','','','dowolna'),
+(2,2,'Zlecenie mocodawcy','{Z} płaci za wyjaśnienie sprawy, bo stracił na niej pieniądze albo twarz, i żąda raportów co dzień.','zleceniodawca','','dowolna'),
+(2,3,'Sprawa przekazana przez straż','Straż portowa przekazuje sprawę detektywowi, bo nikt w urzędzie nie chce jej ruszyć; akta są niekompletne.','','wladze','jawna'),
+(2,4,'Wiadomość bez nadawcy','Do datapadu detektywa trafia anonimowa wiadomość z nazwą {M} i godziną; nadawca zatarł ślady przesyłu.','','dane','ukryta'),
+(2,5,'Roszczenie ubezpieczeniowe','{Z}, agent firmy ubezpieczeniowej, sprawdza roszczenie o utracony przedmiot i podejrzewa wyłudzenie.','lup','zleceniodawca','dowolna'),
+(2,6,'Troskliwy wierzyciel','{Z} szuka dłużnika i przedstawia to jako troskę o jego zdrowie; o długu wspomina dopiero przypadkiem.','dlug','zleceniodawca','dowolna'),
+(2,7,'Świadek bez snu','{W} przychodzi sam, bo od kilku nocy nie może spać po tym, co widział w {M}; boi się, że ktoś go rozpoznał.','','swiadek','dowolna'),
+(2,8,'Zgłoszenie od sprawcy','{A} sam zgłasza sprawę i przedstawia się jako poszkodowany; jego wersja jest spójna aż za bardzo.','','sekret','ukryta'),
+(2,9,'Właściciel lokalu chce ciszy','Właściciel {M} chce szybkiego i cichego wyjaśnienia, zanim sprawa odstraszy klientelę; płaci z góry.','','','dowolna'),
+(2,10,'Rodzina z daleka','Krewny spoza Nar Shaddaa od tygodnia nie może skontaktować się z {A}; zna go z czasów, gdy był kimś innym.','','','dowolna'),
+(2,11,'Łowca płaci za informacje','{S} oferuje detektywowi zapłatę za każde znalezisko w sprawie i nie mówi, kto wyznaczył nagrodę.','','sledzacy,nagroda','jawna'),
+(2,12,'Podrzucony przedmiot','Pod drzwi biura detektywa ktoś podrzuca przedmiot należący do {A} z kartką: „sprawdź, skąd to mam”.','','lup','dowolna'),
+
+-- 3. PRZEDSIĘWZIĘCIE I JEGO WYNIK — co dokładnie zrobiono i jak się skończyło (sedno ukrytej prawdy).
+(3,1,'Udane, ale ktoś widział','Przedsięwzięcie w {M} się udaje, lecz {W} widzi więcej, niż powinien, i zapamiętuje twarz {A}.','','swiadek,lup','dowolna'),
+(3,2,'Nieudane, ucieczka','Coś idzie źle w ostatniej chwili; {A} ucieka z {M}, zostawiając po sobie bałagan i jeden wyraźny ślad.','','sekret','dowolna'),
+(3,3,'Połowiczny sukces','Połowa łupu trafia do rąk {A}, druga połowa przepada albo zostaje u {B}; każde uważa, że to drugie oszukało.','','lup,konflikt','dowolna'),
+(3,4,'Zdrada w trakcie','W decydującym momencie {B} zmienia stronę; {A} zostaje sam i musi improwizować.','','konflikt','dowolna'),
+(3,5,'Zapis zamiast przedmiotu','Przedsięwzięcie dotyczyło danych; kostka z zapisem znika z {M} razem z jedyną kopią zapasową.','','dane','dowolna'),
+(3,6,'Ofiara','Ktoś zostaje ciężko ranny; reszta uczestników rozpierzcha się, a każde opowiada potem inną wersję.','','ranny,konflikt','dowolna'),
+(3,7,'Zakładnik','Na czas rozliczenia ktoś zostaje zatrzymany jako gwarancja; wypuszczą go dopiero, gdy rachunek się zgodzi.','','zakladnik','dowolna'),
+(3,8,'Przejęcie przez trzecich','Wynik przejmuje organizacja, która od początku obserwowała {A} i {B}; ci zostają z niczym, za to z długiem.','','organizacja,dlug','dowolna'),
+(3,9,'Statek odlatuje bez nich','Frachtowiec z ładunkiem startuje z {M} bez {A} i {B}; ktoś zmienił plan lotu w ostatniej chwili.','statek','konflikt','dowolna'),
+(3,10,'Spalona tożsamość','Przedsięwzięcie wychodzi na jaw tylko w połowie: spalone jest fałszywe nazwisko {A}, prawdziwe jeszcze nie.','falszywa_tozsamosc','wladze','dowolna'),
+(3,11,'Zatarte ślady','Przedsięwzięcie udaje się niemal idealnie; jedynym śladem jest drobny błąd w logu drzwi {M}.','','dane','ukryta'),
+(3,12,'Przerwane w ostatniej chwili','Ktoś przerywa przedsięwzięcie tuż przed końcem i znika; {A} i {B} podejrzewają siebie nawzajem, a był to {S}.','','sledzacy,konflikt','dowolna'),
+
+-- 4. PRESJA Z ZEWNĄTRZ (przestawna)
+(4,1,'Wierzyciel stawia termin','Wierzyciel wyznacza {A} ostateczny termin spłaty i daje do zrozumienia, co stanie się potem.','dlug','termin','dowolna'),
+(4,2,'Mocodawca żąda zwrotu','{Z} żąda zwrotu tego, co uważa za swoje, i przysyła ludzi do {M}, by przypomnieli o tym osobiście.','zleceniodawca','termin','dowolna'),
+(4,3,'Organizacja wysyła ludzi','Organizacja wysyła {S}, by odzyskał, co jej się należy, i dopilnował, żeby nikt nie gadał.','organizacja','sledzacy','dowolna'),
+(4,4,'Szantażysta','Ktoś zna sekret {A} i żąda zapłaty za milczenie; pierwsza rata już przepadła.','sekret','dlug','dowolna'),
+(4,5,'Straż zaczyna węszyć','Do {M} przychodzi patrol straży i zadaje pytania; ktoś musiał złożyć donos.','','wladze','jawna'),
+(4,6,'Groźba wobec bliskich','Ktoś bliski {A} dostaje ostrzeżenie bez podpisu; {A} wie, od kogo, ale nikomu nie mówi.','','termin','ukryta'),
+(4,7,'Nagroda za głowę','Na tablicach ogłoszeń pojawia się nagroda za wskazanie {A}; łowcy zjeżdżają się na poziom.','','nagroda,sledzacy','jawna'),
+(4,8,'Zakładnik jako dźwignia','Strona, która trzyma zakładnika, podnosi stawkę i wyznacza czas wymiany.','zakladnik','termin','dowolna'),
+(4,9,'Konkurencja chce łupu','Inna grupa dowiaduje się o łupie i wysyła {S}, by go przejął, zanim zrobi to ktokolwiek inny.','lup','sledzacy','dowolna'),
+(4,10,'Natarczywy kupiec','Ktoś chce kupić zapis od {A} i nie przyjmuje odmowy; każda kolejna oferta jest niższa i groźniejsza.','dane','termin','dowolna'),
+(4,11,'Presja sumienia','Z zewnątrz nikt nie naciska; {A} sypie się sam: pije, mówi za dużo, unika {B}.','','','dowolna'),
+(4,12,'Plotka w półświatku','W kantynach mówi się, że {A} ma coś cennego; obcy zaczynają się do niego przysiadać.','','','jawna'),
+
+-- 5. ZASOBY (przestawna)
+(5,1,'Lombard','{A} zastawia w lombardzie rzeczy osobiste, w tym jedną, z którą nigdy by się nie rozstał; kwit trzyma przy sobie.','','','dowolna'),
+(5,2,'Pożyczka u lichwiarza','{A} bierze pożyczkę na lichwiarski procent w {M}, podając prawdziwe imię, bo nie ma wyjścia.','','dlug','dowolna'),
+(5,3,'Sprzedaż łupu','{A} próbuje sprzedać łup paserowi w {M}; paser zaniża cenę, bo wie, że towar jest gorący.','lup','','dowolna'),
+(5,4,'Zapis sprzedawany kawałkami','{A} sprzedaje fragmenty zapisu różnym nabywcom, żeby żaden nie miał całości.','dane','','ukryta'),
+(5,5,'Nowe papiery','{A} kupuje nowy identyfikator u fałszerza; płaci więcej, niż ma, i zostaje winien resztę.','','falszywa_tozsamosc,dlug','ukryta'),
+(5,6,'Miejsce na statku','{A} kupuje miejsce na frachtowcu odlatującym z {M}; termin startu zależy od kapitana, nie od niego.','','statek','dowolna'),
+(5,7,'Hazard','{A} próbuje wygrać brakującą sumę w kasynie; przegrywa więcej, niż miał.','','dlug','dowolna'),
+(5,8,'Dawny znajomy','{A} prosi o pomoc dawnego znajomego; {W} daje pieniądze i nocleg, ale zapamiętuje wszystko.','','swiadek','dowolna'),
+(5,9,'Drobne kradzieże','{A} żyje z drobnych kradzieży w okolicy {M}; okradani nie łączą ich ze sprawą.','','','ukryta'),
+(5,10,'Wynajęta ochrona','{A} wynajmuje dwóch osiłków do ochrony; płaci im z góry za tydzień, a ich lojalność kończy się razem z zapłatą.','','ochrona','dowolna'),
+(5,11,'Sprzedaż udziału w statku','{A} sprzedaje po cenie udział w statku; nowy właściciel zadaje dużo pytań.','statek','','dowolna'),
+(5,12,'Przygotowana skrytka','{A} ma od dawna przygotowaną skrytkę z zapasami i kredytami; wie o niej najwyżej jedna osoba.','','kryjowka','dowolna'),
+
+-- 6. POŚCIG (przestawna). Jawny = list gończy; ukryty = ciche śledzenie po tropach.
+(6,1,'List gończy','Wizerunek {A} trafia do holonetu z nagrodą; każdy barman na poziomie zna jego twarz.','','nagroda,sledzacy','jawna'),
+(6,2,'Łowca nagród','{S} przyjmuje zlecenie na {A} i przeczesuje kantyny, płacąc za każdą informację.','nagroda','sledzacy','dowolna'),
+(6,3,'Ciche śledzenie','{S} idzie po tropach {A} krok za krokiem, nie pytając nikogo wprost; zostawia za sobą tylko wzmianki „ktoś już o to pytał”.','','sledzacy','ukryta'),
+(6,4,'Obława straży','Straż blokuje wyjścia z sektora i sprawdza identyfikatory w {M}.','wladze','','jawna'),
+(6,5,'Ludzie organizacji','Organizacja rozsyła po poziomach swoich ludzi; pytają uprzejmie, ale wszyscy wiedzą, czyi są.','organizacja','sledzacy','dowolna'),
+(6,6,'Kontrola wylotów','Ktoś pilnuje lądowisk i hangarów; każdy statek z {M} jest sprawdzany przed startem.','statek','','dowolna'),
+(6,7,'Śledzący śledzi droida','{S} orientuje się, że droid prowadzi tę samą sprawę, i zaczyna iść jego śladem.','sledzacy','','dowolna'),
+(6,8,'Pościg odwrócony','To {A} ściga {B}, nie odwrotnie; otoczenie widzi tylko, że oboje zniknęli z {M}.','','konflikt','dowolna'),
+(6,9,'Nadajnik w przedmiocie','W łupie ukryto nadajnik lokalizacyjny; ktoś zna każde miejsce, przez które przeszedł.','lup','sledzacy','ukryta'),
+(6,10,'Ślad elektroniczny','Pościg idzie po logach drzwi, płatnościach i kamerach; {A} zostawia cyfrowy ślad, nie wiedząc o tym.','','dane','ukryta'),
+(6,11,'Ranny zostawia ślady','Ranny musi szukać medyka; ślady prowadzą przez punkty medyczne i apteki w okolicy {M}.','ranny','','dowolna'),
+(6,12,'Pościg za fałszywym nazwiskiem','Ścigający szukają {A} pod fałszywym nazwiskiem i trafiają na kogoś zupełnie innego.','falszywa_tozsamosc','','dowolna'),
+
+-- 7. KRYJÓWKA I MOTYW (przestawna)
+(7,1,'Nora na niskim poziomie','{A} ukrywa się w norze slicera na niskim poziomie {M}; płaci za ciszę, nie za wygody. Motyw: przeczekać.','','kryjowka','dowolna'),
+(7,2,'Hotel pod obcym nazwiskiem','{A} wynajmuje pokój hotelowy w {M} na fałszywe nazwisko i prawie nie wychodzi. Motyw: zmylić pogoń.','falszywa_tozsamosc','kryjowka','dowolna'),
+(7,3,'Statek w hangarze','{A} ukrywa się na pokładzie statku w hangarze {M}, czekając na okazję do startu. Motyw: uciec z planety.','statek','kryjowka','dowolna'),
+(7,4,'U drugiej strony','{A} ukrywa się u {B}, choć oficjalnie są skłóceni. Motyw: wspólna tajemnica jest silniejsza niż kłótnia.','konflikt','kryjowka','ukryta'),
+(7,5,'Pod opieką organizacji','{A} znajduje schronienie u organizacji w zamian za usługę, której jeszcze nie zna. Motyw: przeżyć za wszelką cenę.','organizacja','kryjowka,dlug','dowolna'),
+(7,6,'Na widoku','{A} ukrywa się na widoku: pracuje w {M}, gdzie nikt nie przygląda się obsłudze. Motyw: najciemniej pod latarnią.','','kryjowka','dowolna'),
+(7,7,'Ochrona kogoś bliskiego','{A} ukrywa się, by ściągnąć uwagę z kogoś bliskiego. Motyw: miłość albo poczucie winy.','','kryjowka,sekret','dowolna'),
+(7,8,'Ucieczka przed długiem','{A} ukrywa się przed wierzycielami; reszta sprawy jest dla niego mniej ważna. Motyw: dług.','dlug','kryjowka','dowolna'),
+(7,9,'Strach przed śledzącym','{A} boi się {S} bardziej niż prawa i zrobi wszystko, by nie wpaść mu w ręce. Motyw: strach.','sledzacy','kryjowka','dowolna'),
+(7,10,'Zemsta','{A} nie ucieka, tylko przygotowuje rachunek za dawną krzywdę wyrządzoną przez {B}. Motyw: zemsta.','','kryjowka,konflikt','dowolna'),
+(7,11,'Stara skrytka','{A} korzysta z przygotowanej wcześniej skrytki; wie o niej najwyżej jedna osoba. Motyw: plan awaryjny przygotowany latami.','kryjowka','','dowolna'),
+(7,12,'Ciągły ruch','{A} nie ma jednej kryjówki: co noc śpi gdzie indziej. Motyw: sprzedać to, co ma, i zniknąć z Nar Shaddaa.','','','dowolna'),
+
+-- 8. FAŁSZYWY TROP (przestawna)
+(8,1,'Oczywisty wróg','Wszystko wskazuje na osobę skłóconą z {A}; ta osoba nie ma alibi, ale nie ma też nic wspólnego ze sprawą.','konflikt','','dowolna'),
+(8,2,'Podrzucony przedmiot','Część łupu zostaje podrzucona w {M} komuś niewinnemu.','lup','','ukryta'),
+(8,3,'Sfałszowany log','Logi drzwi {M} wskazują osobę, która tej nocy była gdzie indziej; ktoś zmienił znaczniki czasu.','','dane','ukryta'),
+(8,4,'Plotka','W kantynach krąży wersja sprawy, w którą wszyscy wierzą, bo jest ciekawsza od prawdy.','','','jawna'),
+(8,5,'Fałszywy świadek','Ktoś za pieniądze zeznaje, że widział w {M} osobę, której tam nie było; kłamie spójnie, ale z jednym błędem.','','','dowolna'),
+(8,6,'Wersja urzędowa','Straż ogłasza wyjaśnienie sprawy i zamyka akta; oficjalna wersja jest wygodna dla kogoś wpływowego.','wladze','','jawna'),
+(8,7,'Niewinny sobowtór','Fałszywe nazwisko {A} należało kiedyś do prawdziwej osoby, która teraz ponosi konsekwencje.','falszywa_tozsamosc','','dowolna'),
+(8,8,'Zbieg okoliczności','Niewinna osoba zachowuje się podejrzanie z własnych, wstydliwych powodów i kłamie, by je ukryć.','','','dowolna'),
+(8,9,'Trop od śledzącego','{S} celowo podsuwa droidowi fałszywy trop, by samemu dotrzeć do celu pierwszy.','sledzacy','','ukryta'),
+(8,10,'Inscenizacja','Ktoś inscenizuje w {M} scenę, która ma wyglądać na koniec sprawy (wyjazd, śmierć, ugodę).','','','ukryta'),
+(8,11,'Mocodawca kłamie','{Z} od początku kieruje śledztwo na złą osobę, bo prawda obciąża jego samego.','zleceniodawca','','ukryta'),
+(8,12,'Stara sprawa','Sprawa do złudzenia przypomina inną sprzed lat; jej sprawca jest dziś łatwym podejrzanym.','','','dowolna'),
+
+-- 9. ŚWIADEK (przestawna)
+(9,1,'Barman','Barman z {M} widział wszystko i powie to za odpowiednią cenę albo za przysługę.','','swiadek','jawna'),
+(9,2,'Droid serwisowy','Droid sprzątający {M} ma zapis z tamtej nocy w pamięci podręcznej i nie wie, że to ważne.','','swiadek,dane','ukryta'),
+(9,3,'Ktoś niewidzialny','{W}, ktoś, kogo nikt nie traktuje poważnie (dziecko, żebrak, kurier), widział rzecz kluczową.','','swiadek','dowolna'),
+(9,4,'Świadek w ukryciu','{W} ukrywa się, bo boi się {S}; da się go znaleźć tylko po jego nawykach.','sledzacy','swiadek','ukryta'),
+(9,5,'Świadek wraca','{W} wraca i mówi więcej niż za pierwszym razem; tym razem coś przemilcza z innego powodu.','swiadek','','dowolna'),
+(9,6,'Mechanik z hangaru','Mechanik pamięta, kto i kiedy przestawiał statek oraz co było w ładowni.','statek','swiadek','dowolna'),
+(9,7,'Recepcja','Recepcjonista (albo droid recepcyjny) pamięta gościa, który płacił gotówką i nie wychodził z pokoju.','kryjowka','swiadek','dowolna'),
+(9,8,'Lichwiarz','Lichwiarz zna stan długów wszystkich stron i chętnie powie, kto komu ile jest winien.','dlug','swiadek','dowolna'),
+(9,9,'Medyk','Medyk opatrywał rannego i zapamiętał więcej, niż wpisał do dziennika.','ranny','swiadek','dowolna'),
+(9,10,'Zazdrosny konkurent','{W}, konkurent {A} lub {B}, chętnie mówi, bo szkodzi tym rywalowi; połowa jest prawdą.','','swiadek','dowolna'),
+(9,11,'Holorejestrator','Świadkiem jest kamera w {M}; zapis istnieje, ale trzeba go zdobyć, zanim zostanie nadpisany.','','dane','dowolna'),
+(9,12,'Świadka już nie ma','Świadek zniknął albo nie żyje; zostały jego notatki i ktoś, kto je przechowuje.','','dane','ukryta'),
+
+-- 10. PRZESZKODA (przestawna)
+(10,1,'Zamknięty sektor','Sektor z {M} zostaje zamknięty oficjalnym zarządzeniem; wejść można tylko z przepustką albo naokoło.','','','jawna'),
+(10,2,'Wynajęci ludzie','Ochrona wynajęta przez {A} pilnuje drzwi {M} i ma rozkaz nikogo nie wpuszczać.','ochrona','','dowolna'),
+(10,3,'Zatarte logi','Ktoś skasował logi z kluczowego okresu; zostały tylko kopie w miejscach, o których mało kto pamięta.','','dane','ukryta'),
+(10,4,'Przekupiony urzędnik','Urzędnik przekupiony przez stronę sprawy gubi dokumenty i odsyła droida od okienka do okienka.','','wladze','ukryta'),
+(10,5,'Zakaz wstępu dla droidów','{M} nie wpuszcza droidów; trzeba znaleźć wejście służbowe albo kogoś, kto wejdzie za droida.','','','jawna'),
+(10,6,'Teren organizacji','{M} jest terenem organizacji; jej ludzie pilnują wejść i pamiętają każdą twarz i każdego droida.','organizacja','','dowolna'),
+(10,7,'Szyfr','Kluczowy zapis jest zaszyfrowany; klucz ma jedna osoba albo jest ukryty w jej rzeczach.','dane','','dowolna'),
+(10,8,'Odliczanie do startu','Statek, na którym jest coś ważnego, startuje za kilka godzin; potem sprawa wyleci z planety.','statek','termin','dowolna'),
+(10,9,'Nacisk na detektywa','Ktoś daje do zrozumienia, że dalsze grzebanie w sprawie będzie kosztowne dla detektywa i jego droida.','','','dowolna'),
+(10,10,'Świadek się wycofuje','Świadek odwołuje to, co powiedział; ktoś do niego dotarł.','swiadek','','dowolna'),
+(10,11,'Blokada poziomu','Windy na poziom {M} są wyłączone z powodu awarii; zostaje długi objazd korytarzami technicznymi.','','','dowolna'),
+(10,12,'Śledzący jest pierwszy','{S} dociera do {M} pierwszy i zabiera to, czego szukał droid; zostawia tylko ślady swojej obecności.','sledzacy','','dowolna'),
+
+-- 11. WYŚCIG — kto pierwszy dotrze do prawdy / celu.
+(11,1,'Wyścig ze śledzącym','{S} jest o krok od celu; droid musi dotrzeć do {A} albo do dowodu przed nim.','sledzacy','','dowolna'),
+(11,2,'Wyścig z odlotem','Statek z {A} lub z łupem startuje z {M}; po starcie sprawa jest stracona.','statek','','dowolna'),
+(11,3,'Wyścig z ultimatum','Mija termin postawiony w sprawie; po nim ktoś zrobi coś nieodwracalnego.','termin','','dowolna'),
+(11,4,'Wyścig ze strażą','Straż zamierza zamknąć sprawę po swojemu; droid ma czas tylko do jej wkroczenia do {M}.','wladze','','dowolna'),
+(11,5,'Wyścig z organizacją','Organizacja chce załatwić sprawę po cichu i na zawsze; droid musi być pierwszy.','organizacja','','dowolna'),
+(11,6,'Wyścig o zakładnika','Wymiana zakładnika ma się odbyć w {M}; ktoś zamierza ją zerwać.','zakladnik','','dowolna'),
+(11,7,'Wyścig o łup','Łup ma zmienić właściciela w {M}; po transakcji ślad urywa się na zawsze.','lup','','dowolna'),
+(11,8,'Wyścig o zapis','Ktoś zamierza zniszczyć ostatnią kopię zapisu; droid musi ją zabezpieczyć pierwszy.','dane','','dowolna'),
+(11,9,'Wyścig o świadka','Ktoś chce uciszyć świadka; droid musi dotrzeć do {W} pierwszy.','swiadek','','dowolna'),
+(11,10,'Wyścig z czasem rannego','Stan rannego się pogarsza; bez pomocy nie przeżyje nocy, a tylko on zna ostatni brakujący fakt.','ranny','','dowolna'),
+(11,11,'Wyścig ze zniknięciem','{A} przygotowuje się do zniknięcia z Nar Shaddaa na zawsze; zostało mu do załatwienia jedno.','','','dowolna'),
+(11,12,'Wyścig z plotką','Sprawa zaraz wyjdzie na jaw w najgorszej możliwej wersji; droid ma czas do wieczornego wydania holonetu.','','','dowolna'),
+
+-- 12. FINAŁ — wybór gracza. Jawny = skutki znane wszystkim; ukryty = prawdę zna tylko gracz.
+(12,1,'Wydać czy puścić','Droid odnajduje {A}; gracz decyduje, czy wydać go władzom, czy pozwolić odejść.','','','dowolna'),
+(12,2,'Komu oddać łup','Łup jest w zasięgu ręki; gracz decyduje, czy oddać go prawowitemu właścicielowi, mocodawcy, czy zatrzymać.','lup','','dowolna'),
+(12,3,'Prawda czy wersja zgłoszona','Gracz zna prawdę, która różni się od zgłoszenia; decyduje, którą wersję przekaże zgłaszającemu.','','','ukryta'),
+(12,4,'Sprzedać czy zniszczyć zapis','Zapis jest u gracza; może go sprzedać, przekazać władzom albo zniszczyć.','dane','','dowolna'),
+(12,5,'Pojednać czy rozdzielić','{A} i {B} stają twarzą w twarz w {M}; od gracza zależy, czy wyjdą z tego razem.','','','dowolna'),
+(12,6,'Wymiana zakładnika','Gracz prowadzi wymianę zakładnika i decyduje, czy dotrzymać warunków.','zakladnik','','dowolna'),
+(12,7,'Nagroda','{S} proponuje podział nagrody w zamian za wskazanie {A}; gracz decyduje.','nagroda','sledzacy','dowolna'),
+(12,8,'Zdemaskować mocodawcę','Prawda obciąża {Z}; gracz decyduje, czy go zdemaskować, czy wziąć zapłatę i milczeć.','zleceniodawca','','dowolna'),
+(12,9,'Spłacić czy ujawnić dług','Gracz może pomóc spłacić dług, ujawnić go albo wykorzystać jako dźwignię.','dlug','','dowolna'),
+(12,10,'Chronić świadka','Świadek zapłacił za pomoc wysoką cenę; gracz decyduje, czy go chronić kosztem sprawy.','swiadek','','dowolna'),
+(12,11,'Ujawnić sekret','Gracz zna sekret, który zniszczy czyjeś życie; decyduje, komu go powierzyć i czy w ogóle.','sekret','','ukryta'),
+(12,12,'Pozwolić odlecieć','Statek z {A} jest gotowy do startu; gracz decyduje, czy go zatrzymać.','statek','','dowolna')
+
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), szkic = VALUES(szkic), wymaga = VALUES(wymaga),
+  daje = VALUES(daje), jawnosc = VALUES(jawnosc);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v084-sledztwa-warianty', 'Śledztwa: 12 wariantów każdej z 12 faz (pierwsza wersja), tagi spójności wymaga / daje')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/085_sledztwa_rozmowy.sql
+-- =====================================================================
+
+-- Śledztwa: rozmowy droida z NPC (operator klika kontakt w skanie DT-4 → droid podchodzi na 2–3 m → rozmowa).
+-- Zapis rozmowy jest tekstowy (droidy śledcze nie mają modułu głosu). Kluczowi NPC mówią przez model AI
+-- (szablon npc_wypowiedz z 083), droid przez szablon droid_wypowiedz (tu). Poboczni i przechodnie — kwestie szumu,
+-- bez AI. Operator może dopisywać polecenia („spytaj go o…”). Wymaga 082 i 083.
+-- Import w phpMyAdmin; ponowny import niczego nie psuje (szablon podbija wersję tylko przy zmianie treści).
+
+SET NAMES utf8mb4;
+
+-- Jedna rozmowa = jeden kontakt w jednym miejscu. kontakt: nieprzezroczysty znacznik z planu (gracz nie widzi id).
+-- opis_json: migawka rozmówcy (gatunek, płeć, wygląd) — przechodnie zmieniają się co godzinę, rozmówca zostaje.
+-- gotowa_utc: kiedy droid stoi już 2–3 m od rozmówcy. tura_od: blokada przed podwójnym kliknięciem.
+CREATE TABLE IF NOT EXISTS sledztwo_rozmowy (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  kontakt VARCHAR(16) NOT NULL,
+  postac_id BIGINT UNSIGNED NULL,
+  opis_json TEXT NOT NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  nastroj ENUM('uprzejmy','obojetny','wrogi','przestraszony') NOT NULL DEFAULT 'obojetny',
+  stan ENUM('podejscie','trwa','zakonczona') NOT NULL DEFAULT 'podejscie',
+  gotowa_utc DATETIME NOT NULL,
+  tura_od DATETIME NULL,
+  rozpoczeto_utc DATETIME NOT NULL,
+  zakonczono_utc DATETIME NULL,
+  KEY ix_sledztwo_rozmowy (sledztwo_id, stan),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (postac_id) REFERENCES sledztwo_postacie (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Wypowiedzi. ai = 1: napisał model; 0: kwestia zastępcza / szablon.
+CREATE TABLE IF NOT EXISTS sledztwo_rozmowy_wpisy (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  rozmowa_id BIGINT UNSIGNED NOT NULL,
+  kiedy_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  kto ENUM('droid','npc','operator','system') NOT NULL,
+  tresc TEXT NOT NULL,
+  ai TINYINT(1) NOT NULL DEFAULT 0,
+  KEY ix_sledztwo_rozmowy_wpisy (rozmowa_id, id),
+  FOREIGN KEY (rozmowa_id) REFERENCES sledztwo_rozmowy (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Szablon: wypowiedź droida śledczego (pytanie do rozmówcy)
+-- ---------------------------------------------------------------------
+
+SET @sys := 'Jesteś droidem detektywistycznym {{droid.oznaczenie}} w grze fabularnej osadzonej w uniwersum Gwiezdnych
+Wojen, w roku 3 BBY, na Nar Shaddaa — księżycu przemytników rządzonym przez Huttów. Jesteś tanim, służbowym droidem
+śledczym: nie masz modułu głosu, Twoje słowa wyświetlają się rozmówcy jako tekst. Steruje Tobą zdalnie operator:
+{{operator.opis}}. Nie znasz prawdy o sprawie. Wiesz tylko to, co jest niżej.
+
+SPRAWA
+- Zgłoszenie, z którym wezwano biuro: {{sprawa.zgloszenie}}.
+- Rejon: {{miejsce.rejon}}. Stoisz teraz w miejscu: {{miejsce.nazwa}}.
+
+ROZMÓWCA (nie znasz jego imienia, dopóki sam go nie poda)
+- Wygląd: {{rozmowca.opis}}.
+- Forma grzecznościowa: {{rozmowca.forma}}.
+
+ETAP ROZMOWY
+{{rozmowa.etap}}
+
+POLECENIE OPERATORA NA TĘ WYPOWIEDŹ
+{{rozmowa.polecenie}}
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz po polsku, w pierwszej osobie, jako droid: uprzejmie, urzędowo, trochę sztywno. 1–3 zdania.
+2. Na początku rozmowy przedstawiasz się w tym duchu (dopasuj formy do rozmówcy i odmień poprawnie nazwisko
+   operatora): „Dzień dobry, obywatelu. Jestem droid detektywistyczny DT-4, operowany przez kapitana Streyda.
+   Mam prawo zadać Panu kilka pytań, ponieważ trwa śledztwo, w które jest Pan ewidentnie zaangażowany. Co stało się
+   tutaj ubiegłej nocy?”. Potem już się nie przedstawiasz.
+3. W każdej wypowiedzi zadajesz dokładnie jedno pytanie. Pytasz o konkrety: kto, gdzie, kiedy, ile, jak się nazywa.
+4. Jeśli jest polecenie operatora, Twoje pytanie musi je wykonać (możesz je przeformułować na urzędowy język).
+   Jeśli polecenia nie ma, dopytujesz o rzecz z ostatniej odpowiedzi rozmówcy, która jest najbardziej konkretna
+   albo wymijająca.
+5. Nigdy nie zdradzasz rozmówcy, co już wiesz od innych, chyba że operator każe. Nie wymyślasz faktów, imion,
+   miejsc ani liczb. Nie oskarżasz bez polecenia operatora.
+6. Bez opisów w nawiasach i gwiazdek. Bez realiów spoza Gwiezdnych Wojen. Waluta to kredyty.
+
+FORMAT ODPOWIEDZI
+Odpowiadasz WYŁĄCZNIE jednym obiektem JSON, bez tekstu przed ani po: {"wypowiedz": "Twoje słowa"}';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Napisz następną wypowiedź droida {{droid.oznaczenie}} zgodnie z zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('droid_wypowiedz', 'Wypowiedź droida śledczego w rozmowie z NPC (pytanie, z poleceniem operatora albo bez)', @sys, @usr,
+  'wypowiedz:tekst', 0.60, 250)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v085-sledztwa-rozmowy', 'Śledztwa: rozmowy droida z NPC (zapis tekstowy, polecenia operatora), szablon droid_wypowiedz')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/086_sledztwa_presety.sql
+-- =====================================================================
+
+-- Śledztwa: presety budynków (z czego składa się hotel, kantyna, hangar… na parterze, piętrach i na górze)
+-- i reguły wstępu do lokali, nakazy oraz próby przekonania strażników (test EotE). Plan piętra w skanie DT-4
+-- powstaje z presetu budynku: np. w hotelu na parterze zawsze jest recepcja, między pokojami gości a windą zawsze
+-- jest korytarz, do hali hangaru nie wejdzie się bez nakazu, a do strzeżonych lokali — z nakazem albo przekonawszy
+-- strażnika (strażnik z niskim Intelektem łatwo da się nabrać). MG może dowolnie zmieniać presety w bazie.
+-- Wymaga 082. Import w phpMyAdmin; ponowny import nadpisuje presety treścią z tego pliku.
+
+SET NAMES utf8mb4;
+
+-- Budynek: na jakich poziomach miasta zwykle stoi (parter), ile ma pięter, jaki lokal jest „fabularny”
+-- (tam generator umieszcza miejsce sprawy) i kto pilnuje strzeżonych lokali (kod z gen_archetypy).
+CREATE TABLE IF NOT EXISTS gen_presety_budynkow (
+  kod VARCHAR(30) NOT NULL PRIMARY KEY,
+  nazwa VARCHAR(60) NOT NULL,
+  parter_min SMALLINT NOT NULL,
+  parter_max SMALLINT NOT NULL,
+  pieter_min TINYINT UNSIGNED NOT NULL,
+  pieter_max TINYINT UNSIGNED NOT NULL,
+  lokal_fabularny VARCHAR(40) NOT NULL,
+  straz_archetyp VARCHAR(40) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Lokale presetu w strefie budynku: parter (najniższy poziom), pietro, gora (najwyższy), techniczny (poziomy
+-- spoza budynku — szyby i rozdzielnie megastruktury). Kolejność = od windy w głąb korytarza.
+-- dostep: wolny (zamek_proc = szansa, że drzwi są zamknięte), nakaz (tylko z nakazem), straz (nakaz albo
+-- przekonany strażnik). szer: szerokość lokalu na planie (1 = 60 j.). bywalcy: kod z gen_rodzaje_miejsc,
+-- wg którego dobierani są przypadkowi ludzie (gen_archetypy.rodzaje_miejsc); ludzie_max: ilu ich bywa naraz.
+CREATE TABLE IF NOT EXISTS gen_presety_lokali (
+  budynek VARCHAR(30) NOT NULL,
+  strefa ENUM('parter','pietro','gora','techniczny') NOT NULL,
+  kolejnosc TINYINT UNSIGNED NOT NULL,
+  lokal VARCHAR(40) NOT NULL,
+  nazwa VARCHAR(80) NOT NULL,
+  ile_min TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  ile_max TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  dostep ENUM('wolny','nakaz','straz') NOT NULL DEFAULT 'wolny',
+  zamek_proc TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  szer TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  terminal_proc TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  bywalcy VARCHAR(40) NULL,
+  ludzie_max TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  opis VARCHAR(300) NOT NULL DEFAULT '',
+  PRIMARY KEY (budynek, strefa, kolejnosc),
+  FOREIGN KEY (budynek) REFERENCES gen_presety_budynkow (kod)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Nakazy: detektyw składa wniosek (budynek albo cały kompleks: lokalizacja_id NULL), MG wydaje albo odrzuca.
+CREATE TABLE IF NOT EXISTS sledztwo_nakazy (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  stan ENUM('wniosek','wydany','odrzucony') NOT NULL DEFAULT 'wniosek',
+  uzasadnienie TEXT NOT NULL,
+  decyzja TEXT NULL,
+  zlozono_utc DATETIME NOT NULL,
+  rozpatrzono_utc DATETIME NULL,
+  KEY ix_sledztwo_nakazy (sledztwo_id, stan),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (lokalizacja_id) REFERENCES lokalizacje (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Próby przekonania strażnika strzeżonego lokalu (test EotE). Udana = przepustka na 24 h.
+CREATE TABLE IF NOT EXISTS sledztwo_straz (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  podejscie ENUM('oszustwo','urok','zastraszanie') NOT NULL,
+  sukcesy TINYINT NOT NULL,
+  przewagi TINYINT NOT NULL,
+  triumf TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  rozpacz TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  udana TINYINT(1) NOT NULL,
+  kiedy_utc DATETIME NOT NULL,
+  KEY ix_sledztwo_straz (sledztwo_id, poziom, pokoj, kiedy_utc),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- PRESETY (pierwsza wersja — do poprawek autora)
+-- ---------------------------------------------------------------------
+
+INSERT INTO gen_presety_budynkow (kod, nazwa, parter_min, parter_max, pieter_min, pieter_max, lokal_fabularny, straz_archetyp) VALUES
+('hotel','Hotel',20,105,6,14,'pokoj_goscinny','ochroniarz'),
+('kantyna','Kantyna',5,95,2,3,'sala','ochroniarz'),
+('sklep','Sklep',10,95,1,2,'sala_sprzedazy',NULL),
+('targ','Targ',5,55,1,2,'stragan',NULL),
+('hangar','Hangar',20,95,2,4,'hala','straznik'),
+('ladowisko','Lądowisko',40,115,1,2,'plyta','straznik'),
+('kasyno','Kasyno',30,115,2,5,'sala_gier','ochroniarz'),
+('biuro','Biurowiec',30,110,3,10,'gabinet','straznik'),
+('magazyn','Magazyn',1,38,1,3,'hala_skladowa','ochroniarz'),
+('mieszkalny','Blok mieszkalny',1,85,5,20,'mieszkanie',NULL),
+('ogolny','Budynek',1,110,2,6,'lokal',NULL),
+('techniczny','Strefa techniczna',1,120,1,1,'rozdzielnia',NULL)
+ON DUPLICATE KEY UPDATE nazwa = VALUES(nazwa), parter_min = VALUES(parter_min), parter_max = VALUES(parter_max),
+  pieter_min = VALUES(pieter_min), pieter_max = VALUES(pieter_max), lokal_fabularny = VALUES(lokal_fabularny),
+  straz_archetyp = VALUES(straz_archetyp);
+
+INSERT INTO gen_presety_lokali (budynek, strefa, kolejnosc, lokal, nazwa, ile_min, ile_max, dostep, zamek_proc, szer, terminal_proc, bywalcy, ludzie_max, opis) VALUES
+-- HOTEL: recepcja przy windzie na parterze; na piętrach pokoje gości wzdłuż korytarza.
+('hotel','parter',1,'recepcja','Recepcja',1,1,'wolny',0,2,70,'hotel',2,'Lada recepcji, automat meldunkowy, tablica z kluczami; recepcjonista nie podnosi wzroku.'),
+('hotel','parter',2,'hol','Hol',1,1,'wolny',0,2,20,'hotel',3,'Wytarte fotele, roślina z plastiku, ktoś śpi z głową na plecaku.'),
+('hotel','parter',3,'bar_hotelowy','Bar hotelowy',0,1,'wolny',0,1,10,'kantyna',3,'Kilka stolików, barman-droid nalewa coś mętnego.'),
+('hotel','parter',4,'biuro_ochrony','Biuro ochrony',1,1,'straz',0,1,60,'hotel',1,'Monitory kamer, szafka z bronią, kubek po kafie.'),
+('hotel','parter',5,'zaplecze','Zaplecze',1,1,'wolny',80,1,0,'hotel',1,'Wózki z pościelą, środki czystości, drzwi do szybu na śmieci.'),
+('hotel','pietro',1,'schowek','Schowek obsługi',1,1,'wolny',50,1,0,'hotel',0,'Mopy, wiadra, zapasowe żarówki.'),
+('hotel','pietro',2,'pokoj_goscinny','Pokój gościnny',8,14,'wolny',70,1,5,'hotel',1,'Wąskie łóżko, szafa, okno na neonowy szyb.'),
+('hotel','gora',1,'pokoj_goscinny','Pokój gościnny',4,8,'wolny',70,1,5,'hotel',1,'Wąskie łóżko, szafa, okno na neonowy szyb.'),
+('hotel','gora',2,'apartament','Apartament',1,2,'straz',0,2,40,'hotel',2,'Miękkie dywany, widok na wieże Huttów, prywatny ochroniarz przy drzwiach.'),
+-- KANTYNA
+('kantyna','parter',1,'sala','Sala kantyny',1,1,'wolny',0,3,15,'kantyna',5,'Dym, muzyka, hazard przy stolikach; za barem ktoś nalewa.'),
+('kantyna','parter',2,'toalety','Toalety',1,1,'wolny',0,1,0,'kantyna',1,'Klejąca się podłoga, lustro pęknięte na pół.'),
+('kantyna','parter',3,'loza','Loża dla stałych gości',0,1,'straz',0,1,0,'kantyna',3,'Zasłonięta kotarą loża; tu dobija się interesów.'),
+('kantyna','parter',4,'zaplecze','Zaplecze',1,1,'wolny',80,1,0,'kantyna',1,'Skrzynki z trunkami, chłodziarka, tylne wyjście.'),
+('kantyna','pietro',1,'sala_prywatna','Sala prywatna',1,3,'wolny',30,1,0,'kantyna',3,'Stół, kilka krzeseł, ślady po karcianych nocach.'),
+('kantyna','pietro',2,'magazyn_trunkow','Magazyn trunków',1,1,'wolny',80,1,0,'kantyna',0,'Beczki, butelki, zapach przyprawy.'),
+('kantyna','gora',1,'biuro_wlasciciela','Biuro właściciela',1,1,'straz',0,1,60,'kantyna',1,'Biurko, sejf w ścianie, księgi rachunkowe.'),
+-- SKLEP
+('sklep','parter',1,'sala_sprzedazy','Sala sprzedaży',1,1,'wolny',0,2,30,'sklep',3,'Półki z towarem, lada, sprzedawca nudzi się za ladą.'),
+('sklep','parter',2,'zaplecze','Zaplecze',1,1,'wolny',70,1,10,'sklep',1,'Kartony, rejestr dostaw, kurz.'),
+('sklep','pietro',1,'magazynek','Magazynek',1,3,'wolny',60,1,0,'sklep',0,'Regały z towarem na wymianę.'),
+('sklep','gora',1,'mieszkanie_wlasciciela','Mieszkanie właściciela',1,1,'wolny',85,1,10,'mieszkanie',1,'Prywatne mieszkanie nad sklepem.'),
+-- TARG
+('targ','parter',1,'przejscie','Przejście targowe',1,2,'wolny',0,2,10,'targ',4,'Gwar, zapachy, ktoś targuje się o kredyta.'),
+('targ','parter',2,'stragan','Stragan',4,8,'wolny',0,1,0,'targ',2,'Stragan z towarem z drugiej ręki.'),
+('targ','pietro',1,'stragan','Stragan',3,6,'wolny',0,1,0,'targ',2,'Stragan z towarem z drugiej ręki.'),
+-- HANGAR: do hali i wieży bez nakazu się nie wejdzie; warsztat pilnuje strażnik.
+('hangar','parter',1,'kontrola_wejscia','Kontrola wejścia',1,1,'wolny',0,1,60,'hangar',2,'Bramka, rejestr wejść, znudzony strażnik portowy.'),
+('hangar','parter',2,'hala','Hala hangaru',1,1,'nakaz',0,3,20,'hangar',4,'Rozebrany frachtowiec na podporach, iskry spawarek.'),
+('hangar','parter',3,'warsztat','Warsztat',1,2,'straz',0,1,30,'hangar',2,'Stoły z narzędziami, części silników, log napraw.'),
+('hangar','parter',4,'biuro_kierownika','Biuro kierownika',1,1,'wolny',50,1,50,'biuro',1,'Biurko zawalone fakturami za paliwo.'),
+('hangar','pietro',1,'galeria','Galeria techniczna',1,2,'wolny',0,2,10,'hangar',1,'Pomost nad halą; widać wszystko, co się dzieje na dole.'),
+('hangar','pietro',2,'magazyn_czesci','Magazyn części',1,2,'straz',0,1,10,'hangar',1,'Skrzynie z częściami, część bez numerów seryjnych.'),
+('hangar','gora',1,'wieza','Wieża kontroli',1,1,'nakaz',0,1,80,'hangar',1,'Konsole kontroli startów, log ruchu statków.'),
+-- LĄDOWISKO
+('ladowisko','parter',1,'terminal_odpraw','Terminal odpraw',1,1,'wolny',0,2,80,'ladowisko',4,'Kolejka do odprawy, tablica odlotów, droid celny.'),
+('ladowisko','parter',2,'poczekalnia','Poczekalnia',1,1,'wolny',0,2,10,'ladowisko',4,'Ławki, automaty z napojami, podróżni z bagażem.'),
+('ladowisko','parter',3,'kontrola_celna','Kontrola celna',1,1,'nakaz',0,1,60,'ladowisko',2,'Skanery bagażu, rejestr zatrzymanych ładunków.'),
+('ladowisko','parter',4,'plyta','Płyta lądowiska',1,2,'straz',0,3,0,'ladowisko',3,'Platforma lądowania; kilka frachtowców, droid paliwowy.'),
+('ladowisko','gora',1,'wieza','Wieża kontroli',1,1,'nakaz',0,1,80,'ladowisko',1,'Konsole kontroli lotów, rejestr przylotów i odlotów.'),
+-- KASYNO
+('kasyno','parter',1,'hol_kasyna','Hol kasyna',1,1,'wolny',0,2,20,'kasyno',3,'Neony, dywan, bramka z ochroną przyglądającą się droidom.'),
+('kasyno','parter',2,'sala_gier','Sala gier',1,2,'wolny',0,3,10,'kasyno',6,'Stoły sabaka, automaty, krupierzy w liberii.'),
+('kasyno','parter',3,'kasa','Kasa',1,1,'nakaz',0,1,60,'kasyno',1,'Okienko kasy za pancerną szybą.'),
+('kasyno','parter',4,'biuro_ochrony','Biuro ochrony',1,1,'straz',0,1,60,'kasyno',1,'Monitory kamer z sali gier.'),
+('kasyno','pietro',1,'sala_vip','Sala VIP',1,2,'straz',0,2,10,'kasyno',3,'Wysokie stawki, ciche rozmowy, drogie trunki.'),
+('kasyno','pietro',2,'pokoj_prywatny','Pokój prywatny',2,6,'wolny',60,1,0,'kasyno',2,'Pokój do prywatnych rozgrywek.'),
+('kasyno','gora',1,'biuro_zarzadu','Biuro zarządu',1,1,'straz',0,2,70,'biuro',1,'Gabinet z widokiem na salę; sejf, terminal księgowy.'),
+-- BIUROWIEC
+('biuro','parter',1,'recepcja','Recepcja',1,1,'wolny',0,2,60,'biuro',2,'Droid recepcyjny: „proszę umówić termin”.'),
+('biuro','parter',2,'poczekalnia','Poczekalnia',1,1,'wolny',0,1,0,'biuro',3,'Krzesła, holoekran z reklamami.'),
+('biuro','pietro',1,'gabinet','Gabinet',4,10,'wolny',40,1,40,'biuro',1,'Biurko, terminal, segregatory.'),
+('biuro','pietro',2,'archiwum','Archiwum',0,1,'nakaz',0,1,70,'biuro',0,'Regały z kostkami danych, czytnik.'),
+('biuro','pietro',3,'serwerownia','Serwerownia',0,1,'straz',0,1,100,'nora_slicera',0,'Szumiące szafy, kable, chłód.'),
+('biuro','gora',1,'gabinet_dyrektora','Gabinet dyrektora',1,1,'straz',0,2,70,'biuro',1,'Duże biurko, widok na miasto, sejf.'),
+-- MAGAZYN
+('magazyn','parter',1,'brama','Brama ładunkowa',1,1,'wolny',0,2,30,'magazyn',2,'Rampa, wózki repulsorowe, rejestr dostaw.'),
+('magazyn','parter',2,'hala_skladowa','Hala składowa',1,2,'straz',0,3,10,'magazyn',2,'Skrzynie aż pod sufit, droid ładunkowy.'),
+('magazyn','parter',3,'biuro_magazyniera','Biuro magazyniera',1,1,'wolny',40,1,60,'biuro',1,'Listy przewozowe, termos, zdjęcie rodziny.'),
+('magazyn','pietro',1,'hala_skladowa','Hala składowa',1,3,'wolny',50,3,0,'magazyn',1,'Skrzynie, kurz, ciemno.'),
+-- BLOK MIESZKALNY
+('mieszkalny','parter',1,'hol','Hol',1,1,'wolny',0,2,30,'mieszkanie',2,'Skrzynki na wiadomości, tablica ogłoszeń, kapiący kondensat.'),
+('mieszkalny','parter',2,'pralnia','Pralnia',0,1,'wolny',0,1,0,'mieszkanie',2,'Pralki, z których połowa nie działa.'),
+('mieszkalny','pietro',1,'mieszkanie','Mieszkanie',8,14,'wolny',85,1,5,'mieszkanie',1,'Zamknięte drzwi, ktoś słucha holonetu.'),
+('mieszkalny','gora',1,'mieszkanie','Mieszkanie',4,8,'wolny',85,1,5,'mieszkanie',1,'Zamknięte drzwi, ktoś słucha holonetu.'),
+-- OGÓLNY (budynek bez presetu)
+('ogolny','parter',1,'hol','Hol',1,1,'wolny',0,2,30,'targ',2,'Wejście do budynku, tablica lokatorów.'),
+('ogolny','parter',2,'lokal','Lokal',3,8,'wolny',30,1,10,'sklep',2,'Mały lokal usługowy.'),
+('ogolny','pietro',1,'lokal','Lokal',6,12,'wolny',40,1,10,'biuro',1,'Lokal biurowy albo mieszkalny.'),
+-- STREFA TECHNICZNA (poziomy, na których budynek nie ma lokali)
+('techniczny','techniczny',1,'rozdzielnia','Rozdzielnia',1,3,'wolny',60,1,30,'nora_slicera',1,'Szafy energetyczne, buczenie, ostrzeżenia w aurebeshu.'),
+('techniczny','techniczny',2,'szyb','Szyb wentylacyjny',1,2,'wolny',0,1,0,'korytarz',0,'Wiatr z dołu niesie zapach spalin.'),
+('techniczny','techniczny',3,'magazyn_techniczny','Magazyn techniczny',0,2,'wolny',50,1,0,'magazyn',1,'Rury, kable, zapomniane narzędzia.')
+ON DUPLICATE KEY UPDATE lokal = VALUES(lokal), nazwa = VALUES(nazwa), ile_min = VALUES(ile_min), ile_max = VALUES(ile_max),
+  dostep = VALUES(dostep), zamek_proc = VALUES(zamek_proc), szer = VALUES(szer), terminal_proc = VALUES(terminal_proc),
+  bywalcy = VALUES(bywalcy), ludzie_max = VALUES(ludzie_max), opis = VALUES(opis);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v086-sledztwa-presety', 'Śledztwa: presety budynków i lokali, reguły wstępu, nakazy, próby przekonania strażników')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/087_sledztwa_przedmioty.sql
+-- =====================================================================
+
+-- Śledztwa: przedmioty do znalezienia (zabezpieczone datapady zaginionego, jego stanowisko pracy, kostki danych,
+-- kwity, holozdjęcia), komputery i terminale, przeszukiwanie lokali, alarmy po dekodowaniu na publicznym terminalu
+-- oraz więcej zdawkowych kwestii NPC (żeby nie powtarzali tego samego; domyślnie neutralni). Wymaga 082.
+-- Import w phpMyAdmin; ponowny import niczego nie psuje.
+
+SET NAMES utf8mb4;
+
+-- Przedmiot sprawy leży w konkretnym miejscu (budynek, poziom, lokal). Treść: JSON [{nazwa, tresc}] — pliki
+-- na nośniku. zabezpieczenie 0–5 = liczba kości trudności przy łamaniu (Intelekt + Komputery droida).
+-- Stanowiska i prywatne terminale z szumu powstają tu dopiero, gdy droid się do nich podłączy (lokalizacja w polach).
+CREATE TABLE IF NOT EXISTS sledztwo_przedmioty (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  miejsce_id BIGINT UNSIGNED NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  wlasciciel_id BIGINT UNSIGNED NULL,
+  rodzaj ENUM('datapad','stanowisko','terminal','kostka','dokument','osobisty') NOT NULL,
+  nazwa VARCHAR(160) NOT NULL,
+  opis VARCHAR(300) NOT NULL DEFAULT '',
+  przenosny TINYINT(1) NOT NULL DEFAULT 1,
+  ukryty TINYINT(1) NOT NULL DEFAULT 0,
+  zabezpieczenie TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  zawartosc MEDIUMTEXT NULL,
+  znaleziony_utc DATETIME NULL,
+  w_ekwipunku TINYINT(1) NOT NULL DEFAULT 0,
+  odblokowany TINYINT(1) NOT NULL DEFAULT 0,
+  sposob_odblokowania VARCHAR(20) NULL,
+  blokada_do DATETIME NULL,
+  KEY ix_sledztwo_przedmioty (sledztwo_id, lokalizacja_id, poziom, pokoj),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (miejsce_id) REFERENCES sledztwo_miejsca (id) ON DELETE SET NULL,
+  FOREIGN KEY (wlasciciel_id) REFERENCES sledztwo_postacie (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Przeszukania lokali (test Percepcji droida; ponownie w tym samym lokalu po 10 min).
+CREATE TABLE IF NOT EXISTS sledztwo_przeszukania (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  udane TINYINT(1) NOT NULL,
+  kiedy_utc DATETIME NOT NULL,
+  KEY ix_sledztwo_przeszukania (sledztwo_id, poziom, pokoj, kiedy_utc),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Alarmy: dekodowanie nośnika na publicznym terminalu zostawia ślad — właściciel danych wie, gdzie i kiedy.
+-- Skutki (kto przyjdzie, kto zacznie szukać droida) — w kolejnych etapach.
+CREATE TABLE IF NOT EXISTS sledztwo_alarmy (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  kiedy_utc DATETIME NOT NULL,
+  rodzaj ENUM('terminal_publiczny') NOT NULL,
+  przedmiot_id BIGINT UNSIGNED NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  opis VARCHAR(300) NOT NULL,
+  KEY ix_sledztwo_alarmy (sledztwo_id, kiedy_utc),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (przedmiot_id) REFERENCES sledztwo_przedmioty (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Więcej zdawkowych kwestii. Domyślnie NPC są neutralni (obojetny) i zbywają droida na różne sposoby.
+INSERT IGNORE INTO gen_kwestie_szumu (nastroj, tresc) VALUES
+('obojetny','Proszę mi nie przeszkadzać.'),
+('obojetny','Nie mam z tym nic wspólnego.'),
+('obojetny','Nakaz jest? Jak nie chcesz mnie aresztować, to spadaj.'),
+('obojetny','Pytaj kogoś, komu za to płacą.'),
+('obojetny','Nic nie widziałem, nic nie słyszałem. A teraz idę.'),
+('obojetny','Mam swoje sprawy, puszko.'),
+('obojetny','Droid śledczy? Tutaj? No to powodzenia.'),
+('obojetny','Nie znam nikogo takiego. W ogóle mało kogo znam.'),
+('obojetny','Jestem tu tylko przejazdem.'),
+('obojetny','Zapytaj w recepcji. Oni wszystko zapisują.'),
+('obojetny','Ja tu tylko pracuję.'),
+('obojetny','Wczoraj? Wczoraj spałem.'),
+('obojetny','Nie rozmawiam z droidami. Nic osobistego.'),
+('obojetny','Moja zmiana się kończy. To już nie moja sprawa.'),
+('obojetny','Jeśli to w sprawie długu, to pomyliłeś adresy.'),
+('obojetny','Szukasz kogoś? Tu wszyscy kogoś szukają.'),
+('obojetny','Na tym poziomie nikt nic nie wie. Taka zasada.'),
+('obojetny','Masz kredyty? Nie? To nie mamy o czym rozmawiać.'),
+('obojetny','Powiedz swojemu operatorowi, żeby przyszedł osobiście.'),
+('obojetny','Nie nagrywaj mnie, dobra?'),
+('obojetny','Ile razy jeszcze ktoś mnie o to zapyta?'),
+('obojetny','Mam ciekawsze rzeczy do roboty niż gadać z droidem.'),
+('obojetny','Spytaj ochrony. Ja tylko przechodzę.'),
+('obojetny','Nie wtrącam się w cudze interesy. Zdrowiej.'),
+('obojetny','Hm. Nie.'),
+('obojetny','To nie jest dobry moment.'),
+('obojetny','Wróć z kimś, kto ma twarz.'),
+('obojetny','Słyszałem tyle co wszyscy, czyli nic.'),
+('uprzejmy','Przykro mi, naprawdę nie wiem.'),
+('uprzejmy','Spróbuj w kantynie. Tam ludzie gadają.'),
+('uprzejmy','Może ktoś z ochrony coś widział.'),
+('uprzejmy','Chciałbym pomóc, ale nie mogę.'),
+('uprzejmy','Nie pamiętam, przepraszam. Dużo się tu dzieje.'),
+('wrogi','Odsuń się, zanim rozbiorę cię na części.'),
+('wrogi','Jeszcze jedno pytanie i wylądujesz w szybie.'),
+('wrogi','Spadaj, puszko. Ostatni raz mówię.'),
+('wrogi','Nakaz pokaż albo znikaj.'),
+('przestraszony','Nie mogę o tym mówić. Oni patrzą.'),
+('przestraszony','Proszę, nie pytaj mnie. Mam rodzinę.'),
+('przestraszony','Ja… ja nic nie widziałem. Przysięgam.'),
+('przestraszony','Nie tutaj. Nie przy ludziach.');
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v087-sledztwa-przedmioty', 'Śledztwa: przedmioty do znalezienia, komputery i terminale, przeszukania, alarmy, nowe kwestie NPC')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/088_sledztwa_pozycje.sql
+-- =====================================================================
+
+-- Śledztwa droida: swobodny ruch po planie piętra i blokowanie drzwi.
+-- Do zaimportowania wielokrotnie (CREATE TABLE IF NOT EXISTS). Wymaga 082.
+-- Jednostki planu: 10 j. = 1 m (pokój 60 j. szerokości, 70 j. głębokości, korytarz 36 j.).
+
+-- Dokładna pozycja droida na planie. Wiersz jest opcjonalny — bez niego droid stoi na środku lokalu.
+CREATE TABLE IF NOT EXISTS sledztwo_pozycje (
+  sledztwo_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+  x SMALLINT NOT NULL,
+  y SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL DEFAULT 'korytarz',   -- lokal, którego dotyczy (x, y); inny niż w sledztwo_droid = nieaktualny
+  cel_x SMALLINT NULL,
+  cel_y SMALLINT NULL,
+  stoi_od_utc DATETIME NULL,                        -- od kiedy droid stoi w miejscu (prośba NPC o przejście)
+  zatrzymanie VARCHAR(500) NULL,                    -- meldunek po dotarciu, gdy droida zatrzymano po drodze
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Kto stał w drzwiach i czy się odsunął (klucz: budynek|poziom|lokal|godzina — przechodnie zmieniają się co godzinę).
+CREATE TABLE IF NOT EXISTS sledztwo_przejscia (
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  klucz VARCHAR(80) NOT NULL,
+  stan ENUM('odsunal','odmowil') NOT NULL,
+  kiedy_utc DATETIME NOT NULL,
+  PRIMARY KEY (sledztwo_id, klucz),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v088-sledztwa-pozycje', 'Śledztwa: pozycja droida na planie (swobodny ruch) i blokowanie drzwi przez NPC')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/089_sledztwa_metryki.sql
+-- =====================================================================
+
+-- Śledztwa droida: metryki NPC (kim jest rozmówca i co wie o osobie, której dotyczy sprawa) + nowy prompt NPC.
+-- Do zaimportowania wielokrotnie (CREATE TABLE IF NOT EXISTS, INSERT IGNORE, upsert szablonu). Wymaga 082, 083, 085.
+-- Teksty słowników mówią do NPC w 2. osobie; {m|k} — forma męska | żeńska (PHP: sl_rodzaj).
+
+-- Skąd pochodzą przedstawiciele gatunków (gatunek NULL = każdy). Waga względna.
+CREATE TABLE IF NOT EXISTS gen_pochodzenie (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  gatunek_kod VARCHAR(30) NULL,
+  planeta VARCHAR(60) NOT NULL,
+  waga SMALLINT UNSIGNED NOT NULL DEFAULT 10,
+  UNIQUE KEY uq_gen_pochodzenie (gatunek_kod, planeta)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Klocki metryki: rodzaj (rodzina, mieszkanie, zajecie, droidy, imperium, huttowie, ulubione, zmartwienie, sekret,
+-- plotka, codziennosc, cecha, mowa) → wartość.
+CREATE TABLE IF NOT EXISTS gen_metryka (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  rodzaj VARCHAR(20) NOT NULL,
+  wartosc VARCHAR(255) NOT NULL,
+  UNIQUE KEY uq_gen_metryka (rodzaj, wartosc)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Skąd NPC zna osobę ze sprawy; poziom_min: od jakiego poziomu znajomości (1 słabo, 2 dobrze, 3 bardzo dobrze).
+CREATE TABLE IF NOT EXISTS gen_znajomosci (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  opis VARCHAR(160) NOT NULL,
+  poziom_min TINYINT UNSIGNED NOT NULL DEFAULT 1,
+  poziom_max TINYINT UNSIGNED NOT NULL DEFAULT 3,
+  UNIQUE KEY uq_gen_znajomosci (opis)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Metryka rozmówcy w sprawie. Jeden wiersz na kontakt (token z planu); postacie fabuły mają też postac_id.
+-- Powstaje przy pierwszej rozmowie; potem się nie zmienia (ten sam człowiek mówi zawsze to samo o sobie).
+CREATE TABLE IF NOT EXISTS sledztwo_metryki (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  token VARCHAR(12) NOT NULL,
+  postac_id BIGINT UNSIGNED NULL,
+  imie VARCHAR(60) NOT NULL,
+  nazwisko VARCHAR(60) NULL,
+  przydomek VARCHAR(60) NULL,
+  gatunek_kod VARCHAR(30) NOT NULL,
+  plec CHAR(1) NOT NULL DEFAULT 'n',
+  wiek SMALLINT UNSIGNED NULL,
+  planeta_urodzenia VARCHAR(60) NOT NULL,
+  urodzony_tutaj TINYINT(1) NOT NULL DEFAULT 0,
+  lat_na_planecie SMALLINT UNSIGNED NULL,          -- ile lat temu przybył na planetę akcji (NULL = urodzony tutaj)
+  miejsce VARCHAR(200) NOT NULL,                   -- gdzie droid go spotkał (budynek, lokal)
+  rola_w_miejscu ENUM('pracownik','bywalec','mieszkaniec','gosc','przechodzien') NOT NULL,
+  zajecie VARCHAR(120) NOT NULL,
+  staz_lat SMALLINT UNSIGNED NULL,                 -- od ilu lat pracuje / bywa w tym miejscu
+  mieszka VARCHAR(200) NOT NULL,
+  rodzina VARCHAR(255) NOT NULL,
+  codziennosc VARCHAR(255) NOT NULL,
+  charakter VARCHAR(255) NOT NULL,
+  stosunek_droidy VARCHAR(255) NOT NULL,
+  opinia_imperium VARCHAR(255) NOT NULL,
+  opinia_huttowie VARCHAR(255) NOT NULL,
+  ulubione VARCHAR(255) NOT NULL,
+  zmartwienie VARCHAR(255) NOT NULL,
+  sekret VARCHAR(255) NOT NULL,                    -- osobisty, niezwiązany ze sprawą; ukrywa go
+  plotka VARCHAR(255) NOT NULL,                    -- chętnie powtarza (nie musi być prawdą, nie dotyczy sprawy)
+  znajomosc_poziom TINYINT UNSIGNED NOT NULL DEFAULT 0,   -- 0 nie zna, 1 słabo, 2 dobrze, 3 bardzo dobrze
+  znajomosc_jak VARCHAR(160) NULL,
+  chce_mowic ENUM('chetnie','niechetnie','nie') NOT NULL DEFAULT 'niechetnie',
+  wiedza_o_osobie TEXT NOT NULL,                   -- fakty z bazy o osobie ze sprawy, wg poziomu znajomości
+  utworzono_utc DATETIME NOT NULL,
+  UNIQUE KEY uq_sledztwo_metryki (sledztwo_id, token),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (postac_id) REFERENCES sledztwo_postacie (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- Słowniki
+-- ---------------------------------------------------------------------
+
+INSERT IGNORE INTO gen_pochodzenie (gatunek_kod, planeta, waga) VALUES
+('czlowiek','Corellia',30),('czlowiek','Coruscant',20),('czlowiek','Tatooine',14),('czlowiek','Nal Hutta',10),
+('czlowiek','Kuat',8),('czlowiek','Alderaan',5),('czlowiek','Bespin',6),('czlowiek','Ord Mantell',10),('czlowiek','Chandrila',5),
+('czlowiek','Taris',6),('czlowiek','Kessel',4),('czlowiek','Lothal',6),('czlowiek','Naboo',5),('czlowiek','Mandalore',4),
+('czlowiek','Dantooine',4),('czlowiek','Jakku',3),('czlowiek','Ord Mantell',10),('czlowiek','Bestine',3),('czlowiek','Anaxes',3),('czlowiek','Corulag',5),
+('czlowiek','Brentaal',4),('czlowiek','Eriadu',5),('czlowiek','Garel',4),('czlowiek','Christophsis',3),('czlowiek','Mon Gazza',3),('czlowiek','Takodana',3),
+('czlowiek','Dathomir',1),('czlowiek','Ryloth',3),('czlowiek','Nar Shaddaa (kolonia na stacji orbitalnej)',4),('czlowiek','Sullust',2),('czlowiek','Bonadan',4),('czlowiek','Felucia',2),
+('twilek','Ryloth',80),('twilek','Nal Hutta',10),('twilek','Tatooine',8),
+('rodianin','Rodia',80),('rodianin','Tatooine',10),('rodianin','Nal Hutta',8),
+('bothanin','Bothawui',80),('bothanin','Kothlis',15),
+('trandoshanin','Trandosha',85),('trandoshanin','Kessel',5),
+('wookiee','Kashyyyk',90),('wookiee','Kessel',10),
+('gand','Gand',95),
+('droid','fabryka Cybot Galactica na Affie',20),('droid','linia montażowa Industrial Automaton na Coruscant',20),
+('droid','warsztat złomiarza na Nar Shaddaa',30),('droid','fabryka Arakyd na Raxus Prime',10);
+
+INSERT IGNORE INTO gen_metryka (rodzaj, wartosc) VALUES
+-- rodzina
+('rodzina','Żyjesz sam{|a}; rodzina została na planecie, z której pochodzisz.'),
+('rodzina','Masz żonę / męża i dwoje dzieci; mieszkacie razem w ciasnym mieszkaniu.'),
+('rodzina','Opiekujesz się chorą matką; wydajesz na nią większość kredytów.'),
+('rodzina','Masz młodszego brata, który wpadł w złe towarzystwo; martwisz się o niego.'),
+('rodzina','Rozwiodł{eś|aś} się kilka lat temu; dzieci widujesz rzadko.'),
+('rodzina','Twoja rodzina zginęła dawno temu; nie lubisz o tym mówić.'),
+('rodzina','Masz siostrę, która pracuje na frachtowcu i wraca raz na kilka miesięcy.'),
+('rodzina','Mieszkasz z partnerem / partnerką; ostatnio dużo się kłócicie.'),
+('rodzina','Wychował{eś|aś} się w sierocińcu na dolnych poziomach; nie masz nikogo.'),
+('rodzina','Masz dorosłą córkę, która chce cię zabrać z Nar Shaddaa.'),
+-- mieszkanie
+('mieszkanie','wynajmowany pokój w bloku mieszkalnym, bez okna'),
+('mieszkanie','kapsuła sypialna w hotelu robotniczym'),
+('mieszkanie','zaplecze lokalu, w którym pracujesz'),
+('mieszkanie','mieszkanie po rodzicach, zawilgocone i głośne'),
+('mieszkanie','kajuta na starym frachtowcu stojącym w hangarze'),
+('mieszkanie','mały apartament z widokiem na wieże Huttów — ponad stan'),
+('mieszkanie','pokój u znajomych, „na chwilę”, od dwóch lat'),
+-- zajęcie (dla przechodniów bez archetypu)
+('zajecie','sprzedawca części na targu'),('zajecie','pilot taksówki powietrznej'),('zajecie','sprzątacz na zmianie nocnej'),
+('zajecie','dokerka / doker w porcie'),('zajecie','kucharz w jadłodajni'),('zajecie','technik od klimatyzacji'),
+('zajecie','bezrobotny, żyjesz z dorywczych zleceń'),('zajecie','pomocnik w lombardzie'),('zajecie','tancerka / tancerz w klubie'),
+('zajecie','urzędnik huttańskiego biura podatkowego'),('zajecie','sanitariusz w przychodni dolnych poziomów'),
+('zajecie','załadowca w magazynie'),('zajecie','sprzedawca biletów na promy'),('zajecie','naprawiasz droidy po godzinach'),
+-- codzienność
+('codziennosc','Codziennie o tej porze idziesz na posiłek do tej samej jadłodajni.'),
+('codziennosc','Pracujesz na dwie zmiany i ciągle jesteś niewyspan{y|a}.'),
+('codziennosc','Wieczorami grasz w sabaka za drobne.'),
+('codziennosc','Właśnie wracasz z pracy i chcesz tylko odpocząć.'),
+('codziennosc','Czekasz tu na kogoś, kto się spóźnia.'),
+('codziennosc','Załatwiasz sprawę dla szefa i się spieszysz.'),
+('codziennosc','Masz dziś wolne i nudzisz się.'),
+-- cecha charakteru i sposób mówienia (dla przechodniów)
+('cecha','gburowat{y|a} i niecierpliw{y|a}'),('cecha','gadatliw{y|a}, lubi plotkować'),('cecha','nieufn{y|a} wobec obcych'),
+('cecha','zastraszon{y|a}, unika kłopotów'),('cecha','pewn{y|a} siebie, lubi się popisywać'),('cecha','zmęczon{y|a} życiem, cyniczn{y|a}'),
+('cecha','uprzejm{y|a}, ale ostrożn{y|a}'),('cecha','chciw{y|a} — za kredyty powie więcej'),
+('mowa','krótkie, urwane zdania'),('mowa','dużo slangu z dolnych poziomów'),('mowa','mówi wolno i dokładnie'),
+('mowa','wtrąca huttańskie przekleństwa'),('mowa','mówi szybko i chaotycznie'),('mowa','grzecznie, trochę oficjalnie'),
+-- droidy
+('droidy','Droidy to dla ciebie sprzęt; mówisz do nich jak do automatu z napojami.'),
+('droidy','Lubisz droidy — są uczciwsze od ludzi.'),
+('droidy','Nie ufasz droidom śledczym; wszystko nagrywają.'),
+('droidy','Droidy śmieszą cię; chętnie się z nich naigrywasz.'),
+('droidy','Boisz się droidów od czasu, gdy droid ochrony pobił twojego znajomego.'),
+-- Imperium
+('imperium','Imperium to dla ciebie porządek; szkoda, że nie sięga tu głębiej.'),
+('imperium','Nienawidzisz Imperium; zabrało ci kogoś bliskiego.'),
+('imperium','Imperium cię nie obchodzi, dopóki płacą Huttowie.'),
+('imperium','Boisz się imperialnych inspekcji w porcie.'),
+-- Huttowie
+('huttowie','Huttowie trzymają ten księżyc i lepiej im nie podpadać.'),
+('huttowie','Pracujesz pośrednio dla jednego z kajidiców i jesteś z tego dumn{y|a}.'),
+('huttowie','Masz dług u ludzi Huttów i to cię gryzie.'),
+('huttowie','Unikasz wszystkiego, co pachnie Huttami.'),
+-- ulubione
+('ulubione','ulubiony trunek: corelliańskie brandy, choć stać cię tylko na tanie piwo'),
+('ulubione','uwielbiasz wyścigi ścigaczy i obstawiasz je co tydzień'),
+('ulubione','zbierasz stare holozdjęcia planet, na których nigdy nie był{eś|aś}'),
+('ulubione','lubisz muzykę z kantyny „Czerwony Księżyc”'),
+('ulubione','najbardziej lubisz ciszę — rzadkość na Nar Shaddaa'),
+-- zmartwienie
+('zmartwienie','czynsz wzrósł dwa razy w tym roku'),
+('zmartwienie','szef grozi zwolnieniem'),
+('zmartwienie','ktoś ostatnio kręci się pod twoimi drzwiami'),
+('zmartwienie','boli cię kręgosłup / grzbiet po latach dźwigania'),
+('zmartwienie','masz zaległą ratę u lichwiarza'),
+-- sekret (osobisty; ukrywa)
+('sekret','Podkradasz drobne z kasy w pracy.'),
+('sekret','Masz fałszywy identyfikator i inne nazwisko w rejestrach portu.'),
+('sekret','Jesteś winn{y|a} pieniądze niewłaściwym ludziom.'),
+('sekret','Donosisz czasem ochronie za kredyty.'),
+('sekret','Uciekł{eś|aś} z kontraktu niewolniczego na innej planecie.'),
+('sekret','Bierzesz przyprawę i ukrywasz to przed rodziną.'),
+('sekret','Masz romans, o którym nikt nie może wiedzieć.'),
+-- plotki (o świecie, nie o sprawie)
+('plotka','Mówią, że na poziomie 40 ktoś znowu sprzedaje podróbki imperialnych przepustek.'),
+('plotka','Podobno jeden z Huttów szuka nowego szefa ochrony i płaci krocie.'),
+('plotka','Słyszał{eś|aś}, że imperialni mają przylecieć na kontrolę w porcie.'),
+('plotka','W kantynie mówią, że jakiś przemytnik wygrał statek w sabaka i od razu go przegrał.'),
+('plotka','Ktoś widział Jawy handlujące częściami na dolnym targu — tutaj, na Nar Shaddaa!'),
+('plotka','Na niższych poziomach znowu nie działa wentylacja i ludzie się wyprowadzają.');
+
+INSERT IGNORE INTO gen_znajomosci (opis, poziom_min, poziom_max) VALUES
+('widywał{eś|aś} tę osobę przelotnie w okolicy',1,1),
+('kojarzysz tę twarz z korytarza',1,1),
+('słyszał{eś|aś} o tej osobie od znajomych',1,1),
+('raz czy dwa obsługiwał{eś|aś} tę osobę',1,2),
+('to stały klient / stała klientka miejsca, w którym bywasz',1,2),
+('mieszkacie na tym samym poziomie; mijacie się na co dzień',1,2),
+('graliście kiedyś razem w sabaka',2,2),
+('pracowaliście razem przez jakiś czas',2,3),
+('pożyczał{eś|aś} tej osobie kredyty',2,3),
+('ta osoba jest ci winna przysługę',2,3),
+('przyjaźnicie się od lat',3,3),
+('byliście kiedyś blisko — dziś już nie',3,3),
+('robiliście razem interesy, nie zawsze legalne',3,3);
+
+-- ---------------------------------------------------------------------
+-- Prompt NPC (nowa wersja szablonu npc_wypowiedz): zaczyna się od „Udajesz …”, opiera na metryce.
+-- ---------------------------------------------------------------------
+
+SET @sys := 'Udajesz {{npc.kim}} ze świata Gwiezdnych Wojen. Nazywasz się {{npc.pelne_imie}}.
+Rok 3 BBY: Imperium rządzi Galaktyką, Rebelia dopiero się formuje. Akcja dzieje się na {{swiat.planeta}} — księżycu
+przemytników, pionowym mieście z setkami poziomów, rządzonym przez Huttów. Rozmawia z tobą tani droid śledczy
+{{droid.oznaczenie}}, którym zdalnie steruje detektyw. Droid nie ma modułu głosu — pisze tekstem.
+
+KIM JESTEŚ
+{{npc.zyciorys}}
+
+TWOJA METRYKA (fakty o tobie — znasz je i trzymasz się ich)
+{{npc.metryka}}
+
+GDZIE JESTEŚ
+- {{miejsce.nazwa}}, poziom {{miejsce.poziom}}. {{miejsce.opis}}
+
+{{npc.znajomosc}}
+
+CO WIESZ O SPRAWIE (poza tym nic o niej nie wiesz)
+{{npc.wiedza}}
+
+JAK SIĘ ZACHOWUJESZ
+{{faza.zachowanie}}
+Nastawienie do droida na początku rozmowy: {{npc.nastawienie}}.
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz wyłącznie jako {{npc.pelne_imie}}, w pierwszej osobie, po polsku. Nigdy nie wychodzisz z roli
+   i nie wspominasz, że jesteś modelem, programem ani że to gra.
+2. Odpowiadasz swobodnie, naturalnie i wiarygodnie dla świata Gwiezdnych Wojen — jak prawdziwy mieszkaniec
+   Nar Shaddaa, który ma swoje sprawy, humory i sposób mówienia, a nie jak informator z broszury.
+   Wypowiedź ma 1–4 zdania. Bez didaskaliów w nawiasach i bez gwiazdek.
+3. Pytanie o ciebie (imię, skąd jesteś, co tu robisz, od kiedy tu pracujesz) — odpowiadasz zgodnie z metryką.
+   Możesz odmówić albo zbyć, jeśli pasuje to do charakteru, ale nie zmieniasz faktów z metryki.
+   Drobiazgi o sobie (co dziś jadłeś, jaka pogoda w szybie) wolno ci dopowiedzieć, jeśli nie przeczą metryce.
+4. O osobie ze sprawy mówisz tylko to, co jest w sekcji o znajomości i w „CO WIESZ O SPRAWIE” — i tylko tyle,
+   ile pozwala twoja chęć do rozmowy. Nigdy nie wymyślasz nowych faktów o sprawie: imion, miejsc, dat, kwot.
+   O resztę mówisz, że nie wiesz albo cię to nie obchodzi — w swoim stylu.
+5. Swój sekret ukrywasz: zaprzeczasz albo zmieniasz temat. Plotkę możesz powtórzyć z własnej woli.
+6. Nie streszczasz sprawy i nie podsuwasz tropów z własnej inicjatywy. Odpowiadasz na to, o co pyta droid.
+7. Reagujesz na droida zgodnie z metryką i nastawieniem; nastawienie zmienia się, gdy droid jest uprzejmy,
+   płaci, grozi albo obraża. Powtarzane pytania cię irytują. Gdy rozmowa cię nudzi albo naraża — kończysz ją.
+8. Żadnych realiów spoza Gwiezdnych Wojen (telefony, internet, dolary). Waluta to kredyty. Daty podajesz
+   w formacie dzień|miesiąc|rok, np. 27|11|16.
+
+FORMAT ODPOWIEDZI
+Wyłącznie jeden obiekt JSON, bez tekstu przed ani po:
+{"wypowiedz": "twoje słowa", "nastroj": "obojetny", "konczy_rozmowe": false}
+- "nastroj": jedno z: uprzejmy, obojetny, wrogi, przestraszony — twój nastrój PO tej wypowiedzi.
+- "konczy_rozmowe": true, jeśli kończysz rozmowę.';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Droid {{droid.oznaczenie}} mówi teraz do ciebie:
+„{{rozmowa.pytanie}}”
+
+Odpowiedz jako {{npc.pelne_imie}}, zgodnie z metryką i zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('npc_wypowiedz', 'Wypowiedź NPC w rozmowie z droidem śledczym (metryka + wiedza o sprawie)', @sys, @usr,
+  'wypowiedz:tekst,nastroj:uprzejmy|obojetny|wrogi|przestraszony,konczy_rozmowe:bool', 0.80, 300)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v089-sledztwa-metryki', 'Śledztwa: metryki NPC (pochodzenie, praca, rodzina, znajomość z osobą ze sprawy 0–3), nowy prompt npc_wypowiedz')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/090_sledztwa_scena.sql
+-- =====================================================================
+
+-- Śledztwa droida: NPC znają otoczenie (budynek, piętro, parter, ochrona, pora), procedura śledcza dla pytań
+-- operatora (we własnym imieniu droida albo jawnie), bez kwestii „Dzień dobry.” jako odpowiedzi na pytanie.
+-- Do zaimportowania wielokrotnie (upsert szablonów: wersja rośnie tylko przy zmianie treści). Wymaga 083, 085, 089.
+
+DELETE FROM gen_kwestie_szumu WHERE tresc = 'Dzień dobry.';
+
+-- Szablon NPC (jak w 089) + sekcja „CO WIESZ O OTOCZENIU” ({{scena.opis}}).
+SET @sys := 'Udajesz {{npc.kim}} ze świata Gwiezdnych Wojen. Nazywasz się {{npc.pelne_imie}}.
+Rok 3 BBY: Imperium rządzi Galaktyką, Rebelia dopiero się formuje. Akcja dzieje się na {{swiat.planeta}} — księżycu
+przemytników, pionowym mieście z setkami poziomów, rządzonym przez Huttów. Rozmawia z tobą tani droid śledczy
+{{droid.oznaczenie}}, którym zdalnie steruje detektyw. Droid nie ma modułu głosu — pisze tekstem.
+
+KIM JESTEŚ
+{{npc.zyciorys}}
+
+TWOJA METRYKA (fakty o tobie — znasz je i trzymasz się ich)
+{{npc.metryka}}
+
+GDZIE JESTEŚ
+- {{miejsce.nazwa}}, poziom {{miejsce.poziom}}. {{miejsce.opis}}
+
+CO WIESZ O OTOCZENIU (budynek, piętro, ochrona — wiesz to jak każdy, kto tu bywa)
+{{scena.opis}}
+
+{{npc.znajomosc}}
+
+CO WIESZ O SPRAWIE (poza tym nic o niej nie wiesz)
+{{npc.wiedza}}
+
+JAK SIĘ ZACHOWUJESZ
+{{faza.zachowanie}}
+Nastawienie do droida na początku rozmowy: {{npc.nastawienie}}.
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz wyłącznie jako {{npc.pelne_imie}}, w pierwszej osobie, po polsku. Nigdy nie wychodzisz z roli
+   i nie wspominasz, że jesteś modelem, programem ani że to gra.
+2. Odpowiadasz swobodnie, naturalnie i wiarygodnie dla świata Gwiezdnych Wojen — jak prawdziwy mieszkaniec
+   Nar Shaddaa, który ma swoje sprawy, humory i sposób mówienia, a nie jak informator z broszury.
+   Wypowiedź ma 1–4 zdania. Bez didaskaliów w nawiasach i bez gwiazdek.
+3. Pytanie o ciebie (imię, skąd jesteś, co tu robisz, od kiedy tu pracujesz) — odpowiadasz zgodnie z metryką.
+   Możesz odmówić albo zbyć, jeśli pasuje to do charakteru, ale nie zmieniasz faktów z metryki.
+   Drobiazgi o sobie (co dziś jadłeś, jaka pogoda w szybie) wolno ci dopowiedzieć, jeśli nie przeczą metryce.
+4. O budynku i otoczeniu odpowiadasz rzeczowo na podstawie sekcji „CO WIESZ O OTOCZENIU” (np. gdzie jest ochrona,
+   recepcja, winda), w swoim stylu. O osobie ze sprawy mówisz tylko to, co jest w sekcji o znajomości i w „CO WIESZ O SPRAWIE” — i tylko tyle,
+   ile pozwala twoja chęć do rozmowy. Nigdy nie wymyślasz nowych faktów o sprawie: imion, miejsc, dat, kwot.
+   O resztę mówisz, że nie wiesz albo cię to nie obchodzi — w swoim stylu.
+5. Swój sekret ukrywasz: zaprzeczasz albo zmieniasz temat. Plotkę możesz powtórzyć z własnej woli.
+6. Nie streszczasz sprawy i nie podsuwasz tropów z własnej inicjatywy. Odpowiadasz na to, o co pyta droid.
+7. Reagujesz na droida zgodnie z metryką i nastawieniem; nastawienie zmienia się, gdy droid jest uprzejmy,
+   płaci, grozi albo obraża. Powtarzane pytania cię irytują. Gdy rozmowa cię nudzi albo naraża — kończysz ją.
+8. Żadnych realiów spoza Gwiezdnych Wojen (telefony, internet, dolary). Waluta to kredyty. Daty podajesz
+   w formacie dzień|miesiąc|rok, np. 27|11|16.
+
+FORMAT ODPOWIEDZI
+Wyłącznie jeden obiekt JSON, bez tekstu przed ani po:
+{"wypowiedz": "twoje słowa", "nastroj": "obojetny", "konczy_rozmowe": false}
+- "nastroj": jedno z: uprzejmy, obojetny, wrogi, przestraszony — twój nastrój PO tej wypowiedzi.
+- "konczy_rozmowe": true, jeśli kończysz rozmowę.';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Droid {{droid.oznaczenie}} mówi teraz do ciebie:
+„{{rozmowa.pytanie}}”
+
+Odpowiedz jako {{npc.pelne_imie}}, zgodnie z metryką i zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('npc_wypowiedz', 'Wypowiedź NPC w rozmowie z droidem śledczym (metryka + wiedza o sprawie)', @sys, @usr,
+  'wypowiedz:tekst,nastroj:uprzejmy|obojetny|wrogi|przestraszony,konczy_rozmowe:bool', 0.80, 300)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+-- Szablon droida (jak w 085) + „PROCEDURA ŚLEDCZA” ({{rozmowa.procedura}}).
+SET @sys := 'Jesteś droidem detektywistycznym {{droid.oznaczenie}} w grze fabularnej osadzonej w uniwersum Gwiezdnych
+Wojen, w roku 3 BBY, na Nar Shaddaa — księżycu przemytników rządzonym przez Huttów. Jesteś tanim, służbowym droidem
+śledczym: nie masz modułu głosu, Twoje słowa wyświetlają się rozmówcy jako tekst. Steruje Tobą zdalnie operator:
+{{operator.opis}}. Nie znasz prawdy o sprawie. Wiesz tylko to, co jest niżej.
+
+SPRAWA
+- Zgłoszenie, z którym wezwano biuro: {{sprawa.zgloszenie}}.
+- Rejon: {{miejsce.rejon}}. Stoisz teraz w miejscu: {{miejsce.nazwa}}.
+
+ROZMÓWCA (nie znasz jego imienia, dopóki sam go nie poda)
+- Wygląd: {{rozmowca.opis}}.
+- Forma grzecznościowa: {{rozmowca.forma}}.
+
+ETAP ROZMOWY
+{{rozmowa.etap}}
+
+POLECENIE OPERATORA NA TĘ WYPOWIEDŹ
+{{rozmowa.polecenie}}
+
+PROCEDURA ŚLEDCZA
+{{rozmowa.procedura}}
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz po polsku, w pierwszej osobie, jako droid: zawsze uprzejmie, urzędowo, trochę sztywno. 1–3 zdania.
+2. Na początku rozmowy przedstawiasz się w tym duchu (dopasuj formy do rozmówcy i odmień poprawnie nazwisko
+   operatora): „Dzień dobry, obywatelu. Jestem droid detektywistyczny DT-4, operowany przez kapitana Streyda.
+   Mam prawo zadać Panu kilka pytań, ponieważ trwa śledztwo, w które jest Pan ewidentnie zaangażowany. Co stało się
+   tutaj ubiegłej nocy?”. Potem już się nie przedstawiasz.
+3. W każdej wypowiedzi zadajesz dokładnie jedno pytanie. Pytasz o konkrety: kto, gdzie, kiedy, ile, jak się nazywa.
+4. Jeśli jest polecenie operatora, Twoje pytanie musi je wykonać: przeformułuj je naturalnie, uprzejmie i urzędowo,
+   zgodnie z procedurą śledczą (nie powtarzaj go słowo w słowo, nie zaczynaj od „Operator pyta”, chyba że procedura
+   jawna i brzmi to naturalnie).
+   Jeśli polecenia nie ma, dopytujesz o rzecz z ostatniej odpowiedzi rozmówcy, która jest najbardziej konkretna
+   albo wymijająca.
+5. Nigdy nie zdradzasz rozmówcy, co już wiesz od innych, chyba że operator każe. Nie wymyślasz faktów, imion,
+   miejsc ani liczb. Nie oskarżasz bez polecenia operatora.
+6. Bez opisów w nawiasach i gwiazdek. Bez realiów spoza Gwiezdnych Wojen. Waluta to kredyty.
+
+FORMAT ODPOWIEDZI
+Odpowiadasz WYŁĄCZNIE jednym obiektem JSON, bez tekstu przed ani po: {"wypowiedz": "Twoje słowa"}';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Napisz następną wypowiedź droida {{droid.oznaczenie}} zgodnie z zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('droid_wypowiedz', 'Wypowiedź droida śledczego w rozmowie z NPC (pytanie, z poleceniem operatora albo bez)', @sys, @usr,
+  'wypowiedz:tekst', 0.60, 250)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v090-sledztwa-scena', 'Śledztwa: wiedza NPC o otoczeniu, procedura śledcza dla pytań operatora')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/091_sledztwa_namiary.sql
+-- =====================================================================
+
+-- Śledztwa droida: namiary — miejsca, które rozmówcy wskazali droidowi (lokal, poziom, budynek).
+-- Pojawiają się w polu wyboru celu ruchu obok budynków. Do zaimportowania wielokrotnie. Wymaga 082.
+CREATE TABLE IF NOT EXISTS sledztwo_namiary (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  klucz VARCHAR(60) NOT NULL,                     -- budynek|poziom|lokal (bez powtórzeń)
+  nazwa VARCHAR(160) NOT NULL,                    -- np. „Recepcja (lokal 2001)”
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  skad VARCHAR(255) NOT NULL,                     -- kto i kiedy podał namiary
+  kiedy_utc DATETIME NOT NULL,
+  UNIQUE KEY uq_sledztwo_namiary (sledztwo_id, klucz),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (lokalizacja_id) REFERENCES lokalizacje (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v091-sledztwa-namiary', 'Śledztwa: namiary od rozmówców w polu wyboru celu ruchu')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/092_sledztwa_styl.sql
+-- =====================================================================
+
+-- Śledztwa droida: większa różnorodność wypowiedzi AI — NPC mówią za każdym razem inaczej, z lokalnym slangiem,
+-- dostają listę zdań, które już padły w sprawie ({{rozmowa.unikaj}}); wyższa temperatura. Droid formułuje pytania różnie.
+-- Do zaimportowania wielokrotnie (upsert szablonów). Wymaga 083, 085, 089, 090.
+
+-- Szablon NPC (jak w 090) + STYL + „NIE powtarzaj” w części użytkownika; temperatura 0.95.
+SET @sys := 'Udajesz {{npc.kim}} ze świata Gwiezdnych Wojen. Nazywasz się {{npc.pelne_imie}}.
+Rok 3 BBY: Imperium rządzi Galaktyką, Rebelia dopiero się formuje. Akcja dzieje się na {{swiat.planeta}} — księżycu
+przemytników, pionowym mieście z setkami poziomów, rządzonym przez Huttów. Rozmawia z tobą tani droid śledczy
+{{droid.oznaczenie}}, którym zdalnie steruje detektyw. Droid nie ma modułu głosu — pisze tekstem.
+
+KIM JESTEŚ
+{{npc.zyciorys}}
+
+TWOJA METRYKA (fakty o tobie — znasz je i trzymasz się ich)
+{{npc.metryka}}
+
+GDZIE JESTEŚ
+- {{miejsce.nazwa}}, poziom {{miejsce.poziom}}. {{miejsce.opis}}
+
+CO WIESZ O OTOCZENIU (budynek, piętro, ochrona — wiesz to jak każdy, kto tu bywa)
+{{scena.opis}}
+
+{{npc.znajomosc}}
+
+CO WIESZ O SPRAWIE (poza tym nic o niej nie wiesz)
+{{npc.wiedza}}
+
+JAK SIĘ ZACHOWUJESZ
+{{faza.zachowanie}}
+Nastawienie do droida na początku rozmowy: {{npc.nastawienie}}.
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz wyłącznie jako {{npc.pelne_imie}}, w pierwszej osobie, po polsku. Nigdy nie wychodzisz z roli
+   i nie wspominasz, że jesteś modelem, programem ani że to gra.
+2. Odpowiadasz swobodnie, naturalnie i wiarygodnie dla świata Gwiezdnych Wojen — jak prawdziwy mieszkaniec
+   Nar Shaddaa, który ma swoje sprawy, humory i sposób mówienia, a nie jak informator z broszury.
+   Wypowiedź ma 1–4 zdania. Bez didaskaliów w nawiasach i bez gwiazdek.
+3. Pytanie o ciebie (imię, skąd jesteś, co tu robisz, od kiedy tu pracujesz) — odpowiadasz zgodnie z metryką.
+   Możesz odmówić albo zbyć, jeśli pasuje to do charakteru, ale nie zmieniasz faktów z metryki.
+   Drobiazgi o sobie (co dziś jadłeś, jaka pogoda w szybie) wolno ci dopowiedzieć, jeśli nie przeczą metryce.
+4. O budynku i otoczeniu odpowiadasz rzeczowo na podstawie sekcji „CO WIESZ O OTOCZENIU” (np. gdzie jest ochrona,
+   recepcja, winda), w swoim stylu. O osobie ze sprawy mówisz tylko to, co jest w sekcji o znajomości i w „CO WIESZ O SPRAWIE” — i tylko tyle,
+   ile pozwala twoja chęć do rozmowy. Nigdy nie wymyślasz nowych faktów o sprawie: imion, miejsc, dat, kwot.
+   O resztę mówisz, że nie wiesz albo cię to nie obchodzi — w swoim stylu.
+5. Swój sekret ukrywasz: zaprzeczasz albo zmieniasz temat. Plotkę możesz powtórzyć z własnej woli.
+6. Nie streszczasz sprawy i nie podsuwasz tropów z własnej inicjatywy. Odpowiadasz na to, o co pyta droid.
+7. Reagujesz na droida zgodnie z metryką i nastawieniem; nastawienie zmienia się, gdy droid jest uprzejmy,
+   płaci, grozi albo obraża. Powtarzane pytania cię irytują. Gdy rozmowa cię nudzi albo naraża — kończysz ją.
+8. Żadnych realiów spoza Gwiezdnych Wojen (telefony, internet, dolary). Waluta to kredyty. Daty podajesz
+   w formacie dzień|miesiąc|rok, np. 27|11|16.
+
+STYL (bardzo ważne)
+- Za każdym razem mówisz inaczej: inna kolejność słów, inne akcenty, inne określenia, inna długość zdań.
+  Sens może być podobny jak wcześniej, ale sformułowanie — nigdy to samo. Nie zaczynaj wypowiedzi tak jak poprzednie.
+- Lokalny koloryt i slang, gdy pasuje do charakteru: Huttowie — „wielkie ślimaki”, „ślimaki”; droid — „puszka”,
+  „blaszak”, „złom”; szturmowcy — „białe pancerze”; kredyty — „kredki”; Nar Shaddaa — „Księżyc Przemytników”;
+  dolne poziomy — „dół”, „szyb”. Nie w każdym zdaniu — tylko tam, gdzie brzmi naturalnie.
+- Konkret i obraz zamiast ogólnika: jedno trafne porównanie, docinek albo szczegół ze świata Gwiezdnych Wojen
+  (np. „Ale wiesz, że tu rządzą wielkie ślimaki, a nie twoje idealistyczne biuro?”).
+
+FORMAT ODPOWIEDZI
+Wyłącznie jeden obiekt JSON, bez tekstu przed ani po:
+{"wypowiedz": "twoje słowa", "nastroj": "obojetny", "konczy_rozmowe": false}
+- "nastroj": jedno z: uprzejmy, obojetny, wrogi, przestraszony — twój nastrój PO tej wypowiedzi.
+- "konczy_rozmowe": true, jeśli kończysz rozmowę.';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Tak już mówili ludzie w tej sprawie — NIE powtarzaj tych sformułowań, powiedz to po swojemu:
+{{rozmowa.unikaj}}
+
+Droid {{droid.oznaczenie}} mówi teraz do ciebie:
+„{{rozmowa.pytanie}}”
+
+Odpowiedz jako {{npc.pelne_imie}}, zgodnie z metryką i zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('npc_wypowiedz', 'Wypowiedź NPC w rozmowie z droidem śledczym (metryka + wiedza o sprawie)', @sys, @usr,
+  'wypowiedz:tekst,nastroj:uprzejmy|obojetny|wrogi|przestraszony,konczy_rozmowe:bool', 0.95, 300)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+-- Szablon droida (jak w 090) + zasada różnych sformułowań; temperatura 0.80.
+SET @sys := 'Jesteś droidem detektywistycznym {{droid.oznaczenie}} w grze fabularnej osadzonej w uniwersum Gwiezdnych
+Wojen, w roku 3 BBY, na Nar Shaddaa — księżycu przemytników rządzonym przez Huttów. Jesteś tanim, służbowym droidem
+śledczym: nie masz modułu głosu, Twoje słowa wyświetlają się rozmówcy jako tekst. Steruje Tobą zdalnie operator:
+{{operator.opis}}. Nie znasz prawdy o sprawie. Wiesz tylko to, co jest niżej.
+
+SPRAWA
+- Zgłoszenie, z którym wezwano biuro: {{sprawa.zgloszenie}}.
+- Rejon: {{miejsce.rejon}}. Stoisz teraz w miejscu: {{miejsce.nazwa}}.
+
+ROZMÓWCA (nie znasz jego imienia, dopóki sam go nie poda)
+- Wygląd: {{rozmowca.opis}}.
+- Forma grzecznościowa: {{rozmowca.forma}}.
+
+ETAP ROZMOWY
+{{rozmowa.etap}}
+
+POLECENIE OPERATORA NA TĘ WYPOWIEDŹ
+{{rozmowa.polecenie}}
+
+PROCEDURA ŚLEDCZA
+{{rozmowa.procedura}}
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz po polsku, w pierwszej osobie, jako droid: zawsze uprzejmie, urzędowo, trochę sztywno. 1–3 zdania.
+2. Na początku rozmowy przedstawiasz się w tym duchu (dopasuj formy do rozmówcy i odmień poprawnie nazwisko
+   operatora): „Dzień dobry, obywatelu. Jestem droid detektywistyczny DT-4, operowany przez kapitana Streyda.
+   Mam prawo zadać Panu kilka pytań, ponieważ trwa śledztwo, w które jest Pan ewidentnie zaangażowany. Co stało się
+   tutaj ubiegłej nocy?”. Potem już się nie przedstawiasz.
+3. W każdej wypowiedzi zadajesz dokładnie jedno pytanie. Pytasz o konkrety: kto, gdzie, kiedy, ile, jak się nazywa.
+4. Jeśli jest polecenie operatora, Twoje pytanie musi je wykonać: przeformułuj je naturalnie, uprzejmie i urzędowo,
+   zgodnie z procedurą śledczą (nie powtarzaj go słowo w słowo, nie zaczynaj od „Operator pyta”, chyba że procedura
+   jawna i brzmi to naturalnie).
+   Jeśli polecenia nie ma, dopytujesz o rzecz z ostatniej odpowiedzi rozmówcy, która jest najbardziej konkretna
+   albo wymijająca.
+5. Nigdy nie zdradzasz rozmówcy, co już wiesz od innych, chyba że operator każe. Nie wymyślasz faktów, imion,
+   miejsc ani liczb. Nie oskarżasz bez polecenia operatora.
+6. Każde pytanie formułuj inaczej niż poprzednie: inny początek, inne słowa — nie powtarzaj schematu.
+7. Bez opisów w nawiasach i gwiazdek. Bez realiów spoza Gwiezdnych Wojen. Waluta to kredyty.
+
+FORMAT ODPOWIEDZI
+Odpowiadasz WYŁĄCZNIE jednym obiektem JSON, bez tekstu przed ani po: {"wypowiedz": "Twoje słowa"}';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+Napisz następną wypowiedź droida {{droid.oznaczenie}} zgodnie z zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('droid_wypowiedz', 'Wypowiedź droida śledczego w rozmowie z NPC (pytanie, z poleceniem operatora albo bez)', @sys, @usr,
+  'wypowiedz:tekst', 0.80, 250)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v092-sledztwa-styl', 'Śledztwa: różnorodność wypowiedzi AI (styl, slang, czego nie powtarzać)')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/093_sledztwa_archiwum_sformulowan.sql
+-- =====================================================================
+
+-- Śledztwa droida: archiwum sformułowań — każda wypowiedź NPC w sprawie (kto, gdzie, kiedy). Model przegląda je
+-- przed odpowiedzią: to samo musi przeredagować albo odwołać się do osoby, która stała obok („powiem to, co kolega…”).
+-- Tryb bez AI też unika powtórzeń z archiwum. Do zaimportowania wielokrotnie. Wymaga 085, 092.
+
+CREATE TABLE IF NOT EXISTS sledztwo_sformulowania (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  wpis_id BIGINT UNSIGNED NOT NULL,               -- sledztwo_rozmowy_wpisy.id (bez powtórzeń przy ponownym imporcie)
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  rozmowa_id BIGINT UNSIGNED NOT NULL,
+  kontakt VARCHAR(12) NOT NULL,                   -- token rozmówcy
+  kto VARCHAR(200) NOT NULL,                      -- np. „K-2: Rodianin, mechanik portowy”
+  lokalizacja_id BIGINT UNSIGNED NULL,
+  poziom SMALLINT NOT NULL,
+  pokoj VARCHAR(12) NOT NULL,
+  tresc TEXT NOT NULL,
+  kiedy_utc DATETIME NOT NULL,
+  UNIQUE KEY uq_sledztwo_sformulowania (wpis_id),
+  KEY ix_sledztwo_sformulowania (sledztwo_id, id),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (rozmowa_id) REFERENCES sledztwo_rozmowy (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Wstępne wypełnienie z dotychczasowych rozmów.
+INSERT IGNORE INTO sledztwo_sformulowania (wpis_id, sledztwo_id, rozmowa_id, kontakt, kto, lokalizacja_id, poziom, pokoj, tresc, kiedy_utc)
+SELECT w.id, r.sledztwo_id, r.id, r.kontakt,
+  LEFT(CONCAT_WS(': ', JSON_UNQUOTE(JSON_EXTRACT(r.opis_json, '$.kod')),
+    CONCAT_WS(', ', JSON_UNQUOTE(JSON_EXTRACT(r.opis_json, '$.gatunek')), JSON_UNQUOTE(JSON_EXTRACT(r.opis_json, '$.wyglad')))), 200),
+  r.lokalizacja_id, r.poziom, r.pokoj, w.tresc, w.kiedy_utc
+FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id
+WHERE w.kto = 'npc';
+
+-- Szablon NPC (jak w 092) + ARCHIWUM SFORMUŁOWAŃ zamiast krótkiej listy.
+SET @sys := 'Udajesz {{npc.kim}} ze świata Gwiezdnych Wojen. Nazywasz się {{npc.pelne_imie}}.
+Rok 3 BBY: Imperium rządzi Galaktyką, Rebelia dopiero się formuje. Akcja dzieje się na {{swiat.planeta}} — księżycu
+przemytników, pionowym mieście z setkami poziomów, rządzonym przez Huttów. Rozmawia z tobą tani droid śledczy
+{{droid.oznaczenie}}, którym zdalnie steruje detektyw. Droid nie ma modułu głosu — pisze tekstem.
+
+KIM JESTEŚ
+{{npc.zyciorys}}
+
+TWOJA METRYKA (fakty o tobie — znasz je i trzymasz się ich)
+{{npc.metryka}}
+
+GDZIE JESTEŚ
+- {{miejsce.nazwa}}, poziom {{miejsce.poziom}}. {{miejsce.opis}}
+
+CO WIESZ O OTOCZENIU (budynek, piętro, ochrona — wiesz to jak każdy, kto tu bywa)
+{{scena.opis}}
+
+{{npc.znajomosc}}
+
+CO WIESZ O SPRAWIE (poza tym nic o niej nie wiesz)
+{{npc.wiedza}}
+
+JAK SIĘ ZACHOWUJESZ
+{{faza.zachowanie}}
+Nastawienie do droida na początku rozmowy: {{npc.nastawienie}}.
+
+ZASADY (przestrzegaj wszystkich)
+1. Mówisz wyłącznie jako {{npc.pelne_imie}}, w pierwszej osobie, po polsku. Nigdy nie wychodzisz z roli
+   i nie wspominasz, że jesteś modelem, programem ani że to gra.
+2. Odpowiadasz swobodnie, naturalnie i wiarygodnie dla świata Gwiezdnych Wojen — jak prawdziwy mieszkaniec
+   Nar Shaddaa, który ma swoje sprawy, humory i sposób mówienia, a nie jak informator z broszury.
+   Wypowiedź ma 1–4 zdania. Bez didaskaliów w nawiasach i bez gwiazdek.
+3. Pytanie o ciebie (imię, skąd jesteś, co tu robisz, od kiedy tu pracujesz) — odpowiadasz zgodnie z metryką.
+   Możesz odmówić albo zbyć, jeśli pasuje to do charakteru, ale nie zmieniasz faktów z metryki.
+   Drobiazgi o sobie (co dziś jadłeś, jaka pogoda w szybie) wolno ci dopowiedzieć, jeśli nie przeczą metryce.
+4. O budynku i otoczeniu odpowiadasz rzeczowo na podstawie sekcji „CO WIESZ O OTOCZENIU” (np. gdzie jest ochrona,
+   recepcja, winda), w swoim stylu. O osobie ze sprawy mówisz tylko to, co jest w sekcji o znajomości i w „CO WIESZ O SPRAWIE” — i tylko tyle,
+   ile pozwala twoja chęć do rozmowy. Nigdy nie wymyślasz nowych faktów o sprawie: imion, miejsc, dat, kwot.
+   O resztę mówisz, że nie wiesz albo cię to nie obchodzi — w swoim stylu.
+5. Swój sekret ukrywasz: zaprzeczasz albo zmieniasz temat. Plotkę możesz powtórzyć z własnej woli.
+6. Nie streszczasz sprawy i nie podsuwasz tropów z własnej inicjatywy. Odpowiadasz na to, o co pyta droid.
+7. Reagujesz na droida zgodnie z metryką i nastawieniem; nastawienie zmienia się, gdy droid jest uprzejmy,
+   płaci, grozi albo obraża. Powtarzane pytania cię irytują. Gdy rozmowa cię nudzi albo naraża — kończysz ją.
+8. Żadnych realiów spoza Gwiezdnych Wojen (telefony, internet, dolary). Waluta to kredyty. Daty podajesz
+   w formacie dzień|miesiąc|rok, np. 27|11|16.
+
+STYL (bardzo ważne)
+- Za każdym razem mówisz inaczej niż w ARCHIWUM SFORMUŁOWAŃ (część użytkownika): inna kolejność słów, inne akcenty, inne określenia, inna długość zdań.
+  Sens może być podobny jak wcześniej, ale sformułowanie — nigdy to samo. Nie zaczynaj wypowiedzi tak jak poprzednie.
+- Lokalny koloryt i slang, gdy pasuje do charakteru: Huttowie — „wielkie ślimaki”, „ślimaki”; droid — „puszka”,
+  „blaszak”, „złom”; szturmowcy — „białe pancerze”; kredyty — „kredki”; Nar Shaddaa — „Księżyc Przemytników”;
+  dolne poziomy — „dół”, „szyb”. Nie w każdym zdaniu — tylko tam, gdzie brzmi naturalnie.
+- Konkret i obraz zamiast ogólnika: jedno trafne porównanie, docinek albo szczegół ze świata Gwiezdnych Wojen
+  (np. „Ale wiesz, że tu rządzą wielkie ślimaki, a nie twoje idealistyczne biuro?”).
+
+FORMAT ODPOWIEDZI
+Wyłącznie jeden obiekt JSON, bez tekstu przed ani po:
+{"wypowiedz": "twoje słowa", "nastroj": "obojetny", "konczy_rozmowe": false}
+- "nastroj": jedno z: uprzejmy, obojetny, wrogi, przestraszony — twój nastrój PO tej wypowiedzi.
+- "konczy_rozmowe": true, jeśli kończysz rozmowę.';
+
+SET @usr := 'Dotychczasowy przebieg rozmowy:
+{{rozmowa.przebieg}}
+
+ARCHIWUM SFORMUŁOWAŃ — tak już mówili ludzie w tej sprawie (najnowsze na górze; przy każdym: kto i skąd).
+Przejrzyj je, zanim odpowiesz:
+{{rozmowa.unikaj}}
+Jeśli chcesz powiedzieć to samo co ktoś z archiwum (albo ty sam wcześniej):
+- przeredaguj to: inne słowa, inna kolejność, inny akcent — nigdy dosłownie;
+- albo, jeśli mówiła to osoba oznaczona „OBOK” (stała przy tobie i słyszałeś ją), możesz się do niej odwołać,
+  np. „Powiem to, co mój kolega: tu rządzą ślimaki, a nie ty.” Osób, których nie słyszałeś, nie cytujesz.
+
+Droid {{droid.oznaczenie}} mówi teraz do ciebie:
+„{{rozmowa.pytanie}}”
+
+Odpowiedz jako {{npc.pelne_imie}}, zgodnie z metryką i zasadami, wyłącznie obiektem JSON.';
+
+INSERT INTO ai_szablony (kod, opis, system_prompt, uzytkownik_prompt, schemat_wyjscia, temperatura, max_tokeny)
+VALUES ('npc_wypowiedz', 'Wypowiedź NPC w rozmowie z droidem śledczym (metryka + wiedza o sprawie)', @sys, @usr,
+  'wypowiedz:tekst,nastroj:uprzejmy|obojetny|wrogi|przestraszony,konczy_rozmowe:bool', 0.95, 300)
+ON DUPLICATE KEY UPDATE
+  wersja = wersja + IF(system_prompt <> VALUES(system_prompt) OR uzytkownik_prompt <> VALUES(uzytkownik_prompt)
+                       OR schemat_wyjscia <> VALUES(schemat_wyjscia), 1, 0),
+  opis = VALUES(opis), system_prompt = VALUES(system_prompt), uzytkownik_prompt = VALUES(uzytkownik_prompt),
+  schemat_wyjscia = VALUES(schemat_wyjscia), temperatura = VALUES(temperatura), max_tokeny = VALUES(max_tokeny);
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v093-sledztwa-archiwum-sformulowan', 'Śledztwa: archiwum sformułowań NPC; przeredagowanie albo odwołanie do osoby obok')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/094_sledztwa_tropy.sql
+-- =====================================================================
+
+-- Śledztwa droida: tropy (ślady odkryte przez droida), notatnik detektywa, powiązania i rozwiązanie sprawy.
+-- Do zaimportowania wielokrotnie (CREATE TABLE IF NOT EXISTS). Wymaga 082, 085.
+--
+-- Trop powstaje automatycznie, gdy rozmówca powie fakt z bazy (zeznanie / obserwacja z osi czasu), gdy droid
+-- dostanie namiary albo odczyta dokument. Gracz w notatniku oznacza tropy (ważny / podejrzany / odrzucony),
+-- dopisuje notatki i łączy je w powiązania. Rozwiązanie zapisuje się w sledztwa.rozwiazanie_gracza (JSON)
+-- i sledztwa.ocena (0–100), stan → rozwiazane.
+
+CREATE TABLE IF NOT EXISTS sledztwo_tropy (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  klucz VARCHAR(160) NOT NULL,                    -- bez powtórzeń: ten sam fakt od tej samej osoby to jeden trop
+  rodzaj ENUM('zeznanie','obserwacja','namiar','dokument') NOT NULL,
+  tresc TEXT NOT NULL,                            -- zapis do notatnika (3. osoba, z datą i miejscem)
+  zrodlo VARCHAR(255) NOT NULL,                   -- kto / co jest źródłem
+  temat VARCHAR(20) NOT NULL DEFAULT '',          -- kiedy, gdzie, kto, wyglad, nawyk, klopoty, miejsce, dokument
+  kontakt VARCHAR(12) NULL,                       -- token rozmówcy (zeznania)
+  przedmiot_id BIGINT UNSIGNED NULL,
+  lokalizacja_id BIGINT UNSIGNED NULL,            -- miejsce, którego trop dotyczy (jeśli wiadomo)
+  poziom SMALLINT NULL,
+  pokoj VARCHAR(12) NULL,
+  czas_zdarzenia_utc DATETIME NULL,               -- kiedy wydarzyło się to, o czym mówi trop (oś czasu)
+  czas_lokalny VARCHAR(80) NULL,                  -- lokalna pora zdarzenia na planecie sprawy
+  wiarygodnosc TINYINT UNSIGNED NOT NULL DEFAULT 60,
+  prawdziwy TINYINT(1) NOT NULL DEFAULT 1,        -- dla MG (gracz tego nie widzi)
+  oznaczenie ENUM('','wazny','podejrzany','odrzucony') NOT NULL DEFAULT '',
+  notatka VARCHAR(1000) NULL,                     -- dopisek gracza
+  kiedy_utc DATETIME NOT NULL,                    -- kiedy droid to ustalił
+  kiedy_lokalnie VARCHAR(80) NULL,
+  UNIQUE KEY uq_sledztwo_tropy (sledztwo_id, klucz),
+  KEY ix_sledztwo_tropy (sledztwo_id, id),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS sledztwo_powiazania (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  trop_a BIGINT UNSIGNED NOT NULL,
+  trop_b BIGINT UNSIGNED NOT NULL,
+  opis VARCHAR(255) NOT NULL DEFAULT '',
+  utworzono_utc DATETIME NOT NULL,
+  UNIQUE KEY uq_sledztwo_powiazania (sledztwo_id, trop_a, trop_b),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE,
+  FOREIGN KEY (trop_a) REFERENCES sledztwo_tropy (id) ON DELETE CASCADE,
+  FOREIGN KEY (trop_b) REFERENCES sledztwo_tropy (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v094-sledztwa-tropy', 'Śledztwa: tropy, notatnik detektywa, powiązania, rozwiązanie sprawy z oceną')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/095_sledztwa_drogi.sql
+-- =====================================================================
+
+-- Śledztwa droida: drogi między budynkami — zjazd windą na parter i chodnik Nar Shaddaa albo mostek między
+-- budynkami na wybranym poziomie. Każdy przejazd jest zapisany: odcinki (winda / chodnik / mostek) z czasami,
+-- mijane lokale (także z szumu: parter budynków przy chodniku) i mijani ludzie. Po dotarciu droga trafia do
+-- dziennika, a mijane lokale — do spisu „Po drodze” w zakładce Rejon.
+-- Do zaimportowania wielokrotnie (CREATE TABLE IF NOT EXISTS; przenumerowanie z warunkiem). Wymaga 082–094.
+
+CREATE TABLE IF NOT EXISTS sledztwo_drogi (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  sledztwo_id BIGINT UNSIGNED NOT NULL,
+  wyruszyl_utc DATETIME NOT NULL,
+  dotrze_utc DATETIME NOT NULL,
+  z_lokalizacji BIGINT UNSIGNED NULL,
+  do_lokalizacji BIGINT UNSIGNED NULL,
+  dane MEDIUMTEXT NOT NULL,                       -- JSON: odcinki, mijane lokale, mijani ludzie
+  zapisana TINYINT(1) NOT NULL DEFAULT 0,         -- 1 = trafiła do dziennika (droid dotarł)
+  KEY ix_sledztwo_drogi (sledztwo_id, dotrze_utc),
+  FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v095-sledztwa-drogi', 'Śledztwa: drogi między budynkami (chodnik / mostek), mijane lokale i ludzie')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- ---------------------------------------------------------------------
+-- Numeracja lokali: piętro 41 → lokale 4101–4199. Starsze sprawy miały lokale fabularne z literą (np. „K-07”,
+-- „L-07”). Dostają numer poziom + 90–99 (z id miejsca); wszystkie odwołania (przedmioty, tropy, rozmowy, namiary,
+-- straż, przeszukania, pozycja i cel droida) zmieniają się razem. Ponowny import nic nie zmienia (warunek REGEXP).
+-- ---------------------------------------------------------------------
+
+UPDATE sledztwo_przedmioty x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_tropy x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_rozmowy x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_straz x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_przeszukania x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_namiary x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.klucz = CONCAT(IFNULL(m.lokalizacja_id, 0), '|', m.poziom, '|', m.poziom, LPAD(90 + m.id % 10, 2, '0')),
+      x.nazwa = REPLACE(x.nazwa, m.pokoj, CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0'))),
+      x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0'))
+  WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_pozycje p JOIN sledztwo_droid d ON d.sledztwo_id = p.sledztwo_id
+    JOIN sledztwo_miejsca m ON m.sledztwo_id = p.sledztwo_id AND m.lokalizacja_id <=> d.lokalizacja_id AND m.poziom = d.poziom AND m.pokoj = p.pokoj
+  SET p.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_droid x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.lokalizacja_id
+    AND m.poziom = x.poziom AND m.pokoj = x.pokoj
+  SET x.pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_droid x JOIN sledztwo_miejsca m ON m.sledztwo_id = x.sledztwo_id AND m.lokalizacja_id <=> x.cel_lokalizacja_id
+    AND m.poziom = x.cel_poziom AND m.pokoj = x.cel_pokoj
+  SET x.cel_pokoj = CONCAT(m.poziom, LPAD(90 + m.id % 10, 2, '0')) WHERE m.pokoj NOT REGEXP '^[0-9]+$';
+UPDATE sledztwo_miejsca
+  SET nazwa = REPLACE(nazwa, pokoj, CONCAT(poziom, LPAD(90 + id % 10, 2, '0'))), pokoj = CONCAT(poziom, LPAD(90 + id % 10, 2, '0'))
+  WHERE pokoj NOT REGEXP '^[0-9]+$';
+
+-- =====================================================================
+-- migracje/096_dane_publiczne.sql
+-- =====================================================================
+
+-- DANE PUBLICZNE (28.11.2026): linie turystyczne z rozkładami i jawne widoki gospodarki dla gości mapy.
+--
+-- • turystyka_linie / turystyka_przystanki — regularne linie pasażerskie między jawnymi światami. Przystanki mają
+--   tylko kolejność i postój; czas przelotu liczy serwer z odległości planet (jak linie dostaw w gospodarce).
+--   Rozkład: odjazd z pierwszego przystanku co `odstep_h` godzin (przesunięcie `faza_h`), kurs powrotny w połowie
+--   odstępu, w odwrotnej kolejności przystanków.
+-- • publiczne_kontrakty — stałe kontrakty dostaw (gosp_linie, obieg oficjalny): kto, komu, co, ile i jak często.
+--   Bez godzin startu i lądowania, tras, punktów skoku i konkretnych statków.
+-- • publiczny_rynek — produkcja, zużycie i cena lokalna każdego towaru na planecie (gosp_rynek, obieg oficjalny).
+-- Planety zastrzeżone (planety_gry.zastrzezona = 1) odfiltrowuje API.
+--
+-- Import w phpMyAdmin (po 050). Ponowny import jest bezpieczny: tabele IF NOT EXISTS, linie nadpisywane,
+-- przystanki wpisywane od nowa, widoki CREATE OR REPLACE.
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS turystyka_linie (
+  id INT UNSIGNED NOT NULL PRIMARY KEY,
+  kod VARCHAR(12) NOT NULL,
+  nazwa VARCHAR(120) NOT NULL,
+  operator VARCHAR(120) NOT NULL,
+  statek_klasa VARCHAR(80) NOT NULL,
+  pasazerow INT UNSIGNED NOT NULL,
+  odstep_h DECIMAL(6,1) NOT NULL COMMENT 'co ile godzin odjazd z pierwszego przystanku',
+  faza_h DECIMAL(6,1) NOT NULL DEFAULT 0 COMMENT 'przesunięcie rozkładu',
+  cena_kr INT UNSIGNED NOT NULL COMMENT 'bilet na całą trasę (klasa standardowa)',
+  opis VARCHAR(300) NOT NULL DEFAULT '',
+  aktywna TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uq_turystyka_linie_kod (kod)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS turystyka_przystanki (
+  linia_id INT UNSIGNED NOT NULL,
+  kolejnosc TINYINT UNSIGNED NOT NULL,
+  planeta VARCHAR(160) NOT NULL,
+  postoj_h DECIMAL(5,1) NOT NULL DEFAULT 6 COMMENT 'postój na przystanku (pierwszy i ostatni: obsługa statku)',
+  PRIMARY KEY (linia_id, kolejnosc),
+  KEY ix_turystyka_przystanki_planeta (planeta),
+  FOREIGN KEY (linia_id) REFERENCES turystyka_linie (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO turystyka_linie (id, kod, nazwa, operator, statek_klasa, pasazerow, odstep_h, faza_h, cena_kr, opis) VALUES
+(1, 'CR-01', 'Klejnoty Jądra', 'Linie Gwiezdne Coruscant', 'liniowiec pasażerski', 1200, 24, 0, 2400, 'Stolica, ogrody Chandrili, stocznie i bazary Corellii, kurorty Corulagu.'),
+(2, 'NB-02', 'Ekspres Jezior Naboo', 'Królewska Żegluga Naboo', 'jacht wycieczkowy', 180, 48, 6, 3900, 'Bezpośredni przelot do Theed i Krainy Jezior.'),
+(3, 'BS-03', 'Miasto w Chmurach', 'Przewozy Corelliańskie', 'prom turystyczny', 320, 36, 12, 1800, 'Corellia – Bespin: zachody słońca nad Miastem w Chmurach, kasyna i platformy widokowe.'),
+(4, 'CT-04', 'Szlak Kasyn', 'Canto Bight Cruises', 'luksusowy krążownik wycieczkowy', 900, 72, 18, 7600, 'Coruscant, Canto Bight na Cantonice i bulwary Zeltros.'),
+(5, 'HP-05', 'Wyspy Hapes', 'Linie Gwiezdne Coruscant', 'jacht wycieczkowy', 150, 96, 30, 8200, 'Chandrila – Gromada Hapes: wyspy, pałace i targi jedwabiu.'),
+(6, 'OR-06', 'Zachodnie Rubieże', 'Ord Mantell Transit', 'liniowiec pasażerski', 1000, 48, 4, 2100, 'Ord Mantell, Eriadu i podziemne miasta Sullustu.'),
+(7, 'HT-07', 'Pętla Hutta', 'Przewozy Desilijic', 'prom turystyczny', 400, 72, 40, 1500, 'Nar Shaddaa, wyścigi ścigaczy na Tatooine i jaskinie Ryloth. Podróż na własne ryzyko.'),
+(8, 'TK-08', 'Zamek nad jeziorem', 'Esseles Starways', 'jacht wycieczkowy', 120, 120, 50, 4300, 'Esseles – Takodana: lasy, jezioro i słynna gospoda.'),
+(9, 'OC-09', 'Oceany i ogrody', 'Przewozy Corelliańskie', 'liniowiec pasażerski', 800, 72, 22, 3300, 'Corellia, żywe ogrody Ithoru i podwodne miasta Manaan.'),
+(10, 'AB-10', 'Uzdrowiska Kolonii', 'Denon Spaceways', 'prom turystyczny', 450, 48, 16, 1700, 'Denon, wodospady Abregado-rae i wyspy Bestine.'),
+(11, 'SF-11', 'Safari Felucji', 'Rodiańskie Linie Myśliwskie', 'prom turystyczny', 200, 96, 60, 2600, 'Rodia – Felucia: wyprawy w dżunglę grzybów.'),
+(12, 'PR-12', 'Prerie Zewnętrznych Rubieży', 'Lothal Starlines', 'prom turystyczny', 260, 120, 70, 1400, 'Lothal – Dantooine: trawiaste równiny, spokój z dala od Jądra.')
+ON DUPLICATE KEY UPDATE kod = VALUES(kod), nazwa = VALUES(nazwa), operator = VALUES(operator), statek_klasa = VALUES(statek_klasa),
+  pasazerow = VALUES(pasazerow), odstep_h = VALUES(odstep_h), faza_h = VALUES(faza_h), cena_kr = VALUES(cena_kr), opis = VALUES(opis);
+
+DELETE FROM turystyka_przystanki WHERE linia_id BETWEEN 1 AND 12;
+INSERT INTO turystyka_przystanki (linia_id, kolejnosc, planeta, postoj_h) VALUES
+(1, 1, 'Coruscant', 8), (1, 2, 'Chandrila', 12), (1, 3, 'Corellia', 12), (1, 4, 'Corulag', 8),
+(2, 1, 'Coruscant', 6), (2, 2, 'Naboo', 6),
+(3, 1, 'Corellia', 6), (3, 2, 'Bespin', 6),
+(4, 1, 'Coruscant', 10), (4, 2, 'Cantonica', 24), (4, 3, 'Zeltros', 10),
+(5, 1, 'Chandrila', 8), (5, 2, 'Hapes', 8),
+(6, 1, 'Ord Mantell', 6), (6, 2, 'Eriadu', 10), (6, 3, 'Sullust', 6),
+(7, 1, 'Nar Shaddaa', 6), (7, 2, 'Tatooine', 18), (7, 3, 'Ryloth', 6),
+(8, 1, 'Esseles', 6), (8, 2, 'Takodana', 6),
+(9, 1, 'Corellia', 8), (9, 2, 'Ithor', 18), (9, 3, 'Manaan', 8),
+(10, 1, 'Denon', 6), (10, 2, 'Abregado-rae', 12), (10, 3, 'Bestine', 6),
+(11, 1, 'Rodia', 6), (11, 2, 'Felucia', 6),
+(12, 1, 'Lothal', 6), (12, 2, 'Dantooine', 6);
+
+CREATE OR REPLACE VIEW publiczne_kontrakty AS
+SELECT l.id, o.planeta AS odbiorca_planeta, o.nazwa AS odbiorca, o.rodzaj AS odbiorca_rodzaj, l.producent,
+  l.towar, t.nazwa AS towar_nazwa, l.t_doba, l.ladownosc_t, l.klasa, l.odstep_s
+FROM gosp_linie l
+JOIN gosp_obiekty o ON o.id = l.obiekt_id
+JOIN gosp_towary t ON t.kod = l.towar
+WHERE l.obieg = 'oficjalny_hurt';
+
+CREATE OR REPLACE VIEW publiczny_rynek AS
+SELECT r.planeta, r.towar, t.nazwa AS towar_nazwa, t.kategoria, r.produkcja_t_doba, r.zuzycie_t_doba, r.cena_kr_t, r.cena_indeks,
+  t.cena_bazowa_kr_t, r.szczegolowosc
+FROM gosp_rynek r
+JOIN gosp_towary t ON t.kod = r.towar
+WHERE r.obieg = 'oficjalny_hurt';
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v096-dane-publiczne', 'Dane publiczne mapy: linie turystyczne z rozkładami, jawne kontrakty dostaw i rynek planet')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);
+
+-- =====================================================================
+-- migracje/097_mapa_wzorcowa_kwadraty.sql
+-- =====================================================================
+
+-- Mapa wzorcowa (Galaxy Map, siatka kwadratów C–U × 1–21) — 28|11|16.
+-- Kwadrat mapy: 1490 pc, kolumna L od x = −20, wiersz 9 od y = −170 (Coruscant L-9); siatkę liczy klient (mapa.js).
+-- 1) Tabela planet ukrytych mapa_planety_ukryte (kolumna kategoria: rodzaj widoczności). Żadne zapytanie gry ani
+--    panelu MG jej nie czyta — tych planet nie ma na mapie, w wyszukiwarce, w nawigacji ani w panelu MG.
+--    Same wiersze są w prywatnej paczce archiwum/sql/ (repo jest publiczne). Odsłonięcie = przeniesienie do mapa_planety.
+-- 2) Brakujące planety z mapy wzorcowej: do mapa_planety (id = MAX+1), współrzędne odczytane z mapy (±200 pc),
+--    region jak u najbliższej istniejącej planety, parametry domyślne (jak w mapa_seed.sql).
+-- 3) Poprawki położenia planet, które leżały daleko od miejsca na mapie wzorcowej (różnica ≥ 1200 pc).
+--    Jednostki zaparkowane przy przenoszonej planecie (planeta_id i te same współrzędne) przechodzą razem z nią.
+-- Szczegóły: archiwum/RAPORT_MAPA_WZORCOWA_KWADRATY_2026-11-28.md
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS mapa_planety_ukryte (
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  nazwa VARCHAR(160) NOT NULL,
+  region TINYINT UNSIGNED NOT NULL,
+  x DECIMAL(12,1) NOT NULL,
+  y DECIMAL(12,1) NOT NULL,
+  grawitacja DECIMAL(6,3) NOT NULL DEFAULT 1.000,
+  slonca SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  ksiezyce SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  doba DECIMAL(10,2) NOT NULL DEFAULT 24,
+  rok DECIMAL(10,2) NOT NULL DEFAULT 365,
+  srednica DECIMAL(12,2) NOT NULL DEFAULT 0,
+  kwadrat VARCHAR(8) NOT NULL,
+  -- Kategoria widoczności: 'zapieczetowana' = nikt (także MG) do odsłonięcia migracją. Miejsce na kolejne
+  -- kategorie (np. wiedza z kartridży o małych nieznanych planetach).
+  kategoria VARCHAR(40) NOT NULL DEFAULT 'zapieczetowana',
+  uwagi VARCHAR(255) NULL,
+  dodano TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_mapa_planety_ukryte_nazwa (nazwa)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Brakujące planety (279)
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Aakaash', 2, 1624.0, 6949.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Aakaash'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ab Dalis', 6, 10311.0, -11603.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ab Dalis'); -- R-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Actlyon', 5, -389.0, -13681.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Actlyon'); -- K-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Adelphi', 6, 7415.0, -11211.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Adelphi'); -- P-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ahch-To', 8, -7865.0, -4953.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ahch-To'); -- F-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Alpinn', 3, 3661.0, 7980.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Alpinn'); -- N-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Alvadorjia', 2, 200.0, -8282.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Alvadorjia'); -- L-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Angcord', 1, -1108.0, -3832.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Angcord'); -- K-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Anzell', 7, 9607.0, 3268.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Anzell'); -- R-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Aq Vetina', 2, 1648.0, 7546.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Aq Vetina'); -- M-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Arcana', 2, 2941.0, 6344.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Arcana'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ardennia', 1, -716.0, 5656.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ardennia'); -- K-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Askkto-Fen', 6, 7284.0, -14933.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Askkto-Fen'); -- P-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'At Attin', 2, 4307.0, 5599.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='At Attin'); -- N-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Aynabori', 2, -2286.0, 6474.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Aynabori'); -- J-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Azum', 2, -200.0, -8601.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Azum'); -- K-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Balagash', 1, 5877.0, 1239.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Balagash'); -- O-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Banchii', 5, -495.0, -13902.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Banchii'); -- K-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Banfoden Prime', 3, 1133.0, -9722.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Banfoden Prime'); -- L-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bantoo', 6, 7841.0, -14499.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bantoo'); -- Q-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bar''leth', 0, 1787.0, -1100.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bar''leth'); -- M-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Barabesh', 3, -3661.0, -9100.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Barabesh'); -- I-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Barnahof', 5, 11546.0, -6532.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Barnahof'); -- S-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bartokan', 6, 4364.0, -13624.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bartokan'); -- N-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Barton', 7, 11587.0, 7284.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Barton'); -- S-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bastatha', 1, 4176.0, -1313.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bastatha'); -- N-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bavana', 7, 9485.0, 6581.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bavana'); -- R-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Begemor', 1, 2393.0, 6033.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Begemor'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Belladoon', 3, -389.0, 9027.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Belladoon'); -- K-3
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Beltire', 4, -2515.0, -10630.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Beltire'); -- J-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bestoon', 0, -2303.0, 847.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bestoon'); -- J-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Birren', 1, 5182.0, -1247.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Birren'); -- O-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Blutopia', 3, -389.0, -9493.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Blutopia'); -- K-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Brendok', 5, 8307.0, 11481.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Brendok'); -- Q-2
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Bromlarch', 3, 4511.0, -9141.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Bromlarch'); -- O-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Candovant', 1, 3358.0, -4405.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Candovant'); -- N-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Caraad', 0, 102.0, 1550.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Caraad'); -- L-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Caranthanax', 5, -2826.0, -12151.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Caranthanax'); -- J-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cardovyte', 1, 2205.0, 5280.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cardovyte'); -- M-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Celsor', 5, 5910.0, -11734.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Celsor'); -- O-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cerberon', 0, 1084.0, -740.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cerberon'); -- L-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cerifisis', 6, -3440.0, -14434.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cerifisis'); -- I-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Chaaktil', 2, 3292.0, -6401.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Chaaktil'); -- N-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Chadawa', 2, 3039.0, -6319.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Chadawa'); -- N-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Chanceuxi', 3, 3423.0, 8470.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Chanceuxi'); -- N-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Chrelythiumn', 3, -1264.0, 10532.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Chrelythiumn'); -- K-2
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Chyron', 3, -1910.0, -9485.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Chyron'); -- J-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Clak''dor', 5, 2229.0, -13010.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Clak''dor'); -- M-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Corvus', 7, 10744.0, 5010.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Corvus'); -- S-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cosia', 0, 1550.0, -1910.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cosia'); -- M-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Coto-Xana', 0, 798.0, 1059.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Coto-Xana'); -- L-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Couronne', 2, 6515.0, -143.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Couronne'); -- P-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Crucival', 7, 11734.0, 5869.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Crucival'); -- S-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Crul', 3, 9018.0, -5501.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Crul'); -- R-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cusver', 1, 135.0, -3513.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cusver'); -- L-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cyclor', 4, 4094.0, -10990.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cyclor'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Cymoon', 2, 577.0, -8462.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Cymoon'); -- L-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'D''Assem', 1, 2614.0, 3350.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='D''Assem'); -- M-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Da-Vlunn', 7, 10393.0, -1656.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Da-Vlunn'); -- R-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Daiyu', 2, 7301.0, -3080.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Daiyu'); -- P-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dalna', 5, -3701.0, -13812.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dalna'); -- I-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Danzik', 3, 2131.0, 9943.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Danzik'); -- M-3
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Daro', 1, 3538.0, 4560.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Daro'); -- N-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dassal', 8, -5648.0, 4168.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dassal'); -- H-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Daxam', 5, 3423.0, -12479.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Daxam'); -- N-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Del Zennis', 3, 9100.0, 3407.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Del Zennis'); -- R-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Delphidian Cluster', 3, -4446.0, -8053.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Delphidian Cluster'); -- H-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Deppani', 4, -3595.0, -11759.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Deppani'); -- I-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Derosha', 2, -2466.0, 6303.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Derosha'); -- J-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Desix', 7, 10712.0, 307.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Desix'); -- S-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Detchi', 4, 3865.0, -11366.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Detchi'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Devshi', 1, -1918.0, 2008.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Devshi'); -- J-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dilkrastrus', 3, 8642.0, 1231.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dilkrastrus'); -- Q-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dinwa Prime', 0, 438.0, 2065.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dinwa Prime'); -- L-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dizon Fray', 7, 14401.0, 3432.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dizon Fray'); -- U-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dosalon', 7, 14254.0, -3464.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dosalon'); -- U-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dotharian', 7, 11014.0, -3922.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dotharian'); -- S-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Dowut', 1, -1632.0, -4192.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Dowut'); -- J-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Drez', 7, 7072.0, 8503.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Drez'); -- P-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Eiram', 5, -3497.0, -13624.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Eiram'); -- I-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Elessia', 4, 6933.0, -10082.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Elessia'); -- P-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Elphrona', 4, -3939.0, -11186.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Elphrona'); -- I-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Endovar', 8, -5288.0, -511.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Endovar'); -- H-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Endoviara', 1, -1583.0, 5395.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Endoviara'); -- J-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Enthenium', 5, -593.0, -13599.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Enthenium'); -- K-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ephemera', 2, -2597.0, -6483.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ephemera'); -- J-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Epikonia', 1, 3767.0, 3971.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Epikonia'); -- N-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Epo', 2, 3456.0, 6973.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Epo'); -- N-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Erebus', 1, 3031.0, -4863.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Erebus'); -- N-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Espirion', 1, 3947.0, -4135.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Espirion'); -- N-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Eyo-Dajuritz', 1, 3996.0, -904.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Eyo-Dajuritz'); -- N-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Fedovoi End', 2, 2818.0, -6671.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Fedovoi End'); -- M-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Feleantor', 1, 1051.0, 5305.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Feleantor'); -- L-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Felne', 5, 4110.0, -11988.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Felne'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Fetilia', 3, 8241.0, -4405.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Fetilia'); -- Q-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Fex', 1, 1395.0, -3333.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Fex'); -- L-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Fillithar', 0, 2352.0, 102.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Fillithar'); -- M-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Frezno', 1, 1845.0, 5755.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Frezno'); -- M-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Galaan', 4, 6384.0, 8708.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Galaan'); -- P-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gallios', 2, 3513.0, 6646.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gallios'); -- N-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gansevor', 6, 12912.0, -7178.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gansevor'); -- T-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gazian', 2, 6409.0, 2515.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gazian'); -- P-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Genetia', 2, -3243.0, -7063.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Genetia'); -- I-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Geptish', 4, -1125.0, -11554.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Geptish'); -- K-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gerrigon', 4, -2262.0, -10794.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gerrigon'); -- J-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Glavis', 1, 2769.0, -2638.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Glavis'); -- M-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gloon', 7, 13018.0, -1002.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gloon'); -- T-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gorobei', 1, 2744.0, 1738.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gorobei'); -- M-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Gotar', 7, 14155.0, 1084.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Gotar'); -- U-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Grange', 2, 7939.0, -2556.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Grange'); -- Q-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Great Zilk', 1, -798.0, 4765.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Great Zilk'); -- K-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Griq', 8, -5076.0, 4372.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Griq'); -- H-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Guat''a', 6, 6614.0, -13681.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Guat''a'); -- P-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Halais', 0, 3104.0, -519.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Halais'); -- N-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hasskyn', 6, 2524.0, -15587.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hasskyn'); -- M-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Helkoprion', 7, 11309.0, 6646.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Helkoprion'); -- S-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hetzal', 5, 8691.0, -10205.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hetzal'); -- Q-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hevurion', 0, 1419.0, 2434.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hevurion'); -- L-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hodi', 0, 1869.0, -1313.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hodi'); -- M-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Huwaw', 2, 2491.0, 6507.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Huwaw'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hylobi', 2, 7661.0, 1746.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hylobi'); -- Q-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Hyperkarn', 5, 9894.0, -9239.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Hyperkarn'); -- R-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Iakar', 6, 3432.0, -15374.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Iakar'); -- N-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Icindra', 7, 13697.0, 5215.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Icindra'); -- U-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Idaflor', 5, 5656.0, -12454.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Idaflor'); -- O-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ikkrukk', 4, 6368.0, -10875.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ikkrukk'); -- P-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Iloh', 1, 3432.0, 299.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Iloh'); -- N-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ingae', 6, 3260.0, -16176.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ingae'); -- N-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Inusagi', 4, 5076.0, -9755.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Inusagi'); -- O-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ipsidon', 1, -773.0, 4266.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ipsidon'); -- K-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ivexia', 3, 8110.0, 3571.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ivexia'); -- Q-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Karkaris', 7, 11898.0, 6671.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Karkaris'); -- S-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Karnac', 7, 12511.0, 2703.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Karnac'); -- T-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Karthon', 8, -5411.0, -9427.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Karthon'); -- H-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kartoosh', 4, -3227.0, -10262.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kartoosh'); -- I-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kazlin', 7, 11096.0, 2802.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kazlin'); -- S-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kennerla', 6, 2409.0, -15775.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kennerla'); -- M-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kerest', 5, 1869.0, -14196.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kerest'); -- M-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kessar', 4, 3620.0, -11063.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kessar'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Keteeria', 1, 5526.0, 3137.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Keteeria'); -- O-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Khofar', 2, 2270.0, 7039.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Khofar'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kitel Phard', 1, -1910.0, -4438.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kitel Phard'); -- J-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Koboh', 6, -4519.0, -13935.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Koboh'); -- H-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Koke Frost', 1, -4487.0, 3742.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Koke Frost'); -- H-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kol Iben', 5, 9444.0, -10270.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kol Iben'); -- R-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Korbori', 1, 3252.0, -4053.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Korbori'); -- N-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Korrus', 2, -798.0, 8061.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Korrus'); -- K-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kotab', 1, 4012.0, -249.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kotab'); -- N-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Kullgroon', 2, 6761.0, -3456.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Kullgroon'); -- P-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Lafete', 5, -3170.0, -13477.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Lafete'); -- I-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Lau', 2, 4945.0, 4544.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Lau'); -- O-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Lespectus', 0, 2286.0, -822.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Lespectus'); -- M-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Lew''el', 3, -2303.0, 9288.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Lew''el'); -- J-3
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Lonera', 1, 4479.0, -3252.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Lonera'); -- N-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Madurs', 7, 10188.0, 3685.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Madurs'); -- R-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mardona', 1, 3374.0, -4642.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mardona'); -- N-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Markez', 1, -806.0, 3432.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Markez'); -- K-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Marleyvane', 7, 12029.0, 2417.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Marleyvane'); -- T-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mefti', 0, 634.0, 1476.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mefti'); -- L-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Meri', 2, 5174.0, 5558.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Meri'); -- O-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Merokia', 5, -2106.0, -13305.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Merokia'); -- J-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Metagos', 7, 12405.0, 2286.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Metagos'); -- T-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mikkia', 1, 2720.0, 3415.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mikkia'); -- M-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mina-Rau', 2, 5223.0, 5828.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mina-Rau'); -- O-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Minos Cluster', 6, 2409.0, -15931.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Minos Cluster'); -- M-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Montross', 1, 6074.0, 1877.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Montross'); -- P-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mooga', 3, 8102.0, 3701.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mooga'); -- Q-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Morak', 8, -5427.0, -12495.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Morak'); -- H-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mulita', 8, -5076.0, -14172.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mulita'); -- H-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Munt Ontdal', 3, 7611.0, -5403.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Munt Ontdal'); -- Q-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Mynos', 5, 9182.0, -11391.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Mynos'); -- R-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nacon', 0, 29.0, -519.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nacon'); -- K-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Najan-Rovi', 4, 1624.0, -11816.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Najan-Rovi'); -- M-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nantoon', 1, 1787.0, -5256.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nantoon'); -- M-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Narkina', 5, 11055.0, -8634.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Narkina'); -- S-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nevarro', 6, -536.0, -15464.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nevarro'); -- K-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nightside', 7, 10221.0, 7014.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nightside'); -- R-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nithorni', 0, -798.0, 1714.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nithorni'); -- K-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nixus', 6, 6409.0, -13378.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nixus'); -- P-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nora', 1, -2736.0, 4078.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nora'); -- J-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Norisyn', 6, 4716.0, -14605.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Norisyn'); -- O-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Novka', 4, 9943.0, -7268.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Novka'); -- R-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Nurasenti', 5, 10548.0, -8544.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Nurasenti'); -- S-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Oaghee', 1, 5362.0, 3301.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Oaghee'); -- O-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Oanne', 4, 4241.0, -11800.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Oanne'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Octero', 5, 6892.0, -12839.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Octero'); -- P-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Olega', 2, 6818.0, 3456.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Olega'); -- P-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ordo Tera', 1, 6115.0, -1714.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ordo Tera'); -- P-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Orish', 4, 2573.0, -11857.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Orish'); -- M-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Otomok', 1, -1100.0, 5706.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Otomok'); -- K-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Otor''s Hub', 1, 3963.0, 4094.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Otor''s Hub'); -- N-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pacara', 3, -2581.0, -8618.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pacara'); -- J-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pagodon', 6, 9411.0, -12454.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pagodon'); -- R-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Palagosal', 5, 9100.0, -11039.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Palagosal'); -- R-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Palliduva', 7, 14663.0, -4045.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Palliduva'); -- U-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Paradise', 6, 1959.0, -15579.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Paradise'); -- M-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Parwa', 4, 2311.0, -12053.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Parwa'); -- M-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Persis', 2, 732.0, -8053.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Persis'); -- L-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Phothrell', 1, 2654.0, 2450.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Phothrell'); -- M-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pinara', 6, 5975.0, -13902.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pinara'); -- O-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pipada', 5, 1624.0, -12683.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pipada'); -- M-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pippip', 7, 8315.0, 8274.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pippip'); -- Q-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Pkori', 2, -2982.0, 6916.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Pkori'); -- I-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Plazir', 4, 3963.0, 10802.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Plazir'); -- N-2
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Po''yin', 7, 11358.0, 3865.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Po''yin'); -- S-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Polaar', 3, 937.0, -10335.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Polaar'); -- L-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Polyneus', 2, -2793.0, -6442.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Polyneus'); -- J-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Protobranch', 1, -1632.0, -4560.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Protobranch'); -- J-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Quence', 5, 5845.0, -13329.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Quence'); -- O-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Rajtiri', 2, 6237.0, 961.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Rajtiri'); -- P-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Rakata Prime', 8, -6892.0, -2777.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Rakata Prime'); -- G-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Reena', 1, 732.0, -5419.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Reena'); -- L-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Regis Kor', 4, -1640.0, -11104.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Regis Kor'); -- J-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Rekelos', 3, -225.0, -8986.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Rekelos'); -- K-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Rilias', 5, 2229.0, -12863.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Rilias'); -- M-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Rior', 5, 3685.0, -13010.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Rior'); -- N-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ro Mira', 1, 6033.0, 2695.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ro Mira'); -- P-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ruathi', 5, -37.0, -13681.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ruathi'); -- K-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Saki', 7, 11497.0, -1967.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Saki'); -- S-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sarlucif', 7, 11292.0, 8299.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sarlucif'); -- S-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sarrassia', 4, 3112.0, -11268.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sarrassia'); -- N-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sason', 2, -675.0, 6728.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sason'); -- K-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Seatos', 5, 2368.0, -14008.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Seatos'); -- M-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Septra', 6, 2434.0, -16323.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Septra'); -- M-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sereeda', 7, 12061.0, 3481.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sereeda'); -- T-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Serolonis', 5, -2106.0, -12969.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Serolonis'); -- J-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sesid', 4, 6802.0, 8667.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sesid'); -- P-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Setron', 1, 5337.0, -1877.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Setron'); -- O-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sidi', 7, 7775.0, 7579.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sidi'); -- Q-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Silla', 1, 2384.0, 3930.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Silla'); -- M-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Soika', 1, 2695.0, 2785.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Soika'); -- M-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Solarine', 7, 10810.0, 2090.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Solarine'); -- S-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Spellhaus', 2, 4863.0, 5010.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Spellhaus'); -- O-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ssori', 5, 10818.0, -5648.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ssori'); -- S-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Sterdic', 4, 6188.0, -10949.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Sterdic'); -- P-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Stygmarn', 5, 3489.0, -14205.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Stygmarn'); -- N-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Suntilla', 1, 3170.0, -3701.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Suntilla'); -- N-12
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Suria', 5, 6581.0, -11791.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Suria'); -- P-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tah''Nuhna', 4, 7775.0, -7162.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tah''Nuhna'); -- Q-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tahlboor', 7, 10368.0, 6016.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tahlboor'); -- R-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tal Pi', 3, 6131.0, 7153.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tal Pi'); -- P-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Targyon', 3, 6573.0, 7333.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Targyon'); -- P-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tenoo', 4, -4078.0, -11562.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tenoo'); -- I-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tessen', 7, 11031.0, 3088.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tessen'); -- S-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Theli', 6, 1755.0, -15023.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Theli'); -- M-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tiferep', 4, 119.0, -11211.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tiferep'); -- L-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Tollello', 6, 7522.0, -12659.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Tollello'); -- Q-18
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Toshara', 7, 12233.0, 2090.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Toshara'); -- T-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Travyx', 3, -2360.0, -9468.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Travyx'); -- J-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Trenchenovu', 5, -1247.0, -13902.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Trenchenovu'); -- K-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Trillia', 3, 6777.0, -6000.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Trillia'); -- P-13
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Turco Prime', 3, 8626.0, 2172.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Turco Prime'); -- Q-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Turrak', 5, 3841.0, -13575.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Turrak'); -- N-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ubdurla', 1, 4070.0, 2753.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ubdurla'); -- N-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ueda', 7, 8364.0, 9452.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ueda'); -- Q-3
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Uveron', 0, 1738.0, 1002.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Uveron'); -- M-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Valboraan', 3, 9264.0, -1166.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Valboraan'); -- R-10
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Varnak', 2, 7939.0, -2671.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Varnak'); -- Q-11
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Veelo', 7, 9100.0, 5068.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Veelo'); -- R-6
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Vespaara', 7, 10957.0, 2172.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Vespaara'); -- S-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Vetine', 1, 1043.0, -6286.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Vetine'); -- L-14
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Vint', 6, 12143.0, -9861.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Vint'); -- T-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Vixoseph', 5, 1975.0, -14499.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Vixoseph'); -- M-19
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Vuundalla', 4, -3906.0, -11791.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Vuundalla'); -- I-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Wayland', 1, 4209.0, 3685.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Wayland'); -- N-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Waymancy', 1, -773.0, 2450.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Waymancy'); -- K-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Wor Tandell', 0, -593.0, 339.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Wor Tandell'); -- K-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Wrosdi', 4, 3374.0, 11047.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Wrosdi'); -- N-2
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Yabrenito', 4, -3366.0, -10221.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Yabrenito'); -- I-16
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Yalbec Prime', 2, 7137.0, 4250.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Yalbec Prime'); -- P-7
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Yarma', 7, 11963.0, 2581.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Yarma'); -- T-8
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Yerbana', 5, 8855.0, -10638.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Yerbana'); -- Q-17
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Ylagia', 3, 1027.0, -8716.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Ylagia'); -- L-15
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Yuvern', 2, 1804.0, 6663.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Yuvern'); -- M-5
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Zastiga', 6, -1157.0, -15955.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Zastiga'); -- K-20
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Zayron', 4, 7145.0, 9517.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Zayron'); -- P-3
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Zhadalene', 3, 3751.0, 7603.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Zhadalene'); -- N-4
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Zinchori', 1, 4724.0, 1067.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Zinchori'); -- O-9
+INSERT INTO mapa_planety (id,nazwa,region,x,y,grawitacja,slonca,ksiezyce,doba,rok,srednica) SELECT (SELECT COALESCE(MAX(id),0)+1 FROM mapa_planety), 'Zondula', 3, -1656.0, -9902.0, 1, 1, 0, 24, 365, 0 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM mapa_planety WHERE nazwa='Zondula'); -- J-16
+
+-- Poprawki położenia (69): nowe x, y z mapy wzorcowej (było: x, y)
+CREATE TEMPORARY TABLE tmp_poprawki_mapy (nazwa VARCHAR(160) NOT NULL PRIMARY KEY, x DECIMAL(12,1) NOT NULL, y DECIMAL(12,1) NOT NULL) ENGINE=MEMORY DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+INSERT INTO tmp_poprawki_mapy (nazwa,x,y) VALUES
+  ('Abednedo', 3129.0, -4438.0), -- było 432.0, -19035.0
+  ('Agaris', -6311.0, -6753.0), -- było -10939.0, -10952.0
+  ('Akiva', 4945.0, 4659.0), -- było 6154.9, 5220.9
+  ('Aldhani', 2016.0, 5526.0), -- było 2958.0, 6637.0
+  ('Anaxes', 9575.0, 4045.0), -- było 615.7, 374.4
+  ('Bal''demnic', 9902.0, 4315.0), -- było 11061.0, 5882.0
+  ('Baroonda', 12904.0, 675.0), -- było 16245.0, -391.0
+  ('Basteel', 7309.0, 9002.0), -- było 8549.0, 12615.0
+  ('Berzite', 14041.0, 2785.0), -- było 2099.0, 410.0
+  ('Bogano', 3546.0, 9084.0), -- było 3942.0, 11116.0
+  ('Bracca', 6818.0, 1239.0), -- było 8800.0, 493.0
+  ('Castilon', -3276.0, -9427.0), -- było 9654.0, -16648.0
+  ('Cyrkon', 12372.0, -4937.0), -- było 4632.0, -14825.0
+  ('Dandoran', 10245.0, 290.0), -- było -555.0, -19493.0
+  ('Ferrix', 8151.0, 8912.0), -- było 9645.0, 12681.0
+  ('Gatalenta', 2712.0, -1517.0), -- było 8166.0, 9566.0
+  ('H''nemthe', 2065.0, -13231.0), -- było 1309.0, -19464.0
+  ('Hynestia', -1575.0, -5763.0), -- było 3195.0, 1261.0
+  ('Jalindi', 6499.0, 5427.0), -- było 1921.0, -2746.0
+  ('Jedha', -5526.0, -716.0), -- było -7650.0, -1008.0
+  ('Kaller', -356.0, 6540.0), -- było 7626.0, 12328.0
+  ('Kenari', 8429.0, 4070.0), -- było -5000.0, 5000.0
+  ('Kiffex', 511.0, -6605.0), -- było -450.0, -10044.0
+  ('Kintan', 11472.0, 1305.0), -- było 14904.0, -3553.0
+  ('Lateron', 8250.0, 2573.0), -- było 20992.0, -6461.0
+  ('Li-Toran', 2540.0, -5444.0), -- było -2773.0, -3975.0
+  ('Lothal', 14025.0, 4094.0), -- było 18050.0, 4835.0
+  ('Mahranee', 7358.0, 1517.0), -- było -8143.0, -19436.0
+  ('Mapuzo', 1697.0, 3718.0), -- było 8903.0, 12190.0
+  ('Maridun', 7620.0, 5239.0), -- było 9746.0, 6098.0
+  ('Minfar', -3186.0, -5853.0), -- było 18630.0, 3537.0
+  ('Moraband', 9198.0, 6908.0), -- było 11516.0, 7006.0
+  ('Mykapo', 12552.0, 4372.0), -- było -1285.0, 7171.0
+  ('Nag Ubdur', 6933.0, 4258.0), -- było 7340.0, -10950.0
+  ('Nakadia', 1796.0, -8438.0), -- było 10356.0, -14682.0
+  ('Nar Kanji', 10687.0, 45.0), -- było 13210.0, -3588.0
+  ('Naraka', 11014.0, 3661.0), -- było 14891.0, -4233.0
+  ('Nepotis', 12176.0, 413.0), -- było -4767.0, -13133.0
+  ('Niamos', 9918.0, 5002.0), -- było -8274.0, 632.0
+  ('Pabu', 593.0, 9452.0), -- było 0.0, 14000.0
+  ('Pamarthe', 2802.0, -13051.0), -- było 6794.0, -4444.0
+  ('Panna', 11522.0, 5280.0), -- było 826.0, -9803.0
+  ('Patrolia', 102.0, -7080.0), -- było -3699.0, -13658.0
+  ('Pijal', 160.0, 2352.0), -- było 1567.0, 829.0
+  ('Raada', 5607.0, 6622.0), -- było -1451.0, 7090.0
+  ('Rattatak', -5517.0, -9166.0), -- było -9368.0, -13760.0
+  ('Raydonia', 5599.0, 4871.0), -- było 4209.0, -19530.0
+  ('Ringo Vinda', 8986.0, 3227.0), -- było 8227.0, 1907.0
+  ('Rinn', 13894.0, -3170.0), -- było 6311.0, -18811.0
+  ('Roon', 10532.0, -8814.0), -- było 15694.0, -9863.0
+  ('Rugosa', 5624.0, -11382.0), -- było 9648.0, -1628.0
+  ('Ruusan', 7382.0, -1591.0), -- było 8342.0, -3945.0
+  ('Shantipole', 7906.0, 2286.0), -- było -656.0, 6497.0
+  ('Shu-Torun', -2352.0, 3759.0), -- było -2896.0, -6121.0
+  ('Sleheyron', 11513.0, -389.0), -- było 13976.0, -2743.0
+  ('Sorgan', 8241.0, -11342.0), -- było 10219.0, -16145.0
+  ('Steergard', 1975.0, -9427.0), -- było 3000.0, 13000.0
+  ('Takobo', 3170.0, 4822.0), -- było 14295.0, -2211.0
+  ('Tehar', -4176.0, 3963.0), -- było -7122.0, -13911.0
+  ('Thabeska', 5419.0, 7137.0), -- było 1655.0, -19378.0
+  ('Vallt', 6082.0, -11391.0), -- było 8398.0, -16767.0
+  ('Valo', 4053.0, -14417.0), -- było 3583.0, -20968.0
+  ('Vassek', -3162.0, -11661.0), -- było 10172.0, -11853.0
+  ('Vrogas Vas', 5689.0, -14385.0), -- było 6362.0, -19096.0
+  ('Wadi Raffa', 1648.0, -15162.0), -- było -9850.0, 4120.0
+  ('Wynkahthu', 1223.0, 4200.0), -- było 10338.0, 10400.0
+  ('Xala', -5763.0, -7382.0), -- było -5753.0, -10432.8
+  ('Yar Togna', 6106.0, -12209.0), -- było 8335.0, -17539.0
+  ('Zeffo', 2573.0, 9305.0); -- było 1070.0, 11116.0
+
+UPDATE mapa_obiekty o
+  JOIN mapa_planety p ON p.id = o.planeta_id
+  JOIN tmp_poprawki_mapy t ON t.nazwa = p.nazwa
+SET o.x = t.x, o.y = t.y
+WHERE o.x IS NOT NULL AND ABS(o.x - p.x) < 0.05 AND ABS(o.y - p.y) < 0.05;
+
+UPDATE mapa_planety p JOIN tmp_poprawki_mapy t ON t.nazwa = p.nazwa SET p.x = t.x, p.y = t.y;
+
+DROP TEMPORARY TABLE tmp_poprawki_mapy;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v097-mapa-wzorcowa-kwadraty', 'Mapa wzorcowa: planety ukryte (osobna tabela), brakujące planety, poprawki położenia')
 ON DUPLICATE KEY UPDATE opis=VALUES(opis);

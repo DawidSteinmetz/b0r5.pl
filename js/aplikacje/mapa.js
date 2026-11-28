@@ -204,6 +204,19 @@ async function wczytajDane(konto = '') {
   return dane;
 }
 
+// ---------- siatka kwadratów (jak na mapach astronawigacyjnych) ----------
+// Kolumny literami (z zachodu na wschód), wiersze numerami (z północy na południe), kwadrat 1490 pc
+// (≈ 5000 lś na mapie wzorcowej, w skali naszej bazy). Dopasowane do mapy wzorcowej (C–U, 1–21):
+// Coruscant w L-9, Tatooine R-16, Kessel T-10, Hoth K-18, Eriadu M-18, Kashyyyk P-9.
+// Kolumna L zaczyna się od x = −20, wiersz 9 kończy się (od południa) na y = −170.
+// Inna siatka niż katalog gwiazd tła (gwiazdy_tla.js — oznaczenia ISK, osobny układ, nie zmieniać).
+export const KWADRAT_PC = 1490, KWADRAT_X0 = -20, KWADRAT_Y0 = -170;
+export const kolumnaKwadratu = (x) => Math.floor((x - KWADRAT_X0) / KWADRAT_PC); // 0 = L
+export const wierszKwadratu = (y) => Math.floor((y - KWADRAT_Y0) / KWADRAT_PC); // 0 = wiersz 9
+export const literaKolumny = (i) => String.fromCharCode(Math.max(65, Math.min(90, 76 + i))); // poza A–Z: skrajna litera (dysk mieści się w C–Z)
+export const numerWiersza = (j) => 9 - j;
+export const kwadrat = (x, y) => `${literaKolumny(kolumnaKwadratu(x))}-${numerWiersza(wierszKwadratu(y))}`;
+
 // ---------- aplikacja ----------
 
 export default {
@@ -222,7 +235,8 @@ export default {
     const wsp = h('div.mapa-wsp');
     // Skala mapy w rogu: pasek „okrągłej” długości (m, km, j.a., pc, lata świetlne) i zbliżenie.
     const skalaPasek = h('i'), skalaNapis = h('span'), skalaZoom = h('small');
-    const skalaEl = h('div.mapa-skala', h('div', skalaPasek, skalaNapis), skalaZoom);
+    const mojKwadratEl = h('small', { hidden: true }); // kwadrat siatki, w którym jestem
+    const skalaEl = h('div.mapa-skala', h('div', skalaPasek, skalaNapis), skalaZoom, mojKwadratEl);
     let skalaPokazana = 0;
     function odswiezSkale() {
       if (skala === skalaPokazana || !szer) return;
@@ -281,6 +295,8 @@ export default {
       uklad: '<circle cx="24" cy="24" r="4"/><ellipse cx="24" cy="24" rx="17" ry="9"/><circle cx="39" cy="21" r="3"/>',
       sektor: '<rect x="10" y="10" width="28" height="28"/><path d="M10 24h28M24 10v28"/><circle cx="31" cy="17" r="3"/>',
       trasa: '<path d="M8 38c8-2 10-10 16-14s14-4 16-14"/><circle cx="8" cy="38" r="3"/><circle cx="40" cy="10" r="3"/>',
+      kwadrat: '<rect x="12" y="12" width="24" height="24"/><circle cx="24" cy="24" r="3"/><path d="M12 6v4M36 6v4M6 12h4M6 36h4"/>',
+      kwadraty: '<rect x="6" y="6" width="36" height="36"/><path d="M18 6v36M30 6v36M6 18h36M6 30h36"/><circle cx="24" cy="24" r="2.5"/>',
     };
     // Kadr dwóch punktów w jednym układzie (km od słońca): oba na ekranie z marginesem — odcinek między nimi
     // wyznacza przekątną widoku.
@@ -344,6 +360,32 @@ export default {
         { ikona: '<path d="M8 16h22l10 8-10 8H8z"/><path d="M14 22h10M14 26h6"/>', tytul: 'Kontrakty handlowe', akcja: () => otworzPubliczne('towar') },
         { ikona: '<path d="M8 40V8M8 40h32"/><path d="M14 32l8-9 6 5 10-13"/>', tytul: 'Dane gospodarcze', akcja: () => otworzPubliczne('ranking') },
       ];
+      // W pustej przestrzeni (poza układem) progi „planeta / słońce / krawędź” nie mają sensu: zamiast nich
+      // najbliższy układ (choćby na końcu galaktyki), sektor wokół mnie, mój kwadrat siatki i kwadrat z sąsiednimi.
+      const poz = pozycjaTeraz(mojZnacznik());
+      if (poz && !ukladWPunkcie(poz.x, poz.y)) {
+        const kw = kwadrat(poz.x, poz.y);
+        const srodekKwadratu = () => {
+          const p = pozycjaTeraz(mojZnacznik()) || poz;
+          return [KWADRAT_X0 + (kolumnaKwadratu(p.x) + 0.5) * KWADRAT_PC, KWADRAT_Y0 + (wierszKwadratu(p.y) + 0.5) * KWADRAT_PC];
+        };
+        let prawoPrzestrzen = [
+          { ikona: IK.uklad, tytul: 'Moja pozycja i najbliższy układ', akcja: () => {
+            wybierz(null);
+            const p = pozycjaTeraz(mojZnacznik()) || poz;
+            let naj = null, odl = Infinity;
+            for (const q of P) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < odl) { odl = d; naj = q; } }
+            if (!naj) return;
+            const dx = Math.max(Math.abs(naj.x - p.x), 0.01), dy = Math.max(Math.abs(naj.y - p.y), 0.01);
+            przelec((naj.x + p.x) / 2, (naj.y + p.y) / 2, Math.min(PROG_UKLADU / 2, szer * 0.8 / dx, wys * 0.8 / dy));
+          } },
+          { ikona: IK.sektor, tytul: 'Moja pozycja w sektorze', akcja: () => { wybierz(null); doProgu('sektor'); } },
+          { ikona: IK.kwadrat, tytul: `Mój kwadrat ${kw}`, akcja: () => { const [x, y] = srodekKwadratu(); przelec(x, y, Math.min(szer, wys) * 0.9 / KWADRAT_PC); } },
+          { ikona: IK.kwadraty, tytul: `Kwadrat ${kw} i sąsiednie`, akcja: () => { const [x, y] = srodekKwadratu(); przelec(x, y, Math.min(szer, wys) * 0.9 / (3 * KWADRAT_PC)); } },
+        ];
+        if (telefon) prawoPrzestrzen = prawoPrzestrzen.slice(0, 3);
+        return [...lewoDoku().map((x) => ({ ...x, strona: 'lewo' })), ...prawoPrzestrzen];
+      }
       let prawo = [
         { ikona: IK.planeta, tytul: 'Moja pozycja i najbliższa planeta', akcja: async () => {
           const c = await mojaPozycjaWUkladzie();
@@ -357,6 +399,11 @@ export default {
         { ikona: IK.uklad, tytul: 'Moja pozycja w układzie (krawędź)', akcja: () => { wybierz(null); doProgu('uklad'); } },
         { ikona: IK.sektor, tytul: 'Moja pozycja w sektorze', akcja: () => { wybierz(null); doProgu('sektor'); } },
       ];
+      if (telefon) prawo = prawo.slice(0, 3);
+      return [...lewoDoku().map((x) => ({ ...x, strona: 'lewo' })), ...prawo];
+    }
+    // Lewa grupa: GDZIE LECĘ (w locie) albo WYBRANA PLANETA (bez lotu, z wybraną planetą).
+    function lewoDoku() {
       let lewo = celLotu() ? [
         { ikona: IK.planeta + STRZALKA, tytul: 'Gdzie lecę: planeta', akcja: () => doProgu(celLotu()?.pl ? 'planeta' : 'uklad', celLotu) },
         { ikona: IK.uklad + STRZALKA, tytul: 'Gdzie lecę: krawędź układu', akcja: () => doProgu('uklad', celLotu) },
@@ -375,12 +422,16 @@ export default {
           { ikona: IK.planeta, tytul: `${wybrana.nazwa} i jej księżyce`, akcja: () => doProgu('planeta', cel) },
         ];
       }
-      if (telefon) { prawo = prawo.slice(0, 3); lewo = wybrana ? lewo.slice(1) : lewo.slice(0, 3); }
-      return [...lewo.map((x) => ({ ...x, strona: 'lewo' })), ...prawo];
+      if (telefon) lewo = wybrana ? lewo.slice(1) : lewo.slice(0, 3);
+      return lewo;
     }
     // Lewa grupa pojawia się i znika z lotem: dok odświeżany, gdy zmienia się zestaw przycisków.
     let zestawDoku = null;
     function odswiezDokMapy() {
+      // Kwadrat siatki, w którym jestem (pod skalą w rogu mapy).
+      const ja = !ctx.gosc && pozycjaTeraz(mojZnacznik());
+      mojKwadratEl.hidden = !ja;
+      if (ja) mojKwadratEl.textContent = `jestem w kwadracie ${kwadrat(ja.x, ja.y)}`;
       const lista = ikonyZoomu();
       const zestaw = lista.map((x) => x.tytul).join('|');
       if (zestaw === zestawDoku) return;
@@ -1635,17 +1686,48 @@ export default {
     }
 
     function rysujSiatke(g) {
-      // Siatka co 1000 jednostek (przy dużym oddaleniu co 5000).
-      const krok = skala * 1000 < 40 ? 5000 : 1000;
+      // Siatka kwadratów (litera kolumny, numer wiersza): linie na granicach, oznaczenia przy górnej i lewej
+      // krawędzi ekranu, a gdy kwadrat jest duży — także w jego lewym górnym rogu.
       const [x0, y1] = naMape(0, 0);
       const [x1, y0] = naMape(szer, wys);
+      const bok = KWADRAT_PC * skala; // px
+      const i0 = kolumnaKwadratu(x0), i1 = kolumnaKwadratu(x1), j0 = wierszKwadratu(y0), j1 = wierszKwadratu(y1);
+      if (i1 - i0 > 200 || j1 - j0 > 200) return;
       g.strokeStyle = kolory.linia;
-      g.globalAlpha = 0.35;
+      g.globalAlpha = 0.45;
       g.lineWidth = 1;
       g.beginPath();
-      for (let x = Math.floor(x0 / krok) * krok; x <= x1; x += krok) { const [sx] = naEkran(x, 0); g.moveTo(Math.round(sx) + 0.5, 0); g.lineTo(Math.round(sx) + 0.5, wys); }
-      for (let y = Math.floor(y0 / krok) * krok; y <= y1; y += krok) { const [, sy] = naEkran(0, y); g.moveTo(0, Math.round(sy) + 0.5); g.lineTo(szer, Math.round(sy) + 0.5); }
+      for (let i = i0 + 1; i <= i1; i++) { const [sx] = naEkran(KWADRAT_X0 + i * KWADRAT_PC, 0); g.moveTo(Math.round(sx) + 0.5, 0); g.lineTo(Math.round(sx) + 0.5, wys); }
+      for (let j = j0 + 1; j <= j1; j++) { const [, sy] = naEkran(0, KWADRAT_Y0 + j * KWADRAT_PC); g.moveTo(0, Math.round(sy) + 0.5); g.lineTo(szer, Math.round(sy) + 0.5); }
       g.stroke();
+      if (bok < 22) { g.globalAlpha = 1; return; }
+      g.globalAlpha = 0.7;
+      g.fillStyle = kolory.slaby;
+      g.font = `11px ${kroj}`;
+      g.textBaseline = 'top';
+      const gora = 46, lewo = 6; // pod paskiem wyszukiwania
+      g.textAlign = 'center';
+      for (let i = i0; i <= i1; i++) {
+        const [a] = naEkran(KWADRAT_X0 + i * KWADRAT_PC, 0), [b] = naEkran(KWADRAT_X0 + (i + 1) * KWADRAT_PC, 0);
+        const sx = Math.min(Math.max((Math.max(a, 0) + Math.min(b, szer)) / 2, 12), szer - 12);
+        g.fillText(literaKolumny(i), sx, gora);
+      }
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      for (let j = j1; j >= j0; j--) {
+        const [, a] = naEkran(0, KWADRAT_Y0 + (j + 1) * KWADRAT_PC), [, b] = naEkran(0, KWADRAT_Y0 + j * KWADRAT_PC);
+        const sy = (Math.max(a, gora + 14) + Math.min(b, wys)) / 2;
+        if (sy > gora + 14 && sy < wys - 8) g.fillText(String(numerWiersza(j)), lewo, sy);
+      }
+      if (bok > 160) {
+        g.textBaseline = 'top';
+        g.globalAlpha = 0.45;
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) {
+          const [sx, sy] = naEkran(KWADRAT_X0 + i * KWADRAT_PC, KWADRAT_Y0 + (j + 1) * KWADRAT_PC);
+          if (sx > -40 && sy > -20 && sx < szer && sy < wys) g.fillText(`${literaKolumny(i)}-${numerWiersza(j)}`, sx + 5, sy + 5);
+        }
+      }
+      g.textBaseline = 'alphabetic';
       g.globalAlpha = 1;
     }
 
@@ -3076,7 +3158,7 @@ export default {
           h('table.tabela',
             p.sektor ? wiersz('Sektor', p.sektor) : null,
             wiersz('Region', p.region || 'nieznany'),
-            p.kwadrat ? wiersz('Kwadrat', p.kwadrat) : null,
+            wiersz('Kwadrat', kwadrat(p.x, p.y)),
             wiersz('Współrzędne', `${liczba(p.x, 1)} · ${liczba(p.y, 1)}`),
             odleglosc !== null || (mojZnacznik() && p !== tuPlaneta) ? h('tr', h('th', 'Odległość od ciebie'),
               zywa(() => opisOdleglosci(pozycjaTeraz(mojZnacznik()), { x: p.x, y: p.y, k: kmWUkladzie(p) }) ?? (odleglosc !== null ? `${liczba(odleglosc)} pc` : null))) : null,
@@ -3212,7 +3294,7 @@ export default {
     });
     plotno.addEventListener('pointermove', (e) => {
       const [mx, my] = naMape(e.offsetX, e.offsetY);
-      wsp.textContent = `${liczba(mx)} · ${liczba(my)}`;
+      wsp.textContent = `${kwadrat(mx, my)} · ${liczba(mx)} · ${liczba(my)}`;
       const poprzedni = wskazniki.get(e.pointerId);
       if (!poprzedni) {
         if (e.pointerType === 'mouse' && D) {

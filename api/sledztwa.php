@@ -2121,6 +2121,53 @@ function sl_wpis(PDO $db, int $rozmowaId, string $kto, string $tresc, bool $ai =
 {
     $db->prepare('INSERT INTO sledztwo_rozmowy_wpisy (rozmowa_id, kiedy_utc, kto, tresc, ai) VALUES (?, ?, ?, ?, ?)')
         ->execute([$rozmowaId, sl_utc(sl_teraz()), $kto, $tresc, $ai ? 1 : 0]);
+    if ($kto === 'npc') sl_archiwizuj($db, (int) $db->lastInsertId(), $rozmowaId, $tresc);
+}
+
+// Archiwum sformułowań (migracja 093): kto, gdzie i kiedy co powiedział w sprawie.
+function sl_archiwizuj(PDO $db, int $wpisId, int $rozmowaId, string $tresc): void
+{
+    try {
+        $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
+        $q->execute([$rozmowaId]);
+        $r = $q->fetch();
+        if (!$r) return;
+        $o = json_decode((string) $r['opis_json'], true) ?: [];
+        $kto = mb_substr(trim(($o['kod'] ?? '') . ': ' . sl_opis_rozmowcy($r), ': '), 0, 200);
+        $db->prepare('INSERT IGNORE INTO sledztwo_sformulowania (wpis_id, sledztwo_id, rozmowa_id, kontakt, kto, lokalizacja_id, poziom, pokoj, tresc, kiedy_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$wpisId, (int) $r['sledztwo_id'], $rozmowaId, (string) $r['kontakt'], $kto, $r['lokalizacja_id'], (int) $r['poziom'],
+                (string) $r['pokoj'], $tresc, sl_utc(sl_teraz())]);
+    } catch (PDOException $e) { /* brak migracji 093 */ }
+}
+
+// Archiwum dla rozmówcy $r: najnowsze wypowiedzi w sprawie z oznaczeniem, kto i skąd mówił —
+// TY (ten sam rozmówca), OBOK (ten sam lokal / korytarz piętra, ostatnie 30 min — słyszał to), W TYM BUDYNKU, GDZIE INDZIEJ.
+// Zwraca [wiersze z polem 'relacja', tekst do promptu]. Bez migracji 093 — z zapisów rozmów.
+function sl_archiwum_dla(PDO $db, array $r, int $limit = 40): array
+{
+    try {
+        $q = $db->prepare('SELECT kontakt, kto, lokalizacja_id, poziom, pokoj, tresc, kiedy_utc FROM sledztwo_sformulowania
+            WHERE sledztwo_id = ? ORDER BY id DESC LIMIT ' . (int) $limit);
+        $q->execute([(int) $r['sledztwo_id']]);
+        $wiersze = $q->fetchAll();
+    } catch (PDOException $e) {
+        $q = $db->prepare("SELECT r2.kontakt, '' AS kto, r2.lokalizacja_id, r2.poziom, r2.pokoj, w.tresc, w.kiedy_utc FROM sledztwo_rozmowy_wpisy w
+            JOIN sledztwo_rozmowy r2 ON r2.id = w.rozmowa_id WHERE r2.sledztwo_id = ? AND w.kto = 'npc' ORDER BY w.id DESC LIMIT " . (int) $limit);
+        $q->execute([(int) $r['sledztwo_id']]);
+        $wiersze = $q->fetchAll();
+    }
+    $teraz = sl_teraz();
+    foreach ($wiersze as &$w) {
+        $tenBudynek = ($w['lokalizacja_id'] === null && $r['lokalizacja_id'] === null) || (int) $w['lokalizacja_id'] === (int) $r['lokalizacja_id'];
+        $w['relacja'] = $w['kontakt'] === $r['kontakt'] ? 'TY'
+            : ($tenBudynek && (int) $w['poziom'] === (int) $r['poziom'] && $w['pokoj'] === $r['pokoj'] && (sl_z_utc($w['kiedy_utc']) ?? 0) > $teraz - 1800 ? 'OBOK'
+                : ($tenBudynek ? 'W TYM BUDYNKU' : 'GDZIE INDZIEJ'));
+    }
+    unset($w);
+    $tekst = $wiersze ? implode("\n", array_map(fn($w) => "- „{$w['tresc']}” — " . ($w['relacja'] === 'TY' ? 'TY (powiedziałeś to wcześniej)'
+        : $w['relacja'] . ($w['kto'] !== '' ? ": {$w['kto']}" : '')), $wiersze)) : '(archiwum puste — nikt jeszcze nic nie powiedział)';
+    return [$wiersze, $tekst];
 }
 
 function sl_opis_rozmowcy(array $r): string
@@ -2389,16 +2436,29 @@ function sl_skladanka(PDO $db, string $klucz, int $rid, string $plec = 'm', ?str
 {
     $c = SLEDZTWO_SKLADANKI[$klucz] ?? null;
     if (!$c) return (string) $sedno;
-    $q = $db->prepare("SELECT tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'npc'");
+    // Archiwum sprawy: żadna kwestia nie pada drugi raz dosłownie; sedno, które już ktoś powiedział, dostaje inny wstęp.
+    $q = $db->prepare('SELECT * FROM sledztwo_rozmowy WHERE id = ?');
     $q->execute([$rid]);
-    $bylo = array_flip($q->fetchAll(PDO::FETCH_COLUMN));
+    $r = $q->fetch() ?: null;
+    [$arch] = $r ? sl_archiwum_dla($db, $r, 200) : [[]];
+    $bylo = [];
+    foreach ($arch as $w) $bylo[$w['tresc']] = $w;
     $wynik = '';
-    for ($proba = 0; $proba < 8; $proba++) {
+    $rdzen = '';
+    for ($proba = 0; $proba < 12; $proba++) {
         $rdzen = $sedno ?? ($c[1] ? $c[1][random_int(0, count($c[1]) - 1)] : '');
         $wstep = $c[0][random_int(0, count($c[0]) - 1)];
         $koniec = $c[2][random_int(0, count($c[2]) - 1)];
         $wynik = trim(preg_replace('/\s+/u', ' ', ($wstep !== '' ? $wstep . ' ' : '') . $rdzen . ($koniec !== '' ? ' ' . $koniec : '')));
         if (!isset($bylo[$wynik])) break;
+    }
+    // Nadal powtórka: jeśli to sedno mówił przed chwilą ktoś obok — rozmówca się do niego odwołuje.
+    if (isset($bylo[$wynik]) || array_filter($arch, fn($w) => $w['relacja'] === 'OBOK' && $rdzen !== '' && str_contains($w['tresc'], $rdzen))) {
+        $obok = array_values(array_filter($arch, fn($w) => $w['relacja'] === 'OBOK'));
+        if ($obok && $rdzen !== '') {
+            $wynik = ['Powiem to samo, co ten obok: ', 'Jak już słyszałeś od sąsiada: ', 'Kolega dobrze ci powiedział: ', 'Mówili ci już przecież: '][random_int(0, 3)]
+                . mb_strtolower(mb_substr($rdzen, 0, 1)) . mb_substr($rdzen, 1);
+        }
     }
     return sl_rodzaj($wynik, $plec === 'k' ? 'k' : 'm');
 }
@@ -3317,14 +3377,11 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $dane = sl_npc_dane($db, $s, $npc, $pule, $r, $metryka);
                 $imie = $dane['npc']['pelne_imie'];
                 $dane['droid'] = ['oznaczenie' => $oznaczenie];
-                $q = $db->prepare("SELECT w.tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r2 ON r2.id = w.rozmowa_id
-                    WHERE r2.sledztwo_id = ? AND w.kto = 'npc' ORDER BY w.id DESC LIMIT 12");
-                $q->execute([(int) $s['id']]);
-                $unikaj = $q->fetchAll(PDO::FETCH_COLUMN);
+                [, $unikaj] = sl_archiwum_dla($db, $r);
                 $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie
                     ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
                     : '(to początek rozmowy)',
-                    'unikaj' => $unikaj ? implode("\n", array_map(fn($x) => '- „' . $x . '”', $unikaj)) : '(brak)'];
+                    'unikaj' => $unikaj];
                 if ($slyszal) $dane['faza']['zachowanie'] .= "\n- " . sl_rodzaj('Przed chwilą stał{eś|aś} obok i słyszał{eś|aś}', (string) ($o['plec'] ?? 'm')) . ", jak ten droid przedstawiał się i wypytywał kogoś ({$slyszal}) o sprawę: {$zgloszenie}. Wiesz już, czego chce.";
                 if ($test) {
                     $dane['faza']['zachowanie'] .= "\n- TERAZ droid zastosował wobec ciebie: {$pd[4]}. Wynik testu: "

@@ -136,6 +136,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    nieudanym teście i zdawkowe kwestie są składane z części (`SLEDZTWO_SKLADANKI`, `sl_skladanka`) bez powtórzeń.
    Migracja `092_sledztwa_styl.sql`: prompt NPC ze STYLEM (za każdym razem inaczej, slang Nar Shaddaa) i listą zdań,
    które już padły w sprawie (`{{rozmowa.unikaj}}`); temperatura NPC 0.95, droida 0.80.
+   Migracja `093_sledztwa_archiwum_sformulowan.sql`: archiwum sformułowań (`sledztwo_sformulowania`, `sl_archiwizuj`) —
+   każda wypowiedź NPC z autorem, miejscem i czasem. Prompt dostaje 40 najnowszych z oznaczeniem TY / OBOK / W TYM
+   BUDYNKU / GDZIE INDZIEJ (`sl_archiwum_dla`): to samo trzeba przeredagować albo odwołać się do osoby OBOK
+   („powiem to, co kolega…”). Tryb bez AI unika dosłownych powtórzeń z całego archiwum sprawy.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

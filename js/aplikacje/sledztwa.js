@@ -135,20 +135,35 @@ export default {
     }
 
     // Winda: wybór poziomu (parter / góra budynku albo dowolny numer).
+    // Winda: droid najpierw do niej wchodzi; dopiero w środku panel boczny pokazuje listę pięter.
+    const WINDA_XY = { x: -WINDA / 2, y: GLEB + KOR / 2 };
+    const wWindzie = () => d && d.droid.stan !== 'w_drodze' && d.droid.pokoj === 'korytarz' && d.droid.x < 0;
     function winda() {
+      if (wWindzie()) { zakladka = 'winda'; rysujSzuflade(); rysujGore(); return; }
+      zamiar = { winda: true };
+      idz(d.plan.budynek_id, d.plan.poziom, 'korytarz', WINDA_XY);
+    }
+
+    function zakladkaWinda() {
       const { plan, poziom_max } = d;
-      const nr = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:80px' });
-      const jedz = (p) => { wyczysc(komunikat); idz(plan.budynek_id, Number(p), 'korytarz'); };
+      const jedz = (p) => { p = Number(p); if (p >= 1 && p <= poziom_max && p !== plan.poziom) { zamiar = { winda: true }; idz(plan.budynek_id, p, 'korytarz', WINDA_XY); } };
+      const pietra = [];
+      for (let p = plan.gora; p >= plan.parter; p--) pietra.push(p);
+      const nr = h('input', { type: 'number', min: 1, max: poziom_max, placeholder: 'np. 2', style: 'width:80px' });
       nr.onkeydown = (e) => { if (e.key === 'Enter') jedz(nr.value); };
-      wyczysc(komunikat).append(h('div.komunikat', h('b', `WINDA · ${plan.budynek} · teraz poziom ${plan.poziom}`),
-        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px' },
-          plan.parter !== plan.poziom ? przycisk(`Parter (${plan.parter})`, () => jedz(plan.parter)) : null,
-          plan.poziom > plan.parter ? przycisk('Piętro niżej', () => jedz(plan.poziom - 1)) : null,
-          przycisk('Piętro wyżej', () => jedz(plan.poziom + 1)),
-          plan.gora !== plan.poziom ? przycisk(`Góra (${plan.gora})`, () => jedz(plan.gora)) : null,
-          h('span.slaby', 'poziom'), nr, przycisk('Jedź', () => jedz(nr.value), '.maly'),
-          przycisk('×', () => wyczysc(komunikat), '.drugi.maly'))));
-      setTimeout(() => nr.focus(), 0);
+      return panel(`WINDA · ${plan.budynek}`,
+        h('p.maly-tekst', `Droid w windzie, poziom ${plan.poziom}. Wybierz piętro — droid wysiądzie przy windzie na wybranym poziomie.`),
+        h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:4px;margin:8px 0' },
+          pietra.map((p) => {
+            const opis = p === plan.parter ? 'P' : p === plan.gora ? 'G' : '';
+            return przycisk(`${p}${opis ? ` ${opis}` : ''}`, () => jedz(p), p === plan.poziom ? '.maly' : '.drugi.maly',
+              { disabled: p === plan.poziom, title: p === plan.parter ? 'Parter' : p === plan.gora ? 'Najwyższy poziom budynku' : `Poziom ${p}` });
+          })),
+        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' },
+          h('span.slaby', 'Poziom techniczny (poza zakresem budynku):'), nr, przycisk('Jedź', () => jedz(nr.value))),
+        h('div', { style: 'margin-top:10px' }, przycisk('Wyjdź z windy na korytarz', () => {
+          zakladka = 'skan'; idz(plan.budynek_id, plan.poziom, 'korytarz', { x: 12, y: GLEB + KOR / 2 });
+        })));
     }
 
     // Położenie droida w drodze: wzdłuż trasy (przez drzwi i korytarz), proporcjonalnie do czasu.
@@ -431,7 +446,10 @@ export default {
       szuflada.hidden = zakladka === 'skan' || !d;
       if (szuflada.hidden) return;
       const zamknij = przycisk('×', () => { zakladka = 'skan'; rysujSzuflade(); rysujGore(); }, '.drugi.maly', { style: 'float:right', title: 'Zamknij panel' });
-      const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik }[zakladka];
+      // Panel windy tylko, gdy droid jest w windzie (albo do niej idzie).
+      if (zakladka === 'winda' && !wWindzie() && !zamiar?.winda) { zakladka = 'skan'; szuflada.hidden = true; return; }
+      const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik,
+        winda: () => (wWindzie() ? zakladkaWinda() : panel('WINDA', h('p.maly-tekst', 'Droid idzie do windy…'))) }[zakladka];
       wyczysc(szuflada).append(zamknij, tresc ? tresc() : null);
     }
 
@@ -509,7 +527,7 @@ export default {
     const wypisane = new Set();
     const KTO_R = { droid: 'DT-4', operator: 'Operator', system: '' };
     // Procedura śledcza: 'wlasna' — droid zadaje pytania operatora jako swoje; 'jawna' — może mówić, że pyta operator.
-    let procedura = 'wlasna', szkic = '';
+    let procedura = 'wlasna', szkic = '', bladR = '';
     try { if (localStorage.getItem('dt4-procedura') === 'jawna') procedura = 'jawna'; } catch (e) { /* bez pamięci przeglądarki */ }
 
     function wypisz(wp, odRazu) {
@@ -579,6 +597,7 @@ export default {
         listaR,
         h('p.maly-tekst', status),
         zakonczona ? null : h('div', { style: 'margin:0 0 6px' }, wyborProcedury),
+        bladR && !zakonczona ? h('div.komunikat.blad', { style: 'margin:0 0 6px' }, bladR) : null,
         zakonczona ? przycisk('Zamknij zapis', () => pokazRozmowe(null))
           : h('div', pole, h('div.maly-tekst', { style: 'margin-top:6px' }, 'Podejście (test; dołącza się do polecenia z pola, jeśli jest):'), podejscia,
             h('div', { style: 'display:flex;flex-wrap:wrap;gap:6px;align-items:center' }, zadaj,
@@ -602,10 +621,14 @@ export default {
         const namiaryTeraz = (r.rozmowa.wpisy || []).slice(-3).some((x) => x.kto === 'system' && x.tresc.startsWith('Namiary zapisane'));
         if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); } else if (namiaryTeraz) skanuj();
       } catch (e) {
+        // Błąd tury (np. to samo pytanie drugi raz) — w panelu rozmowy, a polecenie wraca do pola.
         pisze = false;
-        pokaz(blad(e));
+        bladR = e.message || String(e);
+        if (!szkic) szkic = polecenie;
         await odswiezRozmowe();
+        return;
       }
+      bladR = '';
     }
 
     async function odswiezRozmowe(id) {
@@ -643,6 +666,10 @@ export default {
         if (d.rozmowa && (!rozmowa || rozmowa.id !== d.rozmowa.id)) await odswiezRozmowe(d.rozmowa.id);
         rysujWszystko();
         // Po dotarciu: zaplanowane podłączenie do terminala.
+        if (zamiar?.winda && d.droid.stan !== 'w_drodze') {
+          zamiar = null;
+          if (wWindzie()) { zakladka = 'winda'; rysujSzuflade(); rysujGore(); }
+        }
         if (zamiar?.terminal && d.droid.stan !== 'w_drodze') {
           const t = d.plan.terminale?.[zamiar.terminal];
           const z = zamiar; zamiar = null;

@@ -123,6 +123,11 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    Namiary (migracja `091_sledztwa_namiary.sql`, `sl_namiary`): gdy rozmówca wskaże istniejące miejsce (numer lokalu
    w budynku, nazwę lokalu z piętra / parteru przy słowach kierunku, nazwę miejsca ze sprawy), trafia ono do pola
    wyboru celu („Namiary od rozmówców”); wymyślone miejsca się nie liczą.
+   Winda: klik — droid najpierw wchodzi do windy, dopiero w środku panel boczny „WINDA” z listą pięter budynku
+   (P = parter, G = góra) i polem dla poziomów technicznych. Rozmowy: tego samego pytania nie da się zadać tej samej
+   osobie drugi raz (`sl_to_samo`, także z wcześniejszych rozmów); droid nie powtarza swoich pytań. Gdy rozmówca stał
+   obok poprzedniej rozmowy (ten sam lokal; na korytarzu do 6 m, 30 min), droid wita go krótko („słyszał Pan zapewne…”),
+   a NPC wie, że słyszał (`sl_slyszal_wczesniej`).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

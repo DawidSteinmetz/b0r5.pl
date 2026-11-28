@@ -2195,7 +2195,8 @@ function sl_rozmowa_start(PDO $db, array $s, string $token): array
         $gotowa = $teraz + $ruch['czas_s'] + SLEDZTWO_PODEJSCIE_S;
     }
     $cel = $cel ? $cel[2] : $poz[2];
-    $opis = ['gatunek' => $kontakt['gatunek'], 'plec' => $kontakt['plec'], 'wyglad' => $kontakt['wyglad'], 'kod' => $kontakt['kod']];
+    $opis = ['gatunek' => $kontakt['gatunek'], 'plec' => $kontakt['plec'], 'wyglad' => $kontakt['wyglad'], 'kod' => $kontakt['kod'],
+        'x' => (int) $kontakt['x'], 'y' => (int) ($kontakt['y'] ?? 0)];
     $db->prepare('INSERT INTO sledztwo_rozmowy (sledztwo_id, kontakt, postac_id, opis_json, lokalizacja_id, poziom, pokoj, gotowa_utc, rozpoczeto_utc)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         ->execute([(int) $s['id'], $token, $kontakt['postac_id'], json_encode($opis, JSON_UNESCAPED_UNICODE), $bid, (int) $d['poziom'],
@@ -2222,6 +2223,45 @@ const SLEDZTWO_PROCEDURY = [
 ];
 
 // Pytanie operatora jako wypowiedź droida: uprzejmie, z pytajnikiem; przy procedurze jawnej — „mój operator pyta”.
+// Czy dwa pytania są „tym samym” (po normalizacji: małe litery, bez interpunkcji; albo podobieństwo ≥ 85%).
+function sl_to_samo(string $a, string $b): bool
+{
+    $n = fn(string $x) => trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/[^\p{L}\p{N}\s]/u', '', mb_strtolower(
+        (string) preg_replace('/\s*\[Podejście:.*\]$/us', '', $x)))));
+    [$a, $b] = [$n($a), $n($b)];
+    if ($a === '' || $b === '') return false;
+    if ($a === $b) return true;
+    similar_text($a, $b, $proc);
+    return $proc >= 85;
+}
+
+// Wcześniejsze wypowiedzi z tą samą osobą (wszystkie rozmowy w sprawie): kto — 'operator' albo 'droid'.
+function sl_juz_padlo(PDO $db, int $sledztwoId, string $kontakt, string $kto): array
+{
+    $q = $db->prepare("SELECT w.tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r ON r.id = w.rozmowa_id
+        WHERE r.sledztwo_id = ? AND r.kontakt = ? AND w.kto = ? ORDER BY w.id");
+    $q->execute([$sledztwoId, $kontakt, $kto]);
+    return $q->fetchAll(PDO::FETCH_COLUMN);
+}
+
+// Ktoś stał obok, gdy droid przed chwilą (30 min) rozmawiał z inną osobą w tym samym lokalu — albo na korytarzu
+// w promieniu 6 m. Zwraca kod tamtego rozmówcy (słyszał przywitanie i pytania) albo null. Sam w lokalu — nie dotyczy.
+function sl_slyszal_wczesniej(PDO $db, array $r): ?string
+{
+    $o = json_decode((string) $r['opis_json'], true) ?: [];
+    $q = $db->prepare("SELECT r.opis_json FROM sledztwo_rozmowy r
+        WHERE r.sledztwo_id = ? AND r.id <> ? AND r.kontakt <> ? AND r.lokalizacja_id <=> ? AND r.poziom = ? AND r.pokoj = ? AND r.rozpoczeto_utc > ?
+        AND EXISTS (SELECT 1 FROM sledztwo_rozmowy_wpisy w WHERE w.rozmowa_id = r.id AND w.kto = 'droid') ORDER BY r.id DESC LIMIT 5");
+    $q->execute([(int) $r['sledztwo_id'], (int) $r['id'], (string) $r['kontakt'], $r['lokalizacja_id'], (int) $r['poziom'], (string) $r['pokoj'],
+        sl_utc(sl_teraz() - 1800)]);
+    foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $j) {
+        $p = json_decode((string) $j, true) ?: [];
+        if ($r['pokoj'] === 'korytarz' && (!isset($o['x'], $p['x']) || hypot($o['x'] - $p['x'], ($o['y'] ?? 0) - ($p['y'] ?? 0)) > 60)) continue;
+        return (string) ($p['kod'] ?? 'ktoś obok');
+    }
+    return null;
+}
+
 // Bez AI: polecenie operatora jako wypowiedź droida. Pytanie („gdzie…?”, „zapytaj o…”) — pytanie; reszta
 // („grzeczniej proszę…”, „powiedz mu, że…”) — droid mówi to jako swoje zdanie.
 function sl_pytanie_operatora(string $polecenie, bool $jawna, array $f = []): string
@@ -2242,8 +2282,15 @@ function sl_pytanie_operatora(string $polecenie, bool $jawna, array $f = []): st
     return $p;
 }
 
-function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr, bool $jawna = false): string
+// $slyszal — kod rozmówcy, z którym droid rozmawiał obok (ten słyszał przywitanie); $juz — pytania już zadane tej osobie.
+// Pusty wynik: droidowi skończyły się pytania.
+function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string $operator, string $polecenie, int $nr, bool $jawna = false,
+    ?string $slyszal = null, array $juz = []): string
 {
+    if ($pierwsza && $slyszal) {
+        return "Przepraszam, {$f['wolacz']} — słyszał{$f['a']} {$f['pan']} zapewne, o co pytałem przed chwilą. {$oznaczenie}, biuro detektywistyczne. "
+            . ($polecenie !== '' ? sl_pytanie_operatora($polecenie, $jawna, $f) : "Czy może {$f['pan']} coś do tego dodać?");
+    }
     if ($pierwsza) {
         $t = "Dzień dobry, {$f['wolacz']}. Jestem droid detektywistyczny {$oznaczenie}, operowany przez: {$operator}. "
             . "Mam prawo zadać {$f['panu']} kilka pytań, ponieważ trwa śledztwo, w które jest {$f['pan']} ewidentnie zaangażowan" . ($f['a'] ?: 'y') . '.';
@@ -2252,8 +2299,9 @@ function sl_droid_zastepczo(bool $pierwsza, array $f, string $oznaczenie, string
     if ($polecenie !== '') return sl_pytanie_operatora($polecenie, $jawna, $f);
     $pytania = ["Kogo {$f['pan']} tu widział{$f['a']} w ciągu ostatniej doby?", "Czy ktoś pytał już {$f['pana']} o tę sprawę?",
         'Kto jeszcze bywa w tym miejscu regularnie?', 'Czy coś zginęło albo zmieniło się tutaj w ostatnich dniach?',
-        "Gdzie {$f['pan']} był{$f['a']} ubiegłej nocy?"];
-    return $pytania[$nr % count($pytania)];
+        "Gdzie {$f['pan']} był{$f['a']} ubiegłej nocy?", "Od jak dawna {$f['pan']} tu bywa?", 'Kto tu rządzi i z kim powinienem porozmawiać?'];
+    foreach ($pytania as $p) if (!array_filter($juz, fn($x) => sl_to_samo($x, $p))) return $p;
+    return '';
 }
 
 // Odpowiedź bez AI na proste pytania: imię, pochodzenie, gdzie co jest w budynku (z planu). Null — nie pasuje.
@@ -2958,6 +3006,13 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         throw new SledztwoBlad('Droid nie stoi już przy rozmówcy — rozmowa zakończona.');
     }
     $teraz = sl_teraz();
+    // To samo pytanie do tej samej osoby drugi raz — nie (także z wcześniejszych rozmów z nią).
+    $nowe = trim(mb_substr($polecenie, 0, 300));
+    if ($nowe !== '') {
+        foreach (sl_juz_padlo($db, (int) $s['id'], (string) $r['kontakt'], 'operator') as $było) {
+            if (sl_to_samo($nowe, (string) $było)) throw new SledztwoBlad('Ten rozmówca już słyszał to pytanie — odpowiedź jest w zapisie. Zapytaj o coś innego.');
+        }
+    }
     $zajmij = $db->prepare('UPDATE sledztwo_rozmowy SET tura_od = ? WHERE id = ? AND (tura_od IS NULL OR tura_od < ?)');
     $zajmij->execute([sl_utc($teraz), $rid, sl_utc($teraz - 120)]);
     if (!$zajmij->rowCount()) throw new SledztwoBlad('Droid jeszcze rozmawia — poczekaj na odpowiedź.');
@@ -3031,6 +3086,10 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
             $polecenie = trim(($polecenie !== '' ? $polecenie . ' ' : '') . '[Podejście: ' . $pd[5] . '.]');
         }
 
+        $slyszal = $pytan === 0 ? sl_slyszal_wczesniej($db, $r) : null;
+        $juzDroid = sl_juz_padlo($db, (int) $s['id'], (string) $r['kontakt'], 'droid');
+        $koniecPytan = false;
+
         // 1. Droid pyta.
         $przebiegDroida = $ostatnie ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "{$oznaczenie}: " : 'Rozmówca: ') . $w['tresc'], $ostatnie))
             : '(rozmowa dopiero się zaczyna)';
@@ -3043,7 +3102,12 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     'sprawa' => ['zgloszenie' => $zgloszenie],
                     'miejsce' => ['rejon' => 'Nar Shaddaa', 'nazwa' => 'lokal ' . $r['pokoj'] . ', poziom ' . $r['poziom']],
                     'rozmowca' => ['opis' => sl_opis_rozmowcy($r), 'forma' => $f['opis']],
-                    'rozmowa' => ['etap' => $pytan ? 'Rozmowa trwa — nie przedstawiaj się ponownie.' : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.',
+                    'rozmowa' => ['etap' => ($pytan ? 'Rozmowa trwa — nie przedstawiaj się ponownie.'
+                        : ($slyszal ? "To Twoja pierwsza wypowiedź do tej osoby, ale stała obok i słyszała, jak przed chwilą przedstawiałeś się i wypytywałeś {$slyszal}."
+                            . ' Nie powtarzaj pełnej formuły z zasady 2: krótko nawiąż (np. „Słyszał Pan zapewne, o co pytałem…”), podaj tylko swoje oznaczenie i zadaj pytanie.'
+                            : 'To Twoja pierwsza wypowiedź — przedstaw się zgodnie z zasadą 2.'))
+                        . ($juzDroid ? ' Tych pytań już tej osobie zadałeś (także we wcześniejszych rozmowach) — nie powtarzaj ich ani ich sensu: '
+                            . implode(' | ', array_slice($juzDroid, -8)) : ''),
                         'polecenie' => $polecenie !== '' ? $polecenie : 'Brak — zadaj kolejne pytanie zgodnie z zasadą 4.',
                         'procedura' => SLEDZTWO_PROCEDURY[$procedura] ?? SLEDZTWO_PROCEDURY['wlasna'],
                         'przebieg' => $przebiegDroida],
@@ -3054,7 +3118,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         if ($pytanie === null) {
             $bezPodejscia = $pd ? trim((string) preg_replace('/\s*\[Podejście:.*\]$/us', '', $polecenie)) : $polecenie;
             $pytanie = $pd && $bezPodejscia === '' && $pytan > 0 ? $pd[6]
-                : trim(sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $bezPodejscia, $pytan, $procedura === 'jawna') . ($pd ? ' ' . $pd[6] : ''));
+                : trim(sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $bezPodejscia, $pytan, $procedura === 'jawna', $slyszal, $juzDroid) . ($pd ? ' ' . $pd[6] : ''));
+            if ($pytanie === '') { $pytanie = "Dziękuję, {$f['wolacz']}. Nie mam więcej pytań."; $koniecPytan = true; }
         }
         sl_wpis($db, $rid, 'droid', $pytanie, $pytanieAi);
 
@@ -3070,6 +3135,7 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie
                     ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
                     : '(to początek rozmowy)'];
+                if ($slyszal) $dane['faza']['zachowanie'] .= "\n- " . sl_rodzaj('Przed chwilą stał{eś|aś} obok i słyszał{eś|aś}', (string) ($o['plec'] ?? 'm')) . ", jak ten droid przedstawiał się i wypytywał kogoś ({$slyszal}) o sprawę: {$zgloszenie}. Wiesz już, czego chce.";
                 if ($test) {
                     $dane['faza']['zachowanie'] .= "\n- TERAZ droid zastosował wobec ciebie: {$pd[4]}. Wynik testu: "
                         . ($test['udana'] ? 'UDANY — ' . $pd[9] : 'NIEUDANY — ' . $pd[10]) . '.'
@@ -3120,6 +3186,7 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 sl_wpis($db, $rid, 'npc', $odp);
             }
         }
+        if ($koniecPytan) $konczy = true;
         if ($odp !== null) {
             try {
                 $nowe = sl_namiary($db, $s, $pule, $r, $odp);

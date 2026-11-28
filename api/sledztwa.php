@@ -356,7 +356,7 @@ function sl_miejsce(array $pule, int $seed, ?array &$skupisko, array $faza, arra
     }
     do {
         $poziom = sl_los($pmin, $pmax);
-        $pokoj = sprintf('%d%02d', $poziom, sl_los(1, 40));
+        $pokoj = sprintf('%d%02d', $poziom, sl_los(1, 8)); // numer jak sąsiednie lokale (4101, 4102…), żeby fabuła nie wyróżniała się numerem
         $klucz = ($budynek['nazwa'] ?? '') . '/' . $poziom . '/' . $pokoj;
     } while (isset($zajetePokoje[$klucz]));
     $zajetePokoje[$klucz] = true;
@@ -1660,6 +1660,7 @@ function sl_rozlicz_droida(PDO $db, array $s, ?array $pule = null): ?array
         $db->prepare("UPDATE sledztwo_droid SET lokalizacja_id = ?, poziom = ?, pokoj = ?, cel_lokalizacja_id = NULL, cel_poziom = NULL,
             cel_pokoj = NULL, wyruszyl_utc = NULL, dotrze_utc = NULL, stan = 'czeka' WHERE sledztwo_id = ?")
             ->execute([$bid, $poziom, $pokoj, (int) $s['id']]);
+        sl_droga_zapisz_dziennik($db, $s, $d);
         $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, 'meldunek', 'droid', ?)")
             ->execute([(int) $s['id'], $d['dotrze_utc'], $meldunek]);
         $db->commit();
@@ -1711,13 +1712,15 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
         }
 
         // Odcinki trasy: [plan, trasa, sekundy od wyjścia do początku odcinka].
+        $droga = null;
         if ($sb === $bid && $sp === $poziom) {
             $odcinki = [[$planCel, sl_trasa($planCel, $start, $cel), 0.0]];
             $winda = 0;
         } else {
             $w = sl_winda_xy();
             $t1 = sl_trasa($planStart, $start, [$w[0], $w[1], 'korytarz']);
-            $winda = sl_czas_drogi($budynki, [$sb, $sp, 'korytarz'], [$bid, $poziom, 'korytarz']);
+            $droga = $sb !== null && $bid !== null && $sb !== $bid ? sl_droga_miedzy($db, $s, $pule, $budynki, $sb, $sp, $bid, $poziom) : null;
+            $winda = $droga ? $droga['srodek_s'] : sl_czas_drogi($budynki, [$sb, $sp, 'korytarz'], [$bid, $poziom, 'korytarz']);
             $odcinki = [[$planStart, $t1, 0.0], [$planCel, sl_trasa($planCel, [$w[0], $w[1], 'korytarz'], $cel), sl_sekundy_marszu($t1['dl']) + $winda]];
         }
 
@@ -1763,11 +1766,23 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
             wyruszyl_utc = ?, dotrze_utc = ?, stan = 'w_drodze' WHERE sledztwo_id = ?")
             ->execute([$sb, $sp, $start[2], $bid, $poziom, $pokoj, sl_utc($teraz), sl_utc($teraz + $czas), (int) $s['id']]);
         sl_zapisz_pozycje($db, (int) $s['id'], $start, $cel, $zatrzymanie);
+        // Droga między budynkami: zapis odcinków (czas od wyjścia), mijanych lokali i ludzi.
+        if ($droga && $bid !== $sb) {
+            $s1 = sl_sekundy_marszu($odcinki[0][1]['dl']);
+            foreach ($droga['odcinki'] as &$o) { $o['od'] = round($o['od'] + $s1, 1); $o['do'] = round($o['do'] + $s1, 1); }
+            unset($o);
+            $droga['calosc'] = $czas;
+            try {
+                $db->prepare('INSERT INTO sledztwo_drogi (sledztwo_id, wyruszyl_utc, dotrze_utc, z_lokalizacji, do_lokalizacji, dane) VALUES (?, ?, ?, ?, ?, ?)')
+                    ->execute([(int) $s['id'], sl_utc($teraz), sl_utc($teraz + $czas), $sb, $bid, json_encode($droga, JSON_UNESCAPED_UNICODE)]);
+            } catch (PDOException $e) { /* brak migracji 095 */ }
+        }
         $opisCelu = $planCel['budynek'] . ", poziom {$poziom}, " . ($pokoj === 'korytarz' ? 'korytarz' : "lokal {$pokoj}");
         $metry = 0.0;
         foreach ($odcinki as [, $t]) $metry += $t['dl'] / SLEDZTWO_J_NA_M;
         sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Idź: {$opisCelu}.");
         sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Przyjąłem. Trasa ' . (int) round($metry) . ' m' . ($winda ? ' i winda' : '')
+            . ($droga && $bid !== $sb ? ($droga['rodzaj'] === 'mostek' ? ", mostkiem na poziomie {$droga['poziom_mostka']}" : ', chodnikiem przez parter (' . $droga['dlugosc_m'] . ' m)') : '')
             . ', szacowany czas: ' . sl_czas_tekst($czas) . '.');
         $db->commit();
         return ['czas_s' => $czas, 'dotrze_utc' => sl_utc($teraz + $czas), 'zatrzymany' => $zatrzymanie !== null];
@@ -1821,10 +1836,168 @@ function sl_pozycja_w_drodze(PDO $db, array $s, array $d, array $pule, array $bu
     $s2 = sl_sekundy_marszu($t2['dl']);
     if ($minelo < $s1) return [$b0, $p0, sl_punkt_na_trasie($plan0, $t1['punkty'], $minelo / max(1, $s1)), $plan0];
     $wysiada = max($s1, $calosc - $s2);
+    // Droga między budynkami: na chodniku albo mostku droid staje przy bliższym budynku (wejście / mostek).
+    $dr = sl_droga_biezaca($db, $s, $d);
+    if ($dr && $minelo < $wysiada) {
+        foreach ($dr['odcinki'] as $o) {
+            if ($minelo < $o['od'] || $minelo >= $o['do'] || $o['typ'] === 'winda') continue;
+            $blizej0 = ($minelo - $o['od']) * 2 < ($o['do'] - $o['od']);
+            $bb = $blizej0 ? $b0 : $b1;
+            $pp = $o['typ'] === 'mostek' ? (int) $o['poziom'] : ($blizej0 ? (int) $dr['parter_z'] : (int) $dr['parter_do']);
+            $pl = sl_plan($db, $s, $pule, $bb !== null ? ($budynki[$bb] ?? null) : null, $pp);
+            return [$bb, $pp, [12, SLEDZTWO_GLEB + intdiv(SLEDZTWO_KOR, 2), 'korytarz'], $pl, false];
+        }
+    }
     if ($minelo < $wysiada) {
         return ($minelo - $s1) * 2 < ($wysiada - $s1) ? [$b0, $p0, $winda, $plan0, true] : [$b1, $p1, $winda, $plan1, true];
     }
     return [$b1, $p1, sl_punkt_na_trasie($plan1, $t2['punkty'], ($minelo - $wysiada) / max(1, $s2)), $plan1];
+}
+
+// ---------- drogi między budynkami (migracja 095): winda na parter + chodnik albo mostek ----------
+// Do 1 km droid idzie pieszo: zjeżdża windą na parter i idzie chodnikiem Nar Shaddaa (mija parter budynków przy
+// drodze i ludzi), albo — jeśli budynki tego samego kompleksu łączy mostek — jedzie na poziom mostka i przechodzi
+// górą. Mostki są stałe dla pary budynków (40% par do 400 m, poziom wspólny dla obu budynków). Wybór — szybsza droga.
+
+function sl_winda_s(int $z, int $na): float
+{
+    return $z === $na ? 0.0 : SLEDZTWO_WINDA_CZEKANIE_S + SLEDZTWO_WINDA_S_POZIOM * abs($z - $na);
+}
+
+// Mostek między budynkami: poziom albo null.
+function sl_mostek(array $pule, array $a, array $b): ?int
+{
+    if ((int) $a['rodzic_id'] !== (int) $b['rodzic_id']) return null;
+    $m = hypot((float) $a['x_km'] - (float) $b['x_km'], (float) $a['y_km'] - (float) $b['y_km']) * 1000;
+    if ($m > 400) return null;
+    [$x, $y] = [min((int) $a['id'], (int) $b['id']), max((int) $a['id'], (int) $b['id'])];
+    if (sl_hash_int(SLEDZTWO_SWIAT, 0, 99, 'most', (string) $x, (string) $y) >= 40) return null;
+    $pa = sl_profil($pule, $a);
+    $pb = sl_profil($pule, $b);
+    $lo = max($pa['parter'], $pb['parter']) + 2;
+    $hi = min($pa['gora'], $pb['gora']) - 1;
+    return $lo <= $hi ? sl_hash_int(SLEDZTWO_SWIAT, $lo, $hi, 'most-poz', (string) $x, (string) $y) : null;
+}
+
+// Droga z budynku $sb (poziom $sp) do $bid (poziom $poziom): odcinki (sekundy od wejścia do windy), mijane lokale i ludzie.
+// Null — za daleko na pieszo (taksówka) albo brak współrzędnych.
+function sl_droga_miedzy(PDO $db, array $s, array $pule, array $budynki, int $sb, int $sp, int $bid, int $poziom): ?array
+{
+    $A = $budynki[$sb] ?? null;
+    $B = $budynki[$bid] ?? null;
+    if (!$A || !$B || $A['x_km'] === null || $B['x_km'] === null) return null;
+    $dist = hypot((float) $A['x_km'] - (float) $B['x_km'], (float) $A['y_km'] - (float) $B['y_km']) * 1000;
+    if ($dist > 1000) return null;
+    $pa = sl_profil($pule, $A);
+    $pb = sl_profil($pule, $B);
+    $v = SLEDZTWO_PREDKOSC_MS;
+    $chodnik = sl_winda_s($sp, $pa['parter']) + 20 + max(60.0, $dist) / $v + 20 + sl_winda_s($pb['parter'], $poziom);
+    $L = sl_mostek($pule, $A, $B);
+    $most = $L !== null ? sl_winda_s($sp, $L) + 15 + max(30.0, $dist) / $v + 15 + sl_winda_s($L, $poziom) : INF;
+    $mostem = $most < $chodnik;
+    [$pz, $pd] = $mostem ? [$L, $L] : [$pa['parter'], $pb['parter']];
+    $odc = [];
+    $t = 0.0;
+    $w1 = sl_winda_s($sp, $pz);
+    if ($w1 > 0) { $odc[] = ['typ' => 'winda', 'budynek' => $A['nazwa'], 'z' => $sp, 'na' => $pz, 'od' => $t, 'do' => $t + $w1]; $t += $w1; }
+    $marsz = ($mostem ? 30 : 40) + max($mostem ? 30.0 : 60.0, $dist) / $v;
+    $odc[] = ['typ' => $mostem ? 'mostek' : 'chodnik', 'z' => $A['nazwa'], 'do_b' => $B['nazwa'], 'poziom' => $mostem ? $L : null,
+        'dlugosc_m' => (int) round(max($mostem ? 30.0 : 60.0, $dist)), 'od' => $t, 'do' => $t + $marsz];
+    $t += $marsz;
+    $w2 = sl_winda_s($pd, $poziom);
+    if ($w2 > 0) { $odc[] = ['typ' => 'winda', 'budynek' => $B['nazwa'], 'z' => $pd, 'na' => $poziom, 'od' => $t, 'do' => $t + $w2]; $t += $w2; }
+
+    // Mijane lokale (chodnik: parter budynków przy drodze, także z szumu) i ludzie (stali dla godziny).
+    $miejsca = [];
+    $ludzie = [];
+    $godzina = gmdate('YmdH');
+    if (!$mostem) {
+        $ax = (float) $A['x_km']; $ay = (float) $A['y_km']; $bx = (float) $B['x_km']; $by = (float) $B['y_km'];
+        $dl2 = max(1e-9, ($bx - $ax) ** 2 + ($by - $ay) ** 2);
+        $przy = [];
+        foreach ($budynki as $c) {
+            if ($c['x_km'] === null) continue;
+            $u = ((((float) $c['x_km'] - $ax) * ($bx - $ax)) + (((float) $c['y_km'] - $ay) * ($by - $ay))) / $dl2;
+            if ($u < -0.05 || $u > 1.05) continue;
+            $odl = hypot((float) $c['x_km'] - ($ax + $u * ($bx - $ax)), (float) $c['y_km'] - ($ay + $u * ($by - $ay))) * 1000;
+            if ($odl <= 150) $przy[] = [$c, max(0.0, min(1.0, $u))];
+        }
+        usort($przy, fn($x, $y) => $x[1] <=> $y[1]);
+        foreach (array_slice($przy, 0, 6) as [$c, $u]) {
+            $pc = sl_profil($pule, $c);
+            $plan = sl_plan($db, $s, $pule, $c, (int) $pc['parter']);
+            $n = 0;
+            foreach ($plan['pokoje'] as $p) {
+                if ($n >= 2 || $p['dostep'] !== 'wolny' || $p['zamkniete'] || (int) $p['ludzie_max'] <= 0) continue;
+                $miejsca[] = ['bid' => (int) $c['id'], 'budynek' => $c['nazwa'], 'poziom' => (int) $pc['parter'], 'nr' => (string) $p['nr'], 'rodzaj' => $p['rodzaj'], 'u' => round($u, 3)];
+                $n++;
+            }
+            foreach (sl_postacie_na_pietrze($db, $s, $pule, $plan) as $osoby) {
+                foreach ($osoby as $o) {
+                    $ludzie[] = ['gatunek' => $pule['gatunki'][$o['gatunek_kod']]['nazwa'] ?? $o['gatunek_kod'], 'plec' => $o['plec'],
+                        'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień', 'u' => round($u, 3),
+                        'przy' => $c['nazwa'], 'kod' => $o['kod'] ?? null, 'postac_id' => (int) $o['id']];
+                }
+            }
+        }
+    }
+    sl_ziarno((int) $s['seed'], 'droga', (string) $sb, (string) $bid, $godzina);
+    $ile = (int) round(($mostem ? sl_los(0, 3) : sl_los(3, 8)) * sl_ruch_pory($db, $s));
+    for ($k = 0; $k < $ile; $k++) {
+        $g = sl_wazony($pule['populacja'])['kod'];
+        $a = sl_wazony(array_values($pule['archetypy']));
+        $ludzie[] = ['gatunek' => $pule['gatunki'][$g]['nazwa'] ?? $g, 'plec' => $g === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k'),
+            'wyglad' => sl_procent(40) ? mb_strtolower((string) $a['nazwa']) : 'przechodzień', 'u' => round(sl_los(0, 1000) / 1000, 3)];
+    }
+    usort($ludzie, fn($x, $y) => $x['u'] <=> $y['u']);
+    return ['rodzaj' => $mostem ? 'mostek' : 'chodnik', 'poziom_mostka' => $mostem ? $L : null, 'srodek_s' => $t, 'odcinki' => $odc,
+        'z' => $A['nazwa'], 'do' => $B['nazwa'], 'z_id' => $sb, 'do_id' => $bid, 'parter_z' => (int) $pa['parter'], 'parter_do' => (int) $pb['parter'],
+        'dlugosc_m' => (int) round($dist), 'miejsca' => $miejsca, 'ludzie' => $ludzie];
+}
+
+// Droga bieżącej podróży droida (po czasie dotarcia).
+function sl_droga_biezaca(PDO $db, array $s, array $d): ?array
+{
+    if (empty($d['dotrze_utc'])) return null;
+    try {
+        $q = $db->prepare('SELECT id, dane, zapisana FROM sledztwo_drogi WHERE sledztwo_id = ? AND dotrze_utc = ? ORDER BY id DESC LIMIT 1');
+        $q->execute([(int) $s['id'], $d['dotrze_utc']]);
+        $r = $q->fetch();
+        if (!$r) return null;
+        $dane = json_decode((string) $r['dane'], true);
+        return is_array($dane) ? $dane + ['_id' => (int) $r['id'], '_zapisana' => (int) $r['zapisana']] : null;
+    } catch (PDOException $e) { return null; }
+}
+
+// Po dotarciu: droga do dziennika (odcinki, mijane lokale i ludzie); osoba ze sprawy minięta po drodze — trop.
+function sl_droga_zapisz_dziennik(PDO $db, array $s, array $d): void
+{
+    $dr = sl_droga_biezaca($db, $s, $d);
+    if (!$dr || $dr['_zapisana']) return;
+    $kiedy = (int) sl_z_utc($d['dotrze_utc']);
+    $od = (int) sl_z_utc($d['wyruszyl_utc']);
+    $opis = [];
+    foreach ($dr['odcinki'] as $o) {
+        $opis[] = $o['typ'] === 'winda' ? "winda w {$o['budynek']}: poziom {$o['z']} → {$o['na']}"
+            : ($o['typ'] === 'mostek' ? "mostek na poziomie {$o['poziom']}: {$o['z']} → {$o['do_b']} ({$o['dlugosc_m']} m)"
+                : "chodnik: {$o['z']} → {$o['do_b']} ({$o['dlugosc_m']} m)");
+    }
+    $txt = 'Droga: ' . implode('; ', $opis) . '.';
+    if ($dr['miejsca']) $txt .= ' Mijane lokale: ' . implode(', ', array_map(fn($m) => "{$m['budynek']} — {$m['rodzaj']} {$m['nr']} (poziom {$m['poziom']})", $dr['miejsca'])) . '.';
+    if ($dr['ludzie']) $txt .= ' Minąłem ' . count($dr['ludzie']) . ' ' . (count($dr['ludzie']) === 1 ? 'osobę' : 'osób') . ': '
+        . implode(', ', array_map(fn($l) => "{$l['gatunek']} ({$l['wyglad']})" . (!empty($l['przy']) ? " przy {$l['przy']}" : ''), array_slice($dr['ludzie'], 0, 10))) . '.';
+    $db->prepare("INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, 'meldunek', 'droid', ?)")
+        ->execute([(int) $s['id'], sl_utc($kiedy), $txt]);
+    // Osoba ze sprawy minięta po drodze: obserwacja (rysopis pasuje).
+    foreach ($dr['ludzie'] as $l) {
+        if (($l['kod'] ?? null) !== 'A') continue;
+        $ch = $dr['odcinki'][array_key_first(array_filter($dr['odcinki'], fn($o) => $o['typ'] !== 'winda'))] ?? null;
+        $tk = $ch ? $od + (int) round($ch['od'] + ($ch['do'] - $ch['od']) * (float) $l['u']) : $kiedy;
+        sl_trop_zapisz($db, $s, ['klucz' => 'droga|' . $dr['_id'] . '|A', 'rodzaj' => 'obserwacja', 'temat' => 'kiedy',
+            'tresc' => "Po drodze, przy {$l['przy']}: {$l['gatunek']}, {$l['wyglad']} — pasuje do rysopisu osoby ze sprawy.",
+            'zrodlo' => 'obserwacja droida w drodze', 'czas' => $tk, 'wiarygodnosc' => 75]);
+    }
+    $db->prepare('UPDATE sledztwo_drogi SET zapisana = 1 WHERE id = ?')->execute([$dr['_id']]);
 }
 
 // Trasa w drodze dla animacji: na piętrze startu (do windy albo do celu) albo — po wyjściu z windy — na piętrze celu.
@@ -1952,6 +2125,8 @@ function sl_skan(PDO $db, array $s): array
         $droid['zostalo_s'] = max(0, $do - $teraz);
         $droid['postep'] = $do > $od ? min(1, max(0, ($teraz - $od) / ($do - $od))) : 1;
         $droid['trasa'] = $trasa;
+        $dr = sl_droga_biezaca($db, $s, $d);
+        if ($dr) $droid['droga'] = array_diff_key($dr, ['_id' => 1, '_zapisana' => 1]) + ['ludzie' => array_map(fn($l) => array_diff_key($l, ['kod' => 1, 'postac_id' => 1]), $dr['ludzie'])];
     }
     // Wpisy z przyszłości (rozmowa w drzwiach po drodze) pokazują się dopiero, gdy droid tam dojdzie.
     $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik WHERE sledztwo_id = ? AND rodzaj <> 'system' AND kiedy_utc <= ?
@@ -3873,7 +4048,15 @@ function sl_rejon(PDO $db, array $s): array
     }
     $kompleksy = array_values($kompleksy);
     usort($kompleksy, fn($a, $b) => [(int) !$a['w_rejonie'], $a['km'] ?? 1e9] <=> [(int) !$b['w_rejonie'], $b['km'] ?? 1e9]);
-    return ['kompleksy' => $kompleksy, 'planeta' => sl_miejsce_galaktyki($db, $s)['planeta'], 'czas_lokalny' => sl_czas_lokalny($db, $s)['tekst']];
+    // Lokale minięte w ostatnich drogach (migracja 095).
+    $poDrodze = [];
+    try {
+        $q = $db->prepare('SELECT dane FROM sledztwo_drogi WHERE sledztwo_id = ? AND zapisana = 1 ORDER BY id DESC LIMIT 5');
+        $q->execute([(int) $s['id']]);
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $j) foreach ((json_decode((string) $j, true)['miejsca'] ?? []) as $m) $poDrodze["{$m['bid']}|{$m['nr']}"] = $m;
+    } catch (PDOException $e) { /* brak migracji 095 */ }
+    return ['kompleksy' => $kompleksy, 'planeta' => sl_miejsce_galaktyki($db, $s)['planeta'], 'czas_lokalny' => sl_czas_lokalny($db, $s)['tekst'],
+        'po_drodze' => array_values($poDrodze)];
 }
 
 // Notatnik dla gracza: tropy (bez „prawdziwy”), powiązania, opcje formularza rozwiązania, miejsce sprawy i czas lokalny.

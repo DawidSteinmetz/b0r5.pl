@@ -166,6 +166,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    Czas lokalny domyślnie: godzina lokalna z minutą zegara głównego (`sl_czas_lokalny`), meldunki i dziennik z polem
    „lokalnie” (`sl_z_lokalnym`), obserwacje „DD|MM|RR, lokalnie około HH:00 (pora)”. Rozmowa: podsumowanie
    najważniejszych ustaleń na górze, zapis przewija się sam tylko, gdy gracz jest przy jego końcu.
+   Drogi między budynkami (migracja 095, `sl_droga_miedzy`): do 1 km pieszo — winda na parter + chodnik (mija parter
+   budynków przy drodze i ludzi) albo mostek na stałym poziomie (40% par budynków kompleksu do 400 m); szybsza
+   wygrywa; odcinki, mijane lokale i ludzie w `sledztwo_drogi`, po dotarciu w dzienniku, lokale w Rejonie „Po drodze”;
+   osoba ze sprawy minięta po drodze — trop. Numeracja: plot 01–08 na poziomie, stare „K-07” → poziom+90–99 (095).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

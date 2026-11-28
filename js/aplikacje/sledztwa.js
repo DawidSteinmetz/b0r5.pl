@@ -235,8 +235,83 @@ export default {
       return svg;
     }
 
+    // Droga między budynkami (odcinki: winda / chodnik / mostek): bieżący odcinek wg czasu od wyjścia.
+    function odcinekDrogi() {
+      const dr = d?.droid?.droga;
+      if (!dr) return null;
+      const s = postepDrogi() * calaDroga;
+      const i = dr.odcinki.findIndex((o) => s >= o.od && s < o.do);
+      return i < 0 ? null : { i, o: dr.odcinki[i], u: Math.min(1, Math.max(0, (s - dr.odcinki[i].od) / Math.max(0.001, dr.odcinki[i].do - dr.odcinki[i].od))) };
+    }
+
+    function widokDrogi() {
+      const dr = d.droid.droga;
+      const akt = odcinekDrogi();
+      const o = akt?.o;
+      const W = 640, H = 200;
+      const svg = s('svg', { viewBox: `-30 -40 ${W + 60} ${H + 90}`, width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet',
+        style: 'display:block;color:var(--akcent);font-family:var(--czcionka)' });
+      const droidZn = s('g', {}, s('circle', { r: 7, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }), s('circle', { r: 2, fill: 'var(--ok)' }));
+      const licznik = s('text', { 'text-anchor': 'middle', 'font-size': 14, fill: 'var(--ok)' }, '');
+      if (!o || o.typ === 'winda') {
+        // Szyb windy: kabina z licznikiem poziomów.
+        const z = o ? o.z : d.plan.poziom, na = o ? o.na : d.droid.cel.poziom;
+        svg.append(s('rect', { x: W / 2 - 30, y: 0, width: 60, height: H, fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.5, 'stroke-dasharray': '3 3' }),
+          s('text', { x: W / 2 + 40, y: 8, 'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.7 }, `poziom ${Math.max(z, na)}`),
+          s('text', { x: W / 2 + 40, y: H, 'font-size': 9, fill: 'currentColor', 'fill-opacity': 0.7 }, `poziom ${Math.min(z, na)}`),
+          s('text', { x: W / 2, y: H + 30, 'text-anchor': 'middle', 'font-size': 11, fill: 'currentColor' }, `WINDA · ${o?.budynek || d.plan.budynek} · ${z} → ${na}`),
+          droidZn, licznik);
+        const ustaw = () => {
+          const a = odcinekDrogi();
+          const u = a ? a.u : 0;
+          const teraz = Math.round(z + (na - z) * u), gora = Math.max(z, na), dol = Math.min(z, na);
+          const y = gora === dol ? H / 2 : ((gora - teraz) / (gora - dol)) * H;
+          droidZn.setAttribute('transform', `translate(${W / 2} ${y.toFixed(1)})`);
+          licznik.setAttribute('x', W / 2); licznik.setAttribute('y', (y - 14).toFixed(1)); licznik.textContent = String(teraz);
+          return a ? a.i : -1;
+        };
+        return animujDroge(svg, ustaw);
+      }
+      // Chodnik albo mostek: pas z mijanymi lokalami (u góry) i ludźmi (u dołu); droid idzie od lewej do prawej.
+      const Y = H / 2;
+      svg.append(s('text', { x: W / 2, y: -20, 'text-anchor': 'middle', 'font-size': 12, fill: 'currentColor' },
+        o.typ === 'mostek' ? `MOSTEK · poziom ${o.poziom} · ${o.z} → ${o.do_b} · ${o.dlugosc_m} m` : `CHODNIK · ${o.z} → ${o.do_b} · ${o.dlugosc_m} m`),
+        s('line', { x1: 0, y1: Y, x2: W, y2: Y, stroke: 'currentColor', 'stroke-width': o.typ === 'mostek' ? 6 : 2, 'stroke-opacity': 0.5 }),
+        s('text', { x: 0, y: Y + 28, 'font-size': 9, fill: 'currentColor' }, o.z), s('text', { x: W, y: Y + 28, 'text-anchor': 'end', 'font-size': 9, fill: 'currentColor' }, o.do_b));
+      if (o.typ === 'chodnik') {
+        (dr.miejsca || []).forEach((m, i) => {
+          const x = m.u * W;
+          const y0 = Y - 30 - (i % 3) * 22;
+          svg.append(s('g', {}, s('title', {}, `${m.budynek} — ${m.rodzaj} ${m.nr} (poziom ${m.poziom})`),
+            s('rect', { x: x - 3, y: y0, width: 6, height: 6, fill: 'var(--akcent-2)' }),
+            s('line', { x1: x, y1: y0 + 6, x2: x, y2: Y, stroke: 'var(--akcent-2)', 'stroke-opacity': 0.3 }),
+            s('text', { x: x + 6, y: y0 + 6, 'font-size': 8, fill: 'var(--akcent-2)' }, `${m.rodzaj} ${m.nr}`)));
+        });
+      }
+      (dr.ludzie || []).forEach((l, i) => svg.append(s('g', {}, s('title', {}, `${l.gatunek}, ${l.wyglad}${l.przy ? ` (przy ${l.przy})` : ''}`),
+        s('circle', { cx: l.u * W, cy: Y + 12 + (i % 3) * 8, r: 3, fill: 'var(--akcent-2)' }))));
+      svg.append(droidZn);
+      const ustaw = () => {
+        const a = odcinekDrogi();
+        droidZn.setAttribute('transform', `translate(${((a && a.o === o ? a.u : 1) * W).toFixed(1)} ${Y})`);
+        return a ? a.i : -1;
+      };
+      return animujDroge(svg, ustaw);
+    }
+
+    // Animacja widoku drogi; zmiana odcinka — przerysowanie (szyb ↔ chodnik / mostek).
+    function animujDroge(svg, ustaw) {
+      const start = ustaw();
+      clearInterval(animacja);
+      animacja = setInterval(() => {
+        if (!svg.isConnected) { clearInterval(animacja); return; }
+        if (ustaw() !== start) wyczysc(planBox).append(planPietra());
+      }, 100);
+      return svg;
+    }
+
     function planPietra() {
-      if (jazdaWindy() === 'jedzie') return widokSzybu();
+      if (jazdaWindy() === 'jedzie') return d.droid.droga ? widokDrogi() : widokSzybu();
       const { plan, droid, kontakty, zasieg } = d;
       const szer = plan.dl || Math.max(plan.szerokosc, P * 4);
       const wys = GLEB * 2 + KOR;
@@ -685,6 +760,12 @@ export default {
               h('div', { style: 'flex:1;min-width:0' }, h('div', `${b.namiar ? '◆ ' : ''}${b.nazwa}`),
                 h('div.maly-tekst', `${b.rodzaj} · wejście: poziom ${b.parter} (góra ${b.gora})${b.czas ? ` · droga: ${b.czas}${b.km > 1 ? ' taksówką' : ''}` : ''}`)),
               b.tutaj ? h('span.slaby', 'tutaj') : przycisk('Jedź', () => idz(b.id, b.parter, 'korytarz'), '.maly'))));
+        }
+        if ((rejon.po_drodze || []).length && !szukajR) {
+          lista.prepend(h('div', { style: 'margin:6px 0 10px' }, h('b', 'Po drodze (lokale minięte w trasie)'),
+            ...rejon.po_drodze.map((m) => h('div', { style: 'display:flex;gap:6px;align-items:center;padding:3px 6px;border:1px solid var(--linia);margin:3px 0' },
+              h('div', { style: 'flex:1;min-width:0' }, `${m.budynek} — ${m.rodzaj} ${m.nr}`, h('span.slaby', ` · poziom ${m.poziom}`)),
+              przycisk('Jedź', () => idz(m.bid, m.poziom, m.nr), '.maly')))));
         }
         if (!lista.firstChild) lista.append(h('p.maly-tekst', 'Nic nie pasuje.'));
       };

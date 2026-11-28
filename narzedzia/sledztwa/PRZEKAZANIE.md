@@ -144,6 +144,8 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    Kwestie odsyłające do rodzaju miejsca („spróbuj w kantynie”) dostają prawdziwy budynek albo nie padają
    (`sl_wskazowka_okolicy`); prośba o namiary szuka w budynku, potem w rejonie, a „tam” — w tym, co rozmówca mówił;
    budynek wymieniony z nazwy trafia do namiarów (wejście = korytarz parteru).
+   **Etap 7 (nieprzetestowany, praca nocna 28.11): tropy, notatnik, rozwiązanie, czas lokalny** — migracja
+   `094_sledztwa_tropy.sql`; opis w PROJEKT.md rozdz. 5 („Tropy, notatnik i rozwiązanie”, „Czas lokalny i położenie”).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

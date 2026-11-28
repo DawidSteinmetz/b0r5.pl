@@ -642,7 +642,16 @@ function sledztwo_podglad(PDO $db, int $id): array
 
     $q = $db->prepare('SELECT * FROM sledztwo_droid WHERE sledztwo_id = ?');
     $q->execute([$id]);
-    return ['sledztwo' => $s, 'fazy' => $fazy, 'miejsca' => $miejsca, 'postacie' => $postacie, 'droid' => $q->fetch() ?: null];
+    $droid = $q->fetch() ?: null;
+    // Tropy gracza (z oznaczeniem prawdziwości) i złożone rozwiązanie — dla MG.
+    $tropy = [];
+    try {
+        $q = $db->prepare('SELECT * FROM sledztwo_tropy WHERE sledztwo_id = ? ORDER BY id');
+        $q->execute([$id]);
+        $tropy = $q->fetchAll();
+    } catch (PDOException $e) { /* brak migracji 094 */ }
+    return ['sledztwo' => $s, 'fazy' => $fazy, 'miejsca' => $miejsca, 'postacie' => $postacie, 'droid' => $droid, 'tropy' => $tropy,
+        'rozwiazanie' => json_decode((string) ($s['rozwiazanie_gracza'] ?? ''), true), 'miejsce_sprawy' => sl_miejsce_sprawy($db, ['id' => $id])];
 }
 
 // Plan (próba bez zapisu) w kształcie podobnym do podglądu.
@@ -851,6 +860,87 @@ function sl_x_droida(array $plan, string $pokoj): int
 {
     foreach ($plan['pokoje'] as $p) if ($p['nr'] === $pokoj) return sl_srodek($p);
     return 0;
+}
+
+// ---------- miejsce sprawy na mapie galaktyki i lokalny czas (api/astro.php) ----------
+// Planeta sprawy ma współrzędne na mapie galaktyki (mapa_planety.x, y); kompleks — x_km, y_km na powierzchni,
+// z których astro_wsp_lokacji liczy szerokość i długość geograficzną. Lokalna godzina wynika z obrotu planety
+// (doba z mapy / planety_cykle; Nar Shaddaa — 87 h standardowych): „godziny lokalne” to 1/24 doby planety.
+
+function sl_miejsce_galaktyki(PDO $db, array $s): array
+{
+    static $cache = [];
+    $id = (int) $s['id'];
+    if (isset($cache[$id])) return $cache[$id];
+    $q = $db->prepare('SELECT s.planeta_id, s.skupisko_id FROM sledztwa s WHERE s.id = ?');
+    $q->execute([$id]);
+    $sp = $q->fetch() ?: [];
+    $pl = null;
+    if (!empty($sp['planeta_id'])) {
+        $q = $db->prepare('SELECT id, nazwa, x, y FROM mapa_planety WHERE id = ?');
+        $q->execute([(int) $sp['planeta_id']]);
+        $pl = $q->fetch() ?: null;
+    }
+    if (!$pl) {
+        $q = $db->query("SELECT id, nazwa, x, y FROM mapa_planety WHERE nazwa = 'Nar Shaddaa' LIMIT 1");
+        $pl = $q ? ($q->fetch() ?: null) : null;
+    }
+    $sk = null;
+    if (!empty($sp['skupisko_id'])) {
+        $q = $db->prepare('SELECT nazwa, x_km, y_km FROM lokalizacje WHERE id = ?');
+        $q->execute([(int) $sp['skupisko_id']]);
+        $sk = $q->fetch() ?: null;
+    }
+    $nazwa = (string) ($pl['nazwa'] ?? 'Nar Shaddaa');
+    $cykl = function_exists('astro_cykl') ? astro_cykl($nazwa) : null;
+    [$szer, $dl] = $cykl && function_exists('astro_wsp_lokacji')
+        ? astro_wsp_lokacji(['x' => (float) ($sk['x_km'] ?? 0), 'y' => (float) ($sk['y_km'] ?? 0)], $cykl) : [0.0, 0.0];
+    return $cache[$id] = ['planeta' => $nazwa, 'gx' => $pl ? (float) $pl['x'] : null, 'gy' => $pl ? (float) $pl['y'] : null,
+        'skupisko' => (string) ($sk['nazwa'] ?? ''), 'szer' => round((float) $szer, 2), 'dl' => round((float) $dl, 2), 'cykl' => $cykl];
+}
+
+// Lokalny czas w miejscu sprawy w chwili $t: godzina lokalna (1/24 doby planety), pora dnia, długość doby.
+function sl_czas_lokalny(PDO $db, array $s, ?int $t = null): array
+{
+    $t ??= sl_teraz();
+    $g = sl_miejsce_galaktyki($db, $s);
+    $c = $g['cykl'];
+    if (!$c || !function_exists('astro_kat_godzinny')) {
+        $h = (int) date('G', $t);
+        $pora = $h >= 22 || $h < 5 ? 'noc' : ($h < 8 ? 'świt' : ($h < 19 ? 'dzień' : 'wieczór'));
+        return ['godz' => date('H:i', $t), 'pora' => $pora, 'doba_h' => 24.0, 'tekst' => 'lokalnie ' . date('H:i', $t) . ", {$pora}"];
+    }
+    $H = astro_kat_godzinny($c, (float) $g['dl'], $t);                // 0 = południe, ±180 = północ
+    $u = fmod(($H + 180) / 360 + 1, 1);                                // 0 = północ
+    $min = (int) floor($u * 1440);
+    $godz = sprintf('%02d:%02d', intdiv($min, 60), $min % 60);
+    $wys = astro_wysokosc_slonca($c, (float) $g['szer'], (float) $g['dl'], $t);
+    $pora = $wys > -0.833 ? ($u < 0.42 ? 'przedpołudnie' : ($u < 0.58 ? 'południe' : 'popołudnie')) : ($wys > -6 ? ($u < 0.5 ? 'świt' : 'zmierzch') : 'noc');
+    return ['godz' => $godz, 'pora' => $pora, 'doba_h' => (float) $c['doba_h'],
+        'tekst' => "lokalnie {$godz}, {$pora}"];
+}
+
+// Ilu ludzi kręci się po lokalach o tej porze (noc — połowa, świt / zmierzch — trzy czwarte).
+function sl_ruch_pory(PDO $db, array $s): float
+{
+    static $cache = [];
+    $k = (int) $s['id'] . '|' . gmdate('YmdH');
+    if (!isset($cache[$k])) {
+        $p = sl_czas_lokalny($db, $s)['pora'];
+        $cache[$k] = $p === 'noc' ? 0.5 : (in_array($p, ['świt', 'zmierzch', 'wieczór'], true) ? 0.75 : 1.0);
+    }
+    return $cache[$k];
+}
+
+// Opis miejsca sprawy do nagłówka: planeta i współrzędne na mapie galaktyki, położenie kompleksu, lokalny czas.
+function sl_miejsce_sprawy(PDO $db, array $s): array
+{
+    $g = sl_miejsce_galaktyki($db, $s);
+    $cz = sl_czas_lokalny($db, $s);
+    $wsp = abs($g['szer']) . '° ' . ($g['szer'] >= 0 ? 'N' : 'S') . ', ' . abs($g['dl']) . '° ' . ($g['dl'] >= 0 ? 'E' : 'W');
+    return ['planeta' => $g['planeta'], 'galaktyka' => $g['gx'] !== null ? [$g['gx'], $g['gy']] : null, 'skupisko' => $g['skupisko'],
+        'szer' => $g['szer'], 'dl' => $g['dl'], 'wspolrzedne' => $wsp, 'czas_lokalny' => $cz['godz'], 'pora' => $cz['pora'],
+        'doba_h' => $cz['doba_h'], 'czas_standardowy' => sl_data_gry(sl_teraz())];
 }
 
 // ---------- geometria planu: swobodny ruch (10 j. = 1 m), drzwi, terminale ----------
@@ -1086,7 +1176,7 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida)
             foreach ($q->fetchAll() as $o) $osoby[] = $o + ['postac_id' => (int) $o['id'], 'token' => sl_token((int) $s['seed'], 'p', (string) $o['id'])];
         } elseif ($p['ludzie_max'] > 0) {
             sl_ziarno(SLEDZTWO_SWIAT, 'ludzie', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina);
-            $ile = sl_los(0, $p['ludzie_max']);
+            $ile = (int) round(sl_los(0, $p['ludzie_max']) * sl_ruch_pory($db, $s));
             $bywalcy = array_values(array_filter($pule['archetypy'], fn($a) => in_array($p['rodzaj_kod'], sl_tagi((string) $a['rodzaje_miejsc']), true)));
             for ($k = 0; $k < $ile; $k++) {
                 $g = sl_wazony($pule['populacja'])['kod'];
@@ -1609,7 +1699,7 @@ function sl_skan(PDO $db, array $s): array
     return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
         'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki),
-        'namiary' => sl_namiary_lista($db, $s)]
+        'namiary' => sl_namiary_lista($db, $s), 'miejsce_sprawy' => sl_miejsce_sprawy($db, $s), 'tropy_ile' => sl_tropy_ile($db, $s)]
         + sl_skan_przedmioty($db, $s, $d);
 }
 
@@ -2025,6 +2115,13 @@ function sl_komputer(PDO $db, array $s, ?int $przedmiotId, string $terminal): ar
     if ($przedmiotId) {
         $p = sl_przedmiot_dostepny($db, $s, $d, $przedmiotId);
         $zamek = (int) $p['zabezpieczenie'] > 0 && !$p['odblokowany'];
+        if (!$zamek) {
+            $pliki = json_decode((string) $p['zawartosc'], true) ?: [];
+            if ($pliki) sl_trop_zapisz($db, $s, ['klucz' => 'd|' . (int) $p['id'], 'rodzaj' => 'dokument', 'temat' => 'dokument',
+                'tresc' => "{$p['nazwa']} — pliki: " . implode(', ', array_map(fn($x) => (string) ($x['nazwa'] ?? '?'), $pliki)) . '. ' . mb_substr((string) $p['opis'], 0, 200),
+                'zrodlo' => $p['nazwa'], 'przedmiot_id' => (int) $p['id'], 'lok' => [$p['lokalizacja_id'] ?? null, $p['poziom'] ?? null, $p['pokoj'] ?? null],
+                'wiarygodnosc' => 90]);
+        }
         return ['nazwa' => $p['nazwa'], 'opis' => $p['opis'], 'przedmiot_id' => (int) $p['id'], 'publiczny' => false,
             'zablokowany' => $zamek, 'zabezpieczenie' => (int) $p['zabezpieczenie'], 'blokada_do' => $p['blokada_do'],
             'pliki' => $zamek ? [] : (json_decode((string) $p['zawartosc'], true) ?: [])];
@@ -2591,7 +2688,9 @@ function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?strin
     $strzez = array_values(array_filter($plan['pokoje'], fn($p) => $p['dostep'] === 'straz'));
     $t[] = $strzez ? '- Ochrona: strażnicy stoją przy drzwiach lokali ' . implode(', ', array_column($strzez, 'nr')) . '; szefostwo ochrony siedzi zwykle w biurze ochrony albo przy wejściu na parterze.'
         : '- Ochrona budynku: zwykle przy wejściu na parterze albo w biurze ochrony, jeśli budynek je ma.';
-    $t[] = '- Teraz jest ' . sl_data_gry(sl_teraz()) . ' (czas gry, dzień|miesiąc|rok).';
+    $cz = sl_czas_lokalny($db, $s);
+    $t[] = '- Teraz jest ' . sl_data_gry(sl_teraz()) . " (czas standardowy gry, dzień|miesiąc|rok); tutaj {$cz['tekst']}."
+        . " Doba na tej planecie trwa {$cz['doba_h']} h standardowych — ludzie żyją w rytmie zmian, a pora dnia wpływa na ruch i nastroje.";
     if ($m && $m['rola_w_miejscu'] === 'pracownik') {
         $lok = $pokoj ? sl_lokal($plan, $pokoj) : null;
         $t[] = "- Twoje miejsce pracy znasz na wylot: {$m['miejsce']}." . ($lok && $lok['opis_szumu'] ? " Na co dzień: {$lok['opis_szumu']}" : '')
@@ -2695,7 +2794,35 @@ function sl_fakty_o_osobie(PDO $db, array $s, array $pule): array
     if (!empty($miejsca[7])) $f[3][] = ['temat' => 'klopoty', 'ty' => "Wiesz, że {$mial} swoje miejsce na „przeczekanie”: {$miejsca[7]}.",
         'ja' => "Miał" . ($k ? 'a' : '') . " swoje miejsce na przeczekanie: {$miejsca[7]}."];
     if ($w !== null) $f[3][] = ['temat' => 'wyglad', 'ty' => "Wiesz, że ma dokładnie {$w} lat.", 'ja' => "Ma dokładnie {$w} lat, wiem na pewno."];
+    $wyklucz = array_merge([mb_strtolower((string) $a['imie']), mb_strtolower((string) $a['nazwisko'])],
+        array_map(fn($g) => mb_strtolower((string) $g['nazwa']), $pule['gatunki']));
+    foreach ($f as &$lista) foreach ($lista as &$x) $x['znaczniki'] = sl_znaczniki($x['ja'], $x['temat'], $wyklucz, $arch, $w);
+    unset($lista, $x);
     return [$a, SLEDZTWO_STATUS_A[(int) ($sp['zg'] ?? 12)] ?? 'zaginion{ego|ą}', $f];
+}
+
+// Znaczniki faktu: daty, nazwy własne (miejsca, osoby — bez imienia osoby ze sprawy i nazw gatunków), a dla
+// wybranych tematów słowa kluczowe. Wypowiedź AI zawierająca znacznik uznajemy za ujawnienie tego faktu.
+const SLEDZTWO_ZNACZNIKI_POMIN = ['często', 'ostatnio', 'kojarzę', 'pamiętam', 'wiesz', 'miał', 'miała', 'widywano', 'widziałem', 'widziałam',
+    'widywałem', 'widywałam', 'nar', 'shaddaa', 'poziom', 'chodzi', 'mówię', 'idź', 'wejście', 'lokalnie', 'około', 'kantyna', 'hotel', 'hangar'];
+function sl_znaczniki(string $ja, string $temat, array $wyklucz, string $arch = '', ?int $wiek = null): array
+{
+    $z = [];
+    if (preg_match_all('/\d{2}\|\d{2}\|\d{2}/u', $ja, $m)) foreach ($m[0] as $d) $z[] = $d;
+    if (preg_match_all('/\p{Lu}[\p{Ll}\'’-]{3,}/u', $ja, $m)) {
+        foreach ($m[0] as $slowo) {
+            $l = mb_strtolower($slowo);
+            if (in_array($l, $wyklucz, true) || in_array($l, SLEDZTWO_ZNACZNIKI_POMIN, true)) continue;
+            $z[] = mb_substr($l, 0, 5);
+        }
+    }
+    if ($temat === 'klopoty') foreach (['dług', 'łup', 'gończ', 'przemyt', 'szach', 'przeczek', 'kryj'] as $k) if (str_contains(mb_strtolower($ja), $k)) $z[] = $k;
+    if ($temat === 'nawyk' && preg_match('/nawyk:\s*(.+)$/u', $ja, $m)) {
+        foreach (array_slice(array_filter(preg_split('/\s+/u', mb_strtolower($m[1])), fn($x) => mb_strlen($x) >= 5), 0, 2) as $x) $z[] = mb_substr($x, 0, 5);
+    }
+    if ($temat === 'wyglad' && $arch !== '') $z[] = $arch;
+    if ($temat === 'wyglad' && $wiek !== null && str_contains($ja, "{$wiek} lat")) $z[] = "{$wiek} lat";
+    return array_values(array_unique(array_filter($z, fn($x) => mb_strlen($x) >= 3)));
 }
 
 // Oś czasu sprawy (deterministyczna, z faz i miejsc): kiedy i gdzie widziano osobę ze sprawy przed zgłoszeniem.
@@ -2720,16 +2847,17 @@ function sl_os_czasu(PDO $db, array $s): array
         $dni = max(1, 13 - (int) ($fazy[$nr]['pozycja'] ?? 6));
         $t = $baza - $dni * 86400 - sl_hash_int((int) $s['seed'], 1800, 50000, 'os', (string) $m['id']);
         $os[] = ['t' => $t, 'miejsce' => (string) $m['nazwa'], 'lokalizacja_id' => $m['lokalizacja_id'] !== null ? (int) $m['lokalizacja_id'] : null,
-            'poziom' => (int) $m['poziom'], 'ukryte' => $nr === 7 || ($fazy[$nr]['jawnosc'] ?? 'jawna') === 'ukryta', 'id' => (int) $m['id']];
+            'poziom' => (int) $m['poziom'], 'pokoj' => (string) $m['pokoj'], 'ukryte' => $nr === 7 || ($fazy[$nr]['jawnosc'] ?? 'jawna') === 'ukryta', 'id' => (int) $m['id']];
     }
     usort($os, fn($x, $y) => $y['t'] <=> $x['t']);
     return $cache[(int) $s['id']] = $os;
 }
 
 // Data dla rozmówcy: „24|11|16 około 21:00”.
-function sl_kiedy_mowione(int $t): string
+function sl_kiedy_mowione(int $t, ?PDO $db = null, ?array $s = null): string
 {
-    return sl_data_gry($t, false) . ' około ' . date('H', $t) . ':00';
+    $lok = $db && $s ? ' (' . sl_czas_lokalny($db, $s, $t)['tekst'] . ')' : '';
+    return sl_data_gry($t, false) . ' około ' . date('H', $t) . ':00' . $lok;
 }
 
 // Co rozmówca widział na osi czasu: zna dobrze (2) — dwa ostatnie jawne wydarzenia; bardzo dobrze (3) — wszystkie;
@@ -2750,9 +2878,12 @@ function sl_widzial(PDO $db, array $s, array $m, array $r): array
             || (!$e['ukryte'] && $bid !== null && $e['lokalizacja_id'] === $bid && sl_hash_int((int) $s['seed'], 1, 100, 'widzial', (string) $m['token'], (string) $e['id']) <= $szansa);
         if (!$e['ukryte']) $jawne++;
         if (!$widzial) continue;
-        $kiedy = sl_kiedy_mowione($e['t']);
+        $kiedy = sl_kiedy_mowione($e['t'], $db, $s);
+        $ja = "Widział{em|am} {$go} {$kiedy} — {$e['miejsce']}, poziom {$e['poziom']}.";
         $wynik[] = ['temat' => 'kiedy', 't' => $e['t'], 'ty' => "Widział{eś|aś} {$go} {$kiedy} — {$e['miejsce']}, poziom {$e['poziom']}.",
-            'ja' => "Widział{em|am} {$go} {$kiedy} — {$e['miejsce']}, poziom {$e['poziom']}."];
+            'ja' => $ja, 'znaczniki' => array_values(array_unique(array_merge([sl_data_gry($e['t'], false)],
+                sl_znaczniki((string) $e['miejsce'], 'miejsce', [mb_strtolower((string) $a['imie']), mb_strtolower((string) $a['nazwisko'])])))),
+            'lok' => [$e['lokalizacja_id'], $e['poziom'], $e['pokoj']]];
     }
     return $wynik;
 }
@@ -3163,8 +3294,8 @@ function sl_fakty_rozmowcy(PDO $db, array $s, array $pule, array $r, ?array $m):
     if (!$a || (int) ($m['postac_id'] ?? 0) === (int) $a['id']) return [];
     $plec = $m['plec'] === 'k' ? 'k' : 'm';
     $l = [];
-    foreach (sl_widzial($db, $s, $m, $r) as $w) $l[] = ['temat' => 'kiedy', 'ja' => sl_rodzaj($w['ja'], $plec)];
-    for ($i = 1; $i <= min(3, (int) $m['znajomosc_poziom']); $i++) foreach ($fakty[$i] as $f) $l[] = ['temat' => $f['temat'], 'ja' => sl_rodzaj($f['ja'], $plec)];
+    foreach (sl_widzial($db, $s, $m, $r) as $w) $l[] = ['ja' => sl_rodzaj($w['ja'], $plec)] + $w;
+    for ($i = 1; $i <= min(3, (int) $m['znajomosc_poziom']); $i++) foreach ($fakty[$i] as $f) $l[] = ['ja' => sl_rodzaj($f['ja'], $plec)] + $f;
     return $l;
 }
 
@@ -3220,6 +3351,184 @@ function sl_odpowiedz_o_osobie(PDO $db, array $s, array $pule, array $r, ?array 
 }
 
 // $procedura: 'wlasna' — pytania operatora droid zadaje jako swoje; 'jawna' — może mówić, że pyta operator.
+// ---------- tropy i notatnik (migracja 094) ----------
+
+function sl_tropy_ile(PDO $db, array $s): int
+{
+    try {
+        $q = $db->prepare('SELECT COUNT(*) FROM sledztwo_tropy WHERE sledztwo_id = ?');
+        $q->execute([(int) $s['id']]);
+        return (int) $q->fetchColumn();
+    } catch (PDOException $e) { return 0; }
+}
+
+// Zapis tropu (bez powtórzeń po kluczu). Zwraca true, gdy trop jest nowy.
+function sl_trop_zapisz(PDO $db, array $s, array $t): bool
+{
+    try {
+        $teraz = sl_teraz();
+        $czas = $t['czas'] ?? null;
+        $lok = $t['lok'] ?? [null, null, null];
+        $q = $db->prepare('INSERT IGNORE INTO sledztwo_tropy (sledztwo_id, klucz, rodzaj, tresc, zrodlo, temat, kontakt, przedmiot_id, lokalizacja_id, poziom, pokoj,
+            czas_zdarzenia_utc, czas_lokalny, wiarygodnosc, prawdziwy, kiedy_utc, kiedy_lokalnie) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $q->execute([(int) $s['id'], mb_substr((string) $t['klucz'], 0, 160), $t['rodzaj'], (string) $t['tresc'], mb_substr((string) $t['zrodlo'], 0, 255),
+            (string) ($t['temat'] ?? ''), $t['kontakt'] ?? null, $t['przedmiot_id'] ?? null, $lok[0], $lok[1], $lok[2],
+            $czas ? sl_utc($czas) : null, $czas ? sl_czas_lokalny($db, $s, $czas)['tekst'] : null, (int) ($t['wiarygodnosc'] ?? 60),
+            (int) ($t['prawdziwy'] ?? 1), sl_utc($teraz), sl_czas_lokalny($db, $s, $teraz)['tekst']]);
+        return $q->rowCount() > 0;
+    } catch (PDOException $e) { return false; } // brak migracji 094
+}
+
+// Po wypowiedzi rozmówcy: które z jego faktów padły? Bez AI — dosłowny tekst faktu; z AI — znaczniki (daty, nazwy).
+// Każdy taki fakt trafia do notatnika jako zeznanie albo obserwacja (z datą zdarzenia i lokalną porą).
+function sl_tropy_z_wypowiedzi(PDO $db, array $s, array $pule, array $r, ?array $m, string $odp, bool $ai): array
+{
+    if (!$m) return [];
+    $male = mb_strtolower($odp);
+    $o = json_decode((string) $r['opis_json'], true) ?: [];
+    $budynki = sl_budynki($db, $s);
+    $gdzie = ($r['lokalizacja_id'] !== null ? ($budynki[(int) $r['lokalizacja_id']]['nazwa'] ?? 'budynek') : 'Kompleks') . ", poziom {$r['poziom']}";
+    $kto = trim(($o['kod'] ?? 'rozmówca') . ' (' . sl_opis_rozmowcy($r) . ')');
+    $wiar = ['chetnie' => 80, 'niechetnie' => 65, 'nie' => 50][$m['chce_mowic']] ?? 60;
+    $nowe = [];
+    foreach (sl_fakty_rozmowcy($db, $s, $pule, $r, $m) as $f) {
+        $trafia = str_contains($odp, $f['ja']);
+        if (!$trafia && $ai) foreach ($f['znaczniki'] ?? [] as $z) if (str_contains($male, mb_strtolower($z))) { $trafia = true; break; }
+        if (!$trafia) continue;
+        $kiedy = isset($f['t']) ? (int) $f['t'] : null;
+        $tresc = "{$kto}: „{$f['ja']}”" . ($ai && !str_contains($odp, $f['ja']) ? ' (sens wypowiedzi; dosłownie: „' . mb_substr($odp, 0, 300) . '”)' : '');
+        if (sl_trop_zapisz($db, $s, ['klucz' => 'z|' . $r['kontakt'] . '|' . md5($f['ja']), 'rodzaj' => $f['temat'] === 'kiedy' ? 'obserwacja' : 'zeznanie',
+            'tresc' => $tresc, 'zrodlo' => "{$kto} — {$gdzie}", 'temat' => $f['temat'], 'kontakt' => $r['kontakt'], 'czas' => $kiedy,
+            'lok' => $f['lok'] ?? [null, null, null], 'wiarygodnosc' => $wiar])) $nowe[] = $f['ja'];
+    }
+    return $nowe;
+}
+
+// Notatnik dla gracza: tropy (bez „prawdziwy”), powiązania, opcje formularza rozwiązania, miejsce sprawy i czas lokalny.
+function sl_notatnik(PDO $db, array $s): array
+{
+    $q = $db->prepare('SELECT id, rodzaj, tresc, zrodlo, temat, lokalizacja_id, poziom, pokoj, czas_zdarzenia_utc, czas_lokalny, wiarygodnosc,
+        oznaczenie, notatka, kiedy_utc, kiedy_lokalnie FROM sledztwo_tropy WHERE sledztwo_id = ? ORDER BY id');
+    $q->execute([(int) $s['id']]);
+    $tropy = $q->fetchAll();
+    foreach ($tropy as &$x) {
+        $x['id'] = (int) $x['id'];
+        $x['kiedy'] = sl_data_gry((int) sl_z_utc($x['kiedy_utc']));
+        $x['czas_zdarzenia'] = $x['czas_zdarzenia_utc'] ? sl_data_gry((int) sl_z_utc($x['czas_zdarzenia_utc'])) : null;
+    }
+    unset($x);
+    $q = $db->prepare('SELECT id, trop_a, trop_b, opis FROM sledztwo_powiazania WHERE sledztwo_id = ? ORDER BY id');
+    $q->execute([(int) $s['id']]);
+    $powiazania = array_map(fn($p) => ['id' => (int) $p['id'], 'a' => (int) $p['trop_a'], 'b' => (int) $p['trop_b'], 'opis' => $p['opis']], $q->fetchAll());
+    return ['tropy' => $tropy, 'powiazania' => $powiazania, 'miejsce_sprawy' => sl_miejsce_sprawy($db, $s), 'formularz' => sl_formularz_rozwiazania($db, $s, $tropy)];
+}
+
+// Opcje formularza: zdarzenia, miejsca (z namiarów i tropów), osoby znane graczowi (bez ról ze szkieletu).
+function sl_formularz_rozwiazania(PDO $db, array $s, array $tropy): array
+{
+    $zdarzenia = $db->query('SELECT id, nazwa FROM sledztwo_zdarzenia ORDER BY id')->fetchAll();
+    $budynki = sl_budynki($db, $s);
+    $miejsca = [];
+    $dodaj = function (?int $b, $poz, $pokoj, string $opis) use (&$miejsca, $budynki) {
+        if ($poz === null || $pokoj === null || $pokoj === '') return;
+        $k = ($b ?? '') . '|' . (int) $poz . '|' . $pokoj;
+        $miejsca[$k] ??= ['klucz' => $k, 'nazwa' => $opis !== '' ? $opis
+            : (($b !== null ? ($budynki[$b]['nazwa'] ?? 'budynek') : 'Kompleks') . ", poziom {$poz}, " . ($pokoj === 'korytarz' ? 'korytarz' : "lokal {$pokoj}"))];
+    };
+    foreach (sl_namiary_lista($db, $s) as $n) $dodaj($n['lokalizacja_id'], $n['poziom'], $n['pokoj'], $n['nazwa']);
+    foreach ($tropy as $x) $dodaj($x['lokalizacja_id'] !== null ? (int) $x['lokalizacja_id'] : null, $x['poziom'], $x['pokoj'], '');
+    // Osoby: osoba ze sprawy i zgłaszający zawsze; reszta, gdy droid z nią rozmawiał albo pada w tropach / teczce.
+    $q = $db->prepare('SELECT p.id, p.kod, p.imie, p.nazwisko, (SELECT COUNT(*) FROM sledztwo_metryki m WHERE m.postac_id = p.id) AS rozmowy
+        FROM sledztwo_postacie p WHERE p.sledztwo_id = ? AND p.kod IS NOT NULL ORDER BY p.id');
+    try { $q->execute([(int) $s['id']]); $postacie = $q->fetchAll(); } catch (PDOException $e) { $postacie = []; }
+    $wszystkie = implode("\n", array_column($tropy, 'tresc'));
+    $osoby = [];
+    foreach ($postacie as $p) {
+        $imie = trim($p['imie'] . ' ' . ($p['nazwisko'] ?? ''));
+        if (in_array($p['kod'], ['A', 'B', 'V'], true) || (int) $p['rozmowy'] > 0 || str_contains($wszystkie, $imie)) $osoby[] = ['id' => (int) $p['id'], 'nazwa' => $imie];
+    }
+    $q = $db->prepare('SELECT stan, ocena, rozwiazanie_gracza FROM sledztwa WHERE id = ?');
+    $q->execute([(int) $s['id']]);
+    $st = $q->fetch() ?: [];
+    return ['zdarzenia' => $zdarzenia, 'miejsca' => array_values($miejsca), 'osoby' => $osoby,
+        'rozwiazane' => ($st['stan'] ?? '') === 'rozwiazane', 'ocena' => $st['ocena'] ?? null,
+        'wynik' => json_decode((string) ($st['rozwiazanie_gracza'] ?? ''), true)['wynik'] ?? null];
+}
+
+// Rozwiązanie sprawy: {zdarzenie_id, miejsce (klucz „budynek|poziom|lokal” albo ''), postac_id (0 = nikt nie ukrywa), tropy [id], uzasadnienie}.
+// Ocena 0–100: co się stało 30, gdzie jest osoba 30, kto ukrywa prawdę 20, tropy 15, uzasadnienie 5.
+function sl_rozwiaz(PDO $db, array $s, array $w): array
+{
+    $q = $db->prepare('SELECT * FROM sledztwa WHERE id = ?');
+    $q->execute([(int) $s['id']]);
+    $sp = $q->fetch();
+    if (!$sp || !in_array($sp['stan'], SLEDZTWO_STANY_RUCHU, true)) throw new SledztwoBlad('Tej sprawy nie można już rozwiązać.');
+    $zdarzenie = (int) ($w['zdarzenie_id'] ?? 0);
+    if ($zdarzenie < 1 || $zdarzenie > 12) throw new SledztwoBlad('Wybierz, co się naprawdę stało.');
+    $uzasadnienie = trim(mb_substr((string) ($w['uzasadnienie'] ?? ''), 0, 4000));
+    $wybraneTropy = array_values(array_unique(array_map('intval', (array) ($w['tropy'] ?? []))));
+    $miejsce = (string) ($w['miejsce'] ?? '');
+    $postacId = (int) ($w['postac_id'] ?? 0);
+
+    // Prawda ze szkieletu.
+    $q = $db->prepare("SELECT p.id, p.kod, p.imie, p.nazwisko, p.plec, m.lokalizacja_id, m.poziom, m.pokoj, m.nazwa AS miejsce FROM sledztwo_postacie p
+        LEFT JOIN sledztwo_miejsca m ON m.id = p.miejsce_id WHERE p.sledztwo_id = ? AND p.kod IS NOT NULL");
+    $q->execute([(int) $s['id']]);
+    $kod = [];
+    foreach ($q->fetchAll() as $p) $kod[$p['kod']] ??= $p;
+    $a = $kod['A'] ?? null;
+    $nazwyZd = array_column($db->query('SELECT id, nazwa FROM sledztwo_zdarzenia')->fetchAll(), 'nazwa', 'id');
+    $szcz = [];
+    $pkt = 0;
+    // 1. Co się stało.
+    if ($zdarzenie === (int) $sp['zdarzenie_id']) { $pkt += 30; $szcz[] = "Co się stało: trafnie — {$nazwyZd[$zdarzenie]} (+30)."; }
+    elseif ($sp['zdarzenie_zgloszone_id'] && $zdarzenie === (int) $sp['zdarzenie_zgloszone_id']) { $pkt += 5; $szcz[] = 'Co się stało: przyjęta wersja ze zgłoszenia, a ona była fałszywa (+5).'; }
+    else $szcz[] = 'Co się stało: chybione (+0).';
+    // 2. Gdzie jest osoba ze sprawy.
+    if ($a && $a['poziom'] !== null) {
+        [$mb, $mp, $ml] = array_pad(explode('|', $miejsce), 3, '');
+        $tenBudynek = ($mb === '' && $a['lokalizacja_id'] === null) || ($mb !== '' && (int) $mb === (int) $a['lokalizacja_id']);
+        if ($tenBudynek && (int) $mp === (int) $a['poziom'] && $ml === (string) $a['pokoj']) { $pkt += 30; $szcz[] = 'Gdzie jest ' . $a['imie'] . ': dokładnie (+30).'; }
+        elseif ($miejsce !== '' && $tenBudynek) { $pkt += 12; $szcz[] = 'Gdzie jest ' . $a['imie'] . ': właściwy budynek, zły lokal (+12).'; }
+        else $szcz[] = 'Gdzie jest ' . $a['imie'] . ': chybione (+0).';
+    }
+    // 3. Kto ukrywa prawdę.
+    $ukrywa = $sp['ukrywa_kod'] ? ($kod[$sp['ukrywa_kod']] ?? null) : null;
+    if (!$ukrywa && $postacId === 0) { $pkt += 20; $szcz[] = 'Kto ukrywa prawdę: trafnie — nikt, sprawa była jawna (+20).'; }
+    elseif ($ukrywa && $postacId === (int) $ukrywa['id']) { $pkt += 20; $szcz[] = 'Kto ukrywa prawdę: trafnie (+20).'; }
+    else $szcz[] = 'Kto ukrywa prawdę: chybione (+0).';
+    // 4. Tropy, na które się powołano (prawdziwe i rzeczowe: kiedy, gdzie, kłopoty, namiary, dokumenty) — po 3, maks. 15.
+    $tropyPkt = 0;
+    if ($wybraneTropy) {
+        $in = implode(',', array_fill(0, count($wybraneTropy), '?'));
+        $q = $db->prepare("SELECT rodzaj, temat, prawdziwy FROM sledztwo_tropy WHERE sledztwo_id = ? AND id IN ({$in})");
+        $q->execute(array_merge([(int) $s['id']], $wybraneTropy));
+        foreach ($q->fetchAll() as $x) {
+            if ((int) $x['prawdziwy'] && (in_array($x['temat'], ['kiedy', 'gdzie', 'klopoty', 'kto'], true) || in_array($x['rodzaj'], ['namiar', 'dokument'], true))) $tropyPkt += 3;
+        }
+    }
+    $tropyPkt = min(15, $tropyPkt);
+    $pkt += $tropyPkt;
+    $szcz[] = "Tropy w uzasadnieniu: +{$tropyPkt} (maks. 15).";
+    // 5. Uzasadnienie.
+    if (mb_strlen($uzasadnienie) >= 120) { $pkt += 5; $szcz[] = 'Uzasadnienie: rzeczowe (+5).'; } else $szcz[] = 'Uzasadnienie: za krótkie (+0; min. 120 znaków).';
+
+    $prawda = "Naprawdę: {$nazwyZd[(int) $sp['zdarzenie_id']]}."
+        . ($a && $a['miejsce'] ? ' ' . trim($a['imie'] . ' ' . ($a['nazwisko'] ?? ''))  . ($a['plec'] === 'k' ? ' była' : ' był') . " w miejscu: {$a['miejsce']}." : '')
+        . ($ukrywa ? ' Prawdę ukrywał(a): ' . trim($ukrywa['imie'] . ' ' . ($ukrywa['nazwisko'] ?? '')) . '.' : ' Nikt nie ukrywał prawdy — zgłoszenie było szczere.');
+    $wynik = ['ocena' => $pkt, 'szczegoly' => $szcz, 'prawda' => $prawda];
+    $zapis = ['zdarzenie_id' => $zdarzenie, 'miejsce' => $miejsce, 'postac_id' => $postacId, 'tropy' => $wybraneTropy,
+        'uzasadnienie' => $uzasadnienie, 'kiedy' => sl_data_gry(sl_teraz()), 'kiedy_lokalnie' => sl_czas_lokalny($db, $s)['tekst'], 'wynik' => $wynik];
+    try {
+        $r = sl_rozmowa_aktywna($db, (int) $s['id']);
+        if ($r) sl_rozmowa_zakoncz($db, $r, 'Sprawa zamknięta.');
+    } catch (PDOException $e) { /* brak migracji 085 */ }
+    $db->prepare("UPDATE sledztwa SET stan = 'rozwiazane', zakonczono_utc = ?, rozwiazanie_gracza = ?, ocena = ? WHERE id = ?")
+        ->execute([sl_utc(sl_teraz()), json_encode($zapis, JSON_UNESCAPED_UNICODE), $pkt, (int) $s['id']]);
+    sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Rozwiązanie sprawy złożone. Ocena: {$pkt}/100.");
+    return $wynik;
+}
+
 // ---------- namiary (migracja 091): miejsca wskazane przez rozmówców → pole wyboru celu ----------
 
 // Szuka w wypowiedzi rozmówcy wskazówek do miejsc, które naprawdę istnieją: numer lokalu w tym budynku
@@ -3287,7 +3596,11 @@ function sl_namiary(PDO $db, array $s, array $pule, array $r, string $tekst): ar
     $nowe = [];
     foreach ($znalezione as $klucz => [$b, $poz, $nr, $opis]) {
         $wstaw->execute([(int) $s['id'], $klucz, mb_substr($opis, 0, 160), $b, $poz, $nr, mb_substr($skad, 0, 255), sl_utc(sl_teraz())]);
-        if ($wstaw->rowCount()) $nowe[] = $opis;
+        if ($wstaw->rowCount()) {
+            $nowe[] = $opis;
+            sl_trop_zapisz($db, $s, ['klucz' => 'n|' . $klucz, 'rodzaj' => 'namiar', 'tresc' => "Namiary: {$opis}.", 'zrodlo' => $skad,
+                'temat' => 'miejsce', 'kontakt' => $r['kontakt'], 'lok' => [$b, $poz, $nr], 'wiarygodnosc' => 70]);
+        }
     }
     return $nowe;
 }
@@ -3521,6 +3834,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         }
         if ($koniecPytan) $konczy = true;
         if ($odp !== null) {
+            $tropy = sl_tropy_z_wypowiedzi($db, $s, $pule, $r, $metryka, $odp, $ai && !$awaria);
+            if ($tropy) sl_wpis($db, $rid, 'system', 'Do notatnika: ' . count($tropy) . (count($tropy) === 1 ? ' nowy trop.' : ' nowe tropy.'));
             try {
                 $nowe = sl_namiary($db, $s, $pule, $r, $odp);
                 if ($nowe) {
@@ -3719,6 +4034,46 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                     'sledztwo_dekoduj' => sl_dekoduj_publicznie($db, $s, $pid, $term),
                 });
 
+            // Notatnik (migracja 094): tropy, powiązania, formularz rozwiązania; oznaczenia i notatki; powiązania; rozwiązanie.
+            case 'sledztwo_notatnik':
+            case 'sledztwo_trop':
+            case 'sledztwo_powiaz':
+            case 'sledztwo_rozwiaz':
+                if ($akcja !== 'sledztwo_notatnik' && !$post) blad('Zła metoda.', 405);
+                if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
+                $s = sl_biezace($db, (string) $u['login']);
+                if (!$s) blad('Brak otwartej sprawy.');
+                try {
+                    $db->query('SELECT 1 FROM sledztwo_tropy LIMIT 1');
+                } catch (PDOException $e) { blad('Notatnik nie działa. (Brak migracji 094.)'); }
+                $w = $post ? wejscie() : [];
+                if ($akcja === 'sledztwo_trop') {
+                    $id = (int) ($w['id'] ?? 0);
+                    if (array_key_exists('oznaczenie', $w)) {
+                        $oz = in_array($w['oznaczenie'], ['', 'wazny', 'podejrzany', 'odrzucony'], true) ? $w['oznaczenie'] : '';
+                        $db->prepare('UPDATE sledztwo_tropy SET oznaczenie = ? WHERE id = ? AND sledztwo_id = ?')->execute([$oz, $id, (int) $s['id']]);
+                    }
+                    if (array_key_exists('notatka', $w)) {
+                        $db->prepare('UPDATE sledztwo_tropy SET notatka = ? WHERE id = ? AND sledztwo_id = ?')
+                            ->execute([trim(mb_substr((string) $w['notatka'], 0, 1000)) ?: null, $id, (int) $s['id']]);
+                    }
+                } elseif ($akcja === 'sledztwo_powiaz') {
+                    if (!empty($w['usun'])) {
+                        $db->prepare('DELETE FROM sledztwo_powiazania WHERE id = ? AND sledztwo_id = ?')->execute([(int) $w['usun'], (int) $s['id']]);
+                    } else {
+                        [$ta, $tb] = [min((int) ($w['a'] ?? 0), (int) ($w['b'] ?? 0)), max((int) ($w['a'] ?? 0), (int) ($w['b'] ?? 0))];
+                        $q = $db->prepare('SELECT COUNT(*) FROM sledztwo_tropy WHERE sledztwo_id = ? AND id IN (?, ?)');
+                        $q->execute([(int) $s['id'], $ta, $tb]);
+                        if ($ta === $tb || (int) $q->fetchColumn() !== 2) blad('Zaznacz dwa różne tropy.');
+                        $db->prepare('INSERT INTO sledztwo_powiazania (sledztwo_id, trop_a, trop_b, opis, utworzono_utc) VALUES (?, ?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE opis = VALUES(opis)')
+                            ->execute([(int) $s['id'], $ta, $tb, trim(mb_substr((string) ($w['opis'] ?? ''), 0, 255)), sl_utc(sl_teraz())]);
+                    }
+                } elseif ($akcja === 'sledztwo_rozwiaz') {
+                    odpowiedz(['ok' => true, 'wynik' => sl_rozwiaz($db, $s, $w)]);
+                }
+                odpowiedz(sl_notatnik($db, $s));
+
             // Próba przekonania strażnika: {pokoj, podejscie: oszustwo|urok|zastraszanie} — test EotE.
             case 'sledztwo_straz':
                 if (!$post) blad('Zła metoda.', 405);
@@ -3808,7 +4163,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
 
             case 'mg_sledztwa':
                 if (!$mg) blad('Brak uprawnień.', 403);
-                $lista = $db->query('SELECT s.id, s.konto_login, s.stan, s.tytul, s.seed, s.utworzono_utc, z.nazwa AS zdarzenie, r.nazwa AS relacja,
+                $lista = $db->query('SELECT s.id, s.konto_login, s.stan, s.tytul, s.seed, s.utworzono_utc, s.ocena, s.zakonczono_utc, z.nazwa AS zdarzenie, r.nazwa AS relacja,
                         zg.nazwa AS zdarzenie_zgloszone
                     FROM sledztwa s JOIN sledztwo_zdarzenia z ON z.id = s.zdarzenie_id JOIN sledztwo_relacje r ON r.id = s.relacja_id
                     LEFT JOIN sledztwo_zdarzenia zg ON zg.id = s.zdarzenie_zgloszone_id ORDER BY s.id DESC LIMIT 200')->fetchAll();

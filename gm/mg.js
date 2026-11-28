@@ -396,6 +396,21 @@ async function konta(edytowany = null) {
   // Wnioski detektywów o nakaz (śledztwa, migracja 086): MG wydaje albo odrzuca.
   let nakazy = [];
   if (detektywi) try { nakazy = (await api('mg_sledztwo_nakazy')).nakazy.filter((n) => n.stan === 'wniosek'); } catch { /* bez migracji 086 */ }
+  // Rozwiązane sprawy (migracja 094): ocena, prawda, uzasadnienie i tropy gracza z oznaczeniem prawdziwości.
+  let rozwiazane = [];
+  if (detektywi) try { rozwiazane = (await api('mg_sledztwa')).sledztwa.filter((x) => x.stan === 'rozwiazane').slice(0, 12); } catch { /* bez modułu */ }
+  const podgladSprawy = h('div');
+  const pokazSprawe = (id) => bezpiecznie(async () => {
+    const p = await api('mg_sledztwo_podglad', undefined, { id });
+    const r = p.rozwiazanie || {};
+    const w = r.wynik || {};
+    wyczysc(podgladSprawy).append(h('div', { style: 'margin-top:10px;padding:8px;border:1px solid var(--linia)' },
+      h('b', `Sprawa #${id}: ${w.ocena ?? '?'}/100`), h('p', w.prawda || ''),
+      h('ul', (w.szczegoly || []).map((x) => h('li', x))),
+      r.uzasadnienie ? h('p', h('i', `Uzasadnienie gracza (${r.kiedy || ''}, ${r.kiedy_lokalnie || ''}): `), r.uzasadnienie) : null,
+      h('div.slaby', `Tropy gracza (${(p.tropy || []).length}):`),
+      h('ul', (p.tropy || []).map((x) => h('li', `${Number(x.prawdziwy) ? '✓' : '✗'} [${x.rodzaj}${x.oznaczenie ? `, ${x.oznaczenie}` : ''}] ${x.tresc}`)))));
+  });
   const decyzjaNakazu = (n, wydany) => bezpiecznie(async () => {
     const decyzja = window.prompt(`${wydany ? 'Wydać' : 'Odrzucić'} nakaz: ${n.budynek} (sprawa #${n.sledztwo_id}, ${n.konto_login})?\nKomentarz biura (opcjonalnie):`, '');
     if (decyzja === null) return;
@@ -455,6 +470,11 @@ async function konta(edytowany = null) {
         nakazy.map((n) => h('tr', h('td', n.konto_login), h('td', `#${n.sledztwo_id} ${n.tytul || ''}`), h('td', n.budynek),
           h('td', n.uzasadnienie),
           h('td.rzad', btn('Wydaj', decyzjaNakazu(n, true), '.glowny'), btn('Odrzuć', decyzjaNakazu(n, false), '.zly'))))))] : []),
+    ...(rozwiazane.length ? [h('div.karta', h('h2', `Rozwiązane sprawy (${rozwiazane.length})`),
+      h('table', h('tr', h('th', 'Detektyw'), h('th', 'Sprawa'), h('th', 'Ocena'), h('th', '')),
+        rozwiazane.map((x) => h('tr', h('td', x.konto_login), h('td', `#${x.id} ${x.tytul || ''}`), h('td', x.ocena !== null ? `${x.ocena}/100` : '—'),
+          h('td', btn('Podgląd', pokazSprawe(x.id)))))),
+      podgladSprawy)] : []),
     h('div.karta.przewijana', h('h2', `Konta (${uzytkownicy.length})`),
       h('table', h('tr', h('th', 'Login'), h('th', 'Postać'), h('th', 'Frakcja'), h('th', 'Oddział / ranga'), h('th', 'Poziom'), h('th', 'Gotowość'), h('th', '')),
         uzytkownicy.map((x) => h('tr',

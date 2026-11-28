@@ -219,6 +219,32 @@ Do zmiany, gdy przyjdzie pora (dziś model to jedna sprawa = jeden detektyw = je
 1. Skan przestrzenny piętra (makieta DT-4). 2. Dziennik. 3. Koncentrat i tablica powiązań.
 4. Akta (zaczyn, postacie, miejsca). 5. Raport końcowy (ocena = pokrycie faz 1–7).
 
+### Tropy, notatnik i rozwiązanie (migracja 094, zrobione 28.11)
+
+- **Trop** zapisuje się sam (`sl_trop_zapisz`, tabela `sledztwo_tropy`, bez powtórzeń po kluczu):
+  zeznanie / obserwacja — gdy rozmówca powie fakt z bazy (`sl_tropy_z_wypowiedzi`: bez AI dosłowny tekst faktu,
+  z AI znaczniki faktu: daty, nazwy własne, słowa kluczowe — `sl_znaczniki`); namiar — z `sl_namiary`;
+  dokument — przy odczycie odblokowanego nośnika. Trop ma źródło, czas ustalenia (standard + lokalnie),
+  czas zdarzenia (oś czasu), wiarygodność (wg chęci rozmówcy) i ukryte dla gracza `prawdziwy` (dla MG).
+- **Notatnik** (zakładka w aplikacji): tropy z oznaczeniami ★ ważny / ? podejrzany / ✕ odrzucony i notatkami,
+  oś czasu (tropy z datą zdarzenia), powiązania dwóch tropów z opisem (`sledztwo_powiazania`).
+- **Rozwiązanie** (raz, `sl_rozwiaz`): co się stało (12 zdarzeń) 30 pkt — wersja ze zgłoszenia w sprawie ukrytej 5;
+  gdzie jest osoba ze sprawy (miejsca z namiarów i tropów) 30 / ten sam budynek 12; kto ukrywa prawdę
+  (osoby znane graczowi, „nikt” przy sprawie jawnej) 20; tropy rzeczowe i prawdziwe po 3, maks. 15;
+  uzasadnienie ≥ 120 znaków 5. Stan → rozwiazane, ocena i JSON w `sledztwa`; gracz widzi prawdę; MG — kartę
+  „Rozwiązane sprawy” w zakładce Konta (tropy z ✓ / ✗).
+
+### Czas lokalny i położenie (28.11)
+
+- Sprawa ma współrzędne na mapie galaktyki (`mapa_planety.x, y` planety sprawy) i położenie kompleksu na powierzchni
+  (`lokalizacje.x_km, y_km` → szerokość / długość geograficzna, `astro_wsp_lokacji`).
+- Lokalna godzina z obrotu planety (`api/astro.php`: doba z mapy / `planety_cykle`, kąt godzinny w długości kompleksu);
+  „godzina lokalna” = 1/24 doby planety (Nar Shaddaa: doba 87 h standardowych). Pora: przedpołudnie, południe,
+  popołudnie, zmierzch, noc, świt (z wysokości słońca).
+- Gdzie działa: nagłówek aplikacji i notatnika; wiedza NPC o otoczeniu (pora i długość doby); obserwacje z osi czasu
+  („24|11|16 około 21:00 (lokalnie 03:10, noc)”); tropy (lokalny czas ustalenia i zdarzenia); ruch ludzi w lokalach
+  (noc — połowa, świt / zmierzch — trzy czwarte, `sl_ruch_pory`).
+
 ## 6. Do ustalenia
 
 - Pełne listy 12 zdarzeń i 12 relacji (w migracji robocze).

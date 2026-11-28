@@ -344,7 +344,7 @@ export default {
       const liczba = (n) => (n ? ` (${n})` : '');
       const zakl = [['skan', 'Skan'], ['lokal', 'Lokal' + liczba((d.przedmioty || []).length + d.kontakty.length)],
         ['ekwipunek', 'Ekwipunek' + liczba((d.ekwipunek || []).length)], ...(rozmowa ? [['rozmowa', 'Rozmowa']] : []),
-        ['akta', 'Akta'], ['dziennik', 'Dziennik']];
+        ['notatnik', 'Notatnik' + liczba(d.tropy_ile)], ['akta', 'Akta'], ['dziennik', 'Dziennik']];
       // Cel: budynki rejonu i namiary od rozmówców (wybór namiaru wypełnia poziom i lokal).
       const namiary = d.namiary || [];
       const budynek = h('select', { style: 'max-width:260px' },
@@ -365,7 +365,8 @@ export default {
       gora.append(
         h('div', { style: 'flex:1 1 280px;min-width:0' },
           h('b', `${d.oznaczenie || 'DT-4'} · ${plan.budynek.toUpperCase()} · POZIOM ${plan.poziom}`),
-          h('span.slaby', ` (${STREFA[plan.strefa] || plan.strefa}) · ${plan.preset_nazwa}: parter ${plan.parter}, góra ${plan.gora} · ${STAN_DROIDA[droid.stan] || droid.stan}`)),
+          h('span.slaby', ` (${STREFA[plan.strefa] || plan.strefa}) · ${plan.preset_nazwa}: parter ${plan.parter}, góra ${plan.gora} · ${STAN_DROIDA[droid.stan] || droid.stan}`),
+          d.miejsce_sprawy ? h('div.slaby', { style: 'font-size:12px' }, miejsceSprawy(d.miejsce_sprawy)) : null),
         h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap' }, zakl.map(([k, n]) =>
           przycisk(n, () => { zakladka = zakladka === k && k !== 'skan' ? 'skan' : k; rysujSzuflade(); rysujGore(); }, zakladka === k ? '.maly' : '.drugi.maly'))),
         h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, budynek, h('span.slaby', 'poz.'), poziom, lokal, jedz));
@@ -475,8 +476,9 @@ export default {
           wiersz('Rejon', x.skupisko ? `${x.skupisko}, Nar Shaddaa` : 'Nar Shaddaa'), wiersz('Przyjęto', data(x.utworzono_utc)), wiersz('Stan', STAN[x.stan] || x.stan)),
         x.zaczyn ? h('div', { style: 'white-space:pre-wrap;margin-top:10px' }, x.zaczyn)
           : h('p.maly-tekst', 'Akta wstępne (zlecenie, tło, ludzie, od czego zacząć) pojawią się tutaj, gdy biuro je skompletuje.')) : null,
-        (moje?.archiwum || []).length ? panel('ARCHIWUM', h('table.tabela', h('tr', h('th', '#'), h('th', 'Sprawa'), h('th', 'Stan')),
-          moje.archiwum.map((a) => h('tr', h('td', a.id), h('td', a.tytul || a.zgloszenie), h('td', STAN[a.stan] || a.stan))))) : null,
+        (moje?.archiwum || []).length ? panel('ARCHIWUM', h('table.tabela', h('tr', h('th', '#'), h('th', 'Sprawa'), h('th', 'Stan'), h('th', 'Ocena')),
+          moje.archiwum.map((a) => h('tr', h('td', a.id), h('td', a.tytul || a.zgloszenie), h('td', STAN[a.stan] || a.stan),
+            h('td', a.ocena !== null && a.ocena !== undefined ? `${a.ocena}/100` : '—'))))) : null,
         x ? panel('PORZUCENIE', h('p.maly-tekst', 'Porzucona sprawa trafia do MG, a ten rodzaj sprawy zostaje zajęty. Możesz od razu przyjąć nową. '
           + 'Powrót do porzuconej — po uzasadnieniu i decyzji MG.'),
         przycisk('Porzuć sprawę', async () => {
@@ -497,6 +499,130 @@ export default {
         : h('p.maly-tekst', 'Brak wpisów.'));
     }
 
+    // ---------- notatnik detektywa: tropy, oś czasu, powiązania, rozwiązanie ----------
+
+    // „Nar Shaddaa [x, y] · 12.3° N, 45.6° E · lokalnie 14:20, popołudnie (doba 87 h)”.
+    const miejsceSprawy = (m) => `${m.planeta}${m.galaktyka ? ` [${m.galaktyka[0]}, ${m.galaktyka[1]}]` : ''}`
+      + `${m.skupisko ? ` · ${m.skupisko}` : ''} · ${m.wspolrzedne} · lokalnie ${m.czas_lokalny}, ${m.pora} (doba ${m.doba_h} h) · standard ${m.czas_standardowy}`;
+    const RODZAJ_T = { zeznanie: 'Zeznanie', obserwacja: 'Obserwacja', namiar: 'Namiar', dokument: 'Dokument' };
+    const OZNACZ = { wazny: ['★ ważny', 'var(--ok)'], podejrzany: ['? podejrzany', 'var(--akcent-2)'], odrzucony: ['✕ odrzucony', 'var(--zly)'] };
+    const notatnikBox = h('div');
+    let notatnik = null, widokN = 'tropy', filtrN = 'aktywne', wynikSprawy = null;
+    const zaznaczone = new Set();
+
+    async function notatnikWolaj(akcja, dane) {
+      try {
+        const r = akcja ? await api(akcja, dane) : await api('sledztwo_notatnik');
+        if (r && r.tropy) notatnik = r;
+        rysujNotatnik();
+        return r;
+      } catch (e) { wyczysc(notatnikBox).append(blad(e)); return null; }
+    }
+
+    function zakladkaNotatnik() {
+      if (!notatnik) { wyczysc(notatnikBox).append(panel('NOTATNIK DETEKTYWA', h('p.maly-tekst', 'Wczytywanie…'))); notatnikWolaj(); }
+      else rysujNotatnik();
+      return notatnikBox;
+    }
+
+    function kartaTropu(x, wybor = null) {
+      const oz = OZNACZ[x.oznaczenie];
+      const przelacz = (o) => notatnikWolaj('sledztwo_trop', { id: x.id, oznaczenie: x.oznaczenie === o ? '' : o });
+      const notatka = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Twoja notatka…', style: 'width:100%;box-sizing:border-box;margin-top:4px;font:inherit' });
+      notatka.value = x.notatka || '';
+      notatka.onchange = () => notatnikWolaj('sledztwo_trop', { id: x.id, notatka: notatka.value });
+      const zazn = h('input', { type: 'checkbox', checked: zaznaczone.has(x.id), title: 'Zaznacz do powiązania' });
+      zazn.onchange = () => { if (zazn.checked) zaznaczone.add(x.id); else zaznaczone.delete(x.id); rysujNotatnik(); };
+      return h('div', { style: `margin:8px 0;padding:6px 8px;border:1px solid ${oz ? oz[1] : 'var(--linia)'};${x.oznaczenie === 'odrzucony' ? 'opacity:.55' : ''}` },
+        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, wybor || zazn,
+          h('b', RODZAJ_T[x.rodzaj] || x.rodzaj), h('span.slaby', `· ustalono ${x.kiedy}${x.kiedy_lokalnie ? ` (${x.kiedy_lokalnie})` : ''} · wiarygodność ${x.wiarygodnosc}%`),
+          oz ? h('span', { style: `color:${oz[1]}` }, oz[0]) : null),
+        h('div', { style: 'margin-top:4px;white-space:pre-wrap' }, x.tresc),
+        x.czas_zdarzenia ? h('div.maly-tekst', `Kiedy się wydarzyło: ${x.czas_zdarzenia}${x.czas_lokalny ? ` (${x.czas_lokalny})` : ''}`) : null,
+        h('div.maly-tekst', `Źródło: ${x.zrodlo}`),
+        wybor ? null : h('div', { style: 'display:flex;gap:4px;margin-top:4px;flex-wrap:wrap' },
+          przycisk('★ Ważny', () => przelacz('wazny')), przycisk('? Podejrzany', () => przelacz('podejrzany')), przycisk('✕ Odrzuć', () => przelacz('odrzucony'))),
+        wybor ? null : notatka);
+    }
+
+    function rysujNotatnik() {
+      if (!notatnik) return;
+      const { tropy, powiazania, miejsce_sprawy: ms, formularz: f } = notatnik;
+      const poId = new Map(tropy.map((x) => [x.id, x]));
+      const zakl = [['tropy', `Tropy (${tropy.length})`], ['os', 'Oś czasu'], ['powiazania', `Powiązania (${powiazania.length})`], ['rozwiaz', 'Rozwiąż sprawę']];
+      const gora = h('div', { style: 'display:flex;gap:4px;flex-wrap:wrap;margin:6px 0' },
+        zakl.map(([k, n]) => przycisk(n, () => { widokN = k; rysujNotatnik(); }, widokN === k ? '.maly' : '.drugi.maly')));
+      let tresc;
+      if (widokN === 'tropy') {
+        const filtr = h('select', {}, [['aktywne', 'Bez odrzuconych'], ['wszystkie', 'Wszystkie'], ['wazny', 'Tylko ważne'], ['podejrzany', 'Tylko podejrzane']]
+          .map(([k, n]) => h('option', { value: k, selected: filtrN === k }, n)));
+        filtr.onchange = () => { filtrN = filtr.value; rysujNotatnik(); };
+        const lista = tropy.filter((x) => (filtrN === 'wszystkie' ? true : filtrN === 'aktywne' ? x.oznaczenie !== 'odrzucony' : x.oznaczenie === filtrN));
+        const wybrane = [...zaznaczone].filter((id) => poId.has(id));
+        tresc = h('div',
+          h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, filtr,
+            wybrane.length === 2 ? przycisk('Połącz zaznaczone', () => {
+              const opis = window.prompt('Co łączy te dwa tropy? (krótko)', '') ?? null;
+              if (opis === null) return;
+              zaznaczone.clear();
+              notatnikWolaj('sledztwo_powiaz', { a: wybrane[0], b: wybrane[1], opis });
+            }, '.maly') : h('span.slaby', 'Zaznacz dwa tropy, by je powiązać.')),
+          lista.length ? lista.map((x) => kartaTropu(x))
+            : h('p.maly-tekst', 'Brak tropów. Tropy zapisują się same, gdy rozmówca powie coś konkretnego, gdy droid dostanie namiary albo odczyta dokument.'));
+      } else if (widokN === 'os') {
+        const os = tropy.filter((x) => x.czas_zdarzenia_utc && x.oznaczenie !== 'odrzucony').sort((a, b) => (a.czas_zdarzenia_utc < b.czas_zdarzenia_utc ? -1 : 1));
+        tresc = os.length ? h('div', os.map((x) => h('div', { style: 'margin:6px 0;padding-left:10px;border-left:2px solid var(--akcent)' },
+          h('b', x.czas_zdarzenia), h('span.slaby', x.czas_lokalny ? ` · ${x.czas_lokalny}` : ''), h('div', x.tresc))))
+          : h('p.maly-tekst', 'Oś czasu jest pusta. Wypełniają ją obserwacje z datą: kiedy i gdzie ktoś widział osobę ze sprawy.');
+      } else if (widokN === 'powiazania') {
+        tresc = powiazania.length ? h('div', powiazania.map((p) => h('div', { style: 'margin:8px 0;padding:6px 8px;border:1px solid var(--linia)' },
+          h('div', h('b', p.opis || 'Powiązanie'), ' ', przycisk('✕', () => notatnikWolaj('sledztwo_powiaz', { usun: p.id }), '.drugi.maly', { title: 'Usuń powiązanie' })),
+          h('div.maly-tekst', `A: ${poId.get(p.a)?.tresc || '?'}`), h('div.maly-tekst', `B: ${poId.get(p.b)?.tresc || '?'}`))))
+          : h('p.maly-tekst', 'Brak powiązań. W zakładce Tropy zaznacz dwa tropy i kliknij „Połącz zaznaczone”.');
+      } else {
+        tresc = formularzRozwiazania(f, tropy);
+      }
+      wyczysc(notatnikBox).append(panel('NOTATNIK DETEKTYWA', ms ? h('p.maly-tekst', miejsceSprawy(ms)) : null, gora, tresc));
+    }
+
+    function formularzRozwiazania(f, tropy) {
+      if (wynikSprawy) return wynikPanel(wynikSprawy);
+      const zd = h('select', {}, h('option', { value: '' }, '— wybierz —'), f.zdarzenia.map((z) => h('option', { value: z.id }, z.nazwa)));
+      const gdzie = h('select', {}, h('option', { value: '' }, '— nie wiem —'), f.miejsca.map((m) => h('option', { value: m.klucz }, m.nazwa)));
+      const kto = h('select', {}, h('option', { value: '0' }, 'Nikt — zgłoszenie było szczere'), f.osoby.map((o) => h('option', { value: o.id }, o.nazwa)));
+      const uz = h('textarea', { rows: 5, maxlength: 4000, placeholder: 'Uzasadnienie: co się stało, kiedy, gdzie i skąd to wiesz (min. 120 znaków)…',
+        style: 'width:100%;box-sizing:border-box;font:inherit' });
+      const wybor = new Map();
+      const karty = tropy.filter((x) => x.oznaczenie !== 'odrzucony').map((x) => {
+        const c = h('input', { type: 'checkbox', checked: x.oznaczenie === 'wazny' });
+        wybor.set(x.id, c);
+        return kartaTropu(x, c);
+      });
+      const wiersz2 = (etykieta, pole) => h('div', { style: 'margin:8px 0' }, h('div.maly-tekst', etykieta), pole);
+      return h('div',
+        h('p.maly-tekst', 'Rozwiązanie składasz raz. Ocena (0–100): co się stało 30, gdzie jest osoba ze sprawy 30, kto ukrywa prawdę 20, tropy 15, uzasadnienie 5.'),
+        wiersz2('Co się naprawdę stało?', zd),
+        wiersz2('Gdzie teraz jest osoba ze sprawy?', gdzie),
+        wiersz2('Kto ukrywa prawdę?', kto),
+        wiersz2('Na które tropy się powołujesz?', karty.length ? h('div', karty) : h('p.maly-tekst', 'Nie masz jeszcze tropów.')),
+        wiersz2('Uzasadnienie', uz),
+        przycisk('Złóż rozwiązanie', async () => {
+          if (!zd.value) { window.alert('Wybierz, co się stało.'); return; }
+          if (!window.confirm('Złożyć rozwiązanie? Sprawa zostanie zamknięta i oceniona.')) return;
+          const r = await notatnikWolaj('sledztwo_rozwiaz', { zdarzenie_id: Number(zd.value), miejsce: gdzie.value, postac_id: Number(kto.value),
+            tropy: [...wybor].filter(([, c]) => c.checked).map(([id]) => id), uzasadnienie: uz.value });
+          if (r?.wynik) { wynikSprawy = r.wynik; rysujNotatnik(); }
+        }, '.maly'));
+    }
+
+    function wynikPanel(w) {
+      return h('div', { style: 'margin:8px 0' },
+        h('div', { style: 'font-size:22px;letter-spacing:2px;margin:6px 0' }, `OCENA: ${w.ocena}/100`),
+        h('ul', w.szczegoly.map((x) => h('li', x))),
+        h('p', { style: 'white-space:pre-wrap' }, w.prawda),
+        przycisk('Wróć do biura', () => { zakladka = 'skan'; notatnik = null; odswiez(); }, '.maly'));
+    }
+
     function rysujSzuflade() {
       szuflada.hidden = zakladka === 'skan' || !d;
       if (szuflada.hidden) return;
@@ -504,6 +630,7 @@ export default {
       // Panel windy tylko, gdy droid jest w windzie (albo do niej idzie).
       if (zakladka === 'winda' && !wWindzie() && !zamiar?.winda) { zakladka = 'skan'; szuflada.hidden = true; return; }
       const tresc = { lokal: zakladkaLokal, ekwipunek: zakladkaEkwipunek, rozmowa: () => rozmowaBox, akta: zakladkaAkta, dziennik: zakladkaDziennik,
+        notatnik: zakladkaNotatnik,
         winda: () => {
           if (wWindzie()) return zakladkaWinda();
           const etap = jazdaWindy();
@@ -723,6 +850,8 @@ export default {
         const nowe = await api('sledztwo_skan');
         nowe.oznaczenie = moje?.droid || 'DT-4';
         d = nowe;
+        // Nowe tropy od ostatniego otwarcia notatnika — wczytaj go od nowa.
+        if (notatnik && d.tropy_ile !== notatnik.tropy.length) notatnik = null;
         if (d.droid.stan === 'w_drodze') {
           koniecDrogi = Date.now() + d.droid.zostalo_s * 1000;
           calaDroga = d.droid.zostalo_s / Math.max(0.0001, 1 - d.droid.postep);
@@ -749,13 +878,14 @@ export default {
       const nowa = przycisk('Przyjmij nową sprawę', async () => {
         nowa.disabled = true;
         // Nowa sprawa: od razu otwarty ekwipunek z teczką od biura (zgłoszenie, akta osobowe, profil psychologiczny).
-        try { await api('sledztwo_nowe', {}); zakladka = 'ekwipunek'; await odswiez(); }
+        try { await api('sledztwo_nowe', {}); zakladka = 'ekwipunek'; notatnik = null; wynikSprawy = null; zaznaczone.clear(); await odswiez(); }
         catch (e) { pokaz(blad(e)); nowa.disabled = false; }
       }, '');
       return h('div', { style: 'position:absolute;inset:0;overflow:auto;padding:24px' },
         panel(`BIURO DETEKTYWISTYCZNE · ${moje?.droid || 'DT-4'}`,
           h('p.maly-tekst', `Rozwiązane rodzaje spraw: ${moje?.rozwiazane ?? 0} / ${moje?.wszystkie_typy ?? 144}`),
           h('p', 'Brak otwartej sprawy.'), nowa),
+        wynikSprawy ? panel('OSTATNIA SPRAWA — ROZWIĄZANIE', wynikPanel(wynikSprawy)) : null,
         (moje?.archiwum || []).length ? zakladkaAkta() : null);
     }
 

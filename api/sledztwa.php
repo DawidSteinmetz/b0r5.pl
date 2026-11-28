@@ -2512,7 +2512,38 @@ function sl_metryka_zapewnij(PDO $db, array $s, array $pule, array $plan, array 
 }
 
 // Pola promptu z metryki: kim (biernik), życiorys (opcje z pochodzeniem i pracą), metryka, znajomość z osobą ze sprawy.
-function sl_metryka_pola(PDO $db, array $s, array $pule, array $m): array
+// Karta EotE rozmówcy opisana słowami dla modelu: jak cechy i umiejętności przekładają się na zachowanie w rozmowie.
+const SLEDZTWO_OPIS_CECH = [
+    'krzepa' => ['wątł{y|a}, unikasz siłowych rozwiązań', 'przeciętnej postury', 'silnie zbudowan{y|a}, nie boisz się przepychanek', 'potężn{y|a} — inni schodzą ci z drogi'],
+    'zwinnosc' => ['niezgrabn{y|a}', 'zwyczajnie sprawn{y|a}', 'zwinn{y|a} i szybk{i|a}', 'niezwykle zręczn{y|a}'],
+    'intelekt' => ['niezbyt bystr{y|a} — łatwo cię zagadać i nabrać', 'przeciętnie bystr{y|a}', 'inteligentn{y|a}, szybko łapiesz, o co chodzi', 'wybitnie inteligentn{y|a} — trudno cię oszukać'],
+    'spryt' => ['naiwn{y|a}, słabo czytasz ludzi', 'masz zwykły uliczny rozum', 'cwan{y|a} — od razu wyczuwasz, kto czego chce', 'wyjątkowo przebiegł{y|a}'],
+    'wola' => ['łatwo ulegasz presji i groźbom', 'masz przeciętnie silną wolę', 'tward{y|a} — groźby słabo na ciebie działają', 'nie do złamania'],
+    'prezencja' => ['bez charyzmy, w rozmowie niepewn{y|a}', 'zwyczajnie towarzysk{i|a}', 'masz charyzmę, umiesz przekonywać', 'masz ogromną charyzmę — ludzie cię słuchają'],
+];
+const SLEDZTWO_OPIS_UMIEJETNOSCI = [
+    'czujnosc' => 'zauważasz kłamstwa i blef', 'dyscyplina' => 'trzymasz nerwy na wodzy pod presją', 'opanowanie' => 'trudno wyprowadzić cię z równowagi',
+    'oszustwo' => 'sam{|a} kłamiesz gładko', 'negocjacje' => 'umiesz się targować i nic nie dajesz za darmo', 'urok' => 'umiesz być czarując{y|a}',
+    'zastraszanie' => 'umiesz grozić i lubisz to', 'ulica' => 'znasz półświatek Nar Shaddaa', 'percepcja' => 'dużo widzisz i zapamiętujesz',
+    'komputery' => 'znasz się na komputerach', 'mechanika' => 'znasz się na maszynach', 'bijatyka' => 'umiesz się bić', 'przywodztwo' => 'umiesz rozkazywać',
+];
+function sl_karta_opis(array $k, string $plec): string
+{
+    $c = [];
+    foreach (SLEDZTWO_OPIS_CECH as $cecha => $opisy) {
+        $v = (int) ($k['cechy'][$cecha] ?? 2);
+        $c[] = sl_rodzaj($opisy[max(0, min(3, $v - 1))], $plec);
+    }
+    $u = [];
+    foreach ((array) ($k['umiejetnosci'] ?? []) as $nazwa => $x) {
+        $r = (int) (((array) $x)['ranga'] ?? 0);
+        if ($r >= 2 && isset(SLEDZTWO_OPIS_UMIEJETNOSCI[$nazwa])) $u[] = sl_rodzaj(SLEDZTWO_OPIS_UMIEJETNOSCI[$nazwa], $plec) . ($r >= 3 ? ' (bardzo dobrze)' : '');
+    }
+    return implode('; ', $c) . '.' . ($u ? ' Mocne strony: ' . implode('; ', $u) . '.' : '');
+}
+
+// $karta — karta EotE rozmówcy (sl_karta_rozmowcy); jej opis trafia do metryki.
+function sl_metryka_pola(PDO $db, array $s, array $pule, array $m, ?array $karta = null): array
 {
     $plec = $m['plec'] === 'k' ? 'k' : 'm';
     $r = fn(string $t) => sl_rodzaj($t, $plec);
@@ -2550,6 +2581,7 @@ function sl_metryka_pola(PDO $db, array $s, array $pule, array $m): array
         'Lubisz' => $m['ulubione'], 'Martwi cię' => $m['zmartwienie'],
         'Twój sekret (ukrywasz go)' => $m['sekret'], 'Plotka, którą chętnie powtarzasz' => $m['plotka'],
     ];
+    if ($karta) $met['Z karty postaci (tak się zachowujesz)'] = sl_karta_opis($karta, $plec);
     $metryka = implode("\n", array_map(fn($k, $v) => "- {$k}: {$v}", array_keys($met), $met));
 
     [$a, $status] = sl_fakty_o_osobie($db, $s, $pule);
@@ -2651,7 +2683,7 @@ function sl_npc_dane(PDO $db, array $s, array $p, array $pule, array $r, ?array 
     }
     $pelne = trim($p['imie'] . ' ' . ($p['nazwisko'] ?? '') . ($p['przydomek'] ? " „{$p['przydomek']}”" : ''));
     $gatunek = $pule['gatunki'][$p['gatunek_kod']]['nazwa'] ?? $p['gatunek_kod'];
-    $mp = $m ? sl_metryka_pola($db, $s, $pule, $m) : ['kim' => "postać: {$gatunek} o imieniu {$pelne}", 'zyciorys' => "- Jesteś {$archetyp} na Nar Shaddaa.",
+    $mp = $m ? sl_metryka_pola($db, $s, $pule, $m, sl_karta_rozmowcy($pule, $s, $r, $p['id'] ? $p : null, $m)) : ['kim' => "postać: {$gatunek} o imieniu {$pelne}", 'zyciorys' => "- Jesteś {$archetyp} na Nar Shaddaa.",
         'metryka' => "- Imię i nazwisko: {$pelne}\n- Gatunek: {$gatunek}", 'znajomosc' => 'ZNAJOMOŚĆ Z OSOBĄ ZE SPRAWY: patrz „CO WIESZ O SPRAWIE”.', 'pelne_imie' => $pelne];
     $pelne = $mp['pelne_imie'];
     if (!$kod && $m) $miejsce['nazwa'] = $m['miejsce'];
@@ -2741,7 +2773,7 @@ const SLEDZTWO_CHEC = ['nie' => 0, 'niechetnie' => 1, 'chetnie' => 2];
 // Karta rozmówcy do testów: postać fabuły — jej karta EotE; przechodzień — cechy gatunku ± 1 i losowe rangi (stałe dla tokenu).
 function sl_karta_rozmowcy(array $pule, array $s, array $r, ?array $postac, ?array $m): array
 {
-    if ($postac && ($k = json_decode((string) $postac['karta_eote'], true)) && isset($k['cechy'])) return $k;
+    if ($postac && ($k = json_decode((string) ($postac['karta_eote'] ?? ''), true)) && isset($k['cechy'])) return $k;
     $gat = $m['gatunek_kod'] ?? 'czlowiek';
     $g = $pule['gatunki'][$gat] ?? ['krzepa' => 2, 'zwinnosc' => 2, 'intelekt' => 2, 'spryt' => 2, 'wola' => 2, 'prezencja' => 2];
     $tok = (string) $r['kontakt'];
@@ -2772,6 +2804,18 @@ function sl_fakt_do_ujawnienia(PDO $db, int $rid, ?array $m): ?string
 }
 
 // $procedura: 'wlasna' — pytania operatora droid zadaje jako swoje; 'jawna' — może mówić, że pyta operator.
+// Komunikaty dla gracza, gdy rozmowa idzie bez modułu językowego (lag, zerwanie) — po fabularnemu.
+// Techniczny powód trafia do dziennika jako wpis systemowy (widzi go MG, nie gracz).
+const SLEDZTWO_ZAKLOCENIA = [
+    'Zakłócenia na łączu — część transmisji odtworzona z bufora, zapis może być niepełny.',
+    'Awaria nadajnika DT-4 — droid przeszedł na tryb awaryjny, odpowiedzi rozmówcy streszcza moduł zapasowy.',
+    'Moduł transkrypcji przestał nadawać — zapis uzupełniany fragmentami z pamięci podręcznej.',
+    'Spadek mocy na głównej baterii — droid ogranicza przetwarzanie mowy do minimum.',
+    'Interferencja z ekranowania budynku — sygnał rwie się, transkrypcja zgrubna.',
+    'Przeciążenie przekaźnika sektorowego — opóźnienie łącza, odpowiedzi w uproszczonej transkrypcji.',
+    'Restart modułu rozpoznawania mowy — chwilowo działa tylko słownik podstawowy.',
+];
+
 // $podejscie: klucz SLEDZTWO_PODEJSCIA_ROZMOWY (groźba, negocjacje…) — test EotE przed wypowiedzią droida.
 function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $polecenie, string $procedura = 'wlasna', string $podejscie = ''): array
 {
@@ -2951,11 +2995,12 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 sl_wpis($db, $rid, 'npc', $odp);
             }
         }
-        if ($awaria) sl_wpis($db, $rid, 'system', 'Łącze z modułem językowym niedostępne — wypowiedź zastępcza.'
-            . ($powodAwarii !== '' ? " Powód: {$powodAwarii}" : ''));
-        elseif (!$ai && $pytan === 0) {
-            sl_wpis($db, $rid, 'system', $metryka || !SLEDZTWO_AI_DLA_WSZYSTKICH ? 'Ten rozmówca mówi bez modułu językowego — odpowiedzi zastępcze.'
-                : 'Rozmówca nie ma metryki (brak migracji 089?) — odpowiedzi zastępcze, bez modułu językowego.');
+        if ($awaria) {
+            sl_wpis($db, $rid, 'system', sl_kwestia(SLEDZTWO_ZAKLOCENIA));
+            sl_dziennik($db, (int) $s['id'], 'system', 'system', 'Moduł językowy: ' . ($powodAwarii !== '' ? $powodAwarii : 'błąd bez opisu') . " (rozmowa #{$rid}).");
+        } elseif (!$ai && $pytan === 0) {
+            sl_wpis($db, $rid, 'system', sl_kwestia(SLEDZTWO_ZAKLOCENIA));
+            if (!$metryka && SLEDZTWO_AI_DLA_WSZYSTKICH) sl_dziennik($db, (int) $s['id'], 'system', 'system', "Rozmówca bez metryki (migracja 089?) — odpowiedzi zastępcze (rozmowa #{$rid}).");
         }
         $db->prepare('UPDATE sledztwo_rozmowy SET nastroj = ? WHERE id = ?')->execute([$nastroj, $rid]);
         if ($konczy) {

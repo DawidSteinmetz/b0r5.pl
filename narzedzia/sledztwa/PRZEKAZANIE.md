@@ -117,7 +117,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    przeciw karcie rozmówcy (`sl_karta_rozmowcy`; kolejne próby +1 kość trudności, maks. +2). Udany: rozmówca zdradza
    fakt z metryki, jego `chce_mowic` rośnie o stopień (triumf — „chętnie”); nieudany: wrogość; rozpacz: koniec rozmowy.
    Wynik idzie do promptu NPC i do zapisu („Test: … UDANY/NIEUDANY”). Bez AI polecenie operatora, które nie jest
-   pytaniem, droid mówi jako zdanie (`sl_pytanie_operatora`). Powód awarii AI widać w zapisie rozmowy.
+   pytaniem, droid mówi jako zdanie (`sl_pytanie_operatora`). Zerwania i lagi łącza gracz widzi po fabularnemu
+   (`SLEDZTWO_ZAKLOCENIA`: awaria nadajnika, spadek mocy baterii…), techniczny powód idzie do dziennika jako wpis
+   systemowy. Karta EotE rozmówcy jest opisana słowami w metryce (`sl_karta_opis`: cechy i umiejętności ≥ 2).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

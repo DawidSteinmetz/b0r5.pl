@@ -275,11 +275,22 @@ export default {
       const zakl = [['skan', 'Skan'], ['lokal', 'Lokal' + liczba((d.przedmioty || []).length + d.kontakty.length)],
         ['ekwipunek', 'Ekwipunek' + liczba((d.ekwipunek || []).length)], ...(rozmowa ? [['rozmowa', 'Rozmowa']] : []),
         ['akta', 'Akta'], ['dziennik', 'Dziennik']];
-      const budynek = h('select', budynki.length ? budynki.map((b) => h('option', { value: b.id, selected: b.id === plan.budynek_id }, b.nazwa))
-        : [h('option', { value: '' }, 'Kompleks')]);
+      // Cel: budynki rejonu i namiary od rozmówców (wybór namiaru wypełnia poziom i lokal).
+      const namiary = d.namiary || [];
+      const budynek = h('select', { style: 'max-width:260px' },
+        h('optgroup', { label: 'Budynki' }, budynki.length ? budynki.map((b) => h('option', { value: b.id, selected: b.id === plan.budynek_id }, b.nazwa))
+          : [h('option', { value: '' }, 'Kompleks')]),
+        namiary.length ? h('optgroup', { label: 'Namiary od rozmówców' },
+          namiary.map((n) => h('option', { value: `n${n.id}`, title: `Podał(a): ${n.skad}` }, `◆ ${n.nazwa}`))) : null);
       const poziom = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:70px' });
       const lokal = h('input', { placeholder: 'lokal / korytarz', style: 'width:120px' });
-      const jedz = przycisk('Wyślij', () => idz(budynek.value === '' ? null : Number(budynek.value), Number(poziom.value), lokal.value.trim() || 'korytarz'), '.maly');
+      const namiar = () => (budynek.value.startsWith('n') ? namiary.find((n) => `n${n.id}` === budynek.value) : null);
+      budynek.onchange = () => { const n = namiar(); if (n) { poziom.value = n.poziom; lokal.value = n.pokoj; } };
+      const jedz = przycisk('Wyślij', () => {
+        const n = namiar();
+        if (n) return idz(n.lokalizacja_id, Number(poziom.value) || n.poziom, lokal.value.trim() || n.pokoj);
+        idz(budynek.value === '' ? null : Number(budynek.value), Number(poziom.value), lokal.value.trim() || 'korytarz');
+      }, '.maly');
       lokal.onkeydown = (e) => { if (e.key === 'Enter') jedz.click(); };
       gora.append(
         h('div', { style: 'flex:1 1 280px;min-width:0' },
@@ -587,7 +598,9 @@ export default {
         const r = await api('sledztwo_rozmowa_tura', { rozmowa_id: rozmowa.id, polecenie, procedura, podejscie });
         pisze = false;
         pokazRozmowe(r.rozmowa);
-        if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); }
+        // Nowe namiary od rozmówcy: odśwież skan, żeby pojawiły się w polu wyboru celu.
+        const namiaryTeraz = (r.rozmowa.wpisy || []).slice(-3).some((x) => x.kto === 'system' && x.tresc.startsWith('Namiary zapisane'));
+        if (r.rozmowa.stan === 'zakonczona') { skanuj(); odswiez(); } else if (namiaryTeraz) skanuj();
       } catch (e) {
         pisze = false;
         pokaz(blad(e));

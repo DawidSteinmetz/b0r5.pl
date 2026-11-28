@@ -1607,7 +1607,8 @@ function sl_skan(PDO $db, array $s): array
     $kontakty = array_map(fn($k) => array_diff_key($k, ['postac_id' => 1]), $kontakty);
     return ['droid' => $droid, 'plan' => $plan, 'kontakty' => $kontakty, 'zasieg' => SLEDZTWO_ZASIEG, 'rozmowa' => $rozmowa,
         'budynki' => array_values(array_map(fn($b) => ['id' => $b['id'], 'nazwa' => $b['nazwa'], 'rodzaj' => $b['rodzaj_kod']], $budynki)),
-        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki)]
+        'poziom_max' => SLEDZTWO_POZIOM_MAX, 'meldunki' => $q->fetchAll(), 'teraz' => $teraz, 'nakazy' => sl_nakazy($db, $s, $budynki),
+        'namiary' => sl_namiary_lista($db, $s)]
         + sl_skan_przedmioty($db, $s, $d);
 }
 
@@ -2853,6 +2854,81 @@ function sl_fakt_do_ujawnienia(PDO $db, int $rid, ?array $m): ?string
 }
 
 // $procedura: 'wlasna' — pytania operatora droid zadaje jako swoje; 'jawna' — może mówić, że pyta operator.
+// ---------- namiary (migracja 091): miejsca wskazane przez rozmówców → pole wyboru celu ----------
+
+// Szuka w wypowiedzi rozmówcy wskazówek do miejsc, które naprawdę istnieją: numer lokalu w tym budynku
+// („lokal 2001”), nazwa lokalu z tego piętra albo parteru przy słowach kierunku („recepcja jest na parterze”),
+// nazwa miejsca ze sprawy. Wymyślone miejsca się nie liczą. Zwraca dopisane namiary (nazwy).
+function sl_namiary(PDO $db, array $s, array $pule, array $r, string $tekst): array
+{
+    $budynki = sl_budynki($db, $s);
+    $bid = $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null;
+    $budynek = $bid !== null ? ($budynki[$bid] ?? null) : null;
+    $plan = sl_plan($db, $s, $pule, $budynek, (int) $r['poziom']);
+    $male = mb_strtolower($tekst);
+    $znalezione = [];
+    $dodaj = function (?int $b, int $poziom, array $lok, ?string $nazwa = null) use (&$znalezione, $budynki) {
+        $bud = $b !== null ? ($budynki[$b]['nazwa'] ?? 'budynek') : 'Kompleks';
+        $znalezione[($b ?? 0) . "|{$poziom}|{$lok['nr']}"] = [$b, $poziom, (string) $lok['nr'],
+            ($nazwa ?? $lok['rodzaj']) . " — {$bud}, poziom {$poziom}, lokal {$lok['nr']}"];
+    };
+    // 1. Numery lokali w tym budynku (numer = poziom + dwie cyfry).
+    if (preg_match_all('/\b(\d{3,5})\b/u', $tekst, $m)) {
+        foreach (array_slice(array_unique($m[1]), 0, 4) as $nr) {
+            $poz = intdiv((int) $nr, 100);
+            if ($poz < 1 || $poz > SLEDZTWO_POZIOM_MAX) continue;
+            $pl = $poz === (int) $plan['poziom'] ? $plan : sl_plan($db, $s, $pule, $budynek, $poz);
+            if ($lok = sl_lokal($pl, (string) $nr)) $dodaj($bid, $poz, $lok);
+        }
+    }
+    // 2. Nazwy lokali z tego piętra i parteru — tylko gdy rozmówca mówi, jak trafić.
+    if (preg_match('/poziom|piętr|parter|lokal|końcu|obok|naprzeciw|wind|korytarz|idź|znajdziesz|na dole|na górze/u', $male)) {
+        $plany = [$plan];
+        if ($plan['poziom'] !== $plan['parter']) $plany[] = sl_plan($db, $s, $pule, $budynek, (int) $plan['parter']);
+        foreach ($plany as $pl) {
+            foreach ($pl['pokoje'] as $lok) {
+                $nazwa = mb_strtolower($lok['rodzaj']);
+                if (in_array($nazwa, ['korytarz', 'pokój gościnny', 'stragan', 'mieszkanie', 'gabinet', 'lokal'], true)) continue;
+                $pierwsze = preg_split('/\s+/u', $nazwa)[0];
+                if (mb_strlen($pierwsze) >= 4 && str_contains($male, mb_substr($pierwsze, 0, max(4, mb_strlen($pierwsze) - 2)))) {
+                    $dodaj($bid, (int) $pl['poziom'], $lok);
+                    break;
+                }
+            }
+        }
+    }
+    // 3. Miejsca ze sprawy wymienione z nazwy.
+    $q = $db->prepare('SELECT nazwa, lokalizacja_id, poziom, pokoj FROM sledztwo_miejsca WHERE sledztwo_id = ?');
+    $q->execute([(int) $s['id']]);
+    foreach ($q->fetchAll() as $mj) {
+        $nazwa = trim((string) preg_replace('/\s*\(.*\)$/u', '', (string) $mj['nazwa']));
+        if (mb_strlen($nazwa) < 6 || !str_contains($male, mb_strtolower($nazwa))) continue;
+        $b = $mj['lokalizacja_id'] !== null ? (int) $mj['lokalizacja_id'] : null;
+        if ($b !== null && !isset($budynki[$b])) continue;
+        $dodaj($b, (int) $mj['poziom'], ['nr' => (string) $mj['pokoj'], 'rodzaj' => $nazwa], $nazwa);
+    }
+    if (!$znalezione) return [];
+    $skad = sl_opis_rozmowcy($r) . ', ' . sl_data_gry(sl_teraz());
+    $wstaw = $db->prepare('INSERT IGNORE INTO sledztwo_namiary (sledztwo_id, klucz, nazwa, lokalizacja_id, poziom, pokoj, skad, kiedy_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    $nowe = [];
+    foreach ($znalezione as $klucz => [$b, $poz, $nr, $opis]) {
+        $wstaw->execute([(int) $s['id'], $klucz, mb_substr($opis, 0, 160), $b, $poz, $nr, mb_substr($skad, 0, 255), sl_utc(sl_teraz())]);
+        if ($wstaw->rowCount()) $nowe[] = $opis;
+    }
+    return $nowe;
+}
+
+function sl_namiary_lista(PDO $db, array $s): array
+{
+    try {
+        $q = $db->prepare('SELECT id, nazwa, lokalizacja_id, poziom, pokoj, skad FROM sledztwo_namiary WHERE sledztwo_id = ? ORDER BY id');
+        $q->execute([(int) $s['id']]);
+        return array_map(fn($n) => ['id' => (int) $n['id'], 'nazwa' => $n['nazwa'], 'lokalizacja_id' => $n['lokalizacja_id'] !== null ? (int) $n['lokalizacja_id'] : null,
+            'poziom' => (int) $n['poziom'], 'pokoj' => $n['pokoj'], 'skad' => $n['skad']], $q->fetchAll());
+    } catch (PDOException $e) { return []; }
+}
+
 // Komunikaty dla gracza, gdy rozmowa idzie bez modułu językowego (lag, zerwanie) — po fabularnemu.
 // Techniczny powód trafia do dziennika jako wpis systemowy (widzi go MG, nie gracz).
 const SLEDZTWO_ZAKLOCENIA = [
@@ -3043,6 +3119,15 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $konczy = $konczy || (!$test && $pytan >= 2 && random_int(1, 100) <= 50);
                 sl_wpis($db, $rid, 'npc', $odp);
             }
+        }
+        if ($odp !== null) {
+            try {
+                $nowe = sl_namiary($db, $s, $pule, $r, $odp);
+                if ($nowe) {
+                    sl_wpis($db, $rid, 'system', 'Namiary zapisane w nawigacji: ' . implode('; ', $nowe) . '.');
+                    sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Nowe namiary od rozmówcy: ' . implode('; ', $nowe) . '.');
+                }
+            } catch (PDOException $e) { /* brak migracji 091 — bez namiarów */ }
         }
         if ($awaria) {
             sl_wpis($db, $rid, 'system', sl_kwestia(SLEDZTWO_ZAKLOCENIA));

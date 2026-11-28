@@ -120,6 +120,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    pytaniem, droid mówi jako zdanie (`sl_pytanie_operatora`). Zerwania i lagi łącza gracz widzi po fabularnemu
    (`SLEDZTWO_ZAKLOCENIA`: awaria nadajnika, spadek mocy baterii…), techniczny powód idzie do dziennika jako wpis
    systemowy. Karta EotE rozmówcy jest opisana słowami w metryce (`sl_karta_opis`: cechy i umiejętności ≥ 2).
+   Namiary (migracja `091_sledztwa_namiary.sql`, `sl_namiary`): gdy rozmówca wskaże istniejące miejsce (numer lokalu
+   w budynku, nazwę lokalu z piętra / parteru przy słowach kierunku, nazwę miejsca ze sprawy), trafia ono do pola
+   wyboru celu („Namiary od rozmówców”); wymyślone miejsca się nie liczą.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

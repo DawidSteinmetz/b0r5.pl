@@ -2365,7 +2365,20 @@ function sl_odpowiedz_zastepcza(PDO $db, array $s, array $pule, array $r, ?array
         return (int) $m['urodzony_tutaj'] ? 'Stąd, z Nar Shaddaa. Całe życie na tych poziomach.'
             : "Pochodzę z planety {$m['planeta_urodzenia']}. Tutaj jestem od " . (int) $m['lat_na_planecie'] . ' lat.';
     }
-    if (!preg_match('/gdzie|znajd|szuka|jak trafi|jak dojś/u', $p)) return null;
+    if (!preg_match('/gdzie|znajd|szuka|jak trafi|jak dojś|namiar|adres|jak tam|którędy/u', $p)) return null;
+    // Budynek rejonu z pytania albo — przy „namiary / tam” bez nazwy — z tego, co rozmówca sam wcześniej powiedział.
+    $okolica = sl_okolica($db, $s, $pule);
+    $bid = $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null;
+    $cel = sl_budynek_z_tekstu($okolica, $p, $bid);
+    if (!$cel && preg_match('/namiar|adres|tam|to miejsce|tamt/u', $p)) {
+        $q = $db->prepare("SELECT tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'npc' ORDER BY id DESC");
+        $q->execute([(int) $r['id']]);
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $było) if ($cel = sl_budynek_z_tekstu($okolica, (string) $było, $bid)) break;
+    }
+    if ($cel && $cel['id'] !== $bid) {
+        return sl_jeden(["{$cel['nazwa']}. Wejście z poziomu {$cel['parter']}.", "Idź do {$cel['nazwa']} — wejście na poziomie {$cel['parter']}.",
+            "{$cel['nazwa']}, {$cel['rodzaj']}. Wchodzi się z poziomu {$cel['parter']}, trafisz."]);
+    }
     if (preg_match('/wind/u', $p)) return 'Winda? Na końcu korytarza, nie da się przeoczyć.';
     $plan = sl_plan_rozmowy($db, $s, $pule, $r);
     $plany = [$plan];
@@ -2463,11 +2476,31 @@ function sl_skladanka(PDO $db, string $klucz, int $rid, string $plec = 'm', ?str
     return sl_rodzaj($wynik, $plec === 'k' ? 'k' : 'm');
 }
 
-function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sledztwoId = 0): string
+// Czy kwestia odsyła do rodzaju miejsca („spróbuj w kantynie”).
+function sl_wskazuje_miejsce(string $k): bool
+{
+    $k = ' ' . mb_strtolower($k) . ' ';
+    foreach (array_keys(SLEDZTWO_SLOWA_OKOLICY) as $slowo) if (str_contains($k, $slowo)) return true;
+    return false;
+}
+
+// Kwestia odsyłająca do rodzaju miejsca dostaje prawdziwy budynek z rejonu (i trafia przez to do namiarów).
+function sl_wskazowka_okolicy(PDO $db, array $s, array $pule, array $r, string $k): string
+{
+    if (!sl_wskazuje_miejsce($k)) return $k;
+    $b = sl_budynek_z_tekstu(sl_okolica($db, $s, $pule), $k, $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null);
+    if (!$b) return $k;
+    return rtrim($k) . ' ' . sl_jeden(["Mówię o {$b['nazwa']}, wejście z poziomu {$b['parter']}.", "Chodzi o {$b['nazwa']} — wejście na poziomie {$b['parter']}.",
+        "{$b['nazwa']}, poziom {$b['parter']}, jakbyś pytał."]);
+}
+
+// $sito — opcjonalny filtr kwestii (np. odrzuca te, które wskazują miejsce nieistniejące w rejonie).
+function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sledztwoId = 0, ?callable $sito = null): string
 {
     $q = $db->prepare('SELECT tresc FROM gen_kwestie_szumu WHERE nastroj = ?');
     $q->execute([$nastroj]);
     $l = $q->fetchAll(PDO::FETCH_COLUMN);
+    if ($sito) $l = array_values(array_filter($l, $sito));
     if (!$l) $l = $db->query('SELECT tresc FROM gen_kwestie_szumu')->fetchAll(PDO::FETCH_COLUMN);
     if (!$l) return 'Nie wiem.';
     $uzyte = [];
@@ -2504,6 +2537,43 @@ function sl_lokale_tekst(array $plan, int $limit = 16): string
     return implode(', ', $l);
 }
 
+// Słowa w pytaniu / kwestii → preset budynku (kantyna, hangar…).
+const SLEDZTWO_SLOWA_OKOLICY = ['kantyn' => 'kantyna', 'knajp' => 'kantyna', 'bar ' => 'kantyna', 'barze' => 'kantyna', 'klub' => 'kantyna',
+    'hangar' => 'hangar', 'warsztat' => 'hangar', 'lądowisk' => 'ladowisko', 'port' => 'ladowisko', 'kasyn' => 'kasyno', 'hotel' => 'hotel',
+    'sklep' => 'sklep', 'targ' => 'targ', 'bazar' => 'targ', 'biur' => 'biuro', 'magazyn' => 'magazyn', 'skład' => 'magazyn', 'blok' => 'mieszkalny'];
+
+// Budynki rejonu (skupiska) z presetem i poziomem wejścia — każdy mieszkaniec zna je z widzenia.
+function sl_okolica(PDO $db, array $s, array $pule): array
+{
+    $l = [];
+    foreach (sl_budynki($db, $s) as $b) {
+        $p = sl_profil($pule, $b);
+        $l[] = ['id' => (int) $b['id'], 'nazwa' => (string) $b['nazwa'], 'kod' => $p['kod'], 'rodzaj' => $p['nazwa'], 'parter' => (int) $p['parter']];
+    }
+    return $l;
+}
+
+// Budynek rejonu, o który chodzi w tekście: po nazwie albo po słowie rodzaju (kantyna, hangar…). Pomija $pomin (bieżący budynek),
+// chyba że to jedyny pasujący. Null — nie ma takiego w rejonie.
+function sl_budynek_z_tekstu(array $okolica, string $tekst, ?int $pomin = null): ?array
+{
+    $t = ' ' . mb_strtolower($tekst) . ' ';
+    foreach ($okolica as $b) {
+        $nazwa = mb_strtolower(trim((string) preg_replace('/[„”"]/u', '', $b['nazwa'])));
+        foreach (preg_split('/\s+/u', $nazwa) as $slowo) {
+            if (mb_strlen($slowo) >= 6 && !in_array($slowo, ['kantyna', 'hangar', 'hotel', 'sklep', 'magazyn', 'warsztat', 'droidów'], true)
+                && str_contains($t, mb_substr($slowo, 0, 5))) return $b;
+        }
+    }
+    foreach (SLEDZTWO_SLOWA_OKOLICY as $slowo => $kod) {
+        if (!str_contains($t, $slowo)) continue;
+        $pas = array_values(array_filter($okolica, fn($b) => $b['kod'] === $kod));
+        $inne = array_values(array_filter($pas, fn($b) => $b['id'] !== $pomin));
+        if ($inne || $pas) return ($inne ?: $pas)[0];
+    }
+    return null;
+}
+
 // Tekst „CO WIESZ O OTOCZENIU” dla NPC: każdy, kto tu jest, zna budynek, swoje piętro, parter i ochronę.
 function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?string $pokoj): string
 {
@@ -2527,7 +2597,13 @@ function sl_scena(PDO $db, array $s, array $pule, array $plan, ?array $m, ?strin
         $t[] = "- Twoje miejsce pracy znasz na wylot: {$m['miejsce']}." . ($lok && $lok['opis_szumu'] ? " Na co dzień: {$lok['opis_szumu']}" : '')
             . ' Wiesz, kto tu zwykle bywa, kiedy są zmiany i do kogo iść z problemem (przełożony, ochrona) — ogólnikami; nazwisk nie wymyślasz.';
     }
-    $t[] = '- O okolicy (budynek, piętro, ochrona, gdzie co jest) mówisz swobodnie, jak każdy, kto tu bywa — to nie są tajemnice.';
+    $okolica = sl_okolica($db, $s, $pule);
+    if ($okolica) {
+        $t[] = '- Okolica (budynki w tym rejonie — znasz je z widzenia; innych nie wymyślasz): '
+            . implode('; ', array_map(fn($b) => "{$b['nazwa']} ({$b['rodzaj']}, wejście na poziomie {$b['parter']})", $okolica)) . '.';
+    }
+    $t[] = '- O okolicy (budynek, piętro, ochrona, gdzie co jest, jakie lokale są w rejonie) mówisz swobodnie, jak każdy, kto tu bywa —'
+        . ' to nie są tajemnice. Odsyłasz tylko do miejsc z tej listy.';
     return implode("\n", $t);
 }
 
@@ -3187,6 +3263,13 @@ function sl_namiary(PDO $db, array $s, array $pule, array $r, string $tekst): ar
             }
         }
     }
+    // 3a. Budynki rejonu wymienione z nazwy (wejście = korytarz parteru).
+    foreach (sl_okolica($db, $s, $pule) as $b) {
+        $nazwa = mb_strtolower(trim((string) preg_replace('/[„”"]/u', '', $b['nazwa'])));
+        $czysty = (string) preg_replace('/[„”"]/u', '', $male);
+        if ($b['id'] === $bid || mb_strlen($nazwa) < 5 || !str_contains($czysty, $nazwa)) continue;
+        $znalezione["{$b['id']}|{$b['parter']}|korytarz"] = [$b['id'], $b['parter'], 'korytarz', "{$b['nazwa']} — wejście, poziom {$b['parter']}"];
+    }
     // 3. Miejsca ze sprawy wymienione z nazwy.
     $q = $db->prepare('SELECT nazwa, lokalizacja_id, poziom, pokoj FROM sledztwo_miejsca WHERE sledztwo_id = ?');
     $q->execute([(int) $s['id']]);
@@ -3429,7 +3512,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     $pyt = $polecenie !== '' ? $polecenie : $pytanie;
                     $odp = sl_odpowiedz_zastepcza($db, $s, $pule, $r, $metryka, $pyt, $nastroj)
                         ?? sl_odpowiedz_o_osobie($db, $s, $pule, $r, $metryka, $pyt)
-                        ?? sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id']);
+                        ?? sl_wskazowka_okolicy($db, $s, $pule, $r, sl_kwestia_szumu($db, $nastroj, $rid, (int) $s['id'],
+                            fn($k) => !sl_wskazuje_miejsce($k) || sl_budynek_z_tekstu(sl_okolica($db, $s, $pule), $k, $r['lokalizacja_id'] !== null ? (int) $r['lokalizacja_id'] : null)));
                 }
                 $konczy = $konczy || (!$test && $pytan >= 2 && random_int(1, 100) <= 50);
                 sl_wpis($db, $rid, 'npc', $odp);

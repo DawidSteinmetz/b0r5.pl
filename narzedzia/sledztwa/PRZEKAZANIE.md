@@ -140,6 +140,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    każda wypowiedź NPC z autorem, miejscem i czasem. Prompt dostaje 40 najnowszych z oznaczeniem TY / OBOK / W TYM
    BUDYNKU / GDZIE INDZIEJ (`sl_archiwum_dla`): to samo trzeba przeredagować albo odwołać się do osoby OBOK
    („powiem to, co kolega…”). Tryb bez AI unika dosłownych powtórzeń z całego archiwum sprawy.
+   Mapa okolicy (`sl_okolica`): NPC zna budynki rejonu (nazwa, rodzaj, poziom wejścia) — w prompcie i w trybie bez AI.
+   Kwestie odsyłające do rodzaju miejsca („spróbuj w kantynie”) dostają prawdziwy budynek albo nie padają
+   (`sl_wskazowka_okolicy`); prośba o namiary szuka w budynku, potem w rejonie, a „tam” — w tym, co rozmówca mówił;
+   budynek wymieniony z nazwy trafia do namiarów (wejście = korytarz parteru).
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

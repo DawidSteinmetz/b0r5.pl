@@ -128,6 +128,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    osobie drugi raz (`sl_to_samo`, także z wcześniejszych rozmów); droid nie powtarza swoich pytań. Gdy rozmówca stał
    obok poprzedniej rozmowy (ten sam lokal; na korytarzu do 6 m, 30 min), droid wita go krótko („słyszał Pan zapewne…”),
    a NPC wie, że słyszał (`sl_slyszal_wczesniej`).
+   Oś czasu sprawy (`sl_os_czasu`, deterministyczna z faz i miejsc): kiedy i gdzie widziano osobę ze sprawy. Rozmówca
+   zna tylko to, co widział (`sl_widzial`: poziom 3 — wszystko, 2 — dwa ostatnie jawne, w swoim budynku — z szansą);
+   prompt dostaje dzisiejszą datę. Fakty mają formę „ty” (prompt) i „ja” (odpowiedzi bez AI: `sl_odpowiedz_o_osobie`
+   wg tematu pytania — kiedy, gdzie, z kim, wygląd, kłopoty). Windy: 10 s czekania + 1,5 s na piętro.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

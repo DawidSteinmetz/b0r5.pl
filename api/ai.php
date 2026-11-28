@@ -148,7 +148,7 @@ function ai_wywolaj(string $kod, array $dane, ?int $sledztwoId = null): array
 
     $log = function (array $p) use ($db, $s, $sledztwoId) {
         $db->prepare('INSERT INTO ai_wywolania (kiedy_utc, szablon_kod, szablon_wersja, sledztwo_id, dostawca, model, proby, tokeny_we, tokeny_wy, czas_ms, ok, blad)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$s['kod'], $s['wersja'], $sledztwoId, $p['dostawca'] ?? null, $p['model'] ?? null, $p['proby'] ?? 0,
                 $p['we'] ?? null, $p['wy'] ?? null, $p['ms'] ?? null, empty($p['ok']) ? 0 : 1,
                 isset($p['blad']) ? mb_substr($p['blad'], 0, 500) : null]);

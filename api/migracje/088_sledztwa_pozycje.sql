@@ -24,3 +24,7 @@ CREATE TABLE IF NOT EXISTS sledztwo_przejscia (
   PRIMARY KEY (sledztwo_id, klucz),
   FOREIGN KEY (sledztwo_id) REFERENCES sledztwa (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migracje (wersja, opis)
+VALUES ('v088-sledztwa-pozycje', 'Śledztwa: pozycja droida na planie (swobodny ruch) i blokowanie drzwi przez NPC')
+ON DUPLICATE KEY UPDATE opis = VALUES(opis);

@@ -99,6 +99,9 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    **Etap 4 (nieprzetestowany): przedmioty, komputery, nowy interfejs** — migracja `087_sledztwa_przedmioty.sql`,
    akcje `sledztwo_przeszukaj`, `_zabierz`, `_zlam`, `_komputer`, `_dekoduj`; NPC bez powtórzeń; aplikacja
    przepisana na układ pełnoekranowy. Opis w PROJEKT.md „Przedmioty, komputery i terminale”.
+   **Etap 5 (nieprzetestowany): swobodny ruch po planie** — migracja `088_sledztwa_pozycje.sql`; klik w dowolny
+   punkt, trasa przez drzwi (5 km/h, animacja), klikalna winda, podchodzenie do terminali i rozmówców, blokowanie
+   drzwi w obie strony, raport przeszukania pod przyciskiem. Opis w PROJEKT.md „Ruch i skan”.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

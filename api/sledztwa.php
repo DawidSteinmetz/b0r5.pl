@@ -669,7 +669,7 @@ function sl_detektyw(PDO $db, string $login): bool
 
 // ---------- ruch i skan droida (sterowanie na żywo, czas 1:1) ----------
 
-const SLEDZTWO_PREDKOSC_MS = 1.4;      // chód droida, m/s
+const SLEDZTWO_PREDKOSC_MS = 5 / 3.6;  // chód droida: 5 km/h
 const SLEDZTWO_WINDA_S_POZIOM = 20;    // jazda windą na poziom
 const SLEDZTWO_WINDA_CZEKANIE_S = 30;  // czekanie na windę
 const SLEDZTWO_ZASIEG = 230;           // zasięg skanu w jednostkach planu (pokój = 60 j.)
@@ -853,6 +853,204 @@ function sl_x_droida(array $plan, string $pokoj): int
     return 0;
 }
 
+// ---------- geometria planu: swobodny ruch (10 j. = 1 m), drzwi, terminale ----------
+// Rysunek w js/aplikacje/sledztwa.js używa tych samych wymiarów (P, GLEB, KOR, WINDA).
+
+const SLEDZTWO_GLEB = 70;
+const SLEDZTWO_KOR = 36;
+const SLEDZTWO_WINDA = 44;
+const SLEDZTWO_J_NA_M = 10;
+const SLEDZTWO_ZASIEG_TERMINALA = 18;   // droid podłącza się z ok. 1,5 m
+const SLEDZTWO_ZASIEG_ROZMOWY = 32;     // rozmowa z 2–3 m
+const SLEDZTWO_ODSTEP_ROZMOWY = 24;     // tyle droid zostawia między sobą a rozmówcą
+const SLEDZTWO_STANIE_W_DRZWIACH_S = 45; // po tylu sekundach ktoś prosi droida o przejście
+
+function sl_dl_planu(array $plan): int { return max((int) $plan['szerokosc'], 4 * SLEDZTWO_POKOJ_J); }
+function sl_y_pokoju(string $strona): int { return $strona === 'gora' ? 0 : SLEDZTWO_GLEB + SLEDZTWO_KOR; }
+function sl_drzwi_xy(array $p): array { return [sl_srodek($p), $p['strona'] === 'gora' ? SLEDZTWO_GLEB : SLEDZTWO_GLEB + SLEDZTWO_KOR]; }
+// Punkt na korytarzu tuż przed drzwiami lokalu i tuż za nimi (w lokalu).
+function sl_przed_drzwiami(array $p): array { return [sl_srodek($p), $p['strona'] === 'gora' ? SLEDZTWO_GLEB + 9 : SLEDZTWO_GLEB + SLEDZTWO_KOR - 9]; }
+function sl_za_drzwiami(array $p): array { return [sl_srodek($p), $p['strona'] === 'gora' ? SLEDZTWO_GLEB - 12 : SLEDZTWO_GLEB + SLEDZTWO_KOR + 12]; }
+function sl_winda_xy(): array { return [-intdiv(SLEDZTWO_WINDA, 2), SLEDZTWO_GLEB + intdiv(SLEDZTWO_KOR, 2)]; }
+function sl_srodek_xy(array $plan, string $pokoj): array
+{
+    $p = sl_lokal($plan, $pokoj);
+    return $p ? [sl_srodek($p), sl_y_pokoju($p['strona']) + intdiv(SLEDZTWO_GLEB, 2)] : [12, SLEDZTWO_GLEB + intdiv(SLEDZTWO_KOR, 2)];
+}
+
+function sl_lokal(array $plan, string $nr): ?array
+{
+    foreach ($plan['pokoje'] as $p) if ($p['nr'] === $nr) return $p;
+    return null;
+}
+
+// Punkt kliknięty na planie → [x, y, lokal] w granicach ścian (lokal albo korytarz z windą).
+function sl_punkt(array $plan, int $x, int $y): array
+{
+    $m = 6;
+    $k0 = SLEDZTWO_GLEB;
+    $k1 = SLEDZTWO_GLEB + SLEDZTWO_KOR;
+    if ($y < $k0 || $y > $k1) {
+        $strona = $y < $k0 ? 'gora' : 'dol';
+        foreach ($plan['pokoje'] as $p) {
+            $wl = $p['szer'] * SLEDZTWO_POKOJ_J;
+            if ($p['strona'] !== $strona || $x < $p['x'] || $x > $p['x'] + $wl) continue;
+            $y0 = sl_y_pokoju($strona);
+            return [max($p['x'] + $m, min($p['x'] + $wl - $m, $x)), max($y0 + $m, min($y0 + SLEDZTWO_GLEB - $m, $y)), $p['nr']];
+        }
+    }
+    return [max(-SLEDZTWO_WINDA + $m, min(sl_dl_planu($plan) - $m, $x)), max($k0 + 2, min($k1 - 2, $y)), 'korytarz'];
+}
+
+// Trasa po piętrze bez przechodzenia przez ściany: z lokalu przez jego drzwi na korytarz, korytarzem do drzwi celu.
+// Zwraca punkty i drzwi po drodze: [['lokal' => …, 'odl' => odległość od startu do progu, 'wyjscie' => bool]].
+function sl_trasa(array $plan, array $a, array $b): array
+{
+    $pkt = [[$a[0], $a[1]]];
+    $drzwi = [];
+    $dl = 0.0;
+    $dodaj = function (array $p) use (&$pkt, &$dl) {
+        $o = end($pkt);
+        $dl += hypot($p[0] - $o[0], $p[1] - $o[1]);
+        $pkt[] = $p;
+    };
+    if ($a[2] !== $b[2]) {
+        if ($a[2] !== 'korytarz' && ($p = sl_lokal($plan, $a[2]))) {
+            $dodaj(sl_za_drzwiami($p));
+            $dodaj(sl_drzwi_xy($p));
+            $drzwi[] = ['lokal' => $p, 'odl' => $dl, 'wyjscie' => true];
+            $dodaj(sl_przed_drzwiami($p));
+        }
+        if ($b[2] !== 'korytarz' && ($p = sl_lokal($plan, $b[2]))) {
+            $dodaj(sl_przed_drzwiami($p));
+            $dodaj(sl_drzwi_xy($p));
+            $drzwi[] = ['lokal' => $p, 'odl' => $dl, 'wyjscie' => false];
+            $dodaj(sl_za_drzwiami($p));
+        }
+    }
+    $dodaj([$b[0], $b[1]]);
+    return ['punkty' => $pkt, 'dl' => $dl, 'drzwi' => $drzwi];
+}
+
+function sl_sekundy_marszu(float $j): float { return $j / SLEDZTWO_J_NA_M / SLEDZTWO_PREDKOSC_MS; }
+
+// Terminale z położeniem: [etykieta => ['x', 'y', 'pokoj', 'podejscie' => [x, y]]].
+function sl_terminale(array $plan): array
+{
+    $t = [];
+    foreach ($plan['pokoje'] as $p) {
+        if (!$p['terminal']) continue;
+        $x = $p['x'] + $p['szer'] * SLEDZTWO_POKOJ_J - 10;
+        $y = sl_y_pokoju($p['strona']) + 12;
+        $t[$p['terminal']] = ['x' => $x, 'y' => $y, 'pokoj' => $p['nr'], 'podejscie' => [$x - 6, $y + 14]];
+    }
+    if ($plan['terminal_korytarz']) {
+        $x = sl_dl_planu($plan) - 10;
+        $y = SLEDZTWO_GLEB + 18;
+        $t[$plan['terminal_korytarz']] = ['x' => $x, 'y' => $y, 'pokoj' => 'korytarz', 'podejscie' => [$x - 14, $y]];
+    }
+    return $t;
+}
+
+// Pozycja droida [x, y, lokal]: z sledztwo_pozycje (migracja 088), a gdy nieaktualna — środek lokalu.
+function sl_pozycja(PDO $db, array $s, array $d, array $plan, bool $cel = false): array
+{
+    $pokoj = (string) ($cel ? $d['cel_pokoj'] : $d['pokoj']);
+    try {
+        $q = $db->prepare('SELECT x, y, pokoj, cel_x, cel_y FROM sledztwo_pozycje WHERE sledztwo_id = ?');
+        $q->execute([(int) $s['id']]);
+        $r = $q->fetch();
+    } catch (PDOException $e) { $r = null; }
+    if ($r && !$cel && $r['pokoj'] === $pokoj) return sl_punkt($plan, (int) $r['x'], (int) $r['y']);
+    if ($r && $cel && $r['cel_x'] !== null) return sl_punkt($plan, (int) $r['cel_x'], (int) $r['cel_y']);
+    [$x, $y] = sl_srodek_xy($plan, $pokoj);
+    return [$x, $y, sl_lokal($plan, $pokoj) ? $pokoj : 'korytarz'];
+}
+
+function sl_zapisz_pozycje(PDO $db, int $sid, array $poz, ?array $cel = null, ?string $zatrzymanie = null): void
+{
+    try {
+        $db->prepare('INSERT INTO sledztwo_pozycje (sledztwo_id, x, y, pokoj, cel_x, cel_y, stoi_od_utc, zatrzymanie) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE x = VALUES(x), y = VALUES(y), pokoj = VALUES(pokoj), cel_x = VALUES(cel_x), cel_y = VALUES(cel_y),
+            stoi_od_utc = VALUES(stoi_od_utc), zatrzymanie = VALUES(zatrzymanie)')
+            ->execute([$sid, (int) round($poz[0]), (int) round($poz[1]), $poz[2], $cel ? (int) round($cel[0]) : null, $cel ? (int) round($cel[1]) : null,
+                $cel ? null : sl_utc(sl_teraz()), $zatrzymanie]);
+    } catch (PDOException $e) { /* brak migracji 088 — droid stoi na środku lokalu */ }
+}
+
+// Uprzejme prośby droida i odpowiedzi ludzi w drzwiach (losowane bez stałego ziarna).
+const SLEDZTWO_PROSBY_DROIDA = [
+    'Przepraszam najmocniej, czy {pan} się odsunie? Muszę przejść.',
+    'Bardzo przepraszam za kłopot — czy pozwoli {pan}, że przejdę?',
+    'Wybaczy {pan}, prowadzę czynności służbowe. Czy mogę przejść?',
+    'Przepraszam, jeśli to nie kłopot — przepuści mnie {pan}?',
+];
+const SLEDZTWO_PROSBY_PONOWNE = [
+    'Ponownie uprzejmie proszę o umożliwienie przejścia. To zajmie tylko chwilę.',
+    'Przepraszam, że znów niepokoję. Czy teraz mogę przejść?',
+];
+const SLEDZTWO_ODSUWA_SIE = ['No już, już. Przechodź.', 'Dobra, idź.', 'Co? A, jasne.', 'Proszę bardzo.', 'Nie ma sprawy, puszka.',
+    'Uważaj, gdzie stawiasz te swoje serwa.', '*odsuwa się bez słowa*', 'Grzeczny droid. Rzadkość. Przechodź.'];
+const SLEDZTWO_NIE_ODSUWA = ['Stoję, gdzie chcę.', 'Poczekasz. Rozmawiam.', 'Nakaz masz? Nie? To czekaj.', 'Zaraz, zaraz. Nie widzisz, że zajęte?',
+    'Obejdź sobie.', '*udaje, że nie słyszy*'];
+const SLEDZTWO_ODSUWA_NIECHETNIE = ['Ech, uparty złom. Dobra, przechodź.', 'No dobra, dobra. Nie stój nade mną.', '*wzdycha ciężko i robi pół kroku w bok*'];
+// Gdy to droid stoi w drzwiach: ktoś prosi o przejście, droid uprzejmie ustępuje.
+const SLEDZTWO_PROSBA_NPC = ['Przepraszam, przejdę?', 'Ej, puszka, stoisz w drzwiach.', 'Można? Spieszę się.', 'Z drogi, droidzie.',
+    'Przepuścisz mnie?'];
+const SLEDZTWO_USTEPUJE = ['Oczywiście, przepraszam za utrudnienie.', 'Najmocniej przepraszam. Proszę przechodzić.', 'Proszę bardzo. Moja wina.'];
+
+function sl_kwestia(array $lista): string { return $lista[random_int(0, count($lista) - 1)]; }
+
+function sl_dziennik_o(PDO $db, int $id, int $kiedy, string $rodzaj, string $kto, string $tresc): void
+{
+    $db->prepare('INSERT INTO sledztwo_dziennik (sledztwo_id, kiedy_utc, rodzaj, kto, tresc) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$id, sl_utc($kiedy), $rodzaj, $kto, $tresc]);
+}
+
+function sl_klucz_przejscia(array $plan, string $nr): string
+{
+    return ($plan['budynek_id'] ?? 0) . '|' . $plan['poziom'] . '|' . $nr . '|' . gmdate('YmdH');
+}
+
+function sl_przejscie(PDO $db, int $sid, string $klucz): ?string
+{
+    try {
+        $q = $db->prepare('SELECT stan FROM sledztwo_przejscia WHERE sledztwo_id = ? AND klucz = ?');
+        $q->execute([$sid, $klucz]);
+        $v = $q->fetchColumn();
+        return $v === false ? null : (string) $v;
+    } catch (PDOException $e) { return 'odsunal'; } // bez migracji 088 nikt nie blokuje drzwi
+}
+
+// Ktoś stoi w drzwiach lokalu $nr i nie zgodził się jeszcze przejść? Zwraca kontakt albo null.
+function sl_w_drzwiach(PDO $db, array $s, array $pule, array $plan, string $nr): ?array
+{
+    foreach (sl_kontakty($db, $s, $pule, $plan, null) as $k) if (($k['w_drzwiach'] ?? null) === $nr) return $k;
+    return null;
+}
+
+// Droid dochodzi do drzwi, w których ktoś stoi. Zwraca [zatrzymany?, dodatkowe sekundy]. Rozmowa trafia do dziennika
+// z czasem dojścia do progu (wpisy z przyszłości pokazują się dopiero wtedy).
+function sl_prosba_o_przejscie(PDO $db, array $s, array $plan, array $k, int $kiedy): array
+{
+    $sid = (int) $s['id'];
+    $klucz = sl_klucz_przejscia($plan, $k['w_drzwiach']);
+    $stan = sl_przejscie($db, $sid, $klucz);
+    if ($stan === 'odsunal') return [false, 0];
+    $f = sl_formy((string) $k['plec']);
+    $prosba = strtr(sl_kwestia($stan === 'odmowil' ? SLEDZTWO_PROSBY_PONOWNE : SLEDZTWO_PROSBY_DROIDA), ['{pan}' => $f['pan']]);
+    $kto = "{$k['gatunek']}, {$k['wyglad']} (w drzwiach {$k['w_drzwiach']})";
+    sl_dziennik_o($db, $sid, $kiedy, 'rozmowa', 'droid', $prosba);
+    // Pierwsza prośba: zwykle się odsuwa; po odmowie druga prośba zawsze skutkuje.
+    $odsuwa = $stan === 'odmowil' || random_int(1, 100) <= 80;
+    $odp = sl_kwestia($stan === 'odmowil' ? SLEDZTWO_ODSUWA_NIECHETNIE : ($odsuwa ? SLEDZTWO_ODSUWA_SIE : SLEDZTWO_NIE_ODSUWA));
+    sl_dziennik_o($db, $sid, $kiedy + 3, 'rozmowa', 'npc', "{$kto}: {$odp}");
+    $db->prepare('INSERT INTO sledztwo_przejscia (sledztwo_id, klucz, stan, kiedy_utc) VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE stan = VALUES(stan), kiedy_utc = VALUES(kiedy_utc)')
+        ->execute([$sid, $klucz, $odsuwa ? 'odsunal' : 'odmowil', sl_utc($kiedy)]);
+    return [!$odsuwa, $odsuwa ? random_int(4, 9) : 5];
+}
+
 // Strażnik strzeżonego lokalu: deterministyczny, z kartą EotE (archetyp z presetu budynku). Intelekt często niski.
 function sl_straznik(array $pule, array $s, array $plan, array $p): array
 {
@@ -870,7 +1068,9 @@ function sl_straznik(array $pule, array $s, array $plan, array $p): array
 
 // Kontakty w zasięgu: postacie fabuły (z bazy), przechodnie szumu (wg presetu lokalu, zmieniają się co godzinę)
 // i strażnicy przy drzwiach strzeżonych lokali (na korytarzu).
-function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida): array
+// $xDroida null — wszystkie kontakty piętra (np. kto stoi w drzwiach na trasie). Przechodzień może stać w drzwiach
+// lokalu (w_drzwiach = numer); gdy się odsunął (sledztwo_przejscia), stoi obok, w lokalu.
+function sl_kontakty(PDO $db, array $s, array $pule, array $plan, ?int $xDroida): array
 {
     $kontakty = [];
     $godzina = gmdate('YmdH');
@@ -878,7 +1078,8 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
         LEFT JOIN gen_archetypy a ON a.kod = p.archetyp_kod WHERE p.sledztwo_id = ? AND p.miejsce_id = ? ORDER BY p.id');
     foreach ($plan['pokoje'] as $p) {
         $srodek = sl_srodek($p);
-        if (abs($srodek - $xDroida) > SLEDZTWO_ZASIEG) continue;
+        if ($xDroida !== null && abs($srodek - $xDroida) > SLEDZTWO_ZASIEG) continue;
+        $wDrzwiach = false;
         $osoby = [];
         if ($p['miejsce_id']) {
             $q->execute([(int) $s['id'], $p['miejsce_id']]);
@@ -893,17 +1094,32 @@ function sl_kontakty(PDO $db, array $s, array $pule, array $plan, int $xDroida):
                 $osoby[] = ['gatunek_kod' => $g, 'plec' => $g === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k'), 'archetyp' => $a['nazwa'] ?? null,
                     'postac_id' => null, 'token' => sl_token((int) $s['seed'], 's', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr'], $godzina, (string) $k)];
             }
+            // Co trzeci zaludniony lokal: ktoś stoi w samych drzwiach (nie przy strzeżonych — tam jest strażnik).
+            $wDrzwiach = $ile > 0 && $p['dostep'] !== 'straz' && !$p['zamkniete'] && sl_procent(33);
         }
         $miejsc = max(1, 3 * $p['szer']);
+        $yLok = sl_y_pokoju($p['strona']) + 46;
         foreach ($osoby as $j => $o) {
-            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $p['x'] + 12 + ($j % $miejsc) * 15, 'strona' => $p['strona'],
+            $x = $p['x'] + 12 + ($j % $miejsc) * 15;
+            $y = $yLok;
+            $drzwi = null;
+            if ($wDrzwiach && $j === 0) {
+                [$dx, $dy] = sl_drzwi_xy($p);
+                if (sl_przejscie($db, (int) $s['id'], sl_klucz_przejscia($plan, $p['nr'])) === 'odsunal') {
+                    [$x, $y] = [$dx + 16, $p['strona'] === 'gora' ? $dy - 10 : $dy + 10];
+                } else {
+                    [$x, $y, $drzwi] = [$dx, $dy, $p['nr']];
+                }
+            }
+            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $x, 'y' => $y, 'strona' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$o['gatunek_kod']]['nazwa'] ?? $o['gatunek_kod'], 'plec' => $o['plec'],
                 'wyglad' => $o['archetyp'] ? mb_strtolower((string) $o['archetyp']) : 'przechodzień',
-                'token' => $o['token'], 'postac_id' => $o['postac_id']];
+                'token' => $o['token'], 'postac_id' => $o['postac_id']] + ($drzwi ? ['w_drzwiach' => $drzwi] : []);
         }
         if ($p['dostep'] === 'straz') {
             $st = sl_straznik($pule, $s, $plan, $p);
-            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $srodek, 'strona' => 'korytarz', 'przy' => $p['strona'],
+            $kontakty[] = ['pokoj' => $p['nr'], 'x' => $srodek + 16, 'y' => $p['strona'] === 'gora' ? SLEDZTWO_GLEB + 9 : SLEDZTWO_GLEB + SLEDZTWO_KOR - 9,
+                'strona' => 'korytarz', 'przy' => $p['strona'],
                 'gatunek' => $pule['gatunki'][$st['gatunek_kod']]['nazwa'] ?? $st['gatunek_kod'], 'plec' => $st['plec'],
                 'wyglad' => $st['wyglad'], 'token' => sl_token((int) $s['seed'], 'g', (string) $plan['budynek_id'], (string) $plan['poziom'], $p['nr']),
                 'postac_id' => null, 'straznik' => true];
@@ -1105,7 +1321,17 @@ function sl_rozlicz_droida(PDO $db, array $s, ?array $pule = null): ?array
                 }
             }
         }
-        $kontakty = sl_kontakty($db, $s, $pule, $plan, sl_x_droida($plan, $pokoj));
+        // Dokładne miejsce: cel z rozkazu; odprawiony od drzwi — na korytarzu przed nimi.
+        $poz = $pokoj === (string) $d['cel_pokoj'] ? sl_pozycja($db, $s, $d, $plan, true)
+            : ($lokal ? [...sl_przed_drzwiami($lokal), 'korytarz'] : sl_pozycja($db, $s, ['pokoj' => 'korytarz'] + $d, $plan));
+        try {
+            $z = $db->prepare('SELECT zatrzymanie FROM sledztwo_pozycje WHERE sledztwo_id = ?');
+            $z->execute([(int) $s['id']]);
+            $zatrzymanie = $z->fetchColumn();
+            if ($zatrzymanie) $meldunek = $zatrzymanie;
+        } catch (PDOException $e) { /* brak migracji 088 */ }
+        sl_zapisz_pozycje($db, (int) $s['id'], $poz);
+        $kontakty = sl_kontakty($db, $s, $pule, $plan, (int) $poz[0]);
         $meldunek .= $kontakty ? ' W zasięgu kontaktów: ' . count($kontakty) . '.' : ' W zasięgu brak kontaktów.';
 
         $db->prepare("UPDATE sledztwo_droid SET lokalizacja_id = ?, poziom = ?, pokoj = ?, cel_lokalizacja_id = NULL, cel_poziom = NULL,
@@ -1122,8 +1348,11 @@ function sl_rozlicz_droida(PDO $db, array $s, ?array $pule = null): ?array
     }
 }
 
-// Rozkaz ruchu. Nowy rozkaz w drodze: przed połową trasy droid zawraca ze startu, po połowie rusza z poprzedniego celu.
-function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $pokoj): array
+// Rozkaz ruchu do punktu planu ($x, $y) albo do lokalu ($pokoj; wtedy na jego środek). Droid idzie przez drzwi
+// i korytarz (nie przez ściany) z prędkością 5 km/h; na inne piętro / do innego budynku — przez windę.
+// Nowy rozkaz w drodze: przed połową trasy droid zawraca ze startu, po połowie rusza z poprzedniego celu.
+// Ktoś w drzwiach na trasie: droid uprzejmie prosi o przejście; przy odmowie staje przed drzwiami.
+function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $pokoj, ?int $x = null, ?int $y = null): array
 {
     if (!in_array($s['stan'], SLEDZTWO_STANY_RUCHU, true)) throw new SledztwoBlad('Droid nie przyjmuje teraz rozkazów.');
     $pule = sl_pule($db);
@@ -1131,8 +1360,14 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
     if ($budynki && ($bid === null || !isset($budynki[$bid]))) throw new SledztwoBlad('Ten budynek jest poza rejonem sprawy.');
     if (!$budynki) $bid = null;
     if ($poziom < 1 || $poziom > SLEDZTWO_POZIOM_MAX) throw new SledztwoBlad('Nie ma takiego poziomu (1–' . SLEDZTWO_POZIOM_MAX . ').');
-    $plan = sl_plan($db, $s, $pule, $bid !== null ? $budynki[$bid] : null, $poziom);
-    if ($pokoj !== 'korytarz' && !in_array($pokoj, array_column($plan['pokoje'], 'nr'), true)) throw new SledztwoBlad("Na tym poziomie nie ma lokalu {$pokoj}.");
+    $planCel = sl_plan($db, $s, $pule, $bid !== null ? $budynki[$bid] : null, $poziom);
+    if ($x !== null && $y !== null) {
+        $cel = sl_punkt($planCel, $x, $y);
+    } else {
+        if ($pokoj !== 'korytarz' && !sl_lokal($planCel, $pokoj)) throw new SledztwoBlad("Na tym poziomie nie ma lokalu {$pokoj}.");
+        [$cx, $cy] = $pokoj === 'korytarz' ? [12, SLEDZTWO_GLEB + intdiv(SLEDZTWO_KOR, 2)] : sl_srodek_xy($planCel, $pokoj);
+        $cel = [$cx, $cy, $pokoj];
+    }
 
     $db->beginTransaction();
     try {
@@ -1141,28 +1376,102 @@ function sl_rozkaz_ruchu(PDO $db, array $s, ?int $bid, int $poziom, string $poko
         $d = $q->fetch();
         if (!$d) throw new SledztwoBlad('Droid nie ma przydziału.');
         $teraz = sl_teraz();
-        $start = [$d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null, (int) $d['poziom'], (string) $d['pokoj']];
+        $zCelu = false;
         if ($d['stan'] === 'w_drodze') {
             $od = sl_z_utc($d['wyruszyl_utc']) ?? $teraz;
             $do = sl_z_utc($d['dotrze_utc']) ?? $teraz;
-            if ($do <= $od || ($teraz - $od) * 2 >= ($do - $od)) {
-                $start = [$d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null, (int) $d['cel_poziom'], (string) $d['cel_pokoj']];
+            $zCelu = $do <= $od || ($teraz - $od) * 2 >= ($do - $od);
+        }
+        $sb = $zCelu ? ($d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null) : ($d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null);
+        $sp = $zCelu ? (int) $d['cel_poziom'] : (int) $d['poziom'];
+        $planStart = $sb === $bid && $sp === $poziom ? $planCel : sl_plan($db, $s, $pule, $sb !== null ? ($budynki[$sb] ?? null) : null, $sp);
+        $start = sl_pozycja($db, $s, $d, $planStart, $zCelu);
+
+        // Odcinki trasy: [plan, trasa, sekundy od wyjścia do początku odcinka].
+        if ($sb === $bid && $sp === $poziom) {
+            $odcinki = [[$planCel, sl_trasa($planCel, $start, $cel), 0.0]];
+            $winda = 0;
+        } else {
+            $w = sl_winda_xy();
+            $t1 = sl_trasa($planStart, $start, [$w[0], $w[1], 'korytarz']);
+            $winda = sl_czas_drogi($budynki, [$sb, $sp, 'korytarz'], [$bid, $poziom, 'korytarz']);
+            $odcinki = [[$planStart, $t1, 0.0], [$planCel, sl_trasa($planCel, [$w[0], $w[1], 'korytarz'], $cel), sl_sekundy_marszu($t1['dl']) + $winda]];
+        }
+
+        // Lokal celu zamknięty / tylko z nakazem / strzeżony: droid podchodzi pod drzwi i tam czeka.
+        $zatrzymanie = null;
+        $lokalCelu = $cel[2] !== 'korytarz' && $cel[2] !== $start[2] ? sl_lokal($planCel, $cel[2]) : null;
+        if ($lokalCelu) {
+            [$wolno, $powod] = sl_dostep($db, $s, $bid, $poziom, $lokalCelu);
+            if (!$wolno) {
+                $cel = [...sl_przed_drzwiami($lokalCelu), 'korytarz'];
+                $odcinki[count($odcinki) - 1][1] = sl_trasa($planCel, count($odcinki) > 1 ? [...sl_winda_xy(), 'korytarz'] : $start, $cel);
+                $zatrzymanie = "{$powod} Czekam na korytarzu przed drzwiami {$lokalCelu['drzwi']}.";
             }
         }
-        $cel = [$bid, $poziom, $pokoj];
-        $czas = max(1, sl_czas_drogi($budynki, $start, $cel));
+
+        // Drzwi po drodze: ktoś w nich stoi? Prośba; przy odmowie droid kończy trasę przed progiem.
+        $dodatek = 0;
+        $czas = 0.0;
+        foreach ($odcinki as $i => [$plan, $trasa, $poczatek]) {
+            $czas = $poczatek + sl_sekundy_marszu($trasa['dl']) + $dodatek;
+            foreach ($trasa['drzwi'] as $dr) {
+                $k = sl_w_drzwiach($db, $s, $pule, $plan, $dr['lokal']['nr']);
+                if (!$k) continue;
+                $prog = $poczatek + sl_sekundy_marszu(max(0, $dr['odl'] - 12)) + $dodatek;
+                [$stop, $ile] = sl_prosba_o_przejscie($db, $s, $plan, $k, $teraz + (int) round($prog));
+                $dodatek += $ile;
+                $czas += $ile;
+                if (!$stop) continue;
+                // Staje po swojej stronie progu: wychodząc — w lokalu, wchodząc — na korytarzu.
+                [$px, $py] = $dr['wyjscie'] ? sl_za_drzwiami($dr['lokal']) : sl_przed_drzwiami($dr['lokal']);
+                $cel = [$px, $py, $dr['wyjscie'] ? $dr['lokal']['nr'] : 'korytarz'];
+                if ($plan !== $planCel) { $bid = $sb; $poziom = $sp; $planCel = $plan; }
+                $czas = $prog + $ile;
+                $zatrzymanie = "Stoję przed drzwiami {$dr['lokal']['drzwi']} (lokal {$dr['lokal']['nr']}). {$k['gatunek']} stoi w przejściu "
+                    . 'i nie chce się odsunąć. Mogę poprosić ponownie — wystarczy wydać ten sam rozkaz.';
+                break 2;
+            }
+        }
+        $czas = max(1, (int) round($czas));
+        $pokoj = $cel[2];
+
         $db->prepare("UPDATE sledztwo_droid SET lokalizacja_id = ?, poziom = ?, pokoj = ?, cel_lokalizacja_id = ?, cel_poziom = ?, cel_pokoj = ?,
             wyruszyl_utc = ?, dotrze_utc = ?, stan = 'w_drodze' WHERE sledztwo_id = ?")
-            ->execute([$start[0], $start[1], $start[2], $bid, $poziom, $pokoj, sl_utc($teraz), sl_utc($teraz + $czas), (int) $s['id']]);
-        $cel = $plan['budynek'] . ", poziom {$poziom}, " . ($pokoj === 'korytarz' ? 'korytarz' : "lokal {$pokoj}");
-        sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Idź: {$cel}.");
-        sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Przyjąłem. Szacowany czas: ' . sl_czas_tekst($czas) . '.');
+            ->execute([$sb, $sp, $start[2], $bid, $poziom, $pokoj, sl_utc($teraz), sl_utc($teraz + $czas), (int) $s['id']]);
+        sl_zapisz_pozycje($db, (int) $s['id'], $start, $cel, $zatrzymanie);
+        $opisCelu = $planCel['budynek'] . ", poziom {$poziom}, " . ($pokoj === 'korytarz' ? 'korytarz' : "lokal {$pokoj}");
+        $metry = 0.0;
+        foreach ($odcinki as [, $t]) $metry += $t['dl'] / SLEDZTWO_J_NA_M;
+        sl_dziennik($db, (int) $s['id'], 'polecenie', 'gracz', "Idź: {$opisCelu}.");
+        sl_dziennik($db, (int) $s['id'], 'meldunek', 'droid', 'Przyjąłem. Trasa ' . (int) round($metry) . ' m' . ($winda ? ' i winda' : '')
+            . ', szacowany czas: ' . sl_czas_tekst($czas) . '.');
         $db->commit();
-        return ['czas_s' => $czas, 'dotrze_utc' => sl_utc($teraz + $czas)];
+        return ['czas_s' => $czas, 'dotrze_utc' => sl_utc($teraz + $czas), 'zatrzymany' => $zatrzymanie !== null];
     } catch (Throwable $e) {
         if ($db->inTransaction()) $db->rollBack();
         throw $e;
     }
+}
+
+// Trasa dla animacji na planie piętra, na którym droid jest (start): punkty i ułamek czasu, w którym droid je kończy
+// (na inne piętro — do windy). Null, gdy nie da się jej odtworzyć.
+function sl_trasa_animacji(PDO $db, array $s, array $d, array $plan, array $budynki): ?array
+{
+    $od = sl_z_utc($d['wyruszyl_utc']);
+    $do = sl_z_utc($d['dotrze_utc']);
+    if (!$od || !$do || $do <= $od) return null;
+    $start = sl_pozycja($db, $s, $d, $plan);
+    $tenSam = ($d['cel_lokalizacja_id'] !== null ? (int) $d['cel_lokalizacja_id'] : null) === ($d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null)
+        && (int) $d['cel_poziom'] === (int) $d['poziom'];
+    if ($tenSam) {
+        $cel = sl_pozycja($db, $s, $d, $plan, true);
+    } else {
+        $w = sl_winda_xy();
+        $cel = [$w[0], $w[1], 'korytarz'];
+    }
+    $t = sl_trasa($plan, $start, $cel);
+    return ['punkty' => $t['punkty'], 'do' => $tenSam ? 1 : min(1, sl_sekundy_marszu($t['dl']) / ($do - $od))];
 }
 
 function sl_czas_tekst(int $s): string
@@ -1170,6 +1479,34 @@ function sl_czas_tekst(int $s): string
     $g = intdiv($s, 3600);
     $m = intdiv($s % 3600, 60);
     return $g ? "{$g} h {$m} min" : ($m ? sprintf('%d min %02d s', $m, $s % 60) : "{$s} s");
+}
+
+// Droid stoi w drzwiach dłużej niż SLEDZTWO_STANIE_W_DRZWIACH_S, a lokal jest zaludniony: ktoś prosi o przejście,
+// droid uprzejmie ustępuje (przesuwa się o 1,5 m wzdłuż ściany po swojej stronie progu).
+function sl_droid_ustepuje(PDO $db, array $s, array $d, array $plan): void
+{
+    if ($d['stan'] !== 'czeka') return;
+    try {
+        $q = $db->prepare('SELECT x, y, pokoj, stoi_od_utc FROM sledztwo_pozycje WHERE sledztwo_id = ?');
+        $q->execute([(int) $s['id']]);
+        $r = $q->fetch();
+    } catch (PDOException $e) { return; }
+    if (!$r || $r['pokoj'] !== (string) $d['pokoj'] || !$r['stoi_od_utc']) return;
+    $od = (int) sl_z_utc($r['stoi_od_utc']);
+    if (sl_teraz() - $od < SLEDZTWO_STANIE_W_DRZWIACH_S) return;
+    foreach ($plan['pokoje'] as $p) {
+        [$dx, $dy] = sl_drzwi_xy($p);
+        if (abs((int) $r['x'] - $dx) > 10 || abs((int) $r['y'] - $dy) > 10) continue;
+        if (!$p['ludzie_max'] && !$p['miejsce_id']) return;
+        $kiedy = $od + SLEDZTWO_STANIE_W_DRZWIACH_S;
+        sl_dziennik_o($db, (int) $s['id'], $kiedy, 'rozmowa', 'npc', 'Ktoś przy drzwiach ' . $p['drzwi'] . ': ' . sl_kwestia(SLEDZTWO_PROSBA_NPC));
+        sl_dziennik_o($db, (int) $s['id'], $kiedy + 2, 'rozmowa', 'droid', sl_kwestia(SLEDZTWO_USTEPUJE));
+        $wLokalu = (string) $d['pokoj'] === $p['nr'];
+        $y = $wLokalu ? sl_za_drzwiami($p)[1] : sl_przed_drzwiami($p)[1];
+        $x = $dx + ($dx + 30 < $p['x'] + $p['szer'] * SLEDZTWO_POKOJ_J || !$wLokalu ? 18 : -18);
+        sl_zapisz_pozycje($db, (int) $s['id'], sl_punkt($plan, $x, $y));
+        return;
+    }
 }
 
 // Skan dla ekranu DT-4: pozycja, plan bieżącego piętra, kontakty w zasięgu, cele ruchu, ostatnie meldunki.
@@ -1182,15 +1519,20 @@ function sl_skan(PDO $db, array $s): array
     $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
     $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
     $teraz = sl_teraz();
-    $xDroida = sl_x_droida($plan, (string) $d['pokoj']);
     $wDrodze = $d['stan'] === 'w_drodze';
-    // W drodze droid nie skanuje (idzie korytarzami); kontakty — dopiero po dotarciu.
-    $kontakty = $wDrodze ? [] : sl_kontakty($db, $s, $pule, $plan, $xDroida);
+    if (!$wDrodze) sl_droid_ustepuje($db, $s, $d, $plan);
+    $poz = sl_pozycja($db, $s, $d, $plan);
+    $xDroida = (int) $poz[0];
+    // Kontakty liczone od miejsca, z którego droid wyszedł (w drodze — przybliżenie).
+    $kontakty = sl_kontakty($db, $s, $pule, $plan, $xDroida);
+    $plan['dl'] = sl_dl_planu($plan);
+    $plan['terminale'] = array_map(fn($t) => array_diff_key($t, ['podejscie' => 1]) + ['podejscie_x' => $t['podejscie'][0], 'podejscie_y' => $t['podejscie'][1]],
+        sl_terminale($plan));
     // Graczowi nie pokazujemy, który lokal jest fabularny.
     $plan['pokoje'] = array_map(fn($p) => array_diff_key($p, ['miejsce_id' => 1, 'nazwa' => 1, 'opis' => 1, 'opis_szumu' => 1, 'ludzie_max' => 1, 'rodzaj_kod' => 1]), $plan['pokoje']);
 
     $droid = ['budynek_id' => $bid, 'budynek' => $plan['budynek'], 'poziom' => (int) $d['poziom'], 'pokoj' => (string) $d['pokoj'],
-        'stan' => $d['stan'], 'x' => $xDroida];
+        'stan' => $d['stan'], 'x' => $xDroida, 'y' => (int) $poz[1]];
     if ($wDrodze) {
         $od = sl_z_utc($d['wyruszyl_utc']) ?? $teraz;
         $do = sl_z_utc($d['dotrze_utc']) ?? $teraz;
@@ -1199,9 +1541,12 @@ function sl_skan(PDO $db, array $s): array
             'poziom' => (int) $d['cel_poziom'], 'pokoj' => (string) $d['cel_pokoj']];
         $droid['zostalo_s'] = max(0, $do - $teraz);
         $droid['postep'] = $do > $od ? min(1, max(0, ($teraz - $od) / ($do - $od))) : 1;
+        $droid['trasa'] = sl_trasa_animacji($db, $s, $d, $plan, $budynki);
     }
-    $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik WHERE sledztwo_id = ? AND rodzaj <> 'system' ORDER BY id DESC LIMIT 12");
-    $q->execute([(int) $s['id']]);
+    // Wpisy z przyszłości (rozmowa w drzwiach po drodze) pokazują się dopiero, gdy droid tam dojdzie.
+    $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik WHERE sledztwo_id = ? AND rodzaj <> 'system' AND kiedy_utc <= ?
+        ORDER BY kiedy_utc DESC, id DESC LIMIT 12");
+    $q->execute([(int) $s['id'], sl_utc($teraz)]);
     $rozmowa = null;
     try {
         $r = sl_rozmowa_aktywna($db, (int) $s['id']);
@@ -1599,6 +1944,14 @@ function sl_terminal_tutaj(PDO $db, array $s, array $d, string $etykieta): array
     $budynki = sl_budynki($db, $s);
     $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
     $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
+    // Do terminala trzeba podejść (ok. 1,5 m).
+    $term = sl_terminale($plan)[$etykieta] ?? null;
+    if ($term) {
+        $poz = sl_pozycja($db, $s, $d, $plan);
+        if ($poz[2] === $term['pokoj'] && hypot($poz[0] - $term['x'], $poz[1] - $term['y']) > SLEDZTWO_ZASIEG_TERMINALA) {
+            throw new SledztwoBlad("Droid jest za daleko od terminala {$etykieta} — podejdź do niego.");
+        }
+    }
     if ((string) $d['pokoj'] === 'korytarz') {
         if ($plan['terminal_korytarz'] !== $etykieta) throw new SledztwoBlad('Ten terminal nie jest w zasięgu droida — podejdź do niego.');
         return [$plan, null, true];
@@ -1753,25 +2106,39 @@ function sl_rozmowa_start(PDO $db, array $s, string $token): array
     $bid = $d['lokalizacja_id'] !== null ? (int) $d['lokalizacja_id'] : null;
     $plan = sl_plan($db, $s, $pule, $bid !== null ? ($budynki[$bid] ?? null) : null, (int) $d['poziom']);
     $kontakt = null;
-    foreach (sl_kontakty($db, $s, $pule, $plan, sl_x_droida($plan, (string) $d['pokoj'])) as $k) if ($k['token'] === $token) { $kontakt = $k; break; }
+    $poz = sl_pozycja($db, $s, $d, $plan);
+    foreach (sl_kontakty($db, $s, $pule, $plan, (int) $poz[0]) as $k) if ($k['token'] === $token) { $kontakt = $k; break; }
     if (!$kontakt) throw new SledztwoBlad('Kontakt poza zasięgiem albo już odszedł.');
-    $lokal = null;
-    foreach ($plan['pokoje'] as $p) if ($p['nr'] === $kontakt['pokoj']) { $lokal = $p; break; }
-    if (!empty($kontakt['straznik'])) $lokal = null; // strażnik stoi na korytarzu — rozmowa bez wchodzenia
-    if ($lokal && $d['pokoj'] !== $lokal['nr']) {
-        [$wolno, $powod] = sl_dostep($db, $s, $bid, (int) $d['poziom'], $lokal);
-        if (!$wolno) throw new SledztwoBlad($powod . ' Droid nie wejdzie.');
+    // Dalej niż 3 m: droid podchodzi na 2–3 m (po swojej stronie; do stojącego w drzwiach — od strony, z której idzie).
+    $cel = null;
+    [$kx, $ky] = [(int) $kontakt['x'], (int) $kontakt['y']];
+    if (hypot($poz[0] - $kx, $poz[1] - $ky) > SLEDZTWO_ZASIEG_ROZMOWY) {
+        $znak = $poz[0] < $kx ? -1 : 1;
+        if (!empty($kontakt['w_drzwiach'])) {
+            $gora = $kontakt['strona'] === 'gora';
+            $wLokalu = $poz[2] === $kontakt['pokoj'];
+            $cel = sl_punkt($plan, $kx, $wLokalu === $gora ? $ky - 22 : $ky + 22);
+        } else {
+            $chce = !empty($kontakt['straznik']) ? 'korytarz' : $kontakt['pokoj'];
+            $cel = sl_punkt($plan, $kx + $znak * SLEDZTWO_ODSTEP_ROZMOWY, $ky);
+            if ($cel[2] !== $chce) $cel = sl_punkt($plan, $kx - $znak * SLEDZTWO_ODSTEP_ROZMOWY, $ky);
+        }
+        $lokal = $cel[2] !== 'korytarz' && $cel[2] !== $poz[2] ? sl_lokal($plan, $cel[2]) : null;
+        if ($lokal) {
+            [$wolno, $powod] = sl_dostep($db, $s, $bid, (int) $d['poziom'], $lokal);
+            if (!$wolno) throw new SledztwoBlad($powod . ' Droid nie wejdzie.');
+        }
     }
 
     $stara = sl_rozmowa_aktywna($db, (int) $s['id']);
     if ($stara) sl_rozmowa_zakoncz($db, $stara, 'Droid przerwał rozmowę i podszedł do kogoś innego.');
     $teraz = sl_teraz();
     $gotowa = $teraz + SLEDZTWO_PODEJSCIE_S;
-    $cel = empty($kontakt['straznik']) ? $kontakt['pokoj'] : 'korytarz';
-    if ($d['pokoj'] !== $cel) {
-        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $cel);
+    if ($cel) {
+        $ruch = sl_rozkaz_ruchu($db, $s, $bid, (int) $d['poziom'], $cel[2], $cel[0], $cel[1]);
         $gotowa = $teraz + $ruch['czas_s'] + SLEDZTWO_PODEJSCIE_S;
     }
+    $cel = $cel ? $cel[2] : $poz[2];
     $opis = ['gatunek' => $kontakt['gatunek'], 'plec' => $kontakt['plec'], 'wyglad' => $kontakt['wyglad'], 'kod' => $kontakt['kod']];
     $db->prepare('INSERT INTO sledztwo_rozmowy (sledztwo_id, kontakt, postac_id, opis_json, lokalizacja_id, poziom, pokoj, gotowa_utc, rozpoczeto_utc)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -2130,8 +2497,8 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                     $q->execute([(int) $biezace['id']]);
                     $droidStan = $q->fetch() ?: null;
                     $q = $db->prepare("SELECT kiedy_utc, rodzaj, kto, tresc FROM sledztwo_dziennik
-                        WHERE sledztwo_id = ? AND rodzaj <> 'system' ORDER BY id DESC LIMIT 50");
-                    $q->execute([(int) $biezace['id']]);
+                        WHERE sledztwo_id = ? AND rodzaj <> 'system' AND kiedy_utc <= ? ORDER BY kiedy_utc DESC, id DESC LIMIT 50");
+                    $q->execute([(int) $biezace['id'], sl_utc(sl_teraz())]);
                     $dziennik = $q->fetchAll();
                 }
                 $rozwiazane = count(array_filter($lista, fn($s) => $s['stan'] === 'rozwiazane'));
@@ -2147,6 +2514,7 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 odpowiedz(sl_skan($db, $s));
 
             // Rozkaz ruchu: {lokalizacja_id, poziom, pokoj ('korytarz' albo numer lokalu)}.
+            // Opcjonalnie {x, y}: punkt planu (10 j. = 1 m) — droid idzie dokładnie tam.
             case 'sledztwo_idz':
                 if (!$post) blad('Zła metoda.', 405);
                 if (!sl_detektyw($db, (string) $u['login'])) blad('Brak uprawnień.', 403);
@@ -2155,7 +2523,9 @@ function obsluz_sledztwa(string $akcja, bool $post): void
                 $w = wejscie();
                 $bid = isset($w['lokalizacja_id']) && $w['lokalizacja_id'] !== '' && $w['lokalizacja_id'] !== null ? (int) $w['lokalizacja_id'] : null;
                 $pokoj = mb_substr(trim((string) ($w['pokoj'] ?? 'korytarz')), 0, 12) ?: 'korytarz';
-                $wynik = sl_rozkaz_ruchu($db, $s, $bid, (int) ($w['poziom'] ?? 0), $pokoj);
+                $px = isset($w["x"]) && is_numeric($w["x"]) ? (int) $w["x"] : null;
+                $py = isset($w["y"]) && is_numeric($w["y"]) ? (int) $w["y"] : null;
+                $wynik = sl_rozkaz_ruchu($db, $s, $bid, (int) ($w['poziom'] ?? 0), $pokoj, $px, $py);
                 // Odejście kończy rozmowę.
                 try {
                     $r = sl_rozmowa_aktywna($db, (int) $s['id']);

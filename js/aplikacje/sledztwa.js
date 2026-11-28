@@ -19,7 +19,7 @@ const STAN = {
 };
 const STAN_DROIDA = { czeka: 'czeka na polecenia', w_drodze: 'w drodze', rozmowa: 'prowadzi rozmowę', skan: 'skanuje otoczenie',
   dekodowanie: 'dekoduje dane', uszkodzony: 'uszkodzony' };
-const KTO = { droid: 'Droid', gracz: 'Ty', system: 'Biuro' };
+const KTO = { droid: 'Droid', gracz: 'Ty', system: 'Biuro', npc: 'Rozmówca' };
 const STREFA = { parter: 'parter', pietro: 'piętro', gora: 'najwyższe piętro', techniczny: 'strefa techniczna' };
 const RODZAJ_P = { datapad: 'datapad', stanowisko: 'stanowisko pracy', terminal: 'terminal', kostka: 'kostka danych', dokument: 'dokument', osobisty: 'przedmiot osobisty' };
 const PODEJSCIA = [['oszustwo', 'Blef (Oszustwo)'], ['urok', 'Urok'], ['zastraszanie', 'Zastraszanie']];
@@ -47,6 +47,7 @@ function s(tag, atr = {}, ...dzieci) {
 
 // Geometria planu (jednostki skanu; pokój = 60 j.).
 const P = 60, GLEB = 70, KOR = 36, WINDA = 44;
+const ZASIEG_TERMINALA = 18; // jak SLEDZTWO_ZASIEG_TERMINALA w api/sledztwa.php
 const yPokoju = (strona) => (strona === 'gora' ? 0 : GLEB + KOR);
 
 const przycisk = (napis, akcja, klasa = '.drugi.maly', atr = {}) => {
@@ -80,6 +81,8 @@ export default {
 
     let moje = null, d = null, zakladka = 'skan', escK = null;
     let zegar = null, zegarSkanu = null, licznik = null, koniec = false, maSprawe = false;
+    // zamiar: co zrobić po dotarciu (np. podłączyć się do terminala); animacja trasy; raport przeszukania lokalu.
+    let zamiar = null, animacja = null, koniecDrogi = 0, calaDroga = 1, raport = null;
     const panel = (tytul, ...dzieci) => h('div.panel', h('h2', tytul), ...dzieci);
     const blad = (e) => h('div.komunikat.blad', e.message || String(e));
     const ok = (t) => h('div.komunikat.ok', t);
@@ -92,9 +95,10 @@ export default {
 
     // ---------- ruch ----------
 
-    async function idz(lokalizacja_id, poziom, pokoj) {
+    async function idz(lokalizacja_id, poziom, pokoj, punkt = null) {
       try {
-        await api('sledztwo_idz', { lokalizacja_id, poziom, pokoj });
+        await api('sledztwo_idz', { lokalizacja_id, poziom, pokoj, ...(punkt || {}) });
+        raport = null;
         wyczysc(komunikat);
         await skanuj();
         odswiez();
@@ -103,36 +107,93 @@ export default {
 
     // ---------- plan piętra (rysunek techniczny na całą przestrzeń) ----------
 
+    // Punkt w jednostkach planu z kliknięcia (10 j. = 1 m).
+    const punktSvg = (svg, e) => {
+      const m = svg.getScreenCTM();
+      if (!m) return null;
+      const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+      return { x: Math.round(p.x), y: Math.round(p.y) };
+    };
+    const odl = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    // Terminal: blisko — podłączenie; daleko — droid podchodzi, a po dotarciu ekran otwiera się sam.
+    function terminal(etykieta) {
+      const t = d?.plan?.terminale?.[etykieta];
+      const { droid } = d;
+      if (!t) return otworzKomputer({ terminal: etykieta });
+      if (droid.stan !== 'w_drodze' && droid.pokoj === t.pokoj && odl(droid, t) <= ZASIEG_TERMINALA) return otworzKomputer({ terminal: etykieta });
+      zamiar = { terminal: etykieta };
+      idz(d.plan.budynek_id, d.plan.poziom, t.pokoj, { x: t.podejscie_x, y: t.podejscie_y });
+    }
+
+    // Winda: wybór poziomu (parter / góra budynku albo dowolny numer).
+    function winda() {
+      const { plan, poziom_max } = d;
+      const nr = h('input', { type: 'number', min: 1, max: poziom_max, value: plan.poziom, style: 'width:80px' });
+      const jedz = (p) => { wyczysc(komunikat); idz(plan.budynek_id, Number(p), 'korytarz'); };
+      nr.onkeydown = (e) => { if (e.key === 'Enter') jedz(nr.value); };
+      wyczysc(komunikat).append(h('div.komunikat', h('b', `WINDA · ${plan.budynek} · teraz poziom ${plan.poziom}`),
+        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px' },
+          plan.parter !== plan.poziom ? przycisk(`Parter (${plan.parter})`, () => jedz(plan.parter)) : null,
+          plan.poziom > plan.parter ? przycisk('Piętro niżej', () => jedz(plan.poziom - 1)) : null,
+          przycisk('Piętro wyżej', () => jedz(plan.poziom + 1)),
+          plan.gora !== plan.poziom ? przycisk(`Góra (${plan.gora})`, () => jedz(plan.gora)) : null,
+          h('span.slaby', 'poziom'), nr, przycisk('Jedź', () => jedz(nr.value), '.maly'),
+          przycisk('×', () => wyczysc(komunikat), '.drugi.maly'))));
+      setTimeout(() => nr.focus(), 0);
+    }
+
+    // Położenie droida w drodze: wzdłuż trasy (przez drzwi i korytarz), proporcjonalnie do czasu.
+    function polozenieWDrodze() {
+      const { droid } = d;
+      const tr = droid.trasa;
+      if (!tr || !tr.punkty?.length) return null;
+      const postep = 1 - Math.max(0, (koniecDrogi - Date.now()) / 1000) / Math.max(1, calaDroga);
+      if (postep >= tr.do) return null; // w windzie / na innym piętrze
+      const pkt = tr.punkty;
+      const dl = [0];
+      for (let i = 1; i < pkt.length; i++) dl.push(dl[i - 1] + Math.hypot(pkt[i][0] - pkt[i - 1][0], pkt[i][1] - pkt[i - 1][1]));
+      const cel = (dl[dl.length - 1] * Math.max(0, postep)) / Math.max(0.0001, tr.do);
+      for (let i = 1; i < pkt.length; i++) {
+        if (dl[i] >= cel) {
+          const u = (cel - dl[i - 1]) / Math.max(0.0001, dl[i] - dl[i - 1]);
+          return { x: pkt[i - 1][0] + (pkt[i][0] - pkt[i - 1][0]) * u, y: pkt[i - 1][1] + (pkt[i][1] - pkt[i - 1][1]) * u };
+        }
+      }
+      return { x: pkt[pkt.length - 1][0], y: pkt[pkt.length - 1][1] };
+    }
+
     function planPietra() {
       const { plan, droid, kontakty, zasieg } = d;
-      const szer = Math.max(plan.szerokosc, P * 4);
+      const szer = plan.dl || Math.max(plan.szerokosc, P * 4);
       const wys = GLEB * 2 + KOR;
       const wDrodze = droid.stan === 'w_drodze';
       const vb = [-WINDA - 16, -22, szer + WINDA + 32, wys + 44];
       const svg = s('svg', { viewBox: vb.join(' '), width: '100%', height: '100%', preserveAspectRatio: 'xMidYMid meet',
-        style: 'display:block;color:var(--akcent);font-family:var(--czcionka)' },
+        style: 'display:block;color:var(--akcent);font-family:var(--czcionka);cursor:crosshair' },
         s('defs', {}, s('pattern', { id: 'dt4-siatka', width: 10, height: 10, patternUnits: 'userSpaceOnUse' },
           s('path', { d: 'M10 0H0V10', fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.08, 'stroke-width': 0.5 }))),
         s('rect', { x: vb[0], y: vb[1], width: vb[2], height: vb[3], fill: 'url(#dt4-siatka)' }));
+      // Klik w dowolny punkt: droid idzie dokładnie tam (drzwiami i korytarzem, nie przez ściany).
+      svg.addEventListener('click', (e) => {
+        const p = punktSvg(svg, e);
+        if (p) { zamiar = null; idz(plan.budynek_id, plan.poziom, 'korytarz', p); }
+      });
       if (!wDrodze) {
         svg.append(s('rect', { x: droid.x - zasieg, y: -14, width: zasieg * 2, height: wys + 28, fill: 'currentColor', 'fill-opacity': 0.05,
-          stroke: 'currentColor', 'stroke-opacity': 0.35, 'stroke-dasharray': '4 4' }),
-          s('text', { x: droid.x + zasieg - 3, y: -17, 'text-anchor': 'end', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.5 }, `ZASIĘG ${zasieg} j.`));
+          stroke: 'currentColor', 'stroke-opacity': 0.35, 'stroke-dasharray': '4 4', 'pointer-events': 'none' }),
+          s('text', { x: droid.x + zasieg - 3, y: -17, 'text-anchor': 'end', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.5 }, `ZASIĘG ${zasieg / 10} m`));
       }
       svg.append(
-        s('rect', { x: -WINDA, y: GLEB, width: WINDA, height: KOR, fill: 'none', stroke: 'currentColor', 'stroke-opacity': 0.8 }),
-        s('path', { d: `M${-WINDA} ${GLEB}L0 ${GLEB + KOR}M0 ${GLEB}L${-WINDA} ${GLEB + KOR}`, stroke: 'currentColor', 'stroke-opacity': 0.25 }),
-        s('text', { x: -WINDA / 2, y: GLEB + KOR + 10, 'text-anchor': 'middle', 'font-size': 7, fill: 'currentColor' }, 'WINDA'),
+        s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); winda(); } },
+          s('title', {}, 'Winda — kliknij, by wybrać poziom'),
+          s('rect', { x: -WINDA, y: GLEB, width: WINDA, height: KOR, fill: 'currentColor', 'fill-opacity': 0.06, stroke: 'currentColor', 'stroke-opacity': 0.8 }),
+          s('path', { d: `M${-WINDA} ${GLEB}L0 ${GLEB + KOR}M0 ${GLEB}L${-WINDA} ${GLEB + KOR}`, stroke: 'currentColor', 'stroke-opacity': 0.25 }),
+          s('text', { x: -WINDA / 2, y: GLEB + KOR + 10, 'text-anchor': 'middle', 'font-size': 7, fill: 'currentColor' }, 'WINDA ▲▼')),
         s('line', { x1: 0, y1: GLEB, x2: szer, y2: GLEB, stroke: 'currentColor', 'stroke-opacity': 0.5 }),
         s('line', { x1: 0, y1: GLEB + KOR, x2: szer, y2: GLEB + KOR, stroke: 'currentColor', 'stroke-opacity': 0.5 }),
-        s('text', { x: szer / 2, y: GLEB + KOR / 2 + 2, 'text-anchor': 'middle', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.3, 'letter-spacing': 3 }, 'KORYTARZ'));
-      if (plan.terminal_korytarz) {
-        const naMiejscu = !wDrodze && droid.pokoj === 'korytarz';
-        svg.append(s('g', { style: 'cursor:pointer', onclick: () => (naMiejscu ? otworzKomputer({ terminal: plan.terminal_korytarz }) : idz(plan.budynek_id, plan.poziom, 'korytarz')) },
-          s('title', {}, `Terminal publiczny ${plan.terminal_korytarz} — ${naMiejscu ? 'kliknij, by się podłączyć' : 'kliknij, by podejść'}`),
-          s('rect', { x: szer - 16, y: GLEB + 11, width: 11, height: 14, fill: 'var(--tlo)', stroke: 'var(--akcent-2)' }),
-          s('text', { x: szer - 10.5, y: GLEB + 8, 'text-anchor': 'middle', 'font-size': 7, fill: 'var(--akcent-2)' }, plan.terminal_korytarz)));
-      }
+        s('text', { x: szer / 2, y: GLEB + KOR / 2 + 2, 'text-anchor': 'middle', 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.3, 'letter-spacing': 3,
+          'pointer-events': 'none' }, 'KORYTARZ'));
       for (const p of plan.pokoje) {
         const y = yPokoju(p.strona);
         const wl = (p.szer || 1) * P;
@@ -142,43 +203,55 @@ export default {
         const wstep = p.zamkniete ? ' · zamknięty' : p.dostep === 'nakaz' ? ' · tylko z nakazem' : p.dostep === 'straz' ? ' · strzeżony' : '';
         const ramka = p.zamkniete || p.dostep === 'nakaz' ? 'var(--zly)' : p.dostep === 'straz' ? 'var(--akcent-2)' : 'currentColor';
         const yDrzwi = p.strona === 'gora' ? GLEB : GLEB + KOR;
-        svg.append(s('g', { style: 'cursor:pointer', onclick: () => idz(plan.budynek_id, plan.poziom, p.nr) },
-          s('title', {}, `Lokal ${p.nr} · ${p.rodzaj}${wstep} — kliknij, by tam wysłać droida`),
+        svg.append(s('g', {},
+          s('title', {}, `Lokal ${p.nr} · ${p.rodzaj}${wstep} — kliknij miejsce, do którego ma podejść droid`),
           s('rect', { x: p.x + 1, y: y + 1, width: wl - 2, height: GLEB - 2, fill: tu || cel ? 'currentColor' : 'transparent',
             'fill-opacity': tu ? 0.14 : 0.07, stroke: ramka, 'stroke-opacity': p.zamkniete ? 0.5 : 0.9, 'stroke-width': 1.2,
             'stroke-dasharray': cel ? '3 2' : null }),
-          s('text', { x: p.x + 5, y: y + 12, 'font-size': 9, fill: 'currentColor' }, p.nr),
-          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.7 }, p.rodzaj.slice(0, 15 * (p.szer || 1))),
-          p.dostep !== 'wolny' ? s('text', { x: p.x + wl - 6, y: y + GLEB - 7, 'text-anchor': 'end', 'font-size': 6.5, fill: ramka },
+          s('text', { x: p.x + 5, y: y + 12, 'font-size': 9, fill: 'currentColor', 'pointer-events': 'none' }, p.nr),
+          s('text', { x: p.x + 5, y: y + 22, 'font-size': 6, fill: 'currentColor', 'fill-opacity': 0.7, 'pointer-events': 'none' }, p.rodzaj.slice(0, 15 * (p.szer || 1))),
+          p.dostep !== 'wolny' ? s('text', { x: p.x + wl - 6, y: y + GLEB - 7, 'text-anchor': 'end', 'font-size': 6.5, fill: ramka, 'pointer-events': 'none' },
             p.dostep === 'nakaz' ? 'NAKAZ' : 'STRAŻ') : null,
-          p.zamkniete ? s('text', { x: p.x + 5, y: y + GLEB - 7, 'font-size': 6.5, fill: 'var(--zly)' }, 'ZAMEK') : null,
+          p.zamkniete ? s('text', { x: p.x + 5, y: y + GLEB - 7, 'font-size': 6.5, fill: 'var(--zly)', 'pointer-events': 'none' }, 'ZAMEK') : null,
           s('line', { x1: sx - 9, y1: yDrzwi, x2: sx + 9, y2: yDrzwi, stroke: p.zamkniete ? 'var(--zly)' : 'var(--tlo)', 'stroke-width': 3.5 }),
           s('text', { x: sx, y: p.strona === 'gora' ? GLEB - 3 : GLEB + KOR + 9, 'text-anchor': 'middle', 'font-size': 6,
-            fill: 'currentColor', 'fill-opacity': 0.6 }, String(p.drzwi))));
-        if (p.terminal) {
-          svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); tu ? otworzKomputer({ terminal: p.terminal }) : idz(plan.budynek_id, plan.poziom, p.nr); } },
-            s('title', {}, `Terminal ${p.terminal} w lokalu ${p.nr} — ${tu ? 'kliknij, by się podłączyć' : 'kliknij, by droid wszedł'}`),
-            s('rect', { x: p.x + wl - 15, y: y + 6, width: 10, height: 12, fill: 'var(--tlo)', stroke: 'var(--akcent-2)' }),
-            s('text', { x: p.x + wl - 10, y: y + 27, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, p.terminal)));
-        }
+            fill: 'currentColor', 'fill-opacity': 0.6, 'pointer-events': 'none' }, String(p.drzwi))));
+      }
+      for (const [et, t] of Object.entries(plan.terminale || {})) {
+        const blisko = !wDrodze && droid.pokoj === t.pokoj && odl(droid, t) <= ZASIEG_TERMINALA;
+        svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); terminal(et); } },
+          s('title', {}, `Terminal ${et}${t.pokoj === 'korytarz' ? ' (publiczny, korytarz)' : ` w lokalu ${t.pokoj}`} — ${blisko ? 'kliknij, by się podłączyć' : 'kliknij: droid podejdzie i się podłączy'}`),
+          s('rect', { x: t.x - 5, y: t.y - 6, width: 10, height: 12, fill: 'var(--tlo)', stroke: 'var(--akcent-2)', 'stroke-width': blisko ? 1.6 : 1 }),
+          s('text', { x: t.x, y: t.y + 15, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--akcent-2)' }, et)));
       }
       for (const k of kontakty) {
-        const y = k.strona === 'korytarz' ? (k.przy === 'gora' ? GLEB + 9 : GLEB + KOR - 9) : yPokoju(k.strona) + 46;
+        const y = k.y ?? (k.strona === 'korytarz' ? (k.przy === 'gora' ? GLEB + 9 : GLEB + KOR - 9) : yPokoju(k.strona) + 46);
         const aktywny = d.rozmowa && d.rozmowa.kontakt === k.token;
         svg.append(s('g', { style: 'cursor:pointer', onclick: (e) => { e.stopPropagation(); zacznijRozmowe(k.token); } },
-          s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad} — kliknij, by droid zaczął rozmowę`),
+          s('title', {}, `${k.kod}: ${k.gatunek}, ${k.wyglad}${k.w_drzwiach ? ' — stoi w drzwiach' : ''} — kliknij: droid podejdzie na 2–3 m i zacznie rozmowę`),
           s('circle', { cx: k.x, cy: y, r: 8, fill: 'transparent' }),
           aktywny ? s('circle', { cx: k.x, cy: y, r: 6.5, fill: 'none', stroke: 'var(--ok)' }) : null,
-          s('circle', { cx: k.x, cy: y, r: 3.5, fill: 'var(--akcent-2)' }),
+          s('circle', { cx: k.x, cy: y, r: 3.5, fill: k.w_drzwiach ? 'var(--zly)' : 'var(--akcent-2)' }),
           s('text', { x: k.x + 5, y: y + 3, 'font-size': 6, fill: 'var(--akcent-2)' }, k.kod)));
       }
-      if (!wDrodze) {
-        const dy = droid.pokoj === 'korytarz' ? GLEB + KOR / 2 : yPokoju(plan.pokoje.find((p) => p.nr === droid.pokoj)?.strona) + GLEB / 2;
-        svg.append(s('g', {},
-          s('circle', { cx: droid.x, cy: dy, r: 6, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }),
-          s('circle', { cx: droid.x, cy: dy, r: 2, fill: 'var(--ok)' }),
-          s('text', { x: droid.x, y: dy - 9, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--ok)' }, d.oznaczenie || 'DT-4')));
+      // Droid: na miejscu albo w ruchu po trasie (animacja).
+      const znacznik = s('g', { 'pointer-events': 'none' },
+        s('circle', { cx: 0, cy: 0, r: 6, fill: 'none', stroke: 'var(--ok)', 'stroke-width': 1.5 }),
+        s('circle', { cx: 0, cy: 0, r: 2, fill: 'var(--ok)' }),
+        s('text', { x: 0, y: -9, 'text-anchor': 'middle', 'font-size': 6, fill: 'var(--ok)' }, d.oznaczenie || 'DT-4'));
+      if (wDrodze && droid.trasa?.punkty?.length) {
+        svg.append(s('polyline', { points: droid.trasa.punkty.map((q) => q.join(',')).join(' '), fill: 'none', stroke: 'var(--ok)',
+          'stroke-opacity': 0.45, 'stroke-dasharray': '2 3', 'pointer-events': 'none' }));
       }
+      svg.append(znacznik);
+      const ustaw = () => {
+        const p = wDrodze ? polozenieWDrodze() : { x: droid.x, y: droid.y ?? GLEB + KOR / 2 };
+        znacznik.style.display = p ? '' : 'none';
+        if (p) znacznik.setAttribute('transform', `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`);
+      };
+      ustaw();
+      clearInterval(animacja);
+      if (wDrodze) animacja = setInterval(() => { if (!svg.isConnected) clearInterval(animacja); else ustaw(); }, 100);
       return svg;
     }
 
@@ -265,7 +338,7 @@ export default {
       const { droid, plan, kontakty, przedmioty = [] } = d;
       const wLokalu = droid.stan !== 'w_drodze' && droid.pokoj !== 'korytarz';
       const lok = plan.pokoje.find((p) => p.nr === droid.pokoj);
-      const terminal = droid.stan === 'w_drodze' ? null : wLokalu ? lok?.terminal : plan.terminal_korytarz;
+      const term = droid.stan === 'w_drodze' ? null : wLokalu ? lok?.terminal : plan.terminal_korytarz;
       return h('div',
         panel(wLokalu ? `LOKAL ${droid.pokoj} · ${lok?.rodzaj || ''}` : droid.stan === 'w_drodze' ? 'W DRODZE' : 'KORYTARZ',
           !d.przedmioty_dostepne ? h('p.maly-tekst', 'Przedmioty niedostępne (brak migracji 087).') : null,
@@ -276,9 +349,19 @@ export default {
               Number(p.przenosny) ? przycisk('Zabierz', () => zawolaj('sledztwo_zabierz', { przedmiot_id: p.id }, `Zabrano: ${p.nazwa}.`)) : null,
               przycisk('Podłącz / czytaj', () => otworzKomputer({ przedmiot_id: p.id })))))) : null,
           wLokalu && !przedmioty.length ? h('p.maly-tekst', 'Na pierwszy rzut oka nic tu nie ma.') : null,
-          wLokalu ? przycisk('Przeszukaj lokal (Percepcja)', () => zawolaj('sledztwo_przeszukaj', {},
-            (r) => (r.znalezione.length ? `Znaleziono: ${r.znalezione.join(', ')}.` : r.udane ? 'Nic tu nie ma.' : 'Droid niczego nie zauważył.') + ` ${r.opis}`)) : null,
-          terminal ? h('div', { style: 'margin-top:8px' }, przycisk(`Podłącz się do terminala ${terminal}`, () => otworzKomputer({ terminal }), '.maly')) : null),
+          wLokalu ? przycisk('Przeszukaj lokal (Percepcja)', async () => {
+            // Raport przeszukania w okienku pod przyciskiem (nie na środku ekranu).
+            try {
+              const r = await api('sledztwo_przeszukaj', {});
+              raport = { pokoj: droid.pokoj, ok: true, tekst: (r.znalezione.length ? `Znaleziono: ${r.znalezione.join(', ')}.`
+                : r.udane ? 'Nic tu nie ma.' : 'Droid niczego nie zauważył.') + ` ${r.opis}` };
+            } catch (e) { raport = { pokoj: droid.pokoj, ok: false, tekst: e.message || String(e) }; }
+            await skanuj();
+            odswiez();
+          }) : null,
+          wLokalu && raport && raport.pokoj === droid.pokoj ? h(`div.komunikat.${raport.ok ? 'ok' : 'blad'}`, { style: 'margin-top:6px' },
+            h('b', 'RAPORT Z PRZESZUKANIA › '), raport.tekst) : null,
+          term ? h('div', { style: 'margin-top:8px' }, przycisk(`Podejdź i podłącz się do terminala ${term}`, () => terminal(term), '.maly')) : null),
         kontakty.length ? panel('KONTAKTY W ZASIĘGU', kontakty.map((k) => h('div', { style: 'margin:4px 0' },
           h('a', { href: '#', onclick: (e) => { e.preventDefault(); zacznijRozmowe(k.token); } }, `${k.kod}: ${k.gatunek}, ${k.wyglad}`),
           h('span.slaby', k.strona === 'korytarz' ? ` (przy drzwiach ${k.pokoj})` : ` (lokal ${k.pokoj})`)))) : null,
@@ -510,9 +593,20 @@ export default {
         const nowe = await api('sledztwo_skan');
         nowe.oznaczenie = moje?.droid || 'DT-4';
         d = nowe;
+        if (d.droid.stan === 'w_drodze') {
+          koniecDrogi = Date.now() + d.droid.zostalo_s * 1000;
+          calaDroga = d.droid.zostalo_s / Math.max(0.0001, 1 - d.droid.postep);
+        }
         if (d.rozmowa && (!rozmowa || rozmowa.id !== d.rozmowa.id)) await odswiezRozmowe(d.rozmowa.id);
         rysujWszystko();
-        if (!koniec && d.droid.stan !== 'w_drodze') zegarSkanu = setTimeout(skanuj, 60000);
+        // Po dotarciu: zaplanowane podłączenie do terminala.
+        if (zamiar?.terminal && d.droid.stan !== 'w_drodze') {
+          const t = d.plan.terminale?.[zamiar.terminal];
+          const z = zamiar; zamiar = null;
+          if (t && d.droid.pokoj === t.pokoj && Math.hypot(d.droid.x - t.x, d.droid.y - t.y) <= ZASIEG_TERMINALA) otworzKomputer({ terminal: z.terminal });
+        }
+        // W drodze co 15 s (rozmowy w drzwiach po drodze pojawiają się w meldunkach), na miejscu co minutę.
+        if (!koniec) zegarSkanu = setTimeout(skanuj, d.droid.stan === 'w_drodze' ? 15000 : 60000);
       } catch (e) { wyczysc(planBox).append(h('div', { style: 'padding:20px' }, blad(e))); }
     }
 
@@ -551,7 +645,7 @@ export default {
 
     odswiez();
     return () => {
-      koniec = true; clearTimeout(zegar); clearTimeout(zegarSkanu); clearInterval(licznik); komputerBox.hidden = true;
+      koniec = true; clearTimeout(zegar); clearTimeout(zegarSkanu); clearInterval(licznik); clearInterval(animacja); komputerBox.hidden = true;
       if (escK) document.removeEventListener('keydown', escK);
     };
   },

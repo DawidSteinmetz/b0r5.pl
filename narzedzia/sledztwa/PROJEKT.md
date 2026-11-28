@@ -92,8 +92,19 @@ Prompty bazowe: `sledztwo_fazy_szablon.prompt_bazowy` + `sledztwo_zdarzenia.wska
 
 - Cel: dowolny budynek / lądowisko **skupiska**, poziom 1–120, pokój albo korytarz. Inne kompleksy — później
   (dystanse między sektorami to setki km; potrzebna taksówka powietrzna).
-- Czas podróży (1:1): wyjście 20 s + odległość między budynkami (`x_km`, `y_km`) / 1,4 m/s + przy zmianie poziomu
-  30 s czekania na windę i 20 s / poziom + dojście do pokoju 20 s. Ten sam poziom i budynek: 30 s.
+- Czas podróży (1:1), chód 5 km/h. Na piętrze droid idzie do dowolnego klikniętego punktu planu (10 j. = 1 m),
+  zawsze przez drzwi i korytarz, nie przez ściany (`sl_trasa`); czas = długość trasy / 5 km/h. Inny poziom albo
+  budynek: marsz do windy + 20 s wyjścia + odległość między budynkami (`x_km`, `y_km`) + 30 s czekania na windę
+  i 20 s / poziom + marsz od windy do celu. Klik w windę na planie — wybór poziomu. Rysunek animuje marsz po trasie.
+- Pozycja (x, y) droida: `sledztwo_pozycje` (migracja 088); bez wiersza — środek lokalu.
+- Do terminala droid musi podejść (ok. 1,5 m); klik w terminal z daleka = podejście i podłączenie po dotarciu.
+  Do rozmowy podchodzi na 2–3 m (klik w kontakt).
+- Drzwi: co trzeci zaludniony lokal ma przechodnia w drzwiach. Droid na trasie uprzejmie prosi o przejście
+  (80 % się odsuwa; przy odmowie droid staje przed progiem, a druga prośba zawsze skutkuje; stan na godzinę
+  w `sledztwo_przejscia`). Gdy droid stoi w drzwiach dłużej niż 45 s, ktoś prosi go o przejście, a droid
+  przeprasza i ustępuje 1,5 m. Droid domyślnie jest uprzejmy. Rozmowy w drzwiach trafiają do dziennika
+  z czasem dojścia do progu (wpisy z przyszłości widać dopiero wtedy).
+- Lokal docelowy zamknięty / z nakazem / strzeżony: droid od razu idzie pod jego drzwi i tam czeka.
 - Nowy rozkaz w drodze: przed połową trasy droid zawraca z punktu startu, po połowie — rusza z poprzedniego celu.
 - Dotarcie rozlicza serwer przy najbliższym odczycie (nie trzeba crona): pozycja, meldunek w dzienniku, wpis
   `sledztwo_szum` dla miejsc spoza fabuły.

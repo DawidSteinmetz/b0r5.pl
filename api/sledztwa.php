@@ -2348,6 +2348,61 @@ function sl_odpowiedz_zastepcza(PDO $db, array $s, array $pule, array $r, ?array
 
 // Zdawkowa kwestia bez powtórzeń: pomija to, co ten rozmówca już powiedział, i to, co w tej sprawie padło
 // w ostatnich 6 godzinach; gdy wszystko zużyte — najdawniej użyta.
+// Odpowiedzi bez AI składane z części: [wstępy, sedna, zakończenia]. Klucze: podejście_nie (nieudany test),
+// nastroje (dopiski do zdawkowych kwestii). Pusty wstęp / zakończenie — część pominięta.
+const SLEDZTWO_SKLADANKI = [
+    'grozba_nie' => [
+        ['', 'Grozisz mi?', 'Ty mi grozisz, puszko?', 'Hah. Straszysz?', 'Słuchaj no, blaszaku.', 'Ej, ej, spokojnie.', 'No proszę, groźny droid.'],
+        ['Nakaz? Przynieś, to pogadamy.', 'Ale wiesz, że tu rządzą wielkie ślimaki, a nie twoje idealistyczne biuro?',
+            'Huttowie mają tu więcej do powiedzenia niż jakiś droid z biura.', 'Ochrona tego budynku nie pracuje dla ciebie.',
+            'Straszyć to możesz dzieciaki na dolnych poziomach.', 'Widział{em|am} groźniejsze tostery.',
+            'Za takie gadanie ktoś tu cię rozbierze na części.', 'Twoje biuro nie ma tu żadnej władzy i dobrze o tym wiesz.'],
+        ['', 'Do tego czasu spadaj.', 'Zjeżdżaj.', 'A teraz won.', 'Nie zabieraj mi czasu.', 'Następny proszę.', 'Wracaj, skąd przyszedłeś.']],
+    'negocjacje_nie' => [
+        ['', 'Wymiana?', 'Hm.', 'Ciekawe.', 'Słuchaj.', 'Interes, mówisz?'],
+        ['Za mało.', 'Dyskrecja biura? Dobre sobie.', 'Nie robię interesów z droidami.', 'Za to nawet szczur z szybu by nie pisnął.',
+            'Na Nar Shaddaa obietnice biura są warte tyle, co żetony z zamkniętego kasyna.', 'Twoja przysługa nie zapłaci mi czynszu.'],
+        ['', 'Wróć z czymś lepszym.', 'Pogadamy, jak będziesz mieć kredyty.', 'Nie tak się robi interesy.', 'Szukaj frajera gdzie indziej.']],
+    'urok_nie' => [
+        ['', 'Ojej.', 'Słodko.', 'Daruj sobie.', 'Aha.'],
+        ['Miły droid. Dalej nic nie wiem.', 'Słodzisz jak sprzedawca przyprawy.', 'Uprzejmości zostaw dla Huttów, oni to lubią.',
+            'Komplementy od droida? Teraz to już widział{em|am} wszystko.', 'Nie kupię tego, choćbyś się świecił jak neon.'],
+        ['', 'Następnym razem przynieś kredyty, nie komplementy.', 'Idź czarować kogoś innego.', 'Nie działa.']],
+    'blef_nie' => [
+        ['', 'Serio?', 'Hah.', 'Dobre.', 'No proszę.'],
+        ['Nic nie wiesz. Gdybyś wiedział, nie pytałbyś.', 'Blefujesz. I to słabo.', 'To czemu pytasz, skoro wiesz?',
+            'Tym blefem nie wygrałbyś nawet partyjki sabaka z dzieciakiem.', 'Twoje biuro wie tyle, co ja o waszych procedurach — nic.'],
+        ['', 'Spróbuj z kimś głupszym.', 'Dobra próba, puszko.', 'Następnym razem lepiej się przygotuj.']],
+    'autorytet_nie' => [
+        ['', 'Procedura?', 'W imieniu biura, tak?', 'Hah.', 'Ojej, urzędnik.'],
+        ['Biuro? Tu rządzą Huttowie, nie twoje biuro.', 'Procedura… Na Nar Shaddaa? Zabawne.', 'Wezwij sobie, kogo chcesz.',
+            'Twoje papiery są tu warte mniej niż mokry kredyt.', 'Tu prawo pisze ten, kto płaci ochronie.'],
+        ['', 'A teraz zjeżdżaj.', 'Nie mam czasu na urzędników.', 'Idź z tym do Huttów, może cię wysłuchają.']],
+    'wrogi' => [['', 'Słuchaj, puszko.', 'Znowu ty?', 'No i czego?', 'Ech.'], [], ['', 'I spadaj.', 'Nie wracaj.', 'Koniec gadania.']],
+    'obojetny' => [['', 'Hm.', 'No.', 'Wiesz co…', 'Słuchaj.'], [], ['', 'Tyle.', 'Nic więcej.', 'Idź pytać kogoś innego.']],
+    'przestraszony' => [['', 'Ja… ', 'Słuchaj…', 'Ciszej!'], [], ['', 'Proszę, zostaw mnie.', 'Nie chcę kłopotów.']],
+    'uprzejmy' => [['', 'Wybacz.', 'Przykro mi.', 'Hm.'], [], ['', 'Powodzenia.', 'Mam nadzieję, że go znajdziesz.']],
+];
+
+// Składa kwestię z części ($sedno — gotowe zdanie zamiast losowanego); unika dosłownych powtórzeń w rozmowie.
+function sl_skladanka(PDO $db, string $klucz, int $rid, string $plec = 'm', ?string $sedno = null): string
+{
+    $c = SLEDZTWO_SKLADANKI[$klucz] ?? null;
+    if (!$c) return (string) $sedno;
+    $q = $db->prepare("SELECT tresc FROM sledztwo_rozmowy_wpisy WHERE rozmowa_id = ? AND kto = 'npc'");
+    $q->execute([$rid]);
+    $bylo = array_flip($q->fetchAll(PDO::FETCH_COLUMN));
+    $wynik = '';
+    for ($proba = 0; $proba < 8; $proba++) {
+        $rdzen = $sedno ?? ($c[1] ? $c[1][random_int(0, count($c[1]) - 1)] : '');
+        $wstep = $c[0][random_int(0, count($c[0]) - 1)];
+        $koniec = $c[2][random_int(0, count($c[2]) - 1)];
+        $wynik = trim(preg_replace('/\s+/u', ' ', ($wstep !== '' ? $wstep . ' ' : '') . $rdzen . ($koniec !== '' ? ' ' . $koniec : '')));
+        if (!isset($bylo[$wynik])) break;
+    }
+    return sl_rodzaj($wynik, $plec === 'k' ? 'k' : 'm');
+}
+
 function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sledztwoId = 0): string
 {
     $q = $db->prepare('SELECT tresc FROM gen_kwestie_szumu WHERE nastroj = ?');
@@ -2363,9 +2418,9 @@ function sl_kwestia_szumu(PDO $db, string $nastroj, int $rozmowaId = 0, int $sle
         foreach ($q->fetchAll() as $x) $uzyte[$x['tresc']] = (int) $x['ost'];
     }
     $wolne = array_values(array_filter($l, fn($t) => !isset($uzyte[$t])));
-    if ($wolne) return (string) $wolne[random_int(0, count($wolne) - 1)];
-    usort($l, fn($a, $b) => ($uzyte[$a] ?? 0) <=> ($uzyte[$b] ?? 0));
-    return (string) $l[0];
+    if ($wolne) $sedno = (string) $wolne[random_int(0, count($wolne) - 1)];
+    else { usort($l, fn($a, $b) => ($uzyte[$a] ?? 0) <=> ($uzyte[$b] ?? 0)); $sedno = (string) $l[0]; }
+    return $rozmowaId && random_int(1, 100) <= 60 ? sl_skladanka($db, $nastroj, $rozmowaId, 'm', $sedno) : $sedno;
 }
 
 // ---------- wiedza NPC o otoczeniu: budynek, piętro, parter, ochrona, pora ----------
@@ -3210,7 +3265,9 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $db->prepare('UPDATE sledztwo_metryki SET chce_mowic = ? WHERE id = ?')->execute([$nowa, (int) $metryka['id']]);
                 $metryka['chce_mowic'] = $nowa;
             }
-            $polecenie = trim(($polecenie !== '' ? $polecenie . ' ' : '') . '[Podejście: ' . $pd[5] . '.]');
+            $polecenie = $polecenie !== ''
+                ? $polecenie . " [Podejście: {$pd[4]} — słowa operatora SĄ tym podejściem: przekaż je rozmówcy (możesz wygładzić wulgaryzmy do tonu droida), nie dodawaj własnej formuły.]"
+                : '[Podejście: ' . $pd[5] . '.]';
         }
 
         $slyszal = $pytan === 0 ? sl_slyszal_wczesniej($db, $r) : null;
@@ -3245,7 +3302,8 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
         if ($pytanie === null) {
             $bezPodejscia = $pd ? trim((string) preg_replace('/\s*\[Podejście:.*\]$/us', '', $polecenie)) : $polecenie;
             $pytanie = $pd && $bezPodejscia === '' && $pytan > 0 ? $pd[6]
-                : trim(sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $bezPodejscia, $pytan, $procedura === 'jawna', $slyszal, $juzDroid) . ($pd ? ' ' . $pd[6] : ''));
+                : trim(sl_droid_zastepczo($pytan === 0, $f, $oznaczenie, $operator, $bezPodejscia, $pytan, $procedura === 'jawna', $slyszal, $juzDroid)
+                    . ($pd && $bezPodejscia === '' ? ' ' . $pd[6] : ''));
             if ($pytanie === '') { $pytanie = "Dziękuję, {$f['wolacz']}. Nie mam więcej pytań."; $koniecPytan = true; }
         }
         sl_wpis($db, $rid, 'droid', $pytanie, $pytanieAi);
@@ -3259,9 +3317,14 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                 $dane = sl_npc_dane($db, $s, $npc, $pule, $r, $metryka);
                 $imie = $dane['npc']['pelne_imie'];
                 $dane['droid'] = ['oznaczenie' => $oznaczenie];
+                $q = $db->prepare("SELECT w.tresc FROM sledztwo_rozmowy_wpisy w JOIN sledztwo_rozmowy r2 ON r2.id = w.rozmowa_id
+                    WHERE r2.sledztwo_id = ? AND w.kto = 'npc' ORDER BY w.id DESC LIMIT 12");
+                $q->execute([(int) $s['id']]);
+                $unikaj = $q->fetchAll(PDO::FETCH_COLUMN);
                 $dane['rozmowa'] = ['pytanie' => $pytanie, 'przebieg' => $ostatnie
                     ? implode("\n", array_map(fn($w) => ($w['kto'] === 'droid' ? "Droid {$oznaczenie}: " : "Ty ({$imie}): ") . $w['tresc'], $ostatnie))
-                    : '(to początek rozmowy)'];
+                    : '(to początek rozmowy)',
+                    'unikaj' => $unikaj ? implode("\n", array_map(fn($x) => '- „' . $x . '”', $unikaj)) : '(brak)'];
                 if ($slyszal) $dane['faza']['zachowanie'] .= "\n- " . sl_rodzaj('Przed chwilą stał{eś|aś} obok i słyszał{eś|aś}', (string) ($o['plec'] ?? 'm')) . ", jak ten droid przedstawiał się i wypytywał kogoś ({$slyszal}) o sprawę: {$zgloszenie}. Wiesz już, czego chce.";
                 if ($test) {
                     $dane['faza']['zachowanie'] .= "\n- TERAZ droid zastosował wobec ciebie: {$pd[4]}. Wynik testu: "
@@ -3303,7 +3366,7 @@ function sl_rozmowa_tura(PDO $db, array $s, array $u, int $rid, string $poleceni
                     $odp = $test['udana']
                         ? ($fakt ? ['No dobra, dobra. ', 'Niech ci będzie. ', 'Dobra, powiem jedno: ', 'Ciszej… '][random_int(0, 3)] . $fakt
                             : 'Naprawdę nic nie wiem! Nie znam nikogo takiego, przysięgam.')
-                        : $pd[11][random_int(0, count($pd[11]) - 1)];
+                        : sl_skladanka($db, $podejscie . '_nie', $rid, (string) ($metryka['plec'] ?? 'm'));
                     if ($test['rozpacz']) { $odp .= ' Ochrona! Ten droid mnie nęka!'; $konczy = true; }
                 } else {
                     $pyt = $polecenie !== '' ? $polecenie : $pytanie;

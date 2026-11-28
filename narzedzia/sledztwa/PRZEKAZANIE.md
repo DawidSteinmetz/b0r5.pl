@@ -132,6 +132,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
    zna tylko to, co widział (`sl_widzial`: poziom 3 — wszystko, 2 — dwa ostatnie jawne, w swoim budynku — z szansą);
    prompt dostaje dzisiejszą datę. Fakty mają formę „ty” (prompt) i „ja” (odpowiedzi bez AI: `sl_odpowiedz_o_osobie`
    wg tematu pytania — kiedy, gdzie, z kim, wygląd, kłopoty). Windy: 10 s czekania + 1,5 s na piętro.
+   Polecenie operatora z podejściem JEST tym podejściem (droid nie dokłada własnej formuły). Bez AI odpowiedzi po
+   nieudanym teście i zdawkowe kwestie są składane z części (`SLEDZTWO_SKLADANKI`, `sl_skladanka`) bez powtórzeń.
+   Migracja `092_sledztwa_styl.sql`: prompt NPC ze STYLEM (za każdym razem inaczej, slang Nar Shaddaa) i listą zdań,
+   które już padły w sprawie (`{{rozmowa.unikaj}}`); temperatura NPC 0.95, droida 0.80.
    Dalej: punkty W/S/Z i testy EotE w rozmowach (PROJEKT.md rozdz. 4a), ekstrakcja faktów → ślady → koncentrat, terminale (publiczny / slicer / sam),
    koncentrat i tablica powiązań, ruch do innych kompleksów (taksówka). Linia „Hune” z makiety — nie wiadomo,
    czym jest (zapytać autora); na razie w pasku jest linia „ŁĄCZE”.

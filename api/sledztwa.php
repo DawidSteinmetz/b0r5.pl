@@ -250,7 +250,11 @@ function sledztwo_losuj(PDO $db, string $login, array $opcje = []): array
     foreach (SLEDZTWO_TAG_POSTACI as $tag => $kod) if (isset($tagi[$tag])) $kody[] = $kod;
     $postacie = [];
     $uzyteNazwy = [];
-    foreach ($kody as $kod) $postacie[] = sl_postac($pule, $kod, 'kluczowy', $miejsca, $tagi, $uzyteNazwy, null);
+    // A i B muszą pasować do relacji (rodzic nie jest droidem, „dziecko” jest młode, rodzina ma wspólne nazwisko).
+    foreach ($kody as $kod) {
+        $wzor = sl_wiezy_relacji((int) $relacjaId, $kod, $postacie[0] ?? null);
+        $postacie[] = sl_postac($pule, $kod, 'kluczowy', $miejsca, $tagi, $uzyteNazwy, null, $wzor);
+    }
     // VIP: postać, którą szkic fazy 2 wskazuje jako zgłaszającego (B, Z, W, S, A), albo nowa postać „V”.
     $vip = null;
     foreach (['B', 'Z', 'W', 'S', 'A'] as $k) {
@@ -376,7 +380,35 @@ function sl_miejsce(array $pule, int $seed, ?array &$skupisko, array $faza, arra
 }
 
 // $miejsceIdx: indeks miejsca (poboczni) albo null (kluczowi — dobierani do miejsca wg archetypu).
-function sl_postac(array $pule, ?string $kod, string $waga, array $miejsca, array $tagi, array &$uzyteNazwy, ?int $miejsceIdx): array
+// Więzy, jakie relacja A–B (sledztwo_relacje, migracja 082) nakłada na postać $kod; $a — wylosowany już A.
+// Rodzina i para nie są droidami; „dziecko” jest nastolatkiem, rodzic starszy o pokolenie, rodzina ma ten sam
+// gatunek i nazwisko; uczeń młodszy od mistrza; dawni towarzysze broni w zbliżonym, dojrzałym wieku.
+function sl_wiezy_relacji(int $relacjaId, string $kod, ?array $a): array
+{
+    if ($kod === 'A') {
+        return [
+            1 => ['bez_droida' => true, 'wiek' => [18, 55]],
+            5 => ['bez_droida' => true, 'wiek' => [12, 19]],
+            6 => ['bez_droida' => true, 'wiek' => [14, 40]],
+            7 => ['wiek' => [15, 28]],
+            11 => ['bez_droida' => true, 'wiek' => [35, 70]],
+        ][$relacjaId] ?? [];
+    }
+    if ($kod !== 'B' || !$a) return [];
+    $w = $a['wiek'] === null ? null : (int) $a['wiek'];
+    $rodzina = ['gatunek' => $a['gatunek_kod'], 'bez_droida' => true] + ($a['nazwisko'] ? ['nazwisko' => $a['nazwisko']] : []);
+    switch ($relacjaId) {
+        case 1: return ['bez_droida' => true] + ($w ? ['wiek' => [max(18, $w - 8), $w + 10]] : []);
+        case 5: return $rodzina + ($w ? ['wiek' => [$w + 18, $w + 35]] : []);
+        case 6: return $rodzina + ($w ? ['wiek' => [max(10, $w - 8), $w + 8]] : []);
+        case 7: return $w ? ['wiek' => [$w + 10, $w + 40]] : [];
+        case 11: return ['bez_droida' => true] + ($w ? ['wiek' => [max(30, $w - 10), $w + 10]] : []);
+    }
+    return [];
+}
+
+// $wzor (więzy z relacji A–B, patrz sl_wiezy_relacji): gatunek, bez_droida, wiek [min, max], nazwisko.
+function sl_postac(array $pule, ?string $kod, string $waga, array $miejsca, array $tagi, array &$uzyteNazwy, ?int $miejsceIdx, array $wzor = []): array
 {
     // Archetyp: S przy nagrodzie — łowca; poboczni — bywalcy miejsca; reszta wg wag.
     $archetypy = array_values($pule['archetypy']);
@@ -393,10 +425,12 @@ function sl_postac(array $pule, ?string $kod, string $waga, array $miejsca, arra
     if ($waga === 'kluczowy' && $tryb === 'slugus') $tryb = 'rywal';
     if ($waga === 'poboczny') $tryb = 'slugus';
 
-    $gat = sl_wazony($pule['populacja'])['kod'];
+    $populacja = $pule['populacja'];
+    if (!empty($wzor['bez_droida'])) $populacja = array_values(array_filter($populacja, fn($x) => $x['kod'] !== 'droid')) ?: $populacja;
+    $gat = !empty($wzor['gatunek']) && isset($pule['gatunki'][$wzor['gatunek']]) ? $wzor['gatunek'] : sl_wazony($populacja)['kod'];
     if (!isset($pule['gatunki'][$gat])) $gat = array_key_first($pule['gatunki']);
     $plec = $gat === 'droid' ? 'n' : (sl_procent(50) ? 'm' : 'k');
-    $wiek = $gat === 'droid' ? null : sl_los(18, 70);
+    $wiek = $gat === 'droid' ? null : (isset($wzor['wiek']) ? sl_los(max(1, $wzor['wiek'][0]), max(1, $wzor['wiek'][0], $wzor['wiek'][1])) : sl_los(18, 70));
 
     // Imię i nazwisko z puli gatunku (płeć zgodna albo 'n'); brak — pula człowieka. Unikamy powtórzeń w sprawie.
     $wybierz = function (string $rodzaj) use ($pule, $gat, $plec): ?string {
@@ -409,7 +443,7 @@ function sl_postac(array $pule, ?string $kod, string $waga, array $miejsca, arra
     };
     for ($proba = 0; $proba < 8; $proba++) {
         $imie = $wybierz('imie') ?? 'Bezimienny';
-        $nazwisko = $gat === 'droid' ? null : $wybierz('nazwisko');
+        $nazwisko = $gat === 'droid' ? null : ($wzor['nazwisko'] ?? $wybierz('nazwisko'));
         if (!isset($uzyteNazwy[$imie . '|' . $nazwisko])) break;
     }
     $uzyteNazwy[$imie . '|' . $nazwisko] = true;

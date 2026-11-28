@@ -120,6 +120,10 @@ poprawiony w 2. próbie; 429 → zapasowy dostawca. **Nie testowane na prawdziwe
   człowieka), przydomek 35 % kluczowi / 15 % poboczni, charakter: cecha + mowa (+ nawyk 60 %). Kluczowi min. rywal,
   poboczni sługusi. Kluczowi dostają przedmiot z `gen_przedmioty` (przyszły dowód). A przy długu ma 1/5 kredytów.
   A przebywa w kryjówce fazy 7. Karta EotE jak `nowaKarta()` (tryb NPC); bronie z tabeli `SLEDZTWO_BRONIE`.
+  Relacja A–B nakłada więzy (`sl_wiezy_relacji`): para, rodzina i weterani nie są droidami; „dziecko” ma 12–19 lat,
+  rodzic jest o 18–35 lat starszy, rodzina ma ten sam gatunek i nazwisko, rodzeństwo ±8 lat, mistrz starszy od ucznia.
+- Do dopracowania (uwaga autora 28|11|16): każdy scenariusz potrzebuje dużo większego poziomu szczegółów —
+  spójność ról z wiekiem / gatunkiem / zajęciem, konkretne realia miejsc i ludzi. Kandydat na krok AI Autora.
 - Droid startuje w budynku i na poziomie miejsca fazy 2 (albo pierwszego miejsca). Wpis w dzienniku „Szkielet wylosowany”.
 - Gracz może mieć jedno otwarte śledztwo; gracz nie dostaje w odpowiedzi szkieletu (prawdy), tylko id.
 
